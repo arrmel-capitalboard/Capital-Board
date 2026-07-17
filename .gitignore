@@ -1,0 +1,32 @@
+# Données personnelles (NE JAMAIS commiter)
+*.csv
+*.xlsx
+*.xls
+
+# Captures temporaires
+capture.png
+1.png
+image*.png
+*.tmp.png
+
+# Scripts ponctuels / debug
+debug_*.mjs
+debug_*.js
+fix_*.py
+
+# Dev/preview pages
+font-preview.html
+preview-nav.html
+
+# Node
+node_modules/
+npm-debug.log
+.env
+.env.local
+
+# Cloudflare Wrangler
+.wrangler/
+
+# OS
+.DS_Store
+Thumbs.db

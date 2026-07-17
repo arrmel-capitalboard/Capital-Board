@@ -1,0 +1,125 @@
+﻿<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Suivre la performance de son PEA : TWR, rendement et benchmark — Capital Board</title>
+<meta name="description" content="Comment suivre la performance réelle de votre PEA : TWR, rendement annualisé, comparaison avec le CAC 40 et le MSCI World. Méthode claire + outil gratuit pour tout automatiser.">
+<link rel="canonical" href="https://capitalboard.fr/guides/suivre-performance-pea.html">
+<meta name="robots" content="index, follow">
+<link rel="icon" type="image/png" href="../assets/logo.png">
+<meta name="theme-color" content="#04060b">
+<meta property="og:site_name" content="Capital Board">
+<meta property="og:locale" content="fr_FR">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://capitalboard.fr/guides/suivre-performance-pea.html">
+<meta property="og:title" content="Suivre la performance de son PEA : le guide">
+<meta property="og:description" content="TWR, rendement annualisé, comparaison aux indices : la méthode pour suivre la vraie performance de votre PEA.">
+<meta property="og:image" content="https://capitalboard.fr/assets/og-image.png">
+<meta name="twitter:card" content="summary_large_image">
+<meta name="twitter:image" content="https://capitalboard.fr/assets/og-image.png">
+<link rel="preconnect" href="https://api.fontshare.com" crossorigin>
+<link rel="preload" href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" as="style" onload="this.onload=null;this.rel='stylesheet'">
+<noscript><link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap"></noscript>
+<script type="application/ld+json">
+{
+  "@context": "https://schema.org",
+  "@type": "Article",
+  "headline": "Suivre la performance de son PEA",
+  "description": "TWR, rendement annualisé et comparaison aux indices pour suivre la vraie performance d'un PEA.",
+  "inLanguage": "fr-FR",
+  "author": { "@type": "Person", "name": "Armel Plantier" },
+  "publisher": { "@type": "Organization", "name": "Capital Board", "logo": { "@type": "ImageObject", "url": "https://capitalboard.fr/assets/logo.png" } },
+  "mainEntityOfPage": "https://capitalboard.fr/guides/suivre-performance-pea.html"
+}
+</script>
+<style>
+  :root{--bg:#04060b;--surface:#0c0f17;--surface2:#12111f;--border:rgba(255,255,255,.08);--text1:#f0f2f8;--text2:#aab2c3;--text3:#6b7385;--purple:#7c6df5;--blue:#5b8dee;--gold:#f5b731;--green:#00e09e;--red:#ff4d6a}
+  *{box-sizing:border-box;margin:0;padding:0}
+  html{scroll-behavior:smooth}
+  body{background:var(--bg);color:var(--text1);font-family:'Switzer',-apple-system,BlinkMacSystemFont,sans-serif;line-height:1.65;-webkit-font-smoothing:antialiased;overflow-x:hidden}
+  .amb{position:fixed;inset:0;pointer-events:none;z-index:0;background:radial-gradient(ellipse 700px 500px at 15% 0%, rgba(124,109,245,.14), transparent 60%),radial-gradient(ellipse 600px 400px at 90% 5%, rgba(91,141,238,.10), transparent 60%)}
+  a{color:inherit}
+  nav{position:sticky;top:0;z-index:50;backdrop-filter:blur(12px);background:rgba(4,6,11,.7);border-bottom:1px solid var(--border)}
+  .nav-in{max-width:760px;margin:0 auto;padding:14px 24px;display:flex;align-items:center;justify-content:space-between}
+  .brand{display:flex;align-items:center;gap:10px;font-weight:700;font-size:16px;text-decoration:none}
+  .brand img{width:28px;height:28px;border-radius:8px}
+  .nav-cta{padding:8px 16px;border-radius:999px;background:linear-gradient(135deg,var(--purple),var(--blue));color:#fff;font-size:13px;font-weight:600;text-decoration:none}
+  main{position:relative;z-index:1;max-width:760px;margin:0 auto;padding:56px 24px 80px}
+  .crumb{font-size:13px;color:var(--text3);margin-bottom:20px}
+  .crumb a{color:var(--text3);text-decoration:none}
+  .crumb a:hover{color:var(--text2)}
+  h1{font-size:clamp(30px,6vw,46px);font-weight:800;letter-spacing:-.03em;line-height:1.1}
+  .lead{font-size:19px;color:var(--text2);margin-top:18px}
+  .meta{font-size:13px;color:var(--text3);margin-top:16px;display:flex;gap:14px;flex-wrap:wrap}
+  h2{font-size:clamp(22px,4vw,28px);font-weight:700;letter-spacing:-.02em;margin:48px 0 14px;scroll-margin-top:80px}
+  h3{font-size:19px;font-weight:600;margin:28px 0 8px;color:var(--text1)}
+  p{color:var(--text2);margin:14px 0}
+  strong{color:var(--text1);font-weight:600}
+  ul,ol{color:var(--text2);margin:14px 0;padding-left:22px}
+  li{margin:8px 0}
+  .toc{background:var(--surface);border:1px solid var(--border);border-radius:16px;padding:22px 26px;margin:36px 0}
+  .toc h4{font-size:13px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:12px}
+  .toc ol{margin:0;padding-left:18px}
+  .toc a{color:var(--text2);text-decoration:none}
+  .toc a:hover{color:var(--purple)}
+  .callout{background:linear-gradient(135deg,rgba(124,109,245,.1),rgba(91,141,238,.06));border:1px solid rgba(124,109,245,.22);border-radius:16px;padding:24px 26px;margin:32px 0}
+  .callout strong{color:var(--purple)}
+  .cta{background:var(--surface2);border:1px solid var(--border);border-radius:20px;padding:36px;margin:48px 0 0;text-align:center}
+  .cta h2{margin:0 0 10px}
+  .cta p{margin:0 auto 22px;max-width:480px}
+  .btn{display:inline-block;padding:14px 28px;border-radius:999px;background:linear-gradient(135deg,var(--purple),var(--blue));color:#fff;font-weight:700;font-size:15px;text-decoration:none;box-shadow:0 8px 24px rgba(124,109,245,.3)}
+  footer{border-top:1px solid var(--border);margin-top:64px;padding:32px 24px;text-align:center;color:var(--text3);font-size:13px}
+  footer a{color:var(--text3);text-decoration:none;margin:0 8px}
+  footer a:hover{color:var(--text2)}
+</style>
+</head>
+<body>
+<div class="amb"></div>
+<nav><div class="nav-in"><a class="brand" href="https://capitalboard.fr/"><img src="../assets/logo.png" alt="Capital Board">Capital Board</a><a class="nav-cta" href="https://capitalboard.fr/">Ouvrir l'app</a></div></nav>
+<main>
+  <div class="crumb"><a href="https://capitalboard.fr/">Accueil</a> &rsaquo; Guides &rsaquo; Suivre la performance de son PEA</div>
+  <h1>Suivre la performance de son PEA</h1>
+  <p class="lead">Votre PEA monte — mais de combien, vraiment ? Et est-ce mieux qu'un simple ETF World ? Voici comment mesurer votre performance réelle et la comparer aux bons repères.</p>
+  <div class="meta"><span>Mis à jour : juin 2026</span><span>·</span><span>Lecture : 5 min</span></div>
+
+  <div class="toc"><h4>Au programme</h4><ol>
+    <li><a href="#pourquoi">Pourquoi la valeur du compte ne suffit pas</a></li>
+    <li><a href="#twr">Le TWR : la mesure honnête</a></li>
+    <li><a href="#annualise">Rendement annualisé</a></li>
+    <li><a href="#benchmark">Comparer aux bons indices</a></li>
+    <li><a href="#frequence">À quelle fréquence suivre ?</a></li>
+  </ol></div>
+
+  <h2 id="pourquoi">1. Pourquoi la valeur du compte ne suffit pas</h2>
+  <p>Si votre PEA passe de 10 000 € à 13 000 €, êtes-vous à +30 % ? Pas forcément. Si vous avez versé 2 500 € entre-temps, une grosse partie de la hausse vient de votre poche, pas de vos titres. <strong>La valeur brute du compte mélange vos apports et vos gains</strong> — elle ne dit rien sur la qualité de vos choix.</p>
+
+  <h2 id="twr">2. Le TWR : la mesure honnête</h2>
+  <p>Le <strong>TWR (Time-Weighted Return)</strong> découpe la période à chaque versement ou retrait, puis enchaîne les rendements de chaque sous-période. Résultat : l'effet de vos apports est neutralisé, et vous obtenez la performance pure de vos investissements.</p>
+  <p>C'est la norme du secteur : les fonds et gérants publient leur performance en TWR, justement pour qu'on puisse les comparer équitablement. Pour un investisseur PEA, c'est <em>le</em> chiffre à suivre.</p>
+  <div class="callout"><p><strong>À noter :</strong> il existe aussi le <strong>TRI (taux de rendement interne)</strong>, qui lui tient compte du <em>timing</em> de vos versements. TWR pour juger vos titres, TRI pour juger votre stratégie d'apports — les deux sont complémentaires.</p></div>
+
+  <h2 id="annualise">3. Rendement annualisé</h2>
+  <p>+18 % en 3 ans, c'est bien… mais ça fait combien par an ? Le <strong>rendement annualisé</strong> ramène toute performance à une base annuelle comparable. +18 % sur 3 ans ≈ <strong>+5,7 % par an</strong>. Indispensable pour comparer des périodes de durées différentes ou se situer face à la moyenne long terme des marchés actions (~7 %/an).</p>
+
+  <h2 id="benchmark">4. Comparer aux bons indices</h2>
+  <p>Un rendement n'a de sens que comparé. Les repères utiles pour un PEA :</p>
+  <ul>
+    <li><strong>CAC 40 (GR, dividendes réinvestis)</strong> — si votre PEA est surtout français.</li>
+    <li><strong>MSCI World</strong> — le repère « marché mondial », accessible en PEA via certains ETF.</li>
+    <li><strong>S&amp;P 500</strong> — la référence des actions américaines.</li>
+  </ul>
+  <p>La question clé : <em>battez-vous votre indice de référence ?</em> Si non sur plusieurs années, un ETF passif vous coûterait moins d'efforts pour un meilleur résultat. C'est une analyse saine à faire honnêtement.</p>
+
+  <h2 id="frequence">5. À quelle fréquence suivre ?</h2>
+  <p>Regarder son PEA tous les jours pousse aux décisions émotionnelles. Pour la performance de fond, <strong>un point mensuel ou trimestriel</strong> suffit. Gardez le suivi quotidien pour les alertes de prix, pas pour juger votre stratégie.</p>
+
+  <div class="cta">
+    <h2>Votre performance PEA, calculée pour vous</h2>
+    <p>Capital Board calcule votre TWR, votre rendement annualisé et vous compare au CAC 40, au MSCI World et au S&amp;P 500 — en temps réel. Gratuit et open source.</p>
+    <a class="btn" href="https://capitalboard.fr/">Commencer gratuitement →</a>
+  </div>
+</main>
+<footer><div><a href="https://capitalboard.fr/">Accueil</a>·<a href="https://capitalboard.fr/guides/analyser-son-pea.html">Analyser son PEA</a>·<a href="https://capitalboard.fr/legal/mentions-legales.html">Mentions légales</a></div><p style="margin-top:14px">Capital Board — Suivi et analyse de portefeuille PEA · Ce guide est informatif et ne constitue pas un conseil en investissement.</p></footer>
+</body>
+</html>

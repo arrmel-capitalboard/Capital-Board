@@ -1,0 +1,19 @@
+{
+  "name": "capitalboard-bot",
+  "version": "0.1.0",
+  "description": "Bot Discord Capital Board",
+  "main": "src/index.js",
+  "type": "commonjs",
+  "scripts": {
+    "start": "node src/index.js",
+    "deploy": "node src/deploy-commands.js"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "dependencies": {
+    "discord.js": "^14.16.3",
+    "dotenv": "^16.4.5",
+    "firebase-admin": "^13.0.1"
+  }
+}

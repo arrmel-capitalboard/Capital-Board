@@ -1,0 +1,22 @@
+name = "capital-board-worker"
+main = "src/index.js"
+compatibility_date = "2024-01-01"
+# Compte Cloudflare contenant la zone capitalboard.fr + KV (admin.capitalboard's Account).
+# Requis car le token a accès à plusieurs comptes (déploiement CI non-interactif).
+account_id = "a65353958bd95d79802b9cd59831a890"
+
+[vars]
+ALLOWED_ORIGIN = "https://capitalboard.fr"
+FIREBASE_PROJECT_ID = "capitalboard"
+FIREBASE_WEB_API_KEY = "AIzaSyBnHkOTwFoJNMvYOgG7Ne-AFKgE3GBRiNU"
+ADMIN_UID = "A6nZQ8PcxdURytSesA17xK81I9T2"
+
+# Cache earnings : 1 clé par symbole (earn:SYM, TTL 24h) + creds Yahoo (crumb).
+# Source = Yahoo calendarEvents (global, pas de clé API). Finnhub abandonné (US-only).
+[[kv_namespaces]]
+binding = "EARNINGS"
+id = "994d84c5a364477e869b4fb12605a57d"
+
+# Secrets à injecter via : wrangler secret put <NOM>
+#   FIREBASE_SERVICE_ACCOUNT   → JSON complet du service account Firebase
+#   RESEND_API_KEY             → clé API Resend

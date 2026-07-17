@@ -1,0 +1,295 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Capital Board — Vérification</title>
+<link rel="icon" type="image/png" href="assets/logo.png">
+<link rel="apple-touch-icon" href="assets/logo.png">
+<meta name="theme-color" content="#04060b">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --bg:#04060b; --s1:#0a0c14; --s2:#10121c; --s3:#181b28;
+    --border:rgba(255,255,255,0.06); --border2:rgba(255,255,255,0.09);
+    --text:#edf0f7; --text2:#a8b0c2; --text3:#8892a8;
+    --accent:#7c6df5; --accent2:#9d8cff; --accent-d:rgba(124,109,245,0.08);
+    --green:#22d98a; --red:#ff4d6a;
+    --sans:'Switzer',system-ui,-apple-system,sans-serif;
+    --mono:'JetBrains Mono',monospace;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  html,body{height:100%}
+  body{
+    background:var(--bg); color:var(--text); font-family:var(--sans);
+    display:flex; align-items:center; justify-content:center;
+    min-height:100vh; padding:24px;
+    background-image:
+      radial-gradient(ellipse at top, rgba(124,109,245,0.08), transparent 60%),
+      radial-gradient(ellipse at bottom, rgba(124,109,245,0.04), transparent 60%);
+  }
+  .card{
+    width:100%; max-width:440px;
+    background:var(--s1); border:1px solid var(--border2);
+    border-radius:16px; padding:36px 28px;
+    box-shadow:0 20px 60px rgba(0,0,0,0.4);
+    text-align:center;
+  }
+  .logo{
+    width:56px; height:56px; margin:0 auto 20px;
+    border-radius:14px; background:var(--s2);
+    display:flex; align-items:center; justify-content:center;
+    border:1px solid var(--border2);
+  }
+  .logo img{ width:36px; height:36px; object-fit:contain }
+  h1{
+    font-size:20px; font-weight:700; margin-bottom:10px;
+    letter-spacing:-0.01em;
+  }
+  p.desc{
+    font-size:13px; color:var(--text2); line-height:1.6;
+    margin-bottom:22px;
+  }
+  .status-icon{
+    width:64px; height:64px; margin:0 auto 18px;
+    border-radius:50%; display:flex; align-items:center; justify-content:center;
+  }
+  .status-icon.ok{ background:rgba(34,217,138,0.12); color:var(--green) }
+  .status-icon.err{ background:rgba(255,77,106,0.12); color:var(--red) }
+  .status-icon.pending{ background:var(--accent-d); color:var(--accent) }
+  .spinner{
+    width:36px; height:36px; border:3px solid var(--border2);
+    border-top-color:var(--accent); border-radius:50%;
+    animation:spin 0.8s linear infinite;
+  }
+  @keyframes spin{ to{transform:rotate(360deg)} }
+  .btn{
+    display:inline-block; width:100%;
+    background:var(--accent); color:#fff;
+    border:none; border-radius:10px; padding:13px 16px;
+    font-size:14px; font-weight:600; font-family:var(--sans);
+    cursor:pointer; text-decoration:none;
+    transition:background 0.15s;
+  }
+  .btn:hover{ background:var(--accent2) }
+  .btn.secondary{
+    background:var(--s2); color:var(--text);
+    border:1px solid var(--border2); margin-top:10px;
+  }
+  .btn.secondary:hover{ background:var(--s3) }
+  .field{ text-align:left; margin-bottom:14px }
+  .field label{
+    display:block; font-size:11px; color:var(--text3);
+    text-transform:uppercase; letter-spacing:0.7px;
+    margin-bottom:6px; font-weight:600;
+  }
+  .field input{
+    width:100%; background:var(--s3); border:1px solid var(--border2);
+    border-radius:8px; padding:11px 13px;
+    color:var(--text); font-size:14px; font-family:var(--mono);
+    outline:none; transition:border-color 0.15s;
+  }
+  .field input:focus{ border-color:var(--accent) }
+  .err-msg{
+    color:var(--red); font-size:12px;
+    margin-top:8px; min-height:16px;
+  }
+  .footer{
+    margin-top:22px; font-size:11px; color:var(--text3);
+  }
+  .email-highlight{
+    color:var(--text); font-weight:600; font-family:var(--mono);
+  }
+</style>
+</head>
+<body>
+<div class="card" id="card">
+  <div class="logo"><img src="assets/logo.png" alt="Capital Board"></div>
+  <div id="content">
+    <div class="status-icon pending"><div class="spinner"></div></div>
+    <h1>Traitement en cours…</h1>
+    <p class="desc">Vérification du lien.</p>
+  </div>
+</div>
+
+<script type="module">
+import { initializeApp } from "https://www.gstatic.com/firebasejs/10.13.2/firebase-app.js";
+import {
+  getAuth, applyActionCode, checkActionCode,
+  verifyPasswordResetCode, confirmPasswordReset
+} from "https://www.gstatic.com/firebasejs/10.13.2/firebase-auth.js";
+
+const firebaseConfig = {
+  apiKey: "AIzaSyBnHkOTwFoJNMvYOgG7Ne-AFKgE3GBRiNU",
+  authDomain: "capitalboard.firebaseapp.com",
+  projectId: "capitalboard",
+  storageBucket: "capitalboard.firebasestorage.app",
+  messagingSenderId: "719745213666",
+  appId: "1:719745213666:web:02a3276a6348df7fed6abb"
+};
+const app = initializeApp(firebaseConfig);
+const auth = getAuth(app);
+
+const params = new URLSearchParams(location.search);
+const mode = params.get('mode');
+const oobCode = params.get('oobCode');
+const continueUrl = params.get('continueUrl') || './app.html';
+
+const content = document.getElementById('content');
+
+const ICON_OK = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>`;
+const ICON_ERR = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>`;
+const ICON_KEY = `<svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 2l-2 2m-7.61 7.61a5.5 5.5 0 1 1-7.778 7.778 5.5 5.5 0 0 1 7.777-7.777zm0 0L15.5 7.5m0 0l3 3L22 7l-3-3m-3.5 3.5L19 4"/></svg>`;
+
+function renderSuccess(title, msg, btnLabel, btnHref){
+  content.innerHTML = `
+    <div class="status-icon ok">${ICON_OK}</div>
+    <h1>${title}</h1>
+    <p class="desc">${msg}</p>
+    <a class="btn" href="${btnHref}">${btnLabel}</a>
+    <div class="footer">Capital Board</div>
+  `;
+}
+function renderError(msg){
+  content.innerHTML = `
+    <div class="status-icon err">${ICON_ERR}</div>
+    <h1>Lien invalide</h1>
+    <p class="desc">${msg}</p>
+    <a class="btn secondary" href="./app.html">Retour à l'application</a>
+    <div class="footer">Capital Board</div>
+  `;
+}
+
+function mapError(code){
+  switch(code){
+    case 'auth/expired-action-code': return "Ce lien a expiré. Demandez un nouvel email depuis l'application.";
+    case 'auth/invalid-action-code': return "Ce lien est invalide ou a déjà été utilisé.";
+    case 'auth/user-disabled': return "Ce compte a été désactivé.";
+    case 'auth/user-not-found': return "Aucun compte associé à ce lien.";
+    case 'auth/weak-password': return "Mot de passe trop faible (6 caractères minimum).";
+    default: return "Une erreur est survenue. Réessayez ou contactez le support.";
+  }
+}
+
+async function handleVerifyEmail(){
+  try{
+    const info = await checkActionCode(auth, oobCode);
+    await applyActionCode(auth, oobCode);
+    const email = info?.data?.email || '';
+    renderSuccess(
+      "Email vérifié ✓",
+      email ? `L'adresse <span class="email-highlight">${email}</span> est désormais confirmée. Vous pouvez accéder à votre dashboard.` : "Votre email est désormais confirmé.",
+      "Accéder au dashboard",
+      "./app.html"
+    );
+  }catch(e){
+    renderError(mapError(e.code));
+  }
+}
+
+async function handleRecoverEmail(){
+  try{
+    const info = await checkActionCode(auth, oobCode);
+    await applyActionCode(auth, oobCode);
+    const email = info?.data?.email || '';
+    renderSuccess(
+      "Email restauré",
+      email ? `Votre adresse a été restaurée vers <span class="email-highlight">${email}</span>.` : "Votre adresse email a été restaurée.",
+      "Retour à l'application",
+      "./app.html"
+    );
+  }catch(e){
+    renderError(mapError(e.code));
+  }
+}
+
+async function handleResetPassword(){
+  let email = '';
+  try{
+    email = await verifyPasswordResetCode(auth, oobCode);
+  }catch(e){
+    renderError(mapError(e.code));
+    return;
+  }
+  content.innerHTML = `
+    <div class="status-icon pending">${ICON_KEY}</div>
+    <h1>Nouveau mot de passe</h1>
+    <p class="desc">Pour le compte <span class="email-highlight">${email}</span></p>
+    <div class="field">
+      <label>Nouveau mot de passe</label>
+      <input type="password" id="pw1" autocomplete="new-password" placeholder="6 caractères minimum">
+    </div>
+    <div class="field">
+      <label>Confirmer</label>
+      <input type="password" id="pw2" autocomplete="new-password" placeholder="Retapez">
+    </div>
+    <div class="err-msg" id="pw-err"></div>
+    <button class="btn" id="pw-submit">Réinitialiser</button>
+    <a class="btn secondary" href="./app.html">Annuler</a>
+  `;
+  const pw1 = document.getElementById('pw1');
+  const pw2 = document.getElementById('pw2');
+  const errEl = document.getElementById('pw-err');
+  const btn = document.getElementById('pw-submit');
+  btn.addEventListener('click', async () => {
+    errEl.textContent = '';
+    if(pw1.value.length < 6){ errEl.textContent = '6 caractères minimum.'; return; }
+    if(pw1.value !== pw2.value){ errEl.textContent = 'Les mots de passe ne correspondent pas.'; return; }
+    btn.disabled = true; btn.textContent = 'Réinitialisation…';
+    try{
+      await confirmPasswordReset(auth, oobCode, pw1.value);
+      renderSuccess(
+        "Mot de passe réinitialisé ✓",
+        "Vous pouvez vous connecter avec votre nouveau mot de passe.",
+        "Se connecter",
+        "./app.html"
+      );
+    }catch(e){
+      errEl.textContent = mapError(e.code);
+      btn.disabled = false; btn.textContent = 'Réinitialiser';
+    }
+  });
+  pw2.addEventListener('keydown', e => { if(e.key === 'Enter') btn.click(); });
+}
+
+function handleSignIn(){
+  // Sign-in via email link : on ne traite pas ici, on redirige vers continueUrl
+  // en préservant tous les params (mode, oobCode, etc.) pour que la page cible
+  // puisse appeler signInWithEmailLink avec window.location.href.
+  if(!continueUrl){
+    renderError("Lien de connexion sans destination.");
+    return;
+  }
+  try{
+    const target = new URL(continueUrl, window.location.origin);
+    for(const [k,v] of params.entries()){
+      if(k === 'continueUrl') continue;
+      target.searchParams.set(k, v);
+    }
+    window.location.replace(target.toString());
+  }catch(e){
+    renderError("URL de continuation invalide.");
+  }
+}
+
+if(!mode){
+  renderError("Lien incomplet. Utilisez le lien envoyé par email.");
+}else if(mode === 'signIn'){
+  handleSignIn();
+}else if(!oobCode){
+  renderError("Lien incomplet. Utilisez le lien envoyé par email.");
+}else{
+  switch(mode){
+    case 'verifyEmail': handleVerifyEmail(); break;
+    case 'resetPassword': handleResetPassword(); break;
+    case 'recoverEmail': handleRecoverEmail(); break;
+    case 'verifyAndChangeEmail': handleVerifyEmail(); break;
+    default: renderError("Mode d'action non reconnu.");
+  }
+}
+</script>
+</body>
+</html>

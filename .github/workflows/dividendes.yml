@@ -1,0 +1,161 @@
+name: Mise à jour dividendes
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'  # Tous les lundis à 6h UTC
+  workflow_dispatch:
+
+jobs:
+  update-dividends:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: pip install requests beautifulsoup4 lxml
+
+      - name: Scrape dividendes Boursorama
+        run: |
+          python3 << 'EOF'
+          import re, json, requests, datetime
+          from bs4 import BeautifulSoup
+
+          today = datetime.date.today().isoformat()
+
+          TICKERS = [
+            {"ticker": "AI.PA",   "name": "Air Liquide",        "bourso": "1rPAI"},
+            {"ticker": "TTE.PA",  "name": "TotalEnergies",      "bourso": "1rPTTE"},
+            {"ticker": "BNP.PA",  "name": "BNP Paribas",        "bourso": "1rPBNP"},
+            {"ticker": "ACA.PA",  "name": "Crédit Agricole",    "bourso": "1rPACA"},
+            {"ticker": "SAN.PA",  "name": "Sanofi",             "bourso": "1rPSAN"},
+            {"ticker": "OR.PA",   "name": "L'Oréal",            "bourso": "1rPOR"},
+            {"ticker": "MC.PA",   "name": "LVMH",               "bourso": "1rPMC"},
+            {"ticker": "ENGI.PA", "name": "Engie",              "bourso": "1rPENGI"},
+            {"ticker": "DG.PA",   "name": "Vinci",              "bourso": "1rPDG"},
+            {"ticker": "SU.PA",   "name": "Schneider Electric", "bourso": "1rPSU"},
+            {"ticker": "RI.PA",   "name": "Pernod Ricard",      "bourso": "1rPRI"},
+            {"ticker": "CAP.PA",  "name": "Capgemini",          "bourso": "1rPCAP"},
+            {"ticker": "KER.PA",  "name": "Kering",             "bourso": "1rPKER"},
+            {"ticker": "SAF.PA",  "name": "Safran",             "bourso": "1rPSAF"},
+            {"ticker": "CS.PA",   "name": "AXA",                "bourso": "1rPCS"},
+          ]
+
+          HEADERS = {
+            "User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120 Safari/537.36",
+            "Accept-Language": "fr-FR,fr;q=0.9",
+          }
+
+          def parse_bourso_date(d):
+            """18/05/26 ou 18/05/2026 → 2026-05-18"""
+            parts = d.strip().split("/")
+            if len(parts) != 3:
+              return None
+            day, month, year = parts
+            if len(year) == 2:
+              year = "20" + year
+            return f"{year}-{month.zfill(2)}-{day.zfill(2)}"
+
+          def scrape_next_dividend(bourso_ticker):
+            url = f"https://www.boursorama.com/cours/{bourso_ticker}/"
+            try:
+              r = requests.get(url, headers=HEADERS, timeout=15)
+              r.raise_for_status()
+              # Vérif anti-captcha
+              if 'dividende' not in r.text.lower() and 'dividend' not in r.text.lower():
+                print(f"  ✗ Page bloquée ou sans dividende pour {bourso_ticker}")
+                return None
+              soup = BeautifulSoup(r.text, "lxml")
+              text = soup.get_text(" ", strip=True)
+
+              # Montant + date ex-div: "X,XX EUR (JJ/MM/AA)"
+              amount_pattern = r'(\d+[,\.]\d+)\s*(?:EUR|€)\s*\((\d{2}/\d{2}/\d{2,4})\)'
+              matches = re.findall(amount_pattern, text)
+              amount = None
+              ex_div_date = None
+              for amount_str, date_str in matches:
+                iso = parse_bourso_date(date_str)
+                if iso and iso >= today:
+                  amount = float(amount_str.replace(",", "."))
+                  ex_div_date = iso
+                  break
+
+              if not amount:
+                return None
+
+              # Cherche date de paiement via c-event-card (structure HTML Boursorama)
+              MONTHS = {'janvier':1,'février':2,'fevrier':2,'mars':3,'avril':4,'mai':5,
+                        'juin':6,'juillet':7,'août':8,'aout':8,'septembre':9,
+                        'octobre':10,'novembre':11,'décembre':12,'decembre':12}
+              payment_date = None
+              for card in soup.select('.c-event-card'):
+                label = card.select_one('.c-event-card__text')
+                if not label or 'paiement' not in label.get_text().lower():
+                  continue
+                day_el   = card.select_one('.c-event-card__day')
+                month_el = card.select_one('.c-event-card__month')
+                if not day_el or not month_el:
+                  continue
+                day_n   = int(day_el.get_text(strip=True))
+                month_n = MONTHS.get(month_el.get_text(strip=True).lower())
+                if not month_n:
+                  continue
+                today_dt = datetime.date.fromisoformat(today)
+                year = today_dt.year if (month_n > today_dt.month or (month_n == today_dt.month and day_n >= today_dt.day)) else today_dt.year + 1
+                payment_date = datetime.date(year, month_n, day_n).isoformat()
+                break
+              final_date = payment_date if payment_date else ex_div_date
+
+              return {"date": final_date, "amount_estimated": amount, "confirmed": True}
+
+            except Exception as e:
+              print(f"  ✗ Erreur scraping {bourso_ticker}: {e}")
+            return None
+
+          # Lire JSON existant
+          existing = {}
+          try:
+            with open("data/dividendes.json", "r", encoding="utf-8") as f:
+              existing = json.load(f).get("dividends", {})
+          except Exception:
+            pass
+
+          results = {}
+          for stock in TICKERS:
+            ticker  = stock["ticker"]
+            name    = stock["name"]
+            bourso  = stock["bourso"]
+            print(f"Scraping {name} ({bourso})...")
+
+            next_div = scrape_next_dividend(bourso)
+
+            if next_div:
+              print(f"  ✓ Prochain: {next_div['date']} — {next_div['amount_estimated']} €")
+            else:
+              # Préserver next confirmé passé (dividende détaché pas encore sur Yahoo)
+              prev = existing.get(ticker, {})
+              prev_next = prev.get("next")
+              if prev_next and prev_next.get("confirmed") and prev_next.get("date", "") <= today:
+                next_div = prev_next
+                print(f"  ↩ Préservé: {next_div['date']} — {next_div['amount_estimated']} €")
+              else:
+                print(f"  – Aucun dividende futur trouvé")
+
+            results[ticker] = {"ticker": ticker, "name": name, "next": next_div}
+
+          output = {"generated_at": today, "dividends": results}
+          import os
+          os.makedirs("data", exist_ok=True)
+          with open("data/dividendes.json", "w", encoding="utf-8") as f:
+            json.dump(output, f, ensure_ascii=False, indent=2)
+          print(f"\n✅ dividendes.json généré avec {len(results)} actions")
+          EOF
+
+      - name: Commit et push le fichier JSON
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/dividendes.json
+          git diff --staged --quiet || git commit -m "chore: mise à jour dividendes $(date +'%Y-%m-%d')"
+          git push

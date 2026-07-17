@@ -1,0 +1,6 @@
+User-agent: *
+Allow: /
+Disallow: /app.html
+Disallow: /auth-action.html
+
+Sitemap: https://capitalboard.fr/sitemap.xml

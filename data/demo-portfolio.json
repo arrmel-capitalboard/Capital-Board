@@ -1,0 +1,137 @@
+{
+  "portfolio": [
+    { "ticker": "MC.PA",    "name": "LVMH",                "qty": 8,   "buyPrice": 685.50, "currency": "EUR" },
+    { "ticker": "AIR.PA",   "name": "Airbus",              "qty": 25,  "buyPrice": 142.30, "currency": "EUR" },
+    { "ticker": "TTE.PA",   "name": "TotalEnergies",       "qty": 50,  "buyPrice": 58.20,  "currency": "EUR" },
+    { "ticker": "SAN.PA",   "name": "Sanofi",              "qty": 35,  "buyPrice": 92.10,  "currency": "EUR" },
+    { "ticker": "OR.PA",    "name": "L'Oréal",             "qty": 12,  "buyPrice": 412.00, "currency": "EUR" },
+    { "ticker": "SU.PA",    "name": "Schneider Electric",  "qty": 20,  "buyPrice": 198.40, "currency": "EUR" },
+    { "ticker": "BNP.PA",   "name": "BNP Paribas",         "qty": 60,  "buyPrice": 64.80,  "currency": "EUR" },
+    { "ticker": "CW8.PA",   "name": "Amundi MSCI World",   "qty": 80,  "buyPrice": 485.20, "currency": "EUR" },
+    { "ticker": "PE500.PA", "name": "Amundi PEA S&P 500",  "qty": 120, "buyPrice": 32.50,  "currency": "EUR" }
+  ],
+  "transactions": [
+    { "id": 1700000001, "type": "buy",      "ticker": "MC.PA",    "name": "LVMH",                "qty": 8,   "price": 685.50, "date": "2024-03-15", "currency": "EUR" },
+    { "id": 1700000009, "type": "buy",      "ticker": "CW8.PA",   "name": "Amundi MSCI World",   "qty": 50,  "price": 462.10, "date": "2024-04-08", "currency": "EUR" },
+    { "id": 1700000002, "type": "buy",      "ticker": "AIR.PA",   "name": "Airbus",              "qty": 25,  "price": 142.30, "date": "2024-05-22", "currency": "EUR" },
+    { "id": 1700000003, "type": "buy",      "ticker": "TTE.PA",   "name": "TotalEnergies",       "qty": 30,  "price": 55.80,  "date": "2024-06-10", "currency": "EUR" },
+    { "id": 1700000005, "type": "buy",      "ticker": "SAN.PA",   "name": "Sanofi",              "qty": 35,  "price": 92.10,  "date": "2024-07-18", "currency": "EUR" },
+    { "id": 1700000006, "type": "buy",      "ticker": "OR.PA",    "name": "L'Oréal",             "qty": 12,  "price": 412.00, "date": "2024-08-05", "currency": "EUR" },
+    { "id": 1700000004, "type": "buy",      "ticker": "TTE.PA",   "name": "TotalEnergies",       "qty": 20,  "price": 61.85,  "date": "2024-09-04", "currency": "EUR" },
+    { "id": 1700000007, "type": "buy",      "ticker": "SU.PA",    "name": "Schneider Electric",  "qty": 20,  "price": 198.40, "date": "2024-10-12", "currency": "EUR" },
+    { "id": 1700000008, "type": "buy",      "ticker": "BNP.PA",   "name": "BNP Paribas",         "qty": 60,  "price": 64.80,  "date": "2024-11-20", "currency": "EUR" },
+    { "id": 1700000011, "type": "buy",      "ticker": "PE500.PA", "name": "Amundi PEA S&P 500",  "qty": 120, "price": 32.50,  "date": "2025-01-22", "currency": "EUR" },
+    { "id": 1700000010, "type": "buy",      "ticker": "CW8.PA",   "name": "Amundi MSCI World",   "qty": 30,  "price": 523.70, "date": "2025-02-14", "currency": "EUR" },
+    { "id": 1700000012, "type": "dividend", "ticker": "TTE.PA",   "name": "TotalEnergies",       "qty": 50,  "price": 0.79,   "date": "2025-03-25", "currency": "EUR" },
+    { "id": 1700000013, "type": "dividend", "ticker": "SAN.PA",   "name": "Sanofi",              "qty": 35,  "price": 3.76,   "date": "2025-04-15", "currency": "EUR" },
+    { "id": 1700000014, "type": "dividend", "ticker": "BNP.PA",   "name": "BNP Paribas",         "qty": 60,  "price": 4.60,   "date": "2025-05-26", "currency": "EUR" }
+  ],
+  "versements": [
+    { "id": 1700100001, "amount": 20000, "date": "2024-03-01", "label": "Versement initial" },
+    { "id": 1700100002, "amount": 8000,  "date": "2024-05-15", "label": "Versement mensuel" },
+    { "id": 1700100003, "amount": 5000,  "date": "2024-07-10", "label": "Versement mensuel" },
+    { "id": 1700100004, "amount": 12000, "date": "2024-10-01", "label": "Prime annuelle" },
+    { "id": 1700100005, "amount": 7000,  "date": "2024-12-20", "label": "Versement mensuel" },
+    { "id": 1700100006, "amount": 12000, "date": "2025-02-05", "label": "Bonus" },
+    { "id": 1700100007, "amount": 8200,  "date": "2025-04-15", "label": "Versement mensuel" }
+  ],
+  "watchlist": [
+    { "ticker": "ASML.AS",  "name": "ASML Holding",     "addedAt": "2025-01-15" },
+    { "ticker": "MSFT",     "name": "Microsoft",        "addedAt": "2025-02-20" },
+    { "ticker": "NVDA",     "name": "NVIDIA",           "addedAt": "2025-03-10" },
+    { "ticker": "RMS.PA",   "name": "Hermès",           "addedAt": "2025-04-02" }
+  ],
+  "dailyValues": [
+    { "date": "2024-03-01", "value": 20000 },
+    { "date": "2024-03-15", "value": 20120 },
+    { "date": "2024-04-01", "value": 20240 },
+    { "date": "2024-04-15", "value": 20410 },
+    { "date": "2024-05-01", "value": 20680 },
+    { "date": "2024-05-15", "value": 28840 },
+    { "date": "2024-06-01", "value": 29050 },
+    { "date": "2024-06-15", "value": 29320 },
+    { "date": "2024-07-01", "value": 29680 },
+    { "date": "2024-07-10", "value": 34750 },
+    { "date": "2024-08-01", "value": 35140 },
+    { "date": "2024-08-15", "value": 35480 },
+    { "date": "2024-09-01", "value": 35820 },
+    { "date": "2024-09-15", "value": 36210 },
+    { "date": "2024-10-01", "value": 48400 },
+    { "date": "2024-10-15", "value": 48870 },
+    { "date": "2024-11-01", "value": 49380 },
+    { "date": "2024-11-15", "value": 49920 },
+    { "date": "2024-12-01", "value": 50580 },
+    { "date": "2024-12-15", "value": 51120 },
+    { "date": "2024-12-20", "value": 58280 },
+    { "date": "2024-12-31", "value": 58740 },
+    { "date": "2025-01-15", "value": 59410 },
+    { "date": "2025-02-05", "value": 71820 },
+    { "date": "2025-02-15", "value": 72380 },
+    { "date": "2025-03-01", "value": 73120 },
+    { "date": "2025-03-15", "value": 73680 },
+    { "date": "2025-04-01", "value": 74510 },
+    { "date": "2025-04-15", "value": 82920 },
+    { "date": "2025-05-01", "value": 80250 },
+    { "date": "2025-05-15", "value": 78920 },
+    { "date": "2025-05-23", "value": 79793 }
+  ],
+  "alerts": [],
+  "notifHistory": [
+    { "id": 1700300001, "type": "alert",     "title": "Alerte prix · TotalEnergies",     "body": "TTE.PA a franchi le seuil bas de 55 € (cours actuel : 54.30 €)", "date": "2025-05-12T09:14:00Z", "read": true },
+    { "id": 1700300002, "type": "recap",     "title": "Récap quotidien disponible",      "body": "Votre portefeuille a progressé de +0.82 % aujourd'hui.",          "date": "2025-05-20T20:00:00Z", "read": true },
+    { "id": 1700300003, "type": "dividend",  "title": "Dividende crédité · BNP Paribas", "body": "60 × 4.60 € = 276 € ajoutés au solde espèces.",                "date": "2025-05-26T08:00:00Z", "read": false },
+    { "id": 1700300004, "type": "recap",     "title": "Rapport hebdomadaire",            "body": "Semaine du 19 au 23 mai : +1.4 %. Meilleur : Schneider (+3.1 %).", "date": "2025-05-23T20:00:00Z", "read": false }
+  ],
+  "trCohort": [],
+  "settings": {
+    "pushRecap": false,
+    "avatarHue": 270
+  },
+  "recap": {
+    "date": "2025-05-23",
+    "dateLabel": "vendredi 23 mai 2025",
+    "totalValue": 77838,
+    "totalDayChange": 447,
+    "totalDayPct": 0.82,
+    "totalPnl": 7147,
+    "totalPnlPct": 10.1,
+    "lines": [
+      { "ticker": "MC.PA",    "name": "LVMH",                "qty": 8,   "price": 712.40, "prev": 706.20, "changePct": 0.88 },
+      { "ticker": "AIR.PA",   "name": "Airbus",              "qty": 25,  "price": 168.50, "prev": 167.10, "changePct": 0.84 },
+      { "ticker": "TTE.PA",   "name": "TotalEnergies",       "qty": 50,  "price": 56.80,  "prev": 56.45,  "changePct": 0.62 },
+      { "ticker": "SAN.PA",   "name": "Sanofi",              "qty": 35,  "price": 98.40,  "prev": 97.10,  "changePct": 1.34 },
+      { "ticker": "OR.PA",    "name": "L'Oréal",             "qty": 12,  "price": 438.20, "prev": 435.50, "changePct": 0.62 },
+      { "ticker": "SU.PA",    "name": "Schneider Electric",  "qty": 20,  "price": 224.80, "prev": 220.60, "changePct": 1.90 },
+      { "ticker": "BNP.PA",   "name": "BNP Paribas",         "qty": 60,  "price": 71.20,  "prev": 70.85,  "changePct": 0.49 },
+      { "ticker": "CW8.PA",   "name": "Amundi MSCI World",   "qty": 80,  "price": 542.10, "prev": 538.40, "changePct": 0.69 },
+      { "ticker": "PE500.PA", "name": "Amundi PEA S&P 500",  "qty": 120, "price": 35.40,  "prev": 35.10,  "changePct": 0.85 }
+    ],
+    "aiComment": "Synthèse: Séance résolument positive (**+0,82 %**, **+447 €**) avec **9 lignes vertes sur 9**. Aucun titre dans le rouge aujourd'hui — configuration rare qui mérite d'être soulignée.\nTop performers: **Schneider Electric** mène (+1,90 %) sur l'annonce d'un contrat de 800 M€ pour équiper les data centers européens. **Sanofi** (+1,34 %) profite de résultats cliniques positifs sur un nouvel anti-inflammatoire en phase III.\nContexte macro: La BCE a confirmé sa pause sur les taux, l'inflation zone euro reflue à **2,1 %**. Le CAC 40 termine en hausse de +0,6 %, soutenu par le luxe et l'industrie. Marchés US au plus haut historique.\nÀ surveiller: **TotalEnergies** (+0,62 %) reste sous pression du baril volatil à 78 $ — détachement du dividende hier. Vos ETF World et S&P 500 prolongent leur tendance haussière, tirés par les valeurs tech américaines.\nPerformance cumulée: Votre PEA atteint **54 680 €** (+22 % depuis ouverture). Solde espèces de **1 955 €** disponible pour saisir une opportunité.",
+    "news": [
+      { "title": "Schneider Electric : contrat de 800 M€ pour équiper les data centers européens", "source": "Les Echos",   "url": "#" },
+      { "title": "BCE : pause sur les taux confirmée, l'inflation reflue à 2,1 %",                 "source": "Reuters",     "url": "#" },
+      { "title": "Sanofi : phase III positive sur un traitement anti-inflammatoire",               "source": "Le Figaro",   "url": "#" },
+      { "title": "LVMH : la maroquinerie résiste, la Chine montre des signes de reprise",          "source": "Bloomberg",   "url": "#" }
+    ]
+  },
+  "weeklyRecap": {
+    "weekStart": "2025-05-19",
+    "weekEnd": "2025-05-23",
+    "weekChange": 1.42,
+    "weekValue": 77838,
+    "best":  { "ticker": "SU.PA",  "name": "Schneider Electric", "weekPct": 3.12 },
+    "worst": { "ticker": "TTE.PA", "name": "TotalEnergies",      "weekPct": -0.45 },
+    "lines": [
+      { "ticker": "MC.PA",    "name": "LVMH",                "qty": 8,   "price": 712.40, "weekPct": 1.85 },
+      { "ticker": "AIR.PA",   "name": "Airbus",              "qty": 25,  "price": 168.50, "weekPct": 2.10 },
+      { "ticker": "TTE.PA",   "name": "TotalEnergies",       "qty": 50,  "price": 56.80,  "weekPct": -0.45 },
+      { "ticker": "SAN.PA",   "name": "Sanofi",              "qty": 35,  "price": 98.40,  "weekPct": 2.45 },
+      { "ticker": "OR.PA",    "name": "L'Oréal",             "qty": 12,  "price": 438.20, "weekPct": 1.20 },
+      { "ticker": "SU.PA",    "name": "Schneider Electric",  "qty": 20,  "price": 224.80, "weekPct": 3.12 },
+      { "ticker": "BNP.PA",   "name": "BNP Paribas",         "qty": 60,  "price": 71.20,  "weekPct": 1.55 },
+      { "ticker": "CW8.PA",   "name": "Amundi MSCI World",   "qty": 80,  "price": 542.10, "weekPct": 1.30 },
+      { "ticker": "PE500.PA", "name": "Amundi PEA S&P 500",  "qty": 120, "price": 35.40,  "weekPct": 1.62 }
+    ],
+    "aiReport": "Synthèse: Semaine globalement positive (**+1,42 %**) avec un portefeuille qui atteint un **nouveau plus haut historique à 54 680 €**. 8 lignes sur 9 dans le vert.\nMeilleure performance: **Schneider Electric** domine la semaine (**+3,12 %**) porté par les annonces successives autour des data centers IA et de l'électrification industrielle. Tendance structurelle solide.\nSecteur santé: **Sanofi** (+2,45 %) profite des bons résultats cliniques. Le secteur défensif reprend de l'attrait dans un contexte de pause monétaire.\nDécote temporaire: **TotalEnergies** recule légèrement (-0,45 %) après détachement du dividende — purement technique, fondamentaux intacts. Niveau d'achat intéressant si baril remonte.\nETFs: Vos ETF World et S&P 500 progressent de +1,3 % à +1,6 % sur la semaine. La diversification mondiale joue son rôle.\nRecommandation: Maintenez votre allocation actuelle. Le solde espèces de 1 955 € pourrait être déployé sur ASML (watchlist) si la correction tech US s'accentue."
+  }
+}

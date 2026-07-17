@@ -1,0 +1,12 @@
+'use strict';
+
+module.exports = {
+  CHECK:   '<a:883480checkmark:1520171580292989139>',
+  CROSS:   '<a:2413redtick:1520172222772285731>',
+  LOADING: '<a:476277loader:1520171506087362701>',
+  ONLINE:  '<a:onlineping:1520171479285895281>',
+  OFFLINE: '<a:460240statusoffline:1520171458985328680>',
+  WARN:    '<a:anime:1520171562345566259>',
+  LOCK:    '<a:close:1520171531651514438>',
+  ARROW:   '<a:arrow:1520177073816211627>',
+};

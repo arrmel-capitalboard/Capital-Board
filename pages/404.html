@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Page introuvable — Capital Board</title>
+<meta name="robots" content="noindex">
+<link rel="icon" type="image/png" href="/assets/logo.png">
+<meta name="theme-color" content="#04060b">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg: #04060b;
+    --text1: #f0f2f8;
+    --text2: #aab2c3;
+    --text3: #6b7385;
+    --purple: #7c6df5;
+    --blue: #5b8dee;
+  }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body {
+    background: var(--bg);
+    color: var(--text1);
+    font-family: 'Switzer', -apple-system, BlinkMacSystemFont, sans-serif;
+    -webkit-font-smoothing: antialiased;
+    min-height: 100vh;
+  }
+  .ambient {
+    position: fixed; inset: 0; pointer-events: none; z-index: 0;
+    background:
+      radial-gradient(ellipse 800px 600px at 20% 10%, rgba(124,109,245,0.18), transparent 60%),
+      radial-gradient(ellipse 700px 500px at 85% 30%, rgba(91,141,238,0.12), transparent 60%);
+  }
+  .wrap {
+    position: relative; z-index: 1;
+    min-height: 100vh;
+    display: flex; flex-direction: column; align-items: center; justify-content: center;
+    text-align: center; padding: 24px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    margin-bottom: 40px; font-weight: 700; font-size: 16px;
+  }
+  .brand img { width: 30px; height: 30px; border-radius: 7px; }
+  .code {
+    font-size: clamp(80px, 18vw, 160px);
+    font-weight: 900; letter-spacing: -0.04em; line-height: 1;
+    background: linear-gradient(135deg, var(--purple), var(--blue));
+    -webkit-background-clip: text; background-clip: text; color: transparent;
+  }
+  h1 { font-size: clamp(22px, 4vw, 30px); font-weight: 700; letter-spacing: -0.02em; margin: 16px 0 10px; }
+  p { color: var(--text2); font-size: 15px; max-width: 420px; margin: 0 auto 32px; line-height: 1.6; }
+  .actions { display: flex; gap: 12px; flex-wrap: wrap; justify-content: center; }
+  .btn {
+    display: inline-flex; align-items: center; gap: 8px;
+    padding: 12px 24px; border-radius: 999px;
+    font-size: 14px; font-weight: 600; text-decoration: none;
+    transition: transform 0.15s, box-shadow 0.15s, border-color 0.15s;
+  }
+  .btn-primary { background: var(--purple); color: #fff; }
+  .btn-primary:hover { transform: translateY(-1px); box-shadow: 0 6px 24px rgba(124,109,245,0.5); }
+  .btn-ghost { color: var(--text2); border: 1px solid rgba(255,255,255,0.12); }
+  .btn-ghost:hover { color: var(--text1); border-color: var(--text3); }
+</style>
+</head>
+<body>
+<div class="ambient"></div>
+<div class="wrap">
+  <a class="brand" href="/">
+    <img src="/assets/logo.png" alt="Capital Board">
+    <span>Capital Board</span>
+  </a>
+  <div class="code">404</div>
+  <h1>Page introuvable</h1>
+  <p>Cette page n’existe pas ou a été déplacée. Vérifiez l’adresse ou revenez à l’accueil.</p>
+  <div class="actions">
+    <a class="btn btn-primary" href="/">Retour à l’accueil</a>
+    <a class="btn btn-ghost" href="/app.html">Accéder à l’app</a>
+  </div>
+</div>
+</body>
+</html>

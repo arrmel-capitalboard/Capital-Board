@@ -1,0 +1,1620 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Capital Board</title>
+<link rel="icon" type="image/png" href="assets/logo.png">
+<link rel="apple-touch-icon" href="assets/logo.png">
+<link rel="manifest" href="manifest.json">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="Capital Board">
+<meta name="theme-color" content="#12111f">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
+<link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="css/style.css?v=20260606l">
+<script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+</head>
+<body>
+
+<!-- ═══ BANDEAU NOUVELLE VERSION ═══ -->
+<div id="update-banner" style="display:none;position:fixed;top:0;left:0;right:0;z-index:99999;background:#7c6df5;color:#fff;padding:10px 16px;align-items:center;justify-content:center;gap:12px;font-size:13px;font-weight:500;font-family:var(--sans)">
+  <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 4 23 10 17 10"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>
+  Nouvelle version disponible
+  <button onclick="location.reload(true)" style="background:rgba(255,255,255,0.2);border:1px solid rgba(255,255,255,0.4);color:#fff;padding:4px 12px;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">Mettre à jour</button>
+</div>
+
+<script>
+  window.IS_DEMO = new URLSearchParams(location.search).get('demo') === '1';
+  if (window.IS_DEMO) {
+    document.documentElement.classList.add('demo-mode');
+  }
+  (function() {
+    const standalone = window.matchMedia('(display-mode: standalone)').matches || window.navigator.standalone === true;
+    if (standalone) {
+      document.addEventListener('DOMContentLoaded', () => {
+        document.querySelectorAll('.external-presentation').forEach(el => el.style.display = 'none');
+      });
+    }
+  })();
+  (function() {
+    if (window.IS_DEMO) {
+      document.addEventListener('DOMContentLoaded', () => {
+        const bar = document.createElement('div');
+        bar.id = 'demo-banner';
+        bar.innerHTML = '<span><strong>Mode démo</strong> · Données fictives, modifications non sauvegardées</span><a href="app.html?signup=1">Créer un compte gratuit →</a>';
+        document.body.appendChild(bar);
+        document.body.classList.add('has-demo-banner');
+      });
+    }
+  })();
+</script>
+
+<!-- ═══ SPLASH (visible par défaut, masqué quand l'app est prête) ═══ -->
+<div id="splash-screen">
+  <img src="assets/logo.png" alt="Capital Board" class="splash-logo">
+  <div class="splash-name">Capital Board</div>
+  <div class="splash-spinner" id="splash-spinner"></div>
+  <div class="splash-text" id="splash-text">Chargement…</div>
+  <div class="splash-error" id="splash-error"></div>
+  <button class="splash-reload" id="splash-reload" onclick="location.reload()">Recharger</button>
+</div>
+
+<!-- ═══ LOGIN ═══════════════════════════════════════ -->
+<div id="login-screen" style="display:none">
+  <div class="login-bg"></div>
+  <div class="login-grid"></div>
+  <a href="index.html" target="_blank" rel="noopener" class="external-presentation" style="position:absolute;top:20px;left:20px;z-index:10;color:#aab2c3;font-size:13px;text-decoration:none;display:inline-flex;align-items:center;gap:6px;padding:8px 14px;border:1px solid rgba(255,255,255,0.12);border-radius:8px;background:rgba(0,0,0,0.3);backdrop-filter:blur(10px)">← Retour à la présentation</a>
+
+  <!-- VUE CONNEXION -->
+  <div class="login-card" id="login-view">
+    <div class="login-logo">
+      <div class="logo-icon"><img src="assets/logo.png" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></div>
+      <div class="login-title">Capital Board</div>
+      <div class="login-subtitle">Suivi de portefeuille</div>
+    </div>
+    <div class="login-error" id="login-error"></div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input type="email" class="form-input" id="input-email" placeholder="vous@exemple.com" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Mot de passe</label>
+      <input type="password" class="form-input" id="input-pass" placeholder="••••••••" autocomplete="current-password">
+    </div>
+    <div class="cf-turnstile" data-sitekey="0x4AAAAAADn5LAr4t8vCvyjS" data-theme="dark" id="turnstile-login" data-callback="onTurnstileLoginSuccess" data-error-callback="onTurnstileLoginError" style="margin-bottom:12px"></div>
+    <button class="btn-login" id="btn-login-submit" onclick="doLogin()">Connexion</button>
+    <div style="display:flex;align-items:center;gap:12px;margin:16px 0;color:var(--text3);font-size:11px;font-weight:600">
+      <div style="flex:1;height:1px;background:var(--border2)"></div>OU<div style="flex:1;height:1px;background:var(--border2)"></div>
+    </div>
+    <button type="button" class="btn-google" onclick="doLoginGoogle()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:12px;border-radius:10px;border:1px solid var(--border2);background:#fff;color:#1f1f1f;font-weight:600;font-size:14px;cursor:pointer">
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Continuer avec Google
+    </button>
+    <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--text3)">
+      Pas encore de compte ?
+      <span onclick="showRegisterView()" style="color:var(--accent);cursor:pointer;font-weight:600;margin-left:4px">Créer un compte</span>
+    </div>
+  </div>
+
+  <!-- VUE INSCRIPTION -->
+  <div class="login-card" id="register-view" style="display:none">
+    <div class="login-logo">
+      <div class="logo-icon"><img src="assets/logo.png" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></div>
+      <div class="login-title">Créer un compte</div>
+      <div class="login-subtitle">Capital Board</div>
+    </div>
+    <div class="login-error" id="register-error"></div>
+    <div class="form-group">
+      <label class="form-label">Email</label>
+      <input type="email" class="form-input" id="reg-email" placeholder="vous@exemple.com" autocomplete="email">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Mot de passe</label>
+      <input type="password" class="form-input" id="reg-pass" placeholder="••••••••" autocomplete="new-password">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Confirmer le mot de passe</label>
+      <input type="password" class="form-input" id="reg-pass2" placeholder="••••••••" autocomplete="new-password">
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px;padding:12px 14px;background:var(--accent-d);border:1px solid rgba(124,109,245,0.2);border-radius:10px;cursor:pointer" onclick="if(event.target.id!=='reg-recap')document.getElementById('reg-recap').click()">
+      <input type="checkbox" id="reg-recap" checked style="margin-top:2px;accent-color:var(--accent);cursor:pointer;width:15px;height:15px;flex-shrink:0" onclick="event.stopPropagation()">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--text)">Récap quotidien par notification</div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">Recevez chaque soir à 20h une notification résumant la performance de votre PEA.</div>
+      </div>
+    </div>
+    <div style="display:flex;align-items:flex-start;gap:10px;margin-bottom:16px;padding:10px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:10px;cursor:pointer" onclick="if(event.target.id!=='reg-rgpd')document.getElementById('reg-rgpd').click()">
+      <input type="checkbox" id="reg-rgpd" style="margin-top:2px;accent-color:var(--accent);cursor:pointer;width:15px;height:15px;flex-shrink:0" onclick="event.stopPropagation()">
+      <div>
+        <div style="font-size:12px;font-weight:600;color:var(--text)">J'accepte les CGU, la politique de confidentialité et les mentions légales <span style="color:#e55">*</span></div>
+        <div style="font-size:11px;color:var(--text3);margin-top:2px">En créant un compte, vous acceptez nos <a href="legal/cgu.html" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent)">CGU</a>, notre <a href="legal/politique-confidentialite.html" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent)">politique de confidentialité</a> et nos <a href="legal/mentions-legales.html" target="_blank" onclick="event.stopPropagation()" style="color:var(--accent)">mentions légales</a>.</div>
+      </div>
+    </div>
+    <div id="register-rgpd-error" style="display:none;color:#e55;font-size:12px;margin-bottom:10px;text-align:center">Vous devez accepter les CGU pour créer un compte.</div>
+    <div class="cf-turnstile" data-sitekey="0x4AAAAAADn5LAr4t8vCvyjS" data-theme="dark" id="turnstile-register" data-callback="onTurnstileRegisterSuccess" data-error-callback="onTurnstileRegisterError" style="margin-bottom:12px"></div>
+    <button class="btn-login" id="btn-register-submit" onclick="doRegister()">Créer le compte</button>
+    <div style="display:flex;align-items:center;gap:12px;margin:16px 0;color:var(--text3);font-size:11px;font-weight:600">
+      <div style="flex:1;height:1px;background:var(--border2)"></div>OU<div style="flex:1;height:1px;background:var(--border2)"></div>
+    </div>
+    <button type="button" class="btn-google" onclick="doLoginGoogle()" style="width:100%;display:flex;align-items:center;justify-content:center;gap:10px;padding:12px;border-radius:10px;border:1px solid var(--border2);background:#fff;color:#1f1f1f;font-weight:600;font-size:14px;cursor:pointer">
+      <svg width="18" height="18" viewBox="0 0 48 48" aria-hidden="true"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      Continuer avec Google
+    </button>
+    <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--text3)">
+      Déjà un compte ?
+      <span onclick="showLoginView()" style="color:var(--accent);cursor:pointer;font-weight:600;margin-left:4px">Se connecter</span>
+    </div>
+    <div class="login-legal">
+      <a href="legal/mentions-legales.html" target="_blank">Mentions légales</a>
+      <span class="sep">·</span>
+      <a href="legal/politique-confidentialite.html" target="_blank">Confidentialité</a>
+      <span class="sep">·</span>
+      <a href="legal/cgu.html" target="_blank">CGU</a>
+    </div>
+  </div>
+
+  <!-- VUE FORCE SETUP PIN (comptes sans PIN configuré) -->
+  <div class="login-card" id="pin-setup-view" style="display:none">
+    <div class="login-logo">
+      <div class="logo-icon"><img src="assets/logo.png" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></div>
+      <div class="login-title">Configurer votre code PIN</div>
+      <div class="login-subtitle">Capital Board</div>
+    </div>
+    <div style="text-align:center;font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:14px">
+      Pour la sécurité de vos données, un code à 6 chiffres est désormais requis pour accéder à l'application.
+    </div>
+    <div style="font-size:11px;color:var(--text3);line-height:1.55;margin-bottom:18px;padding:10px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:10px">
+      Ce code vous sera demandé à chaque ouverture de l'application sur n'importe quel appareil.
+    </div>
+    <div id="pin-setup-view-step-label" style="font-size:12px;color:var(--text3);margin-bottom:8px;text-align:center;font-weight:600">Étape 1/2 — Saisissez un nouveau code</div>
+    <input id="pin-setup-view-input" type="password" inputmode="none" readonly autocomplete="off" maxlength="6" placeholder="••••••" style="width:100%;padding:14px;border-radius:10px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-size:24px;font-family:var(--mono);font-weight:700;text-align:center;letter-spacing:10px;margin-bottom:14px;outline:none;caret-color:transparent;-webkit-text-security:disc">
+    <div id="pin-setup-view-error" style="display:none;font-size:12px;color:#ff4d6a;margin-bottom:10px;text-align:center;padding:8px 12px;background:rgba(255,77,106,0.08);border-radius:8px"></div>
+    <div class="pin-keypad" id="pin-setup-view-keypad"></div>
+    <button class="btn-login" id="pin-setup-view-btn" onclick="pinSetupViewSubmit()">Continuer</button>
+    <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--text3)">
+      <span onclick="pinLockLogout()" style="color:var(--accent);cursor:pointer;font-weight:600">Se déconnecter</span>
+    </div>
+  </div>
+
+  <!-- VUE LOCK PIN -->
+  <div class="login-card" id="pin-lock-view" style="display:none">
+    <div class="login-logo">
+      <div class="logo-icon"><img src="assets/logo.png" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></div>
+      <div class="login-title">Code de déverrouillage</div>
+      <div class="login-subtitle">Capital Board</div>
+    </div>
+    <div style="text-align:center;font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:18px">
+      Saisissez votre code à 6 chiffres pour accéder à l'application.
+    </div>
+    <!-- Dots indicator -->
+    <div id="pin-dots" style="display:flex;justify-content:center;gap:12px;margin-bottom:18px">
+      <span class="pin-dot"></span><span class="pin-dot"></span><span class="pin-dot"></span>
+      <span class="pin-dot"></span><span class="pin-dot"></span><span class="pin-dot"></span>
+    </div>
+    <input id="pin-lock-input" type="password" inputmode="none" readonly autocomplete="off" maxlength="6" placeholder="••••••" style="width:100%;padding:14px;border-radius:10px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-size:24px;font-family:var(--mono);font-weight:700;text-align:center;letter-spacing:10px;margin-bottom:14px;outline:none;caret-color:transparent;-webkit-text-security:disc">
+    <div id="pin-lock-error" style="display:none;font-size:12px;color:#ff4d6a;margin-bottom:10px;text-align:center;padding:8px 12px;background:rgba(255,77,106,0.08);border-radius:8px"></div>
+    <div class="pin-keypad" id="pin-lock-keypad"></div>
+    <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--text3)">
+      <span onclick="pinLockLogout()" style="color:var(--accent);cursor:pointer;font-weight:600">Code oublié ? Se déconnecter</span>
+    </div>
+  </div>
+
+  <!-- VUE 2FA NOUVEL APPAREIL -->
+  <div class="login-card" id="device-verify-view" style="display:none">
+    <div class="login-logo">
+      <div class="logo-icon"><img src="assets/logo.png" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></div>
+      <div class="login-title">Nouvel appareil détecté</div>
+      <div class="login-subtitle">Capital Board</div>
+    </div>
+    <div style="text-align:center;font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:14px">
+      Pour votre sécurité, un code de vérification doit être envoyé à<br>
+      <strong id="dv-email-display" style="color:var(--text)">—</strong>
+    </div>
+    <div style="font-size:12px;color:var(--text3);line-height:1.55;margin-bottom:16px;padding:10px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:10px">
+      Appareil : <strong id="dv-device-label" style="color:var(--text)">—</strong><br>
+      Cet appareil sera mémorisé pendant 90 jours.
+    </div>
+
+    <!-- Étape A : envoi du code -->
+    <div id="dv-step-send">
+      <div class="login-error" id="dv-send-error" style="display:none"></div>
+      <button class="btn-login" id="dv-send-btn" onclick="dvSendOtp()">Envoyer le code</button>
+    </div>
+
+    <!-- Étape B : saisie du code -->
+    <div id="dv-step-verify" style="display:none">
+      <input id="dv-otp-input" type="tel" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="123456" style="width:100%;padding:14px;border-radius:10px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-size:22px;font-family:var(--mono);font-weight:700;text-align:center;letter-spacing:8px;margin-bottom:12px;outline:none">
+      <div id="dv-verify-error" style="display:none;font-size:12px;color:#ff4d6a;margin-bottom:10px;text-align:center;padding:8px 12px;background:rgba(255,77,106,0.08);border-radius:8px"></div>
+      <button class="btn-login" id="dv-verify-btn" onclick="dvVerifyOtp()">Confirmer</button>
+      <button class="btn-login" id="dv-resend-btn" onclick="dvResendOtp()" style="margin-top:10px;background:var(--s2);color:var(--text)">Renvoyer le code</button>
+    </div>
+
+    <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--text3)">
+      <span onclick="dvLogout()" style="color:var(--accent);cursor:pointer;font-weight:600">Se déconnecter</span>
+    </div>
+  </div>
+
+  <!-- VUE VÉRIFICATION EMAIL -->
+  <div class="login-card" id="verify-view" style="display:none">
+    <div class="login-logo">
+      <div class="logo-icon"><img src="assets/logo.png" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></div>
+      <div class="login-title">Vérifiez votre email</div>
+      <div class="login-subtitle">Capital Board</div>
+    </div>
+    <div style="text-align:center;font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:18px">
+      Un email de vérification a été envoyé à<br>
+      <strong id="verify-email-display" style="color:var(--text)">—</strong>
+    </div>
+    <div style="font-size:12px;color:var(--text3);line-height:1.55;margin-bottom:18px;padding:12px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:10px">
+      1. Ouvrez votre boîte mail (et le dossier spam)<br>
+      2. Cliquez sur le lien de vérification<br>
+      3. Revenez sur cette page — l'accès se débloque automatiquement
+    </div>
+    <div class="login-error" id="verify-error" style="display:none"></div>
+    <div class="login-success" id="verify-success" style="display:none;color:#00e09e;font-size:12px;margin-bottom:10px;text-align:center"></div>
+    <button class="btn-login" id="btn-verify-check" onclick="veCheck()">J'ai vérifié</button>
+    <button class="btn-login" id="btn-verify-resend" onclick="veResend()" style="margin-top:10px;background:var(--s2);color:var(--text)">Renvoyer le mail</button>
+    <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--text3)">
+      <span onclick="veLogout()" style="color:var(--accent);cursor:pointer;font-weight:600">Se déconnecter</span>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ APP ═════════════════════════════════════════ -->
+<div id="app" style="display:none">
+
+
+  <!-- ─── MOBILE HEADER ───────────────────────────── -->
+  <header class="mobile-header" id="mobile-header">
+    <div class="mobile-header-logo">
+      <div class="mobile-header-icon"><img src="assets/logo.png" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></div>
+      <div class="mobile-header-title">Capital Board</div>
+    </div>
+    <div class="mobile-header-actions">
+      <div class="mobile-header-btn" onclick="toggleHideBalances()" id="mobile-hide-btn" title="Masquer/afficher solde">
+        <svg id="mobile-hide-icon" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+      </div>
+      <div class="mobile-header-btn" onclick="openMobileDrawer()" title="Plus">☰</div>
+      <div class="mobile-header-btn" onclick="openProfilModal()" id="mobile-avatar-btn" title="Profil">
+        <span id="mobile-avatar-letter" style="font-size:13px;font-weight:700;font-family:var(--display)">?</span>
+      </div>
+    </div>
+  </header>
+
+  <!-- ─── MOBILE BOTTOM NAV ───────────────────────── -->
+  <nav class="mobile-nav">
+    <div class="mobile-nav-inner">
+      <button class="mobile-nav-item active" data-mob="portfolio" onclick="showPageMobile('portfolio')">
+        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span>Portefeuille
+      </button>
+      <button class="mobile-nav-item" data-mob="dividendes" onclick="showPageMobile('dividendes')">
+        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/></svg></span>Dividendes
+      </button>
+      <button class="mobile-nav-item" data-mob="watchlist" onclick="showPageMobile('watchlist')">
+        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b8dee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>Watchlist
+      </button>
+      <button class="mobile-nav-item" onclick="openMobileDrawer()">
+        <span>⋯</span>Plus
+      </button>
+    </div>
+  </nav>
+
+  <!-- ─── MOBILE DRAWER ───────────────────────────── -->
+  <div class="mobile-drawer-overlay" id="mobile-drawer-overlay" onclick="if(event.target===this)closeMobileDrawer()">
+    <div class="mobile-drawer">
+      <div class="mobile-drawer-handle"></div>
+      <div class="mobile-drawer-section">Mon PEA</div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('portfolio');closeMobileDrawer()" data-mob="portfolio">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span>Portefeuille
+      </div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('dividendes');closeMobileDrawer()" data-mob="dividendes">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/></svg></span>Dividendes
+      </div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('watchlist');closeMobileDrawer()" data-mob="watchlist">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b8dee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>Watchlist
+      </div>
+      <div class="mobile-drawer-section">Analyse</div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('performance');closeMobileDrawer()" data-mob="performance">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a29bfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>Performance
+      </div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('benchmark');closeMobileDrawer()" data-mob="benchmark">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>Benchmark
+      </div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('earnings');closeMobileDrawer()" data-mob="earnings">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span> Calendrier résultats
+      </div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('projections');closeMobileDrawer()" data-mob="projections">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg></span>Projections
+      </div>
+      <div class="mobile-drawer-section">Outils</div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('recap');closeMobileDrawer()" data-mob="recap">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>Récap du jour
+      </div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('alertes');closeMobileDrawer()" data-mob="alertes">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>Alertes prix
+      </div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('notifications');closeMobileDrawer()" data-mob="notifications">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span>Notifications
+      </div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('support');closeMobileDrawer()" data-mob="support">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span>Support
+      </div>
+      <div class="mobile-drawer-item" onclick="window.open('https://discord.gg/ZN9459TCTQ','_blank','noopener');closeMobileDrawer()">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 71 55" fill="#5865F2" aria-hidden="true"><path d="M60.1 4.9A58.6 58.6 0 0 0 45.5.36a.22.22 0 0 0-.23.1c-.63 1.12-1.33 2.58-1.82 3.73a54 54 0 0 0-16.23 0 37.4 37.4 0 0 0-1.85-3.73.23.23 0 0 0-.23-.1A58.4 58.4 0 0 0 10.3 4.9a.2.2 0 0 0-.1.08C.96 18.7-1.58 32.15.04 45.43a.24.24 0 0 0 .09.16 58.9 58.9 0 0 0 17.74 8.97.23.23 0 0 0 .25-.08c1.37-1.87 2.59-3.84 3.63-5.92a.22.22 0 0 0-.12-.31 38.8 38.8 0 0 1-5.54-2.64.23.23 0 0 1-.02-.38c.37-.28.74-.57 1.1-.86a.22.22 0 0 1 .23-.03c11.62 5.3 24.2 5.3 35.68 0a.22.22 0 0 1 .23.03c.36.3.73.58 1.1.86a.23.23 0 0 1-.02.38 36.4 36.4 0 0 1-5.54 2.64.22.22 0 0 0-.12.31 46.5 46.5 0 0 0 3.63 5.91.23.23 0 0 0 .25.09 58.7 58.7 0 0 0 17.77-8.97.23.23 0 0 0 .09-.16c1.94-15.35-2.06-28.69-8.7-40.45a.18.18 0 0 0-.09-.09ZM23.73 37.34c-3.5 0-6.38-3.21-6.38-7.15 0-3.95 2.82-7.16 6.38-7.16 3.58 0 6.43 3.24 6.38 7.16 0 3.94-2.83 7.15-6.38 7.15Zm23.59 0c-3.5 0-6.38-3.21-6.38-7.15 0-3.95 2.82-7.16 6.38-7.16 3.59 0 6.43 3.24 6.38 7.16 0 3.94-2.79 7.15-6.38 7.15Z"/></svg></span>Discord
+      </div>
+      <div class="mobile-drawer-section">Compte</div>
+      <div class="mobile-drawer-item" onclick="openProfilModal();closeMobileDrawer()">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8892a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg></span>Mon profil
+      </div>
+      <a class="mobile-drawer-item" href="index.html" style="text-decoration:none">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8892a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg></span>Accueil
+      </a>
+      <div class="mobile-drawer-section">Informations légales</div>
+      <a class="mobile-drawer-item" href="legal/cgu.html" target="_blank" style="text-decoration:none">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8892a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg></span>CGU
+      </a>
+      <a class="mobile-drawer-item" href="legal/politique-confidentialite.html" target="_blank" style="text-decoration:none">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8892a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>Politique de confidentialité
+      </a>
+      <a class="mobile-drawer-item" href="legal/mentions-legales.html" target="_blank" style="text-decoration:none">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8892a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></span>Mentions légales
+      </a>
+      <div style="height:1px;background:var(--border);margin:8px 20px"></div>
+      <div class="mobile-drawer-item" onclick="doLogout()" style="color:var(--negative)">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg></span>Déconnexion
+      </div>
+    </div>
+  </div>
+
+  <aside class="sidebar" id="sidebar">
+    <button class="sidebar-toggle" id="sidebar-toggle" onclick="toggleSidebar()">◀</button>
+    <div class="sidebar-logo">
+      <div class="sidebar-logo-icon"><img src="assets/logo.png" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></div>
+      <div>
+        <div class="sidebar-logo-title">Capital Board</div>
+      </div>
+    </div>
+    <nav class="sidebar-nav">
+      <div class="nav-section-label">Mon PEA</div>
+      <div class="nav-item active" onclick="showPage('portfolio')">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span> Portefeuille
+      </div>
+      <div class="nav-item" onclick="showPage('dividendes')">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/></svg></span> Dividendes
+      </div>
+      <div class="nav-item" onclick="showPage('watchlist')">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b8dee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span> Watchlist
+      </div>
+      <div class="nav-section-label" style="margin-top:14px">Analyse</div>
+      <div class="nav-item" onclick="showPage('performance')">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a29bfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span> Performance
+      </div>
+      <div class="nav-item" onclick="showPage('benchmark')">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span> Benchmark
+      </div>
+      <div class="nav-item" onclick="showPage('projections')">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg></span> Projections
+      </div>
+      <div class="nav-item" onclick="showPage('earnings')">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span> Calendrier résultats
+      </div>
+      <div class="nav-section-label" style="margin-top:14px">Outils</div>
+      <div class="nav-item" onclick="showPage('recap')">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span> Récap du jour
+      </div>
+      <div class="nav-item" onclick="showPage('alertes')">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span> Alertes prix
+      </div>
+      <div class="nav-item" onclick="showPage('notifications')" id="nav-notifications">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></span> Notifications
+      </div>
+      <div class="nav-item" onclick="showPage('support')" id="nav-support">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg></span> Support <span id="support-badge" style="display:none;background:#ff4d6a;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;margin-left:6px"></span>
+      </div>
+      <div class="nav-item" onclick="window.open('https://discord.gg/ZN9459TCTQ','_blank','noopener')">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 71 55" fill="#5865F2" aria-hidden="true"><path d="M60.1 4.9A58.6 58.6 0 0 0 45.5.36a.22.22 0 0 0-.23.1c-.63 1.12-1.33 2.58-1.82 3.73a54 54 0 0 0-16.23 0 37.4 37.4 0 0 0-1.85-3.73.23.23 0 0 0-.23-.1A58.4 58.4 0 0 0 10.3 4.9a.2.2 0 0 0-.1.08C.96 18.7-1.58 32.15.04 45.43a.24.24 0 0 0 .09.16 58.9 58.9 0 0 0 17.74 8.97.23.23 0 0 0 .25-.08c1.37-1.87 2.59-3.84 3.63-5.92a.22.22 0 0 0-.12-.31 38.8 38.8 0 0 1-5.54-2.64.23.23 0 0 1-.02-.38c.37-.28.74-.57 1.1-.86a.22.22 0 0 1 .23-.03c11.62 5.3 24.2 5.3 35.68 0a.22.22 0 0 1 .23.03c.36.3.73.58 1.1.86a.23.23 0 0 1-.02.38 36.4 36.4 0 0 1-5.54 2.64.22.22 0 0 0-.12.31 46.5 46.5 0 0 0 3.63 5.91.23.23 0 0 0 .25.09 58.7 58.7 0 0 0 17.77-8.97.23.23 0 0 0 .09-.16c1.94-15.35-2.06-28.69-8.7-40.45a.18.18 0 0 0-.09-.09ZM23.73 37.34c-3.5 0-6.38-3.21-6.38-7.15 0-3.95 2.82-7.16 6.38-7.16 3.58 0 6.43 3.24 6.38 7.16 0 3.94-2.83 7.15-6.38 7.15Zm23.59 0c-3.5 0-6.38-3.21-6.38-7.15 0-3.95 2.82-7.16 6.38-7.16 3.59 0 6.43 3.24 6.38 7.16 0 3.94-2.79 7.15-6.38 7.15Z"/></svg></span> Discord
+      </div>
+    </nav>
+    <div class="sidebar-user">
+      <a href="index.html?stay=1" class="sidebar-home-btn external-presentation desktop-only" target="_blank" rel="noopener" title="Voir la présentation du projet (nouvel onglet)">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span>Voir la présentation</span>
+      </a>
+      <div class="sidebar-legal-links">
+        <a href="legal/cgu.html" target="_blank">CGU</a>
+        <span>·</span>
+        <a href="legal/politique-confidentialite.html" target="_blank">Confidentialité</a>
+        <span>·</span>
+        <a href="legal/mentions-legales.html" target="_blank">Mentions</a>
+      </div>
+      <button onclick="toggleHideBalances()" id="sidebar-hide-btn" title="Masquer/afficher solde" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:8px;background:var(--s2);border:1px solid var(--border);color:var(--text2);border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans);margin-bottom:8px">
+        <svg id="sidebar-hide-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+        <span id="sidebar-hide-label">Masquer le solde</span>
+      </button>
+      <div class="user-card" onclick="openProfilModal()" style="cursor:pointer" title="Mon profil">
+        <div class="user-avatar" id="user-avatar">A</div>
+        <div style="flex:1;min-width:0">
+          <span class="user-name" id="user-name-display" style="display:block;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">—</span>
+        </div>
+        <button class="btn-refresh" onclick="event.stopPropagation();refreshAll()" title="Rafraîchir les données" id="btn-refresh-data">↻</button>
+        <button class="btn-logout" onclick="event.stopPropagation();doLogout()" title="Déconnexion">⏻</button>
+      </div>
+    </div>
+  </aside>
+
+  <main class="main">
+
+    <!-- PORTFOLIO PAGE -->
+    <div class="page active" id="page-portfolio">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Portefeuille</div>
+          <div class="page-subtitle" id="portfolio-date">Mis à jour aujourd'hui</div>
+        </div>
+      </div>
+
+      <div class="stats-scroll-wrap">
+      <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
+        <div class="stat-card">
+          <div class="stat-label">Évaluation des titres</div>
+          <div class="stat-value" id="stat-total">— €</div>
+          <div class="stat-change" id="stat-total-change">—</div>
+          <canvas class="stat-sparkline" id="spark-total"></canvas>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">+/- Value latente</div>
+          <div style="display:flex;align-items:baseline;gap:10px">
+            <div class="stat-value" id="stat-pnl">— €</div>
+            <div class="stat-value" id="stat-pnl-pct" style="font-size:16px">—</div>
+          </div>
+          <div class="stat-change neg">Latente sur titres en portefeuille</div>
+          <canvas class="stat-sparkline" id="spark-pnl"></canvas>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">P&L réalisé</div>
+          <div class="stat-value" id="stat-realized">— €</div>
+          <div class="stat-change" id="stat-realized-sub">Gains/pertes clôturés</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Cumul versements</div>
+          <div class="stat-value" id="stat-versements">— €</div>
+          <div class="stat-change pos" id="stat-versements-sub">Total versé sur le PEA</div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Solde espèces</div>
+          <div class="stat-value" id="stat-cash">— €</div>
+          <div class="stat-change" id="stat-cash-sub">Disponible</div>
+          <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
+            <button class="btn-add" onclick="openVersementModal()" style="font-size:10px;padding:5px 10px">＋ Versement</button>
+            <button onclick="openVersementsListModal()" class="btn-cash-edit"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>Voir / modifier</button>
+          </div>
+          <div id="versements-list" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto"></div>
+        </div>
+        <div class="stat-card">
+          <div class="stat-label">Investi (titres)</div>
+          <div class="stat-value" id="stat-invested">— €</div>
+          <canvas class="stat-sparkline" id="spark-invested"></canvas>
+        </div>
+      </div>
+      </div>
+
+      <!-- Graphique évolution portefeuille -->
+      <div class="portf-chart-card" id="portfolio-chart-card">
+        <div class="portf-chart-header">
+          <div class="portf-chart-pct" id="portf-pct-display">—</div>
+          <div class="portf-chart-since">depuis le début</div>
+        </div>
+        <div id="portf-tagline" style="font-size:11px;color:#8892a8;padding:0 4px 6px;font-style:italic;min-height:16px"></div>
+        <div id="portfolio-chart-sub" style="display:none"></div>
+        <div class="portf-canvas-wrap">
+          <canvas id="chart-portfolio"></canvas>
+          <div id="portfolio-chart-loader" class="portf-chart-loader"><span class="loading-spinner"></span><span>Chargement de la courbe…</span></div>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <div class="table-header">
+          <span class="table-title">Mes actions</span>
+          <div style="display:flex;gap:6px;align-items:center">
+            <button class="btn-add" onclick="document.getElementById('csv-import-input').click()" style="background:rgba(245,183,49,0.08);border-color:rgba(245,183,49,0.2);color:var(--gold)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Importer CSV</button>
+            <input type="file" id="csv-import-input" accept=".csv" style="display:none" onchange="importCSV(event)">
+            <button class="btn-add" onclick="openModal()">＋ Ajouter une ligne</button>
+          </div>
+        </div>
+        <div class="toolbar" id="portfolio-toolbar">
+          <div style="position:relative;flex:1;min-width:140px;display:flex">
+            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);display:flex;pointer-events:none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
+            <input class="toolbar-input" id="table-search" placeholder="Filtrer…" oninput="filterTable()" style="flex:1;min-width:0;padding-left:32px">
+          </div>
+          <select class="toolbar-select" id="table-sort" onchange="sortTable()">
+            <option value="">Tri : ordre ajout</option>
+            <option value="name-asc">Nom A→Z</option>
+            <option value="name-desc">Nom Z→A</option>
+            <option value="val-desc">Valeur ↓</option>
+            <option value="val-asc">Valeur ↑</option>
+            <option value="perf-desc">Perf ↓</option>
+            <option value="perf-asc">Perf ↑</option>
+          </select>
+          <button class="toolbar-btn" onclick="exportCSV()"><svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg>CSV</button>
+          <button class="toolbar-btn show-mobile-inline" onclick="openReorderModal()">↕ Réorganiser</button>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Titre</th>
+              <th class="hide-mobile">Qté</th>
+              <th class="hide-mobile">Prix achat</th>
+              <th class="hide-mobile">Prix actuel</th>
+              <th>Valeur</th>
+              <th class="hide-mobile">+/- Value</th>
+              <th id="th-perf-jour" onclick="togglePerfJourMode()" style="cursor:pointer;white-space:nowrap;user-select:none">Perf. jour %</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="portfolio-tbody"></tbody>
+        </table>
+        <div class="empty-state" id="empty-state">
+          <div class="empty-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#8892a8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 16 12 14 15 10 15 8 12 2 12"/><path d="M5.45 5.11L2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg></div>
+          <div class="empty-text">Aucune action dans le portefeuille.<br>Ajoutez votre première ligne.</div>
+        </div>
+      </div>
+
+      <!-- Transaction History -->
+      <div class="table-container" style="margin-top:18px" id="tx-history-card">
+        <div class="table-header">
+          <span class="table-title" style="display:inline-flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M3 3v5h5"/><path d="M3.05 13A9 9 0 1 0 6 5.3L3 8"/><path d="M12 7v5l4 2"/></svg>Historique des transactions</span>
+          <span style="font-size:11px;color:var(--text3);font-family:var(--mono)" id="tx-count">0 opérations</span>
+        </div>
+        <div style="overflow-x:auto">
+        <table>
+          <thead>
+            <tr>
+              <th>Date</th>
+              <th>Opération</th>
+              <th>Action</th>
+              <th>Qté</th>
+              <th class="hide-mobile">Prix unit.</th>
+              <th>Montant</th>
+              <th class="hide-mobile">P&L réalisé</th>
+            </tr>
+          </thead>
+          <tbody id="tx-history-tbody"></tbody>
+        </table>
+        </div>
+        <div id="tx-show-more-wrap" style="text-align:center;padding:8px 0 2px"></div>
+        <div class="empty-state" id="tx-empty" style="display:none">
+          <div class="empty-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#8892a8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><polyline points="10 9 9 9 8 9"/></svg></div>
+          <div class="empty-text">Aucune transaction enregistrée.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- WATCHLIST PAGE -->
+    <div class="page" id="page-watchlist">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Watchlist</div>
+          <div class="page-subtitle">Suivez des actions sans les acheter</div>
+        </div>
+      </div>
+      <div class="table-container">
+        <div class="table-header">
+          <span class="table-title">Actions suivies</span>
+          <button class="btn-add" onclick="openWatchlistModal()">＋ Ajouter</button>
+        </div>
+        <table>
+          <thead><tr>
+            <th style="text-align:left">Action</th>
+            <th style="text-align:right">Prix actuel</th>
+            <th style="text-align:right">Variation jour</th>
+            <th style="text-align:center">30 jours</th>
+            <th style="text-align:right">Depuis ajout</th>
+            <th></th>
+          </tr></thead>
+          <tbody id="watchlist-tbody"></tbody>
+        </table>
+        <div class="empty-state" id="watchlist-empty">
+          <div class="empty-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#8892a8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div>
+          <div class="empty-text">Aucune action dans la watchlist.<br>Ajoutez-en pour suivre leur cours.</div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         BENCHMARK PAGE
+         ══════════════════════════════════════════════ -->
+    <div class="page" id="page-benchmark">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Benchmark</div>
+          <div class="page-subtitle">Votre PEA face aux grands indices — performance comparée en base 100</div>
+        </div>
+      </div>
+
+      <!-- KPIs de perf par indice pour la période -->
+      <div class="stats-scroll-wrap">
+        <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(170px,1fr));gap:10px" id="bench-kpis"></div>
+      </div>
+
+      <!-- Sélecteur de période -->
+      <div class="bench-period-bar">
+        <button class="bench-period-btn" data-p="1D">1J</button>
+        <button class="bench-period-btn" data-p="1W">1S</button>
+        <button class="bench-period-btn" data-p="1M">1M</button>
+        <button class="bench-period-btn" data-p="3M">3M</button>
+        <button class="bench-period-btn" data-p="6M" class="active">6M</button>
+        <button class="bench-period-btn" data-p="YTD">YTD</button>
+        <button class="bench-period-btn" data-p="1Y">1A</button>
+        <button class="bench-period-btn" data-p="3Y">3A</button>
+        <button class="bench-period-btn" data-p="5Y">5A</button>
+        <button class="bench-period-btn" data-p="10Y">10A</button>
+        <button class="bench-period-btn active" data-p="MAX">Max</button>
+      </div>
+
+      <!-- Graphique comparaison multi-indices -->
+      <div class="section-card" style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:12px">
+          <div class="section-title" style="margin:0">Évolution comparée — base 100</div>
+          <span id="bench-status" style="font-size:11px;color:var(--text3)"></span>
+        </div>
+        <div id="bench-index-toggles" class="bench-toggles"></div>
+        <div style="position:relative;height:420px">
+          <canvas id="chart-benchmark"></canvas>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         PROJECTIONS PAGE
+         ══════════════════════════════════════════════ -->
+    <div class="page" id="page-projections">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Projections</div>
+          <div class="page-subtitle">Simulation patrimoniale long terme avec intérêts composés</div>
+        </div>
+      </div>
+
+      <div class="section-card" style="margin-bottom:18px">
+        <div class="section-title" style="margin-bottom:16px">Paramètres de simulation</div>
+        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px">
+          <div>
+            <label style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:6px">Valeur actuelle (€)</label>
+            <div class="num-input-wrap">
+              <input type="number" id="proj-base" value="0" step="100" oninput="renderProjections()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;font-family:var(--mono);outline:none">
+              <span class="num-spin up"   onclick="projNumStep('proj-base',1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg></span>
+              <span class="num-spin down" onclick="projNumStep('proj-base',-1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:6px">Apport mensuel (€)</label>
+            <div class="num-input-wrap">
+              <input type="number" id="proj-monthly" value="" step="50" placeholder="0" oninput="renderProjections()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;font-family:var(--mono);outline:none">
+              <span class="num-spin up"   onclick="projNumStep('proj-monthly',1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg></span>
+              <span class="num-spin down" onclick="projNumStep('proj-monthly',-1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+            </div>
+          </div>
+          <div>
+            <label style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:6px">Rendement estimé (%)</label>
+            <div class="num-input-wrap">
+              <input type="number" id="proj-cagr" value="" placeholder="0" step="0.5" oninput="renderProjections()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;font-family:var(--mono);outline:none">
+              <span class="num-spin up"   onclick="projNumStep('proj-cagr',1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg></span>
+              <span class="num-spin down" onclick="projNumStep('proj-cagr',-1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
+            </div>
+          </div>
+          <div style="background:var(--s3);border:1px solid var(--border2);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;justify-content:center">
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">Livret A benchmark</div>
+            <div style="font-size:18px;font-weight:700;color:var(--text2);font-family:var(--mono);margin-top:3px">2,5 % / an</div>
+          </div>
+        </div>
+        <div style="position:relative;height:320px">
+          <canvas id="chart-projections"></canvas>
+        </div>
+      </div>
+
+      <div class="table-container">
+        <div class="table-header"><span class="table-title">Tableau des projections</span></div>
+        <table>
+          <thead><tr>
+            <th>Horizon</th>
+            <th>Patrimoine total</th>
+            <th>Apports cumulés</th>
+            <th>Plus-values</th>
+            <th>Ratio PV / Apports</th>
+            <th>Livret A équiv.</th>
+            <th>Avantage vs LA</th>
+          </tr></thead>
+          <tbody id="proj-tbody"></tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         DIVIDENDES PAGE
+         ══════════════════════════════════════════════ -->
+    <div class="page" id="page-dividendes">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Dividendes</div>
+          <div class="page-subtitle">Historique des versements par action détenue</div>
+        </div>
+      </div>
+
+      <!-- KPI row -->
+      <div class="stats-scroll-wrap">
+        <div class="stats-grid" style="grid-template-columns:repeat(4,1fr)" id="div-kpis"></div>
+      </div>
+
+      <!-- Projection dividendes annuels -->
+      <div class="section-card" style="margin-bottom:18px" id="div-projection-card">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+          <div class="section-title" style="margin:0">Projection dividendes annuels</div>
+          <span style="font-size:11px;color:var(--text3)">Basé sur le dernier dividende connu × fréquence × quantité</span>
+        </div>
+        <div id="div-projection-content"><span style="color:var(--text3);font-size:12px">Chargement…</span></div>
+      </div>
+
+      <!-- Tableau par action -->
+      <div class="section-card" style="margin-bottom:18px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+          <div class="section-title" style="margin:0">Suivi par action</div>
+          <span style="font-size:11px;color:var(--text3)">Dividendes versés pendant et avant la période de détention</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead><tr>
+              <th style="text-align:left">Action</th>
+              <th>Détenu depuis</th>
+              <th>Quantité</th>
+              <th>Total reçu</th>
+              <th>Dernier div./action</th>
+              <th>Prochain estimé</th>
+              <th>Pendant détention</th>
+            </tr></thead>
+            <tbody id="div-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+
+      <!-- Historique complet -->
+      <div class="section-card">
+        <div style="margin-bottom:14px">
+          <div class="section-title" style="margin:0">Historique complet</div>
+        </div>
+        <div id="div-history"></div>
+        <div style="margin-top:18px;padding-top:14px;border-top:1px solid var(--s3);display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:10px">
+          <span style="font-size:12px;color:var(--text3)">Il vous manque un dividende ? Saisissez-le manuellement.</span>
+          <button onclick="openDivModal()"
+            style="background:var(--accent);border:none;color:#fff;border-radius:8px;padding:6px 13px;cursor:pointer;font-size:12px;font-weight:600">
+            + Saisir un dividende reçu
+          </button>
+        </div>
+      </div>
+    </div>
+
+    <!-- ══════════════════════════════════════════════
+         PERFORMANCE PAGE
+         ══════════════════════════════════════════════ -->
+    <div class="page" id="page-performance">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Performance</div>
+          <div class="page-subtitle">Rendement TWR annuel via CSV Broker</div>
+        </div>
+      </div>
+
+      <!-- Barre d'outils -->
+      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:18px">
+
+        <!-- Broker + import -->
+        <div style="display:flex;align-items:center;gap:0;border:1px solid var(--s3);border-radius:10px;background:var(--s2);position:relative">
+          <!-- Broker : dropdown custom (Boursorama dispo, autres bientôt) -->
+          <div class="broker-dd" id="broker-dd">
+            <button type="button" class="broker-dd-toggle" onclick="toggleBrokerDD(event)">
+              <img class="broker-logo" id="broker-logo" src="https://www.google.com/s2/favicons?domain=boursorama.com&sz=64" alt="">
+              <span id="broker-current">Boursorama</span>
+              <svg class="broker-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
+            </button>
+            <div class="broker-dd-menu" id="broker-dd-menu">
+              <button type="button" class="broker-opt" onclick="selectBroker('boursorama','Boursorama','boursorama.com')">
+                <img class="broker-logo" src="https://www.google.com/s2/favicons?domain=boursorama.com&sz=64" alt="">
+                <span class="broker-opt-name">Boursorama</span>
+                <svg class="broker-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+              </button>
+              <button type="button" class="broker-opt disabled" disabled>
+                <img class="broker-logo" src="https://www.google.com/s2/favicons?domain=fortuneo.fr&sz=64" alt="">
+                <span class="broker-opt-name">Fortuneo</span>
+                <span class="broker-soon">Dispo bientôt</span>
+              </button>
+              <button type="button" class="broker-opt disabled" disabled>
+                <img class="broker-logo" src="https://www.google.com/s2/favicons?domain=traderepublic.com&sz=64" alt="">
+                <span class="broker-opt-name">Trade Republic</span>
+                <span class="broker-soon">Dispo bientôt</span>
+              </button>
+            </div>
+          </div>
+          <div style="width:1px;height:18px;background:var(--s3)"></div>
+          <button onclick="onImportCSVClick()" id="btn-import-csv"
+            style="font-size:11px;padding:7px 12px;background:transparent;color:var(--text1);border:none;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px">
+            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
+            Importer CSV
+          </button>
+        </div>
+
+        <input type="file" id="input-daily-csv" accept=".csv" style="display:none" onchange="importDailyValuesCSV(event)">
+
+        <!-- Vider -->
+        <button onclick="confirmClearDaily()" id="btn-clear-daily" class="perf-action-btn perf-btn-danger">
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
+          <span id="btn-clear-label">Réinitialiser</span>
+        </button>
+
+        <span id="daily-status" style="font-size:11px;color:var(--text3)"></span>
+        <div id="csv-import-success"></div>
+
+        <!-- Exports -->
+        <div style="display:flex;align-items:center;gap:0;border:1px solid var(--s3);border-radius:10px;overflow:hidden;background:var(--s2);margin-left:auto">
+          <button onclick="exportVersementsCSV()" class="perf-export-btn">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Versements
+          </button>
+          <div style="width:1px;height:18px;background:var(--s3)"></div>
+          <button onclick="exportTransactionsCSV()" class="perf-export-btn">
+            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+            Transactions
+          </button>
+        </div>
+
+      </div>
+
+      <!-- Info : décalage CSV Boursorama -->
+      <div style="display:flex;gap:8px;align-items:flex-start;background:var(--s2);border:1px solid var(--s3);border-radius:10px;padding:10px 12px;margin-bottom:18px;font-size:11px;color:var(--text2);line-height:1.5">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span>L'export CSV de Boursorama a <strong>1 jour de retard</strong> : la valorisation la plus récente est celle de la veille. Exemple : un import le mardi soir ne contient les données que jusqu'au lundi. Seul l'import du <strong>samedi</strong> est à jour (clôture du vendredi).</span>
+      </div>
+
+      <!-- KPI résumé -->
+      <div class="stats-scroll-wrap">
+        <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))" id="perf-kpis"></div>
+      </div>
+
+      <!-- Graphique barres -->
+      <div class="section-card" style="margin-bottom:18px">
+        <div class="section-title">Performance par année</div>
+        <div style="position:relative;height:320px">
+          <canvas id="chart-perf-annual"></canvas>
+          <div id="perf-chart-empty" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;color:var(--text3);font-size:13px;text-align:center">
+            Aucune donnée — merci d'importer un CSV.
+          </div>
+        </div>
+      </div>
+
+      <!-- Tableau détaillé -->
+      <div class="section-card">
+        <div class="section-title">Détail annuel</div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align:left">Année</th>
+                <th>Investi</th>
+                <th>Gain</th>
+                <th>Perf %</th>
+              </tr>
+            </thead>
+            <tbody id="perf-tbody"></tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- RÉCAP PAGE -->
+    <div class="page" id="page-recap">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Récap</div>
+          <div class="page-subtitle">Performance de votre PEA — quotidien & hebdomadaire</div>
+        </div>
+        <button onclick="generateRecapNow()" class="btn-outline" id="btn-generate-recap" style="font-size:12px;padding:7px 14px;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><polygon points="13 2 3 14 12 14 11 22 21 10 12 10 13 2"/></svg>Générer maintenant</button>
+      </div>
+
+      <!-- Carte info notif (toujours visible) -->
+      <div class="recap-notif-card">
+        <div class="recap-notif-icon">
+          <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+        </div>
+        <div style="flex:1;min-width:0">
+          <div class="recap-notif-title">Notification du récap</div>
+          <div class="recap-notif-desc">Push quotidienne Lun→Jeu à 20h · Récap hebdomadaire poussé le vendredi 20h</div>
+        </div>
+        <label class="toggle-switch">
+          <input type="checkbox" id="recap-notif-toggle" onchange="saveRecapPref(this.checked ? 'on' : 'off')">
+          <span class="toggle-track"></span>
+        </label>
+      </div>
+
+      <!-- Vue quotidienne (affichée Lun-Jeu) -->
+      <div id="recap-day-view">
+        <div id="recap-content"></div>
+      </div>
+
+      <!-- Vue hebdomadaire (affichée Vendredi) -->
+      <div id="recap-week-view" style="display:none">
+        <div id="weekly-content"></div>
+      </div>
+    </div>
+
+    <!-- NOTIFICATIONS PAGE -->
+    <div class="page" id="page-notifications">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Notifications</div>
+          <div class="page-subtitle">Notifications push · Récap quotidien</div>
+        </div>
+        <div style="display:flex;gap:8px;flex-wrap:wrap">
+          <button onclick="requestPushPermission()" class="btn-outline" id="btn-enable-push" style="font-size:12px;padding:7px 14px;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Activer les push</button>
+          <button onclick="sendTestNotification()" class="btn-outline" id="btn-test-push" style="font-size:12px;padding:7px 14px;display:inline-flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>Tester</button>
+        </div>
+      </div>
+
+      <!-- Astuce iOS : push uniquement en PWA installée -->
+      <div id="ios-push-hint" style="display:none;gap:8px;align-items:flex-start;background:var(--s2);border:1px solid var(--s3);border-radius:10px;padding:10px 12px;margin-bottom:18px;font-size:11px;color:var(--text2);line-height:1.5">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
+        <span>Sur iPhone, les notifications push ne fonctionnent que si l'app est installée : <strong>Partager → Sur l'écran d'accueil</strong>, puis ouvrez Capital Board depuis l'icône. iOS 16.4 ou plus requis.</span>
+      </div>
+
+      <!-- Paramètres -->
+      <div class="section-card" style="margin-bottom:18px">
+        <div class="section-title">Paramètres</div>
+        <div id="notif-settings-list"></div>
+      </div>
+
+      <!-- Liaison Discord -->
+      <div class="section-card" style="margin-bottom:18px">
+        <div class="section-title">Compte Discord</div>
+        <p style="font-size:12px;color:var(--text2);line-height:1.6;margin:8px 0 0">
+          Consultez votre portefeuille depuis le bot Discord avec <strong>/portefeuille</strong>.
+          Pour lier votre compte : tapez <strong>/link</strong> sur le serveur Discord, puis ouvrez le lien fourni
+          (en restant connecté ici). La liaison se fait automatiquement.
+        </p>
+      </div>
+    </div>
+
+    <!-- SUPPORT CHAT PAGE -->
+    <div class="page" id="page-support">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Support</div>
+          <div class="page-subtitle">Discussion directe avec l'équipe Capital Board</div>
+        </div>
+      </div>
+      <div id="support-content"></div>
+    </div>
+
+    <!-- ALERTES PRIX PAGE -->
+    <div class="page" id="page-alertes">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Alertes prix</div>
+          <div class="page-subtitle">Recevez une notification quand un cours atteint votre seuil</div>
+        </div>
+        <button class="btn-add" onclick="openAddAlertModal()" style="font-size:12px;padding:7px 14px">＋ Nouvelle alerte</button>
+      </div>
+      <div class="section-card">
+        <div id="alerts-list"></div>
+        <div id="alerts-empty" style="color:var(--text3);font-size:13px;text-align:center;padding:20px 0">Aucune alerte configurée</div>
+      </div>
+    </div>
+
+    <!-- ═══ CALENDRIER DES RÉSULTATS ═══════════════════ -->
+    <div class="page" id="page-earnings">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Calendrier des résultats</div>
+          <div class="page-subtitle">Publications à venir · abonnez-vous pour recevoir une notification</div>
+        </div>
+      </div>
+
+      <!-- Barre d'outils -->
+      <div class="ec-toolbar">
+        <div class="ec-legend">
+          <span class="ec-leg"><span class="ec-dot" style="background:var(--accent)"></span>Détenu</span>
+          <span class="ec-leg"><span class="ec-dot" style="background:var(--gold)"></span>Suivi</span>
+        </div>
+        <button class="ec-subs-btn" onclick="ecOpenChooser()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="17 1 21 5 17 9"/><path d="M3 11V9a4 4 0 0 1 4-4h14"/><polyline points="7 23 3 19 7 15"/><path d="M21 13v2a4 4 0 0 1-4 4H3"/></svg>
+          Changer la liste
+        </button>
+        <button class="ec-subs-btn" onclick="ecOpenSubs()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>
+          Entreprises ciblées<span id="ec-subs-count" class="ec-subs-count"></span>
+        </button>
+      </div>
+
+      <!-- Volet mois précédent (résultats déjà publiés, depuis le cache) -->
+      <button id="ec-prev-toggle" class="ec-prev-toggle" onclick="ecTogglePrev()" aria-expanded="false">
+        <svg class="ec-prev-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="6 9 12 15 18 9"/></svg>
+        Voir le mois précédent
+      </button>
+      <div id="ec-prev-panel" class="ec-prev-panel" hidden></div>
+
+      <!-- Agenda (liste par jour, jours vides masqués) -->
+      <div id="ec-agenda" class="ec-agenda" aria-live="polite"></div>
+    </div>
+
+  </main>
+</div>
+
+
+<!-- ═══ MODAL DÉTAIL RÉSULTAT (earnings) ════════════ -->
+<div class="modal-overlay" id="ec-detail-overlay" onclick="if(event.target===this)ecCloseDetail()" role="dialog" aria-modal="true" aria-labelledby="ec-detail-name">
+  <div class="modal" id="ec-detail-body"></div>
+</div>
+
+
+<!-- ═══ MODAL ALERTE PRIX ══════════════════════════ -->
+<div class="modal-overlay" id="alert-modal-overlay" onclick="if(event.target===this)closeAlertModal()">
+  <div class="modal">
+    <div class="modal-title">Nouvelle alerte prix</div>
+    <div class="form-group">
+      <label class="form-label">Action / ETF</label>
+      <select class="form-input" id="alert-ticker-select" style="background:var(--s2);color:var(--text)"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Condition</label>
+      <select class="form-input" id="alert-direction" style="background:var(--s2);color:var(--text)">
+        <option value="above">Prix ≥ (alerte hausse)</option>
+        <option value="below">Prix ≤ (alerte baisse / stop-loss)</option>
+      </select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Prix cible (€)</label>
+      <input type="number" class="form-input" id="alert-price" placeholder="150.00" min="0" step="any">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeAlertModal()">Annuler</button>
+      <button class="btn-primary" onclick="confirmAddAlert()">Créer l'alerte</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL PROFIL ════════════════════════════════ -->
+<div class="modal-overlay" id="profil-modal-overlay" onclick="if(event.target===this)closeProfilModal()" style="z-index:1100">
+  <div class="modal" style="width:440px;max-height:85vh;overflow-y:auto">
+
+    <!-- Header avec avatar -->
+    <div style="display:flex;align-items:center;gap:16px;margin-bottom:24px">
+      <div id="profil-avatar-big" style="
+        width:60px;height:60px;border-radius:16px;flex-shrink:0;
+        box-shadow:0 6px 20px rgba(124,109,245,0.3);overflow:hidden">
+        <span id="profil-avatar-letter"></span>
+        <img id="profil-avatar-img" src="" style="display:none" />
+      </div>
+      <div style="flex:1">
+        <div id="profil-display-name" style="font-family:var(--display);font-size:18px;font-weight:700">—</div>
+        <div id="profil-email" style="font-size:11px;color:var(--text2);font-family:var(--mono);margin-top:3px">—</div>
+        <div id="profil-provider-badge" style="margin-top:6px"></div>
+      </div>
+      <button onclick="closeProfilModal()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:18px;padding:4px;border-radius:6px;line-height:1" title="Fermer">✕</button>
+    </div>
+
+    <!-- Couleur de l'avatar -->
+    <div style="margin-bottom:18px">
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px">Couleur de l'avatar</div>
+      <div id="avatar-hue-swatches" style="display:flex;gap:8px;flex-wrap:wrap"></div>
+      <span id="avatar-status" style="font-size:11px;font-family:var(--mono);min-height:16px;color:var(--positive);display:block;margin-top:6px"></span>
+    </div>
+
+    <!-- Nom d'affichage -->
+    <div class="form-group">
+      <label class="form-label">Nom d'affichage</label>
+      <div style="display:flex;gap:8px">
+        <input type="text" class="form-input" id="profil-name-input" placeholder="Votre prénom ou pseudo" style="flex:1">
+        <button onclick="saveDisplayName()" style="
+          padding:0 16px;background:var(--accent-d);border:1px solid rgba(124,109,245,0.25);
+          color:var(--accent);border-radius:10px;font-size:12px;font-weight:600;
+          cursor:pointer;white-space:nowrap;font-family:var(--sans);">
+          Sauvegarder
+        </button>
+      </div>
+      <div id="profil-name-status" style="font-size:11px;font-family:var(--mono);margin-top:6px;min-height:16px"></div>
+    </div>
+
+    <!-- Section changer mot de passe -->
+    <div id="profil-password-section">
+      <div style="height:1px;background:var(--border);margin:4px 0 18px"></div>
+      <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>Changer le mot de passe</div>
+      <div class="form-group">
+        <label class="form-label">Mot de passe actuel</label>
+        <input type="password" class="form-input" id="profil-old-pass" placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Nouveau mot de passe</label>
+        <input type="password" class="form-input" id="profil-new-pass" placeholder="••••••••">
+      </div>
+      <div class="form-group">
+        <label class="form-label">Confirmer</label>
+        <input type="password" class="form-input" id="profil-new-pass2" placeholder="••••••••">
+      </div>
+      <div id="profil-pass-status" style="font-size:11px;font-family:var(--mono);margin-bottom:10px;min-height:16px"></div>
+      <button onclick="saveNewPassword()" style="
+        padding:9px 18px;background:var(--accent-d);border:1px solid rgba(124,109,245,0.25);
+        color:var(--accent);border-radius:10px;font-size:12px;font-weight:600;
+        cursor:pointer;font-family:var(--sans);">
+        Mettre à jour le mot de passe
+      </button>
+    </div>
+
+    <!-- Notifications -->
+    <div style="height:1px;background:var(--border);margin:18px 0"></div>
+    <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>Récap quotidien</div>
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px">
+      <div style="font-size:12px;color:var(--text3)">Notification push de récap chaque jour ouvré à 20h</div>
+      <div style="display:flex;gap:6px;flex-shrink:0">
+        <button id="btn-recap-on" onclick="saveRecapPref('on')" style="border-radius:8px;padding:6px 14px;font-size:12px;font-family:var(--sans);font-weight:600;cursor:pointer;background:var(--s2);border:1px solid var(--border);color:var(--text3)">Activé</button>
+        <button id="btn-recap-off" onclick="saveRecapPref('off')" style="border-radius:8px;padding:6px 14px;font-size:12px;font-family:var(--sans);font-weight:600;cursor:pointer;background:var(--s2);border:1px solid var(--border);color:var(--text3)">Désactivé</button>
+      </div>
+    </div>
+    <span id="recap-freq-status" style="font-size:11px;font-family:var(--mono);color:var(--positive)"></span>
+
+    <!-- Sauvegarde / restauration -->
+    <div style="height:1px;background:var(--border);margin:18px 0"></div>
+    <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:12px;font-family:var(--mono);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:6px"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>Sauvegarde / Restauration</div>
+    <div style="font-size:11px;color:var(--text3);margin-bottom:12px">
+      Exportez toutes vos données (portefeuille, transactions, versements, watchlist, valorisations) dans un fichier JSON, ou restaurez-les depuis une sauvegarde précédente.
+    </div>
+    <div style="display:flex;gap:10px;flex-wrap:wrap">
+      <button onclick="exportAllUserData()" class="btn-outline" style="flex:1;min-width:150px;justify-content:center">
+        ⬇ Exporter mes données
+      </button>
+      <button onclick="document.getElementById('input-restore-json').click()" class="btn-outline" style="flex:1;min-width:150px;justify-content:center">
+        ⬆ Importer une sauvegarde
+      </button>
+      <input type="file" id="input-restore-json" accept=".json,application/json" style="display:none" onchange="importAllUserData(event)">
+    </div>
+
+    <!-- Sécurité — Code PIN -->
+    <div style="height:1px;background:var(--border);margin:18px 0"></div>
+    <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:6px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Code PIN
+    </div>
+    <div style="font-size:11px;color:var(--text3);line-height:1.55;margin-bottom:10px">
+      Un code à 6 chiffres demandé à chaque ouverture de l'application sur cet appareil et tous les autres.
+    </div>
+    <div id="pin-status-box" style="padding:10px 12px;background:var(--s2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;font-size:12px;color:var(--text3)">Chargement…</div>
+    <div id="pin-actions" style="display:flex;gap:8px"></div>
+
+    <!-- Sécurité — Appareils de confiance -->
+    <div style="height:1px;background:var(--border);margin:18px 0"></div>
+    <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:6px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      Appareils de confiance
+    </div>
+    <div style="font-size:11px;color:var(--text3);line-height:1.55;margin-bottom:10px">
+      Les appareils ci-dessous peuvent se connecter sans code de vérification pendant 90 jours après leur dernière connexion. Révoquez ceux que vous ne reconnaissez pas.
+    </div>
+    <div id="trusted-devices-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;font-size:12px">
+      <div style="color:var(--text3);font-style:italic;padding:8px 0">Chargement…</div>
+    </div>
+    <button onclick="refreshTrustedDevices()" style="width:100%;padding:8px;background:var(--s2);border:1px solid var(--border);color:var(--text2);border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans);margin-bottom:6px">Rafraîchir la liste</button>
+    <button onclick="revokeAllOtherDevices()" style="width:100%;padding:8px;background:rgba(255,77,106,0.08);border:1px solid rgba(255,77,106,0.2);color:#ff4d6a;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans)">Révoquer tous les autres appareils</button>
+
+    <!-- Mentions légales -->
+    <div style="height:1px;background:var(--border);margin:18px 0"></div>
+    <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:6px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+      Informations légales
+    </div>
+    <div style="display:flex;flex-direction:column;gap:6px;font-size:12px">
+      <a href="legal/cgu.html" target="_blank" style="color:var(--accent);text-decoration:none;padding:6px 0;display:inline-flex;align-items:center;gap:6px">→ Conditions générales d'utilisation</a>
+      <a href="legal/politique-confidentialite.html" target="_blank" style="color:var(--accent);text-decoration:none;padding:6px 0;display:inline-flex;align-items:center;gap:6px">→ Politique de confidentialité</a>
+      <a href="legal/mentions-legales.html" target="_blank" style="color:var(--accent);text-decoration:none;padding:6px 0;display:inline-flex;align-items:center;gap:6px">→ Mentions légales</a>
+    </div>
+
+    <!-- Déconnexion -->
+    <div style="height:1px;background:var(--border);margin:18px 0"></div>
+    <button onclick="closeProfilModal();doLogout()" style="
+      width:100%;padding:10px;background:var(--s2);border:1px solid var(--border);
+      color:var(--text);border-radius:10px;font-size:13px;font-weight:600;
+      cursor:pointer;font-family:var(--sans);margin-bottom:10px;
+      display:inline-flex;align-items:center;justify-content:center;gap:8px">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+      Se déconnecter
+    </button>
+
+    <!-- Danger zone -->
+    <div style="height:1px;background:rgba(255,77,106,0.15);margin:18px 0"></div>
+    <button onclick="confirmDeleteAccount()" style="
+      width:100%;padding:9px;background:var(--negative-d);border:1px solid rgba(255,77,106,0.2);
+      color:var(--negative);border-radius:10px;font-size:12px;font-weight:600;
+      cursor:pointer;font-family:var(--sans);">
+      <span style="display:inline-flex;align-items:center;gap:6px"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>Supprimer mon compte</span>
+    </button>
+
+  </div>
+</div>
+
+<!-- ═══ MODAL DIVIDENDE ═════════════════════════════ -->
+<div class="modal-overlay" id="div-modal-overlay" onclick="closeDivModalOutside(event)">
+  <div class="modal">
+    <div class="modal-title">Saisir un dividende reçu</div>
+    <div class="modal-sub">Enregistrez un dividende perçu sur une de vos actions.</div>
+    <div class="form-group">
+      <label class="form-label">Action</label>
+      <select class="form-input" id="div-modal-ticker"></select>
+    </div>
+    <div class="form-group">
+      <label class="form-label">Montant reçu (€)</label>
+      <input type="number" step="0.01" class="form-input" id="div-modal-amount" placeholder="ex: 12.50">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Date de versement</label>
+      <input type="date" class="form-input" id="div-modal-date">
+    </div>
+    <div style="display:flex;gap:9px;justify-content:flex-end;margin-top:6px">
+      <button onclick="closeDivModal()" style="background:var(--s3);border:1px solid var(--border2);color:var(--text2);border-radius:8px;padding:8px 16px;cursor:pointer;font-size:13px">Annuler</button>
+      <button onclick="confirmDividende()" style="background:var(--gold);border:none;color:#000;border-radius:8px;padding:8px 16px;font-weight:700;cursor:pointer;font-size:13px">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL AJOUT ════════════════════════════════ -->
+<div class="modal-overlay" id="modal-overlay" onclick="closeModalOutside(event)">
+  <div class="modal">
+    <div class="modal-title">Ajouter une action</div>
+    <div class="modal-sub">Entrez le nom ou le ticker pour trouver le cours actuel.</div>
+
+    <div class="form-group">
+      <label class="form-label">Nom ou ticker <span class="price-tag">auto prix</span></label>
+      <input type="text" class="form-input" id="modal-ticker" placeholder="ex: LVMH, Apple, TotalEnergies…" oninput="onTickerInput()" onkeydown="onTickerKeydown(event)" autocomplete="off">
+      <div id="search-dropdown" class="search-dropdown"></div>
+      <div id="search-status"></div>
+      <div class="search-result" id="search-result">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div id="res-logo"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <div class="search-result-name" id="res-name">—</div>
+              <div class="search-result-price" id="res-price">—</div>
+            </div>
+            <div class="search-result-info" id="res-info">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Quantité</label>
+      <input type="number" class="form-input" id="modal-qty" placeholder="10" min="0.001" step="any">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Prix d'achat (€)</label>
+      <input type="number" class="form-input" id="modal-buy-price" placeholder="150.00" min="0" step="any">
+    </div>
+
+    <div class="form-group">
+      <label class="form-label">Date d'achat</label>
+      <input type="date" class="form-input" id="modal-buy-date" style="color-scheme:dark">
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeModal()">Annuler</button>
+      <button class="btn-primary" id="btn-confirm" onclick="confirmAdd()" disabled>Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL EDITION ══════════════════════════════ -->
+<div class="modal-overlay" id="edit-modal-overlay" onclick="closeEditModalOutside(event)">
+  <div class="modal">
+    <div class="modal-title" id="edit-modal-title">Modifier</div>
+    <div class="modal-sub" id="edit-modal-sub">—</div>
+    <div class="edit-tabs">
+      <button class="edit-tab active-buy" id="tab-buy"  onclick="setEditTab('buy')">+ Acheter</button>
+      <button class="edit-tab"            id="tab-sell" onclick="setEditTab('sell')">- Vendre</button>
+    </div>
+    <div class="edit-info">
+      <div class="edit-info-item"><label>Position</label><span id="edit-cur-qty">-</span></div>
+      <div class="edit-info-item"><label>PRU</label><span id="edit-cur-pru">-</span></div>
+      <div class="edit-info-item"><label>Prix actuel</label><span id="edit-cur-price">-</span></div>
+      <div class="edit-info-item"><label>+/- Value</label><span id="edit-cur-pnl">-</span></div>
+    </div>
+    <div class="form-group">
+      <label class="form-label" id="edit-qty-label">Quantite a acheter</label>
+      <input type="number" class="form-input" id="edit-qty" placeholder="10" min="0.001" step="any">
+    </div>
+    <div class="form-group" id="edit-price-group">
+      <label class="form-label">Prix (EUR)</label>
+      <input type="number" class="form-input" id="edit-price" placeholder="150.00" min="0" step="any">
+    </div>
+    <div class="form-group" id="edit-date-group">
+      <label class="form-label">Date de l'opération</label>
+      <input type="date" class="form-input" id="edit-date" style="color-scheme:dark">
+    </div>
+    <div class="form-group" id="edit-sell-price-group" style="display:none">
+      <label class="form-label">Prix de vente (EUR)</label>
+      <input type="number" class="form-input" id="edit-sell-price" placeholder="150.00" min="0" step="any">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeEditModal()">Annuler</button>
+      <button class="btn-primary" id="btn-edit-confirm" onclick="confirmEdit()">Confirmer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL WATCHLIST ════════════════════════════ -->
+<div class="modal-overlay" id="watchlist-modal-overlay" onclick="if(event.target===this)closeWatchlistModal()">
+  <div class="modal">
+    <div class="modal-title">Ajouter à la watchlist</div>
+    <div class="modal-sub">Recherchez une action à suivre.</div>
+    <div class="form-group">
+      <label class="form-label">Nom ou ticker</label>
+      <input type="text" class="form-input" id="wl-ticker" placeholder="ex: AAPL, LVMH…" oninput="onWlInput()" onkeydown="onWlKeydown(event)" autocomplete="off">
+      <div id="wl-dropdown" class="search-dropdown"></div>
+      <div id="wl-status"></div>
+      <div class="search-result" id="wl-result">
+        <div style="display:flex;align-items:center;gap:10px">
+          <div id="wl-logo"></div>
+          <div style="flex:1;min-width:0">
+            <div style="display:flex;align-items:baseline;justify-content:space-between;gap:8px;flex-wrap:wrap">
+              <div class="search-result-name" id="wl-res-name">—</div>
+              <div class="search-result-price" id="wl-res-price">—</div>
+            </div>
+            <div class="search-result-info" id="wl-res-info">—</div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeWatchlistModal()">Annuler</button>
+      <button class="btn-primary" id="btn-wl-confirm" onclick="confirmWatchlistAdd()" disabled>Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL VERSEMENT ════════════════════════════ -->
+<div class="modal-overlay" id="versement-modal-overlay" onclick="if(event.target===this)closeVersementModal()">
+  <div class="modal">
+    <div class="modal-title">Ajouter un versement</div>
+    <div class="modal-sub">Enregistrez un virement vers votre PEA.</div>
+    <div class="form-group">
+      <label class="form-label">Montant (€)</label>
+      <input type="number" class="form-input" id="versement-amount" placeholder="100.00" min="0" step="any">
+    </div>
+    <div class="form-group">
+      <label class="form-label">Date</label>
+      <input type="date" class="form-input" id="versement-date" style="color-scheme:dark">
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeVersementModal()">Annuler</button>
+      <button class="btn-primary" onclick="confirmVersement()">Ajouter</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL GÉRER LES VERSEMENTS ═══════════════════ -->
+<div class="modal-overlay" id="versements-list-modal" onclick="if(event.target===this)closeVersementsListModal()">
+  <div class="modal" style="width:460px">
+    <div class="modal-title" style="display:flex;align-items:center;gap:7px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>Gérer les versements</div>
+    <div class="modal-sub">Consultez, modifiez ou supprimez vos apports en capital.</div>
+    <div id="versements-modal-body" style="max-height:340px;overflow-y:auto;margin:14px 0"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeVersementsListModal()">Fermer</button>
+      <button class="btn-primary" onclick="addVersementFromModal()">＋ Ajouter un versement</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ MODAL IMPORT CSV ═══════════════════════════ -->
+<div class="modal-overlay" id="csv-import-modal" onclick="if(event.target===this)closeImportModal()">
+  <div class="modal" style="width:560px">
+    <div class="modal-title" style="display:flex;align-items:center;gap:7px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Importer des transactions</div>
+    <div class="modal-sub">Vérifiez les opérations détectées puis confirmez l'import.</div>
+    <div style="max-height:350px;overflow-y:auto;margin:14px 0">
+      <table style="width:100%">
+        <thead><tr><th style="font-size:8px">Date</th><th style="font-size:8px">Type</th><th style="font-size:8px">Ticker</th><th style="font-size:8px">Nom</th><th style="font-size:8px">Qté</th><th style="font-size:8px">Prix</th></tr></thead>
+        <tbody id="csv-preview-tbody"></tbody>
+      </table>
+    </div>
+    <div id="csv-import-status" style="font-size:11px;color:var(--text2);font-family:var(--mono);margin-bottom:8px"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeImportModal()">Annuler</button>
+      <button class="btn-primary" id="btn-csv-confirm" onclick="confirmImport()">Importer tout</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ TOAST CHAT ═════════════════════════════════════ -->
+<div id="chat-toast" style="
+  display:none;position:fixed;top:20px;right:20px;z-index:3000;
+  background:var(--s1);border:1px solid var(--border);border-radius:14px;
+  box-shadow:0 8px 30px rgba(0,0,0,0.4);overflow:hidden;
+  cursor:pointer;max-width:300px;min-width:220px;
+  animation:toast-in .25s ease">
+  <div onclick="_chatToastClick()" style="padding:12px 16px">
+    <div style="display:flex;align-items:center;gap:10px">
+      <span id="chat-toast-icon" style="flex-shrink:0;display:flex"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#fd79a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></span>
+      <div style="flex:1;min-width:0">
+        <div id="chat-toast-title" style="font-size:12px;font-weight:700;color:var(--accent);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+        <div id="chat-toast-msg" style="font-size:12px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis"></div>
+      </div>
+      <button onclick="event.stopPropagation();_dismissChatToast()" style="background:none;border:none;color:var(--text3);cursor:pointer;font-size:16px;padding:0;line-height:1;flex-shrink:0">✕</button>
+    </div>
+  </div>
+  <div style="height:3px;background:var(--s3)">
+    <div id="chat-toast-bar" style="height:100%;background:var(--accent);width:100%;transform-origin:left"></div>
+  </div>
+</div>
+<style>
+@keyframes toast-in { from { opacity:0;transform:translateX(20px) } to { opacity:1;transform:translateX(0) } }
+@keyframes toast-bar { from { width:100% } to { width:0% } }
+</style>
+
+<!-- ═══ MODAL CONFIRMATION ════════════════════════════ -->
+<div id="confirm-modal" style="
+  display:none;position:fixed;inset:0;background:rgba(0,0,0,0.65);z-index:2000;
+  align-items:center;justify-content:center;padding:20px;box-sizing:border-box">
+  <div style="width:380px;max-width:100%;background:var(--s1);border-radius:16px;border:1px solid var(--border);overflow:hidden;box-shadow:0 20px 50px rgba(0,0,0,0.55)">
+    <div id="confirm-modal-header" style="padding:16px 20px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px">
+      <span id="confirm-modal-icon" style="font-size:20px"></span>
+      <span id="confirm-modal-title" style="font-weight:700;font-size:14px;font-family:var(--display)"></span>
+    </div>
+    <div style="padding:18px 20px">
+      <p id="confirm-modal-msg" style="margin:0 0 20px;font-size:13px;color:var(--text2);line-height:1.6"></p>
+      <div style="display:flex;gap:8px;justify-content:flex-end">
+        <button onclick="_confirmModalCancel()" style="padding:8px 16px;background:var(--s3);border:1px solid var(--border);color:var(--text2);border-radius:8px;font-size:13px;cursor:pointer">Annuler</button>
+        <button id="confirm-modal-btn" onclick="_confirmModalOk()" style="padding:8px 20px;border:none;color:#fff;border-radius:8px;font-size:13px;font-weight:600;cursor:pointer"></button>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal-overlay" id="reorder-modal-overlay" onclick="if(event.target===this)closeReorderModal()">
+  <div class="modal" style="width:340px;max-height:80vh;overflow-y:auto">
+    <div class="modal-title">Réorganiser le portefeuille</div>
+    <div class="modal-sub">Utilisez les flèches pour changer l'ordre d'affichage.</div>
+    <div id="reorder-list" style="margin:16px 0;display:flex;flex-direction:column;gap:8px"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeReorderModal()">Annuler</button>
+      <button class="btn-primary" onclick="saveReorder()">Valider</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js?v=20260619b"></script>
+
+<!-- Modal confirmation générique (broker reset etc.) -->
+<div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+  <div style="background:#1a1b26;border:1px solid #2a2b3d;border-radius:16px;padding:28px 28px 22px;max-width:380px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,0.6)">
+    <div id="confirm-modal2-icon" style="font-size:28px;margin-bottom:12px;text-align:center"></div>
+    <div id="confirm-modal2-title" style="font-size:15px;font-weight:700;color:#fff;margin-bottom:8px;text-align:center"></div>
+    <div id="confirm-modal2-body" style="font-size:12px;color:#8892a8;text-align:center;line-height:1.6;margin-bottom:22px"></div>
+    <div style="display:flex;gap:10px">
+      <button id="confirm-modal2-cancel" onclick="closeConfirmModal()" style="flex:1;padding:9px;border-radius:9px;border:1px solid #2a2b3d;background:#13141c;color:#8892a8;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans)">Annuler</button>
+      <button id="confirm-modal2-ok" style="flex:1;padding:9px;border-radius:9px;border:none;background:#ff4d6a;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">Confirmer</button>
+    </div>
+  </div>
+</div>
+<!-- Modal attribution gratuite / OST (rompus) détectée -->
+<div id="ost-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
+  <div style="background:#1a1b26;border:1px solid #2a2b3d;border-radius:16px;padding:28px 28px 22px;max-width:400px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,0.6)">
+    <div style="font-size:28px;margin-bottom:12px;text-align:center">🎁</div>
+    <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:8px;text-align:center">Attribution gratuite détectée</div>
+    <div id="ost-modal-body" style="font-size:12px;color:#8892a8;text-align:center;line-height:1.6;margin-bottom:16px"></div>
+    <label style="display:block;font-size:11px;color:#8892a8;margin-bottom:6px">Montant cash reçu (rompus) — ajustez au centime</label>
+    <div style="position:relative;margin-bottom:22px">
+      <input id="ost-modal-cash" type="number" step="0.01" inputmode="decimal"
+             style="width:100%;padding:11px 32px 11px 12px;border-radius:9px;border:1px solid #2a2b3d;background:#13141c;color:#fff;font-size:14px;font-weight:600;font-family:var(--mono,monospace);box-sizing:border-box">
+      <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#8892a8;font-size:13px">€</span>
+    </div>
+    <div style="display:flex;gap:10px">
+      <button id="ost-modal-cancel" style="flex:1;padding:9px;border-radius:9px;border:1px solid #2a2b3d;background:#13141c;color:#8892a8;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans)">Pas encore</button>
+      <button id="ost-modal-ok" style="flex:1;padding:9px;border-radius:9px;border:none;background:#7c6df5;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">Enregistrer</button>
+    </div>
+  </div>
+</div>
+<!-- Modal setup / changement code PIN -->
+<div id="pin-setup-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.65);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px">
+  <div style="background:linear-gradient(180deg,#1a1b26 0%,#141520 100%);border:1px solid rgba(124,109,245,0.25);border-radius:18px;padding:28px 28px 22px;max-width:380px;width:100%;box-shadow:0 30px 70px rgba(0,0,0,0.7)">
+    <div style="width:52px;height:52px;margin:0 auto 14px;border-radius:50%;background:rgba(124,109,245,0.12);display:flex;align-items:center;justify-content:center">
+      <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    </div>
+    <div id="pin-setup-title" style="font-size:17px;font-weight:700;color:#fff;margin-bottom:8px;text-align:center">Configurer un code PIN</div>
+    <div id="pin-setup-sub" style="font-size:12px;color:#8892a8;text-align:center;line-height:1.55;margin-bottom:18px">Saisissez un code à 6 chiffres. Il sera demandé à chaque ouverture de l'application.</div>
+    <input id="pin-setup-input" type="password" inputmode="none" readonly autocomplete="off" maxlength="6" placeholder="••••••" style="width:100%;padding:14px;border-radius:10px;border:1px solid #2a2b3d;background:#13141c;color:#fff;font-size:24px;font-family:var(--mono);font-weight:700;text-align:center;letter-spacing:10px;margin-bottom:14px;outline:none;caret-color:transparent;-webkit-text-security:disc">
+    <div id="pin-setup-error" style="display:none;font-size:12px;color:#ff4d6a;margin-bottom:10px;text-align:center;padding:8px 12px;background:rgba(255,77,106,0.08);border-radius:8px"></div>
+    <div class="pin-keypad" id="pin-setup-keypad"></div>
+    <div style="display:flex;gap:10px">
+      <button onclick="closePinSetupModal()" style="flex:1;padding:11px;border-radius:10px;border:1px solid #2a2b3d;background:#13141c;color:#cbd1de;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)">Annuler</button>
+      <button id="pin-setup-btn" onclick="pinSetupSubmit()" style="flex:1;padding:11px;border-radius:10px;border:none;background:#7c6df5;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans)">Continuer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal suppression compte (2 étapes : warning + mot de passe) -->
+<div id="delete-account-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.65);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px">
+  <div style="background:linear-gradient(180deg,#1a1b26 0%,#141520 100%);border:1px solid rgba(255,77,106,0.25);border-radius:18px;padding:30px 28px 24px;max-width:420px;width:100%;box-shadow:0 30px 70px rgba(0,0,0,0.7),0 0 0 1px rgba(255,77,106,0.08)">
+
+    <!-- Étape 1 : avertissement -->
+    <div id="del-step-1">
+      <div style="width:56px;height:56px;margin:0 auto 16px;border-radius:50%;background:rgba(255,77,106,0.12);display:flex;align-items:center;justify-content:center">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M3 6h18M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6M10 11v6M14 11v6M9 6V4a2 2 0 0 1 2-2h2a2 2 0 0 1 2 2v2"/>
+        </svg>
+      </div>
+      <div style="font-size:17px;font-weight:700;color:#fff;margin-bottom:10px;text-align:center">Supprimer définitivement le compte ?</div>
+      <div style="font-size:13px;color:#8892a8;text-align:center;line-height:1.6;margin-bottom:20px">
+        Cette action est <strong style="color:#ff4d6a">irréversible</strong>.<br>
+        Toutes vos données seront effacées :<br>
+        portefeuille, transactions, historique, dividendes, alertes, chat support, préférences.
+      </div>
+      <div style="display:flex;gap:10px">
+        <button onclick="closeDeleteAccountModal()" style="flex:1;padding:11px;border-radius:10px;border:1px solid #2a2b3d;background:#13141c;color:#cbd1de;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)">Annuler</button>
+        <button onclick="delGoToStep2()" style="flex:1;padding:11px;border-radius:10px;border:none;background:#ff4d6a;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans)">Continuer</button>
+      </div>
+    </div>
+
+    <!-- Étape 3 : progression -->
+    <div id="del-step-3" style="display:none;text-align:center;padding:10px 0">
+      <div style="width:64px;height:64px;margin:0 auto 18px;position:relative">
+        <svg width="64" height="64" viewBox="0 0 50 50" style="animation:del-spin 1s linear infinite">
+          <circle cx="25" cy="25" r="20" fill="none" stroke="rgba(255,77,106,0.15)" stroke-width="4"/>
+          <circle cx="25" cy="25" r="20" fill="none" stroke="#ff4d6a" stroke-width="4" stroke-linecap="round" stroke-dasharray="90 200"/>
+        </svg>
+      </div>
+      <div style="font-size:16px;font-weight:700;color:#fff;margin-bottom:8px">Suppression en cours…</div>
+      <div style="font-size:12px;color:#8892a8;line-height:1.6">Effacement des données, du chat et du compte.<br>Cela peut prendre quelques secondes, ne ferme pas la page.</div>
+    </div>
+    <style>@keyframes del-spin{to{transform:rotate(360deg)}}</style>
+
+    <!-- Étape 2 : envoi code OTP par email -->
+    <div id="del-step-2" style="display:none">
+      <div style="width:56px;height:56px;margin:0 auto 16px;border-radius:50%;background:rgba(124,109,245,0.12);display:flex;align-items:center;justify-content:center">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/>
+        </svg>
+      </div>
+      <div style="font-size:17px;font-weight:700;color:#fff;margin-bottom:10px;text-align:center">Confirmation par email</div>
+      <div style="font-size:12px;color:#8892a8;text-align:center;line-height:1.55;margin-bottom:18px">
+        Un code à 6 chiffres sera envoyé à<br><strong id="del-email-display" style="color:#edf0f7;font-family:var(--mono)">—</strong><br>pour confirmer la suppression.
+      </div>
+      <div id="del-error" style="display:none;font-size:12px;color:#ff4d6a;margin-bottom:12px;text-align:center;padding:8px 12px;background:rgba(255,77,106,0.08);border-radius:8px"></div>
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAADn5LAr4t8vCvyjS" data-theme="dark" id="turnstile-delete" style="margin-bottom:12px"></div>
+      <div style="display:flex;gap:10px">
+        <button onclick="delBackToStep1()" style="flex:1;padding:11px;border-radius:10px;border:1px solid #2a2b3d;background:#13141c;color:#cbd1de;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)">Retour</button>
+        <button id="del-final-btn" onclick="delFinalize()" style="flex:1;padding:11px;border-radius:10px;border:none;background:#ff4d6a;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans)">Envoyer le code</button>
+      </div>
+    </div>
+
+    <!-- Étape 4 : saisie code OTP -->
+    <div id="del-step-4" style="display:none">
+      <div style="width:56px;height:56px;margin:0 auto 16px;border-radius:50%;background:rgba(124,109,245,0.12);display:flex;align-items:center;justify-content:center">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
+        </svg>
+      </div>
+      <div style="font-size:17px;font-weight:700;color:#fff;margin-bottom:8px;text-align:center">Code envoyé</div>
+      <div style="font-size:12px;color:#8892a8;text-align:center;line-height:1.55;margin-bottom:14px">
+        Saisissez le code à 6 chiffres reçu à<br><strong id="del-email-sent-display" style="color:#edf0f7;font-family:var(--mono)">—</strong>
+      </div>
+      <input id="del-otp-input" type="tel" inputmode="numeric" autocomplete="one-time-code" maxlength="6" pattern="[0-9]{6}" placeholder="123456" style="width:100%;padding:14px;border-radius:10px;border:1px solid #2a2b3d;background:#13141c;color:#fff;font-size:22px;font-family:var(--mono);font-weight:700;text-align:center;letter-spacing:8px;margin-bottom:12px;outline:none">
+      <div id="del-otp-error" style="display:none;font-size:12px;color:#ff4d6a;margin-bottom:12px;text-align:center;padding:8px 12px;background:rgba(255,77,106,0.08);border-radius:8px"></div>
+      <div style="display:flex;gap:10px;margin-bottom:10px">
+        <button onclick="delBackToStep1()" style="flex:1;padding:11px;border-radius:10px;border:1px solid #2a2b3d;background:#13141c;color:#cbd1de;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)">Annuler</button>
+        <button id="del-verify-btn" onclick="delVerifyOtp()" style="flex:1;padding:11px;border-radius:10px;border:none;background:#ff4d6a;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans)">Confirmer suppression</button>
+      </div>
+      <button id="del-resend-btn" onclick="delResendOtp()" style="width:100%;padding:8px;border:none;background:transparent;color:#7c6df5;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans);text-decoration:underline">Renvoyer le code</button>
+    </div>
+
+  </div>
+</div>
+
+</body>
+</html>

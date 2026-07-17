@@ -1,0 +1,32 @@
+name: Earnings Notifications
+
+on:
+  schedule:
+    # 13:00 UTC (créneau "avant ouverture") + 22:00 UTC (créneau "après clôture"),
+    # du lundi au vendredi.
+    - cron: '0 13,22 * * 1-5'
+  workflow_dispatch:
+
+jobs:
+  notify-earnings:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd scripts
+          npm install
+
+      - name: Notify earnings
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          cd scripts
+          node earnings-notify.js

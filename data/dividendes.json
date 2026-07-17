@@ -1,0 +1,100 @@
+{
+  "generated_at": "2026-06-15",
+  "dividends": {
+    "AI.PA": {
+      "ticker": "AI.PA",
+      "name": "Air Liquide",
+      "next": null
+    },
+    "TTE.PA": {
+      "ticker": "TTE.PA",
+      "name": "TotalEnergies",
+      "next": {
+        "date": "2026-06-30",
+        "amount_estimated": 0.84,
+        "confirmed": true
+      }
+    },
+    "BNP.PA": {
+      "ticker": "BNP.PA",
+      "name": "BNP Paribas",
+      "next": null
+    },
+    "ACA.PA": {
+      "ticker": "ACA.PA",
+      "name": "Crédit Agricole",
+      "next": {
+        "date": "2026-05-28",
+        "amount_estimated": 1.13,
+        "confirmed": true
+      }
+    },
+    "SAN.PA": {
+      "ticker": "SAN.PA",
+      "name": "Sanofi",
+      "next": null
+    },
+    "OR.PA": {
+      "ticker": "OR.PA",
+      "name": "L'Oréal",
+      "next": null
+    },
+    "MC.PA": {
+      "ticker": "MC.PA",
+      "name": "LVMH",
+      "next": null
+    },
+    "ENGI.PA": {
+      "ticker": "ENGI.PA",
+      "name": "Engie",
+      "next": null
+    },
+    "DG.PA": {
+      "ticker": "DG.PA",
+      "name": "Vinci",
+      "next": null
+    },
+    "SU.PA": {
+      "ticker": "SU.PA",
+      "name": "Schneider Electric",
+      "next": null
+    },
+    "RI.PA": {
+      "ticker": "RI.PA",
+      "name": "Pernod Ricard",
+      "next": null
+    },
+    "CAP.PA": {
+      "ticker": "CAP.PA",
+      "name": "Capgemini",
+      "next": {
+        "date": "2026-06-04",
+        "amount_estimated": 3.4,
+        "confirmed": true
+      }
+    },
+    "KER.PA": {
+      "ticker": "KER.PA",
+      "name": "Kering",
+      "next": {
+        "date": "2026-06-04",
+        "amount_estimated": 2.75,
+        "confirmed": true
+      }
+    },
+    "SAF.PA": {
+      "ticker": "SAF.PA",
+      "name": "Safran",
+      "next": {
+        "date": "2026-05-28",
+        "amount_estimated": 3.35,
+        "confirmed": true
+      }
+    },
+    "CS.PA": {
+      "ticker": "CS.PA",
+      "name": "AXA",
+      "next": null
+    }
+  }
+}

@@ -1,0 +1,14 @@
+node_modules/
+.env
+
+# Clé service account Firebase — NE JAMAIS commiter (repo public)
+*serviceAccount*.json
+*firebase-adminsdk*.json
+firebase-key.json
+
+# État runtime du bot
+data/temp-bans.json
+data/warns.json
+data/status-monitors.json
+
+*.log
