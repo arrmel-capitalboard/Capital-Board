@@ -2734,6 +2734,8 @@ function renderTxHistory() {
   const count = document.getElementById('tx-count');
   const moreWrap = document.getElementById('tx-show-more-wrap');
 
+  if (!tbody) return;   // bloc historique retiré du portefeuille → voir onglet Activité
+
   if (!txs.length) {
     tbody.innerHTML = '';
     empty.style.display = 'block';
