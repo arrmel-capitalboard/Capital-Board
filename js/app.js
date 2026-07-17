@@ -2510,6 +2510,7 @@ function showPage(id) {
     b.classList.toggle('active', b.dataset.mob === id);
   });
   if (window.IS_DEMO && id === 'performance') { _renderDemoBlocked('page-performance', 'Analyse de performance'); return; }
+  if (id === 'activite')    renderActivite();
   if (id === 'graphiques')  initCharts();
   if (id === 'recap')       renderRecapPage();
   if (id === 'alertes')     renderAlertsList();
@@ -2543,6 +2544,7 @@ function showPageMobile(id) {
     if (onclick.includes("'" + id + "'")) n.classList.add('active');
   });
   if (window.IS_DEMO && id === 'performance') { _renderDemoBlocked('page-performance', 'Analyse de performance'); return; }
+  if (id === 'activite')    renderActivite();
   if (id === 'graphiques')  initCharts();
   if (id === 'recap')       renderRecapPage();
   if (id === 'alertes')     renderAlertsList();
@@ -10016,6 +10018,10 @@ function showOstPrompt(item) {
   const logo = (typeof logoHtmlModal === 'function') ? logoHtmlModal(item.ticker) : '';
   const wholeRow = item.whole > 0
     ? `<div class="ost-row"><span>Actions gratuites reçues</span><b>+${item.whole}</b></div>` : '';
+  const titleEl = document.getElementById('ost-modal-title');
+  const kickEl  = document.getElementById('ost-modal-kicker');
+  if (titleEl) titleEl.textContent = 'Attribution gratuite détectée';
+  if (kickEl)  kickEl.textContent  = 'Opération sur titre';
   body.innerHTML =
     `<div class="ost-firm">${logo}<div>` +
       `<div class="ost-firm-name">${item.name}</div>` +
@@ -10027,10 +10033,12 @@ function showOstPrompt(item) {
     `</div>`;
   input.value = item.estCash.toFixed(2);
   modal.style.display = 'flex';
+  setTimeout(() => { try { input.focus(); input.select(); } catch (_) {} }, 60);
 
-  const close = () => { modal.style.display = 'none'; _ostActive = false; _processOstQueue(); };
+  // Détection obligatoire : pas d'échappatoire. Seul « Enregistrer » ferme.
+  noBtn.style.display = 'none';
 
-  noBtn.onclick = () => { _ostDeclined.add(item.ticker + '|' + item.date); close(); };
+  const close = () => { noBtn.style.display = ''; modal.style.display = 'none'; _ostActive = false; _processOstQueue(); };
 
   okBtn.onclick = () => {
     const cash = parseFloat(String(input.value).replace(',', '.'));
@@ -10063,8 +10071,176 @@ function showOstPrompt(item) {
     }
 
     try { renderPortfolio(); } catch (_) {}
+    try { renderActivite(); } catch (_) {}
     close();
   };
+}
+
+// Édition du montant d'une attribution (rompus) déjà enregistrée.
+// L'attribution ne peut PAS être supprimée : on ne modifie que le montant.
+function showOstEdit(txId) {
+  const tx = getTransactions(currentUser).find(t => t.id === txId);
+  if (!tx) return;
+  const modal = document.getElementById('ost-modal');
+  const body  = document.getElementById('ost-modal-body');
+  const input = document.getElementById('ost-modal-cash');
+  const okBtn = document.getElementById('ost-modal-ok');
+  const noBtn = document.getElementById('ost-modal-cancel');
+  const titleEl = document.getElementById('ost-modal-title');
+  const kickEl  = document.getElementById('ost-modal-kicker');
+  if (!modal || !body || !input) return;
+
+  const dateFr = tx.date
+    ? new Date(tx.date + 'T12:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' })
+    : '—';
+  const logo = (typeof logoHtmlModal === 'function') ? logoHtmlModal(tx.ticker) : '';
+  if (titleEl) titleEl.textContent = 'Modifier le montant';
+  if (kickEl)  kickEl.textContent  = 'Attribution gratuite';
+  body.innerHTML =
+    `<div class="ost-firm">${logo}<div>` +
+      `<div class="ost-firm-name">${tx.name || tx.ticker || '—'}</div>` +
+      `<div class="ost-firm-meta">Rompus attribution · ${dateFr}</div>` +
+    `</div></div>` +
+    `<div class="ost-break"><div class="ost-row ost-row-cash">` +
+      `<span>Montant enregistré</span><b>${(tx.qty * tx.price).toFixed(2)} €</b>` +
+    `</div></div>`;
+  input.value = (tx.qty * tx.price).toFixed(2);
+  noBtn.style.display = '';
+  noBtn.textContent = 'Annuler';
+  modal.style.display = 'flex';
+  setTimeout(() => { try { input.focus(); input.select(); } catch (_) {} }, 60);
+
+  const close = () => { modal.style.display = 'none'; noBtn.textContent = 'Pas encore'; };
+  noBtn.onclick = () => close();
+  okBtn.onclick = () => {
+    const cash = parseFloat(String(input.value).replace(',', '.'));
+    if (isNaN(cash) || cash < 0) { input.focus(); return; }
+    const list = getTransactions(currentUser);
+    const t = list.find(x => x.id === txId);
+    if (t) { t.qty = 1; t.price = cash; saveTransactions(currentUser, list); }
+    try { renderPortfolio(); } catch (_) {}
+    try { renderActivite(); } catch (_) {}
+    close();
+  };
+}
+
+// ─── ONGLET ACTIVITÉ : timeline unifiée + retour arrière ───
+function renderActivite() {
+  const feed  = document.getElementById('activite-feed');
+  const empty = document.getElementById('activite-empty');
+  if (!feed) return;
+  const txs  = getTransactions(currentUser) || [];
+  const vers = getVersements(currentUser) || [];
+
+  const ev = [];
+  txs.forEach(t => ev.push({ kind:'tx', id:t.id, type:t.type, date:t.date||'',
+    ticker:t.ticker, name:t.name, qty:t.qty, price:t.price }));
+  vers.forEach(v => ev.push({ kind:'versement', id:v.id, type:'versement', date:v.date||'',
+    name:v.label || 'Versement', amount:v.amount }));
+
+  if (!ev.length) { feed.innerHTML = ''; empty.style.display = 'block'; return; }
+  empty.style.display = 'none';
+  ev.sort((a,b) => (b.date||'').localeCompare(a.date||'') || (b.id||0)-(a.id||0));
+
+  const CFG = {
+    buy:          { tag:'ACHAT',       bg:'rgba(124,109,245,.15)', col:'#a99bff', sign:-1 },
+    sell:         { tag:'VENTE',       bg:'rgba(255,93,120,.14)',  col:'#ff5d78', sign:+1 },
+    dividend:     { tag:'DIVIDENDE',   bg:'rgba(245,183,49,.14)',  col:'#f5b731', sign:+1 },
+    distribution: { tag:'ATTRIBUTION', bg:'rgba(124,109,245,.15)', col:'#a99bff', sign:+1 },
+    versement:    { tag:'VERSEMENT',   bg:'rgba(0,224,158,.14)',   col:'#00e09e', sign:+1 },
+  };
+  const ICO = {
+    buy:  '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>',
+    sell: '<path d="M12 5v14"/><path d="m19 12-7 7-7-7"/>',
+    dividend: '<rect x="2" y="7" width="20" height="5"/><path d="M12 22V7"/><path d="M20 12v10H4V12"/>',
+    distribution: '<rect x="2" y="7" width="20" height="5" rx="1"/><path d="M12 22V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>',
+    versement: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
+  };
+  const fmtD = d => d ? new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+
+  feed.innerHTML = ev.map(e => {
+    const c = CFG[e.type] || CFG.buy;
+    const amount = e.kind === 'versement' ? e.amount : (e.qty * e.price);
+    const signed = (c.sign < 0 ? '−' : '+') + amount.toFixed(2) + ' €';
+    const amtCol = c.sign < 0 ? 'var(--negative)' : 'var(--positive)';
+    const title  = e.name || e.ticker || 'Opération';
+    let sub;
+    if (e.kind === 'versement')        sub = fmtD(e.date);
+    else if (e.type === 'distribution') sub = fmtD(e.date) + ' · rompus';
+    else                                sub = fmtD(e.date) + ' · ' + e.qty + ' × ' + Number(e.price).toFixed(2) + ' €';
+
+    let actions;
+    if (e.type === 'distribution') {
+      actions =
+        `<button class="act-btn edit" title="Modifier le montant" onclick="showOstEdit(${e.id})"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></button>` +
+        `<span class="act-lock" title="Attribution non supprimable"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></span>`;
+    } else {
+      actions =
+        `<button class="act-btn del" title="Supprimer" onclick="deleteActivite('${e.kind}',${e.id})"><svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg></button>`;
+    }
+
+    return `<div class="act-item">` +
+      `<div class="act-ico" style="background:${c.bg}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${c.col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICO[e.type]||''}</svg></div>` +
+      `<div class="act-main"><div class="act-title">${title}<span class="act-tag" style="background:${c.bg};color:${c.col}">${c.tag}</span></div><div class="act-sub">${sub}</div></div>` +
+      `<div class="act-amt" style="color:${amtCol}">${signed}</div>` +
+      `<div class="act-actions">${actions}</div>` +
+      `</div>`;
+  }).join('');
+}
+
+function deleteActivite(kind, id) {
+  const txs  = getTransactions(currentUser) || [];
+  const vers = getVersements(currentUser) || [];
+  let label = 'cette opération';
+  if (kind === 'tx') {
+    const t = txs.find(x => x.id === id);
+    if (t && t.type === 'distribution') return;   // attribution non supprimable
+    if (t) {
+      const noms = { buy:"l'achat", sell:'la vente', dividend:'le dividende' };
+      label = (noms[t.type] || "l'opération") + ' ' + (t.name || t.ticker || '');
+    }
+  } else {
+    const v = vers.find(x => x.id === id);
+    if (v) label = 'le versement « ' + (v.label || '') + ' » (' + v.amount.toFixed(2) + ' €)';
+  }
+  showConfirmModal({
+    icon: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#ff5d78" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>',
+    title: 'Supprimer cette opération ?',
+    body: 'Supprimer ' + label + ' ? Le solde espèces et le portefeuille seront recalculés.',
+    okLabel: 'Supprimer', cancelLabel: 'Annuler', danger: true,
+    onConfirm: () => _doDeleteActivite(kind, id),
+  });
+}
+
+function _doDeleteActivite(kind, id) {
+  if (kind === 'versement') {
+    saveVersements(currentUser, getVersements(currentUser).filter(v => v.id !== id));
+  } else {
+    const txs = getTransactions(currentUser);
+    const t = txs.find(x => x.id === id);
+    if (!t || t.type === 'distribution') return;
+    // Retour arrière sur la position (Option « annule tout »).
+    if (t.type === 'buy' || t.type === 'sell') {
+      const pf  = getPortfolio(currentUser);
+      const row = pf.find(r => r.ticker === t.ticker);
+      if (row) {
+        if (t.type === 'buy')  row.qty -= t.qty;
+        if (t.type === 'sell') row.qty += t.qty;
+        if (row.qty <= 0) {
+          pf.splice(pf.indexOf(row), 1);
+        } else if (t.type === 'buy') {
+          const rest = txs.filter(x => x.id !== id && x.type === 'buy' && x.ticker === t.ticker);
+          const q = rest.reduce((s,x)=>s+x.qty,0);
+          const c = rest.reduce((s,x)=>s+x.qty*x.price,0);
+          if (q > 0) row.buyPrice = c / q;
+        }
+        savePortfolio(currentUser, pf);
+      }
+    }
+    saveTransactions(currentUser, txs.filter(x => x.id !== id));
+  }
+  try { renderPortfolio(); } catch (_) {}
+  try { renderActivite(); } catch (_) {}
 }
 
 // Affiche l'état "aucune donnée" : graphe vidé + message dans le tableau.

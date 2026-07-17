@@ -390,6 +390,9 @@
       <div class="nav-item" onclick="showPage('watchlist')">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b8dee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span> Watchlist
       </div>
+      <div class="nav-item" onclick="showPage('activite')">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span> Activité
+      </div>
       <div class="nav-section-label" style="margin-top:14px">Analyse</div>
       <div class="nav-item" onclick="showPage('performance')">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a29bfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span> Performance
@@ -622,6 +625,46 @@
           <div class="empty-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#8892a8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div>
           <div class="empty-text">Aucune action dans la watchlist.<br>Ajoutez-en pour suivre leur cours.</div>
         </div>
+      </div>
+    </div>
+
+    <!-- ACTIVITÉ PAGE -->
+    <style>
+      .activite-feed{ display:flex; flex-direction:column; gap:9px }
+      .act-daylabel{ font-size:10.5px; font-weight:700; text-transform:uppercase; letter-spacing:1px;
+        color:var(--text3); margin:14px 2px 2px }
+      .act-daylabel:first-child{ margin-top:0 }
+      .act-item{ display:flex; align-items:center; gap:13px; padding:12px 14px;
+        background:var(--s1); border:1px solid var(--border); border-radius:13px;
+        transition:border-color .15s, transform .1s }
+      .act-item:hover{ border-color:var(--border2) }
+      .act-ico{ width:38px; height:38px; border-radius:10px; flex-shrink:0;
+        display:flex; align-items:center; justify-content:center }
+      .act-main{ flex:1; min-width:0 }
+      .act-title{ font-size:13px; font-weight:650; color:var(--text); display:flex; align-items:center; gap:7px }
+      .act-tag{ font-size:9.5px; font-weight:700; letter-spacing:.4px; padding:1.5px 6px; border-radius:5px; white-space:nowrap }
+      .act-sub{ font-size:11px; color:var(--text3); margin-top:2px; font-family:var(--mono) }
+      .act-amt{ font-size:13.5px; font-weight:700; font-family:var(--mono); white-space:nowrap; text-align:right }
+      .act-actions{ display:flex; gap:6px; flex-shrink:0 }
+      .act-btn{ width:30px; height:30px; border-radius:8px; border:1px solid var(--border);
+        background:var(--s3); color:var(--text3); cursor:pointer; display:flex; align-items:center; justify-content:center;
+        transition:all .13s }
+      .act-btn:hover{ color:var(--text); border-color:var(--border2) }
+      .act-btn.del:hover{ color:#ff5d78; border-color:rgba(255,93,120,.4); background:rgba(255,93,120,.08) }
+      .act-btn.edit:hover{ color:#a99bff; border-color:rgba(124,109,245,.4); background:rgba(124,109,245,.08) }
+      .act-lock{ width:30px; height:30px; display:flex; align-items:center; justify-content:center; color:var(--text3); opacity:.5 }
+    </style>
+    <div class="page" id="page-activite">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Activité</div>
+          <div class="page-subtitle">Toutes vos opérations · achats, ventes, dividendes, attributions, versements</div>
+        </div>
+      </div>
+      <div id="activite-feed" class="activite-feed"></div>
+      <div class="empty-state" id="activite-empty" style="display:none">
+        <div class="empty-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#8892a8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+        <div class="empty-text">Aucune opération enregistrée pour le moment.</div>
       </div>
     </div>
 
@@ -1573,8 +1616,8 @@
         <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
       </svg>
     </div>
-    <div class="ost-title">Attribution gratuite détectée</div>
-    <div class="ost-kicker">Opération sur titre</div>
+    <div class="ost-title" id="ost-modal-title">Attribution gratuite détectée</div>
+    <div class="ost-kicker" id="ost-modal-kicker">Opération sur titre</div>
     <div id="ost-modal-body"></div>
     <label class="ost-lbl">Montant cash reçu (rompus) — <em>ajustez au centime</em></label>
     <div class="ost-inwrap">
