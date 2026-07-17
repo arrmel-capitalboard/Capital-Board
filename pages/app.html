@@ -1503,20 +1503,87 @@
   </div>
 </div>
 <!-- Modal attribution gratuite / OST (rompus) détectée -->
-<div id="ost-modal" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
-  <div style="background:#1a1b26;border:1px solid #2a2b3d;border-radius:16px;padding:28px 28px 22px;max-width:400px;width:90%;box-shadow:0 24px 64px rgba(0,0,0,0.6)">
-    <div style="font-size:28px;margin-bottom:12px;text-align:center">🎁</div>
-    <div style="font-size:15px;font-weight:700;color:#fff;margin-bottom:8px;text-align:center">Attribution gratuite détectée</div>
-    <div id="ost-modal-body" style="font-size:12px;color:#8892a8;text-align:center;line-height:1.6;margin-bottom:16px"></div>
-    <label style="display:block;font-size:11px;color:#8892a8;margin-bottom:6px">Montant cash reçu (rompus) — ajustez au centime</label>
-    <div style="position:relative;margin-bottom:22px">
-      <input id="ost-modal-cash" type="number" step="0.01" inputmode="decimal"
-             style="width:100%;padding:11px 32px 11px 12px;border-radius:9px;border:1px solid #2a2b3d;background:#13141c;color:#fff;font-size:14px;font-weight:600;font-family:var(--mono,monospace);box-sizing:border-box">
-      <span style="position:absolute;right:12px;top:50%;transform:translateY(-50%);color:#8892a8;font-size:13px">€</span>
+<style>
+  #ost-modal{ display:none; position:fixed; inset:0; z-index:9999;
+    background:rgba(8,9,14,0.72); backdrop-filter:blur(8px);
+    align-items:center; justify-content:center; padding:20px;
+    animation:ostFade .22s ease }
+  @keyframes ostFade{ from{ opacity:0 } to{ opacity:1 } }
+  @keyframes ostPop{ from{ opacity:0; transform:translateY(14px) scale(.96) } to{ opacity:1; transform:none } }
+  @keyframes ostGlow{ 0%,100%{ box-shadow:0 0 0 0 rgba(124,109,245,.45), 0 8px 22px rgba(124,109,245,.35) }
+    50%{ box-shadow:0 0 0 10px rgba(124,109,245,0), 0 8px 30px rgba(124,109,245,.55) } }
+  @keyframes ostWiggle{ 0%,92%,100%{ transform:rotate(0) } 94%{ transform:rotate(-9deg) } 97%{ transform:rotate(9deg) } }
+  .ost-card{ position:relative; overflow:hidden; width:100%; max-width:396px;
+    background:linear-gradient(180deg,#1c1d2a 0%,#141520 100%);
+    border:1px solid rgba(124,109,245,.28); border-radius:20px;
+    padding:26px 26px 22px; box-shadow:0 30px 80px rgba(0,0,0,.65);
+    animation:ostPop .32s cubic-bezier(.2,.9,.25,1) }
+  .ost-card::before{ content:''; position:absolute; top:-40%; left:-20%; width:140%; height:80%;
+    background:radial-gradient(60% 60% at 50% 0%, rgba(124,109,245,.20), transparent 70%);
+    pointer-events:none }
+  .ost-badge{ position:relative; width:60px; height:60px; margin:2px auto 16px; border-radius:50%;
+    background:linear-gradient(135deg,#8b7bff 0%,#7c6df5 45%,#e05a9c 130%);
+    display:flex; align-items:center; justify-content:center; animation:ostGlow 2.6s ease-in-out infinite }
+  .ost-badge svg{ animation:ostWiggle 3.4s ease-in-out infinite; transform-origin:50% 60% }
+  .ost-title{ font-size:16px; font-weight:750; color:#fff; text-align:center; letter-spacing:-.2px; margin-bottom:3px }
+  .ost-kicker{ font-size:10.5px; font-weight:600; color:#a99bff; text-align:center;
+    text-transform:uppercase; letter-spacing:1.4px; margin-bottom:18px }
+  .ost-firm{ display:flex; align-items:center; gap:12px;
+    background:rgba(255,255,255,.03); border:1px solid rgba(255,255,255,.06);
+    border-radius:13px; padding:11px 13px; margin-bottom:12px }
+  .ost-firm-name{ font-size:14px; font-weight:700; color:#fff; line-height:1.2 }
+  .ost-firm-meta{ font-size:11px; color:#8892a8; margin-top:2px }
+  .ost-pill{ display:inline-block; font-size:10px; font-weight:700; font-family:var(--mono,monospace);
+    color:#a99bff; background:rgba(124,109,245,.14); border:1px solid rgba(124,109,245,.3);
+    padding:2px 7px; border-radius:6px; margin-left:2px }
+  .ost-break{ border:1px solid rgba(255,255,255,.07); border-radius:13px; overflow:hidden; margin-bottom:18px }
+  .ost-row{ display:flex; align-items:center; justify-content:space-between;
+    padding:10px 13px; font-size:12px; color:#8892a8 }
+  .ost-row + .ost-row{ border-top:1px solid rgba(255,255,255,.05) }
+  .ost-row b{ color:#fff; font-weight:650; font-family:var(--mono,monospace) }
+  .ost-row-cash{ background:rgba(245,183,49,.07) }
+  .ost-row-cash span{ color:#f5cf7a }
+  .ost-row-cash b{ color:#f5b731; font-size:14px }
+  .ost-lbl{ display:block; font-size:11px; color:#8892a8; margin-bottom:7px }
+  .ost-lbl em{ color:#a99bff; font-style:normal; font-weight:600 }
+  .ost-inwrap{ position:relative; margin-bottom:20px }
+  #ost-modal-cash{ width:100%; padding:12px 34px 12px 14px; border-radius:11px;
+    border:1.5px solid rgba(255,255,255,.1); background:#0f1018; color:#fff;
+    font-size:16px; font-weight:700; font-family:var(--mono,monospace); box-sizing:border-box;
+    transition:border-color .15s, box-shadow .15s; outline:none }
+  #ost-modal-cash:focus{ border-color:#7c6df5; box-shadow:0 0 0 3px rgba(124,109,245,.22) }
+  .ost-eur{ position:absolute; right:14px; top:50%; transform:translateY(-50%); color:#8892a8; font-size:14px; font-weight:600 }
+  .ost-btns{ display:flex; gap:10px }
+  .ost-btns button{ flex:1; padding:11px; border-radius:11px; font-size:12.5px; font-weight:700;
+    cursor:pointer; font-family:var(--sans); transition:transform .12s, filter .15s, background .15s }
+  .ost-btns button:active{ transform:translateY(1px) }
+  #ost-modal-cancel{ border:1px solid rgba(255,255,255,.12); background:transparent; color:#8892a8 }
+  #ost-modal-cancel:hover{ background:rgba(255,255,255,.05); color:#c4ccdb }
+  #ost-modal-ok{ border:none; color:#fff; background:linear-gradient(135deg,#8b7bff,#7c6df5); box-shadow:0 6px 18px rgba(124,109,245,.4) }
+  #ost-modal-ok:hover{ filter:brightness(1.08) }
+</style>
+<div id="ost-modal">
+  <div class="ost-card">
+    <div class="ost-badge">
+      <svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M20 12v9a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-9"/>
+        <rect x="2" y="7" width="20" height="5" rx="1"/>
+        <path d="M12 22V7"/>
+        <path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/>
+        <path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>
+      </svg>
     </div>
-    <div style="display:flex;gap:10px">
-      <button id="ost-modal-cancel" style="flex:1;padding:9px;border-radius:9px;border:1px solid #2a2b3d;background:#13141c;color:#8892a8;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans)">Pas encore</button>
-      <button id="ost-modal-ok" style="flex:1;padding:9px;border-radius:9px;border:none;background:#7c6df5;color:#fff;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">Enregistrer</button>
+    <div class="ost-title">Attribution gratuite détectée</div>
+    <div class="ost-kicker">Opération sur titre</div>
+    <div id="ost-modal-body"></div>
+    <label class="ost-lbl">Montant cash reçu (rompus) — <em>ajustez au centime</em></label>
+    <div class="ost-inwrap">
+      <input id="ost-modal-cash" type="number" step="0.01" inputmode="decimal">
+      <span class="ost-eur">€</span>
+    </div>
+    <div class="ost-btns">
+      <button id="ost-modal-cancel">Pas encore</button>
+      <button id="ost-modal-ok">Enregistrer</button>
     </div>
   </div>
 </div>

@@ -10013,13 +10013,18 @@ function showOstPrompt(item) {
 
   const dateFr = new Date(item.date + 'T12:00:00')
     .toLocaleDateString('fr-FR', { day: '2-digit', month: 'long', year: 'numeric' });
-  const wholeLine = item.whole > 0
-    ? `+<b style="color:#fff">${item.whole}</b> action(s) gratuite(s) ajoutée(s)<br>` : '';
+  const logo = (typeof logoHtmlModal === 'function') ? logoHtmlModal(item.ticker) : '';
+  const wholeRow = item.whole > 0
+    ? `<div class="ost-row"><span>Actions gratuites reçues</span><b>+${item.whole}</b></div>` : '';
   body.innerHTML =
-    `<b style="color:#fff">${item.name}</b> — ratio ${item.num}:${item.den} le ${dateFr}.<br>` +
-    wholeLine +
-    `Fraction (rompu) : <b style="color:#fff">${item.fraction.toFixed(3)}</b> action ` +
-    `≈ <b style="color:#a99bff">${item.estCash.toFixed(2)} €</b> estimés.`;
+    `<div class="ost-firm">${logo}<div>` +
+      `<div class="ost-firm-name">${item.name}</div>` +
+      `<div class="ost-firm-meta">Ratio <span class="ost-pill">${item.num}:${item.den}</span> · ${dateFr}</div>` +
+    `</div></div>` +
+    `<div class="ost-break">${wholeRow}` +
+      `<div class="ost-row"><span>Fraction (rompu)</span><b>${item.fraction.toFixed(3)} action</b></div>` +
+      `<div class="ost-row ost-row-cash"><span>Cash estimé</span><b>${item.estCash.toFixed(2)} €</b></div>` +
+    `</div>`;
   input.value = item.estCash.toFixed(2);
   modal.style.display = 'flex';
 
