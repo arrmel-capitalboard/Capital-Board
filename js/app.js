@@ -10254,8 +10254,19 @@ function renderActivite() {
     versement: '<line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>',
   };
   const fmtD = d => d ? new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'}) : '—';
+  const fmtMonth = d => d ? new Date(d+'T12:00:00').toLocaleDateString('fr-FR',{month:'long',year:'numeric'}) : 'Sans date';
+  const cap = s => s.charAt(0).toUpperCase() + s.slice(1);
 
-  feed.innerHTML = ev.map(e => {
+  // Regroupe les événements par mois (ordre décroissant déjà trié)
+  const groups = [];
+  const gIdx = {};
+  ev.forEach(e => {
+    const key = e.date ? e.date.slice(0, 7) : 'nodate';
+    if (!(key in gIdx)) { gIdx[key] = groups.length; groups.push({ label: fmtMonth(e.date), items: [] }); }
+    groups[gIdx[key]].items.push(e);
+  });
+
+  const rowHtml = e => {
     const c = CFG[e.type] || CFG.buy;
     const amount = e.kind === 'versement' ? e.amount : (e.qty * e.price);
     const signed = (c.sign < 0 ? '−' : '+') + amount.toFixed(2) + ' €';
@@ -10282,6 +10293,23 @@ function renderActivite() {
       `<div class="act-amt" style="color:${amtCol}">${signed}</div>` +
       `<div class="act-actions">${actions}</div>` +
       `</div>`;
+  };
+
+  feed.innerHTML = groups.map(g => {
+    let net = 0;
+    g.items.forEach(e => {
+      const c = CFG[e.type] || CFG.buy;
+      const amount = e.kind === 'versement' ? e.amount : (e.qty * e.price);
+      net += c.sign * amount;
+    });
+    const netCol = net >= 0 ? 'var(--positive)' : 'var(--negative)';
+    const netStr = (net >= 0 ? '+' : '−') + Math.abs(net).toFixed(2) + ' €';
+    const rows = g.items.map(rowHtml).join('');
+    return `<div class="act-month">` +
+      `<div class="act-month-head">` +
+        `<span class="act-month-name">${cap(g.label)}<span class="act-month-count">${g.items.length} op.</span></span>` +
+        `<span class="act-month-net" style="color:${netCol}">${netStr}</span>` +
+      `</div>${rows}</div>`;
   }).join('');
 }
 
