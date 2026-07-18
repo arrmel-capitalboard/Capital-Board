@@ -12335,25 +12335,8 @@ async function renderAdminPage() {
   if (signupT) signupT.checked = signupOpen;
   _adminSignupStatus(signupOpen);
 
-  // Feature flags
-  const feats = cfg.features || {};
-  applyFeatureFlags(feats); // reflète aussi tout de suite dans le menu
-  const box = document.getElementById('admin-features');
-  if (box) {
-    const LBL = {
-      watchlist: 'Watchlist', dividendes: 'Dividendes', performance: 'Performance',
-      benchmark: 'Benchmark', projections: 'Projections', earnings: 'Calendrier résultats',
-      recap: 'Récap du jour', alertes: 'Alertes prix',
-    };
-    box.innerHTML = FLAGGABLE.map(key => {
-      const on = feats[key] !== false;
-      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">' +
-        '<span style="font-size:13px;color:var(--text)">' + (LBL[key] || key) + '</span>' +
-        '<label class="toggle-switch"><input type="checkbox" ' + (on ? 'checked' : '') +
-        ' onchange="adminToggleFeature(\'' + key + '\',this)"><span class="toggle-track"></span></label>' +
-        '</div>';
-    }).join('');
-  }
+  // Feature flags (on/off) — intégrés à l'éditeur de menu ci-dessous
+  applyFeatureFlags(cfg.features || {});
 
   // Éditeur d'organisation du menu
   _navDraft = (Array.isArray(cfg.nav) && cfg.nav.length)
@@ -12370,6 +12353,7 @@ async function adminToggleFeature(key, el) {
     await _setAppConfig({ features: { [key]: on } });
     _featureFlags[key] = on;
     applyFeatureFlags(_featureFlags);
+    if (_navDraft) renderNavEditor();
   } catch (e) {
     console.error('[admin] feature flag:', e);
     el.checked = !on;
@@ -12386,16 +12370,23 @@ function renderNavEditor() {
   const mini = 'width:26px;height:26px;border-radius:7px;border:1px solid var(--border);background:var(--s3);color:var(--text3);cursor:pointer;font-size:12px;display:inline-flex;align-items:center;justify-content:center';
 
   box.innerHTML = _navDraft.map((cat, ci) => {
-    const items = (cat.items || []).map((key, ii) =>
-      '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--s2);border:1px solid var(--border);border-radius:9px;margin-bottom:5px">' +
-        '<span style="font-size:12.5px;color:var(--text)">' + (SECTION_LABELS[key] || key) + '</span>' +
-        '<span style="display:flex;gap:4px">' +
+    const items = (cat.items || []).map((key, ii) => {
+      const flaggable = FLAGGABLE.includes(key);
+      const on = _isFeatureOn(key);
+      const flagCtrl = flaggable
+        ? '<label class="toggle-switch" style="transform:scale(.78);transform-origin:right center" title="Activer / masquer"><input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="adminToggleFeature(\'' + key + '\',this)"><span class="toggle-track"></span></label>'
+        : '<span style="font-size:8.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">core</span>';
+      const dim = flaggable && !on ? 'opacity:.45' : '';
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--s2);border:1px solid var(--border);border-radius:9px;margin-bottom:5px">' +
+        '<span style="font-size:12.5px;color:var(--text);' + dim + '">' + (SECTION_LABELS[key] || key) + '</span>' +
+        '<span style="display:flex;gap:6px;align-items:center">' +
+          flagCtrl +
           '<button style="' + mini + '" onclick="adminNavMoveItem(' + ci + ',' + ii + ',-1)" title="Monter">▲</button>' +
           '<button style="' + mini + '" onclick="adminNavMoveItem(' + ci + ',' + ii + ',1)" title="Descendre">▼</button>' +
           '<button style="' + mini + '" onclick="adminNavRemoveItem(' + ci + ',' + ii + ')" title="Retirer du menu">✕</button>' +
         '</span>' +
-      '</div>'
-    ).join('');
+      '</div>';
+    }).join('');
     const addOpts = pool.length
       ? '<select onchange="adminNavAddSection(' + ci + ',this)" style="width:100%;margin-top:4px;background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:12px;padding:7px 10px;font-family:var(--sans);outline:none">' +
           '<option value="">＋ Ajouter une section…</option>' +
