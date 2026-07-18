@@ -12250,7 +12250,7 @@ function renderSupportAdmin() {
     + '<div id="chat-threads"><div class="chat-empty">Chargement…</div></div></div>'
     + '<div class="chat-messages-pane" style="display:flex;flex-direction:column;height:100%">'
     + '<div id="chat-actions-bar" style="display:none;padding:8px 12px;border-bottom:1px solid var(--border);gap:6px;justify-content:flex-end"></div>'
-    + '<div class="chat-messages" id="chat-messages"><div class="chat-empty">Sélectionnez une conversation à gauche.</div></div>'
+    + '<div class="chat-messages" id="chat-messages">' + _chatEmptyState(_CE_ICON_CHAT, "Aucune conversation ouverte", "Sélectionnez un ticket dans la liste de gauche pour afficher les messages.") + '</div>'
     + _chatInputBarHtml("Répondre…", "chat-send", true)
     + '</div></div></div>';
   _subscribeAdminThreads();
@@ -12296,12 +12296,25 @@ function _subscribeAdminThreads() {
   }, err => console.error("threads snap:", err));
 }
 
+// État vide illustré (icône + titre + sous-texte).
+function _chatEmptyState(iconSvg, title, sub) {
+  return '<div class="chat-empty-rich">'
+    + '<div class="ce-icon">' + iconSvg + '</div>'
+    + '<div class="ce-title">' + title + '</div>'
+    + (sub ? '<div class="ce-sub">' + sub + '</div>' : '')
+    + '</div>';
+}
+const _CE_ICON_CHAT = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
+const _CE_ICON_INBOX = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-6l-2 3h-4l-2-3H2"/><path d="M5.45 5.11 2 12v6a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2v-6l-3.45-6.89A2 2 0 0 0 16.76 4H7.24a2 2 0 0 0-1.79 1.11z"/></svg>';
+
 function _renderAdminThreads(threads) {
   const el = document.getElementById("chat-threads");
   if (!el) return;
   const filtered = threads.filter(t => _supportAdminTab === "archived" ? t.archived === true : t.archived !== true);
   if (!filtered.length) {
-    el.innerHTML = '<div class="chat-empty">' + (_supportAdminTab === "archived" ? "Aucune conversation archivée." : "Aucune conversation active.") + '</div>';
+    el.innerHTML = _chatEmptyState(_CE_ICON_INBOX,
+      _supportAdminTab === "archived" ? "Aucune archive" : "Aucune conversation",
+      _supportAdminTab === "archived" ? "Les tickets fermés apparaîtront ici." : "Les nouveaux tickets s'afficheront ici.");
     return;
   }
   el.innerHTML = filtered.map(t => {
@@ -12444,7 +12457,7 @@ function _renderChatMessages(msgs) {
   const c = document.getElementById("chat-messages");
   if (!c) return;
   if (!msgs.length) {
-    c.innerHTML = '<div class="chat-empty">Aucun message pour le moment.</div>';
+    c.innerHTML = _chatEmptyState(_CE_ICON_CHAT, "Aucun message", "Envoyez le premier message pour démarrer la conversation.");
     return;
   }
   const meta = _currentThreadMeta || {};
