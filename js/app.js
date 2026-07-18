@@ -12944,3 +12944,47 @@ function _initSupportBadge() {
 }
 window.renderSupportPage = renderSupportPage;
 window._initSupportBadge = _initSupportBadge;
+
+// ─── Écran login : particules montantes (bokeh) ───
+(function initLoginParticles(){
+  const cv = document.getElementById('login-particles');
+  if (!cv) return;
+  const ctx = cv.getContext('2d');
+  let w = 0, h = 0, dpr = 1, P = [], running = false;
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  function seed(){
+    P = []; const n = Math.round(w * h / 14000);
+    for (let i = 0; i < n; i++) P.push({
+      x: Math.random(), y: Math.random(),
+      r: 0.6 + Math.random() * 2.2,
+      s: 0.02 + Math.random() * 0.05,
+      a: 0.15 + Math.random() * 0.45,
+      c: Math.random() < 0.5 ? '124,109,245' : '0,224,158'
+    });
+  }
+  function resize(){
+    const nw = cv.clientWidth, nh = cv.clientHeight;
+    if (nw === w && nh === h) return;
+    w = nw; h = nh;
+    if (w === 0 || h === 0) return;
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    cv.width = w * dpr; cv.height = h * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    seed();
+    if (!running) { running = true; reduce ? draw(false) : frame(); }
+  }
+  function draw(move){
+    ctx.clearRect(0, 0, w, h);
+    for (const p of P) {
+      if (move) { p.y -= p.s / 100; if (p.y < -0.05) { p.y = 1.05; p.x = Math.random(); } }
+      ctx.beginPath(); ctx.arc(p.x * w, p.y * h, p.r, 0, 7);
+      ctx.fillStyle = 'rgba(' + p.c + ',' + p.a + ')';
+      ctx.shadowColor = 'rgba(' + p.c + ',.7)'; ctx.shadowBlur = 8; ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+  }
+  function frame(){ draw(true); requestAnimationFrame(frame); }
+  if (window.ResizeObserver) { new ResizeObserver(resize).observe(cv); }
+  window.addEventListener('resize', resize);
+  resize();
+})();
