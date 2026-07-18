@@ -97,13 +97,6 @@
   }
   a { color: inherit; text-decoration: none; }
 
-  /* ═══ BG ambient — particules montantes ═══ */
-  .ambient {
-    position: fixed; inset: 0;
-    pointer-events: none;
-    z-index: 0;
-  }
-  #ambient-chart { position: absolute; inset: 0; width: 100%; height: 100%; }
   /* ═══ NAV ═══ */
   nav {
     position: fixed; top: 0; left: 0; right: 0; z-index: 100;
@@ -627,7 +620,6 @@
 </head>
 <body>
 
-<div class="ambient"><canvas id="ambient-chart"></canvas></div>
 
 <nav id="topnav">
   <div class="nav-inner">
@@ -1108,44 +1100,5 @@
   });
 </script>
 
-<script>
-// ─── Fond : particules montantes (bokeh) ───
-(function(){
-  const cv=document.getElementById('ambient-chart');
-  if(!cv) return;
-  const ctx=cv.getContext('2d');
-  let w,h,dpr,P=[];
-  function size(){
-    dpr=Math.min(window.devicePixelRatio||1,2);
-    w=cv.clientWidth;h=cv.clientHeight;
-    cv.width=w*dpr;cv.height=h*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
-    seed();
-  }
-  function seed(){
-    P=[];const n=Math.round(w*h/14000);
-    for(let i=0;i<n;i++)P.push({
-      x:Math.random(),y:Math.random(),
-      r:0.6+Math.random()*2.2,
-      s:0.02+Math.random()*0.05,
-      a:0.15+Math.random()*0.45,
-      c:Math.random()<0.5?'124,109,245':'0,224,158'
-    });
-  }
-  size();window.addEventListener('resize',size);
-  const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  function draw(move){
-    ctx.clearRect(0,0,w,h);
-    for(const p of P){
-      if(move){p.y-=p.s/100;if(p.y<-0.05){p.y=1.05;p.x=Math.random();}}
-      ctx.beginPath();ctx.arc(p.x*w,p.y*h,p.r,0,7);
-      ctx.fillStyle='rgba('+p.c+','+p.a+')';
-      ctx.shadowColor='rgba('+p.c+',.7)';ctx.shadowBlur=8;ctx.fill();
-    }
-    ctx.shadowBlur=0;
-  }
-  function frame(){draw(true);requestAnimationFrame(frame);}
-  if(reduce){draw(false);} else {frame();}
-})();
-</script>
 </body>
 </html>

@@ -85,14 +85,6 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   background: var(--bg);
   overflow: hidden;
 }
-#login-particles {
-  position: absolute; inset: 0; width: 100%; height: 100%;
-}
-/* particules derrière tout le dashboard (visibles dans les marges) */
-#app-particles {
-  position: fixed; inset: 0; width: 100%; height: 100%;
-  z-index: -1; pointer-events: none;
-}
 .login-grid {
   position: absolute; inset: 0;
   background-image:
