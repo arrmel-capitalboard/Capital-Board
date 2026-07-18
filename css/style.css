@@ -650,28 +650,36 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
    STATS GRID
    ═══════════════════════════════════════════════════ */
 .stats-grid {
-  display: grid; grid-template-columns: repeat(4, 1fr); gap: 0;
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 14px;
   margin-bottom: 28px;
-  border-top: 1px solid var(--border);
-  border-bottom: 1px solid var(--border);
 }
 .stat-card {
-  background: transparent; border: none;
-  border-right: 1px solid var(--border);
-  border-radius: 0; padding: 22px 20px;
+  background:
+    linear-gradient(180deg, rgba(255,255,255,0.030), rgba(255,255,255,0) 42%),
+    var(--s1);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius);
+  padding: 20px 20px 22px;
   position: relative; overflow: hidden;
-  transition: background 0.2s;
+  transition: transform 0.22s ease, border-color 0.22s ease, box-shadow 0.22s ease;
 }
-.stat-card:last-child { border-right: none; }
 @keyframes card-enter { from { opacity:0; transform: translateY(12px); } to { opacity:1; transform:none; } }
-.stat-card:hover { background: rgba(255,255,255,0.018); }
-.stat-card::before {
-  content: ''; position: absolute; top: 0; left: 0; width: 60%; height: 1px;
+.stat-card:hover {
+  transform: translateY(-3px);
+  border-color: var(--border3);
+  box-shadow: 0 14px 34px -16px rgba(0,0,0,0.75);
 }
-.stat-card:nth-child(1)::before { background: linear-gradient(90deg, var(--accent2), transparent); }
-.stat-card:nth-child(2)::before { background: linear-gradient(90deg, var(--positive), transparent); }
-.stat-card:nth-child(3)::before { background: linear-gradient(90deg, var(--gold), transparent); }
-.stat-card:nth-child(4)::before { background: linear-gradient(90deg, var(--accent), transparent); }
+/* barre d'accent en haut de carte */
+.stat-card::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  opacity: 0.85;
+}
+.stat-card:nth-child(1)::before { background: linear-gradient(90deg, var(--accent2), transparent 75%); }
+.stat-card:nth-child(2)::before { background: linear-gradient(90deg, var(--positive), transparent 75%); }
+.stat-card:nth-child(3)::before { background: linear-gradient(90deg, var(--gold), transparent 75%); }
+.stat-card:nth-child(4)::before { background: linear-gradient(90deg, var(--accent), transparent 75%); }
+.stat-card:nth-child(5)::before { background: linear-gradient(90deg, var(--positive), transparent 75%); }
+.stat-card:nth-child(6)::before { background: linear-gradient(90deg, var(--accent2), transparent 75%); }
 .stat-card::after { display: none; }
 
 .stat-label {
@@ -793,15 +801,18 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
    TABLE
    ═══════════════════════════════════════════════════ */
 .table-container {
-  background: transparent; border: none;
-  border-radius: 0; overflow: hidden;
+  background: var(--s1);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
 }
 .table-header {
   display: flex; align-items: center; justify-content: space-between;
-  padding: 16px 0; border-bottom: 1px solid var(--border);
+  padding: 18px 20px; border-bottom: 1px solid var(--border);
 }
 .table-title {
-  font-family: var(--display); font-size: 14px; font-weight: 700;
+  font-family: var(--display); font-size: 15px; font-weight: 700;
+  letter-spacing: -0.2px;
 }
 .btn-add {
   display: flex; align-items: center; gap: 6px;
@@ -826,6 +837,8 @@ th {
   border-bottom: 1px solid var(--border);
 }
 th:last-child, td:last-child { text-align: right; }
+th:first-child, td:first-child { padding-left: 20px; }
+th:last-child, td:last-child { padding-right: 20px; }
 td {
   padding: 14px 16px; font-size: 13px;
   border-bottom: 1px solid var(--border);
@@ -1187,9 +1200,12 @@ tr:hover td { background: rgba(255,255,255,0.018); }
 
 /* ── Portfolio chart hyper-clean ── */
 .portf-chart-card {
-  background: transparent;
-  border: none;
-  padding: 0;
+  background: var(--s1);
+  border: 1px solid var(--border2);
+  border-radius: var(--radius-lg);
+  padding: 4px 4px 8px;
+  margin-bottom: 28px;
+  overflow: hidden;
 }
 .portf-chart-header {
   display: flex;
@@ -1855,9 +1871,6 @@ body.sb-collapsed .main { margin-left: 58px; }
 
 @media (max-width: 1200px) {
   .stats-grid { grid-template-columns: repeat(2, 1fr); }
-  .stat-card:nth-child(2n) { border-right: none; }
-  .stat-card:nth-child(2n+1) { border-right: 1px solid var(--border); }
-  .stat-card:nth-child(n+3) { border-top: 1px solid var(--border); }
   .charts-grid { grid-template-columns: 1fr; }
   .analyse-grid { grid-template-columns: 1fr; }
 }
