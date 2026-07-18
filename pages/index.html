@@ -97,38 +97,17 @@
   }
   a { color: inherit; text-decoration: none; }
 
-  /* ═══ BG ambient (dérive lente) ═══ */
+  /* ═══ BG ambient — courbe boursière défilante ═══ */
   .ambient {
-    position: fixed; inset: -20%;
+    position: fixed; inset: 0;
     pointer-events: none;
     z-index: 0;
-    overflow: hidden;
   }
-  .ambient::before, .ambient::after {
-    content: ""; position: absolute; inset: 0;
-    will-change: transform;
-  }
-  .ambient::before {
-    background:
-      radial-gradient(ellipse 800px 600px at 20% 10%, rgba(124,109,245,0.30), transparent 60%),
-      radial-gradient(ellipse 600px 400px at 50% 90%, rgba(0,224,158,0.16), transparent 60%);
-    animation: ambientA 18s ease-in-out infinite alternate;
-  }
-  .ambient::after {
-    background:
-      radial-gradient(ellipse 700px 500px at 85% 30%, rgba(91,141,238,0.22), transparent 60%);
-    animation: ambientB 24s ease-in-out infinite alternate;
-  }
-  @keyframes ambientA {
-    from { transform: translate3d(0,0,0) scale(1); }
-    to   { transform: translate3d(14%, 10%, 0) scale(1.3); }
-  }
-  @keyframes ambientB {
-    from { transform: translate3d(0,0,0) scale(1); }
-    to   { transform: translate3d(-16%, -8%, 0) scale(1.35); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .ambient::before, .ambient::after { animation: none; }
+  #ambient-chart { position: absolute; inset: 0; width: 100%; height: 100%; }
+  /* fondu radial : la courbe s'estompe vers le centre pour ne pas gêner le contenu */
+  .ambient-fade {
+    position: absolute; inset: 0; pointer-events: none;
+    background: radial-gradient(ellipse 80% 60% at 50% 40%, transparent 35%, var(--bg) 100%);
   }
   /* ═══ NAV ═══ */
   nav {
@@ -653,7 +632,7 @@
 </head>
 <body>
 
-<div class="ambient"></div>
+<div class="ambient"><canvas id="ambient-chart"></canvas><div class="ambient-fade"></div></div>
 
 <nav id="topnav">
   <div class="nav-inner">
@@ -1134,5 +1113,49 @@
   });
 </script>
 
+<script>
+// ─── Fond : courbe boursière défilante (area chart) ───
+(function(){
+  const cv=document.getElementById('ambient-chart');
+  if(!cv) return;
+  const ctx=cv.getContext('2d');
+  let w,h,dpr;
+  function size(){
+    dpr=Math.min(window.devicePixelRatio||1,2);
+    w=cv.clientWidth;h=cv.clientHeight;
+    cv.width=w*dpr;cv.height=h*dpr;ctx.setTransform(dpr,0,0,dpr,0,0);
+  }
+  size();window.addEventListener('resize',size);
+  // série pseudo-aléatoire stable, rendue tuilable (fin rejoint début)
+  const N=260,seg=[];let v=0.5;
+  for(let i=0;i<N;i++){v+=(Math.random()-0.5)*0.08;v=Math.max(0.15,Math.min(0.85,v));seg.push(v);}
+  for(let i=0;i<12;i++){const t=i/12;seg[N-1-i]=seg[N-1-i]*(1-t)+seg[i]*t;}
+  const reduce=window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const SPEED=0.275; // moitié de la démo
+  let off=0;
+  function draw(){
+    const step=w/(N*0.55);
+    ctx.clearRect(0,0,w,h);
+    const yOf=val=>h*0.30+(1-val)*h*0.42;
+    // remplissage
+    ctx.beginPath();let x=off;ctx.moveTo(x,yOf(seg[0]));
+    for(let i=0;i<N*2;i++){x=off+i*step;ctx.lineTo(x,yOf(seg[i%N]));}
+    const grad=ctx.createLinearGradient(0,h*0.25,0,h);
+    grad.addColorStop(0,'rgba(0,224,158,.20)');grad.addColorStop(1,'rgba(0,224,158,0)');
+    ctx.lineTo(x,h);ctx.lineTo(off,h);ctx.closePath();ctx.fillStyle=grad;ctx.fill();
+    // ligne
+    ctx.beginPath();x=off;ctx.moveTo(x,yOf(seg[0]));
+    for(let i=0;i<N*2;i++){x=off+i*step;ctx.lineTo(x,yOf(seg[i%N]));}
+    ctx.strokeStyle='rgba(0,224,158,.50)';ctx.lineWidth=1.8;
+    ctx.shadowColor='rgba(0,224,158,.5)';ctx.shadowBlur=10;ctx.stroke();ctx.shadowBlur=0;
+  }
+  function frame(){
+    const step=w/(N*0.55);
+    off-=SPEED;if(off<=-step*N)off+=step*N;
+    draw();requestAnimationFrame(frame);
+  }
+  if(reduce){draw();} else {frame();}
+})();
+</script>
 </body>
 </html>
