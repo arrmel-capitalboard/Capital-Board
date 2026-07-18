@@ -696,25 +696,25 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   margin-right: auto;
 }
 .pin-key {
-  padding: 12px 0;
+  padding: 14px 0;
   display: flex; align-items: center; justify-content: center;
-  background: linear-gradient(180deg, var(--s2), var(--s1));
-  border: 1px solid var(--border);
-  border-radius: 14px;
+  background: transparent;
+  border: none;
+  border-radius: 12px;
   color: var(--text);
-  font-size: 20px;
-  font-weight: 700;
+  font-size: 22px;
+  font-weight: 600;
   font-family: var(--mono);
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  box-shadow: 0 1px 2px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.03);
-  transition: background 0.12s, border-color 0.12s, transform 0.08s, box-shadow 0.12s;
+  transition: background 0.14s, color 0.14s, transform 0.08s;
 }
-.pin-key:hover { background: linear-gradient(180deg, rgba(124,109,245,0.14), rgba(124,109,245,0.05)); border-color: rgba(124,109,245,0.4); transform: translateY(-1px); }
-.pin-key:active { background: rgba(124,109,245,0.22); transform: scale(0.95); box-shadow: inset 0 2px 6px rgba(0,0,0,0.3); }
-.pin-key.empty { visibility: hidden; cursor: default; box-shadow: none; }
-.pin-key.back { color: var(--accent); }
+.pin-key:hover { background: rgba(124,109,245,0.08); }
+.pin-key:active { background: rgba(124,109,245,0.16); transform: scale(0.94); }
+.pin-key.empty { visibility: hidden; cursor: default; }
+.pin-key.back { color: var(--text3); }
+.pin-key.back:hover { color: var(--accent); }
 .pin-key.back svg { display: inline-block; vertical-align: middle; }
 
 /* ─── Lock PIN dots ───────────────────────────────── */
