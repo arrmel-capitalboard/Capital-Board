@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260719c">
+<link rel="stylesheet" href="css/style.css?v=20260719d">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -487,49 +487,50 @@
         </div>
       </div>
 
-      <div class="stats-scroll-wrap">
-      <div class="stats-grid" style="grid-template-columns:repeat(3,1fr)">
-        <div class="stat-card">
-          <div class="stat-label">Évaluation des titres</div>
-          <div class="stat-value" id="stat-total">— €</div>
-          <div class="stat-change" id="stat-total-change">—</div>
-          <canvas class="stat-sparkline" id="spark-total"></canvas>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">+/- Value latente</div>
-          <div style="display:flex;align-items:baseline;gap:10px">
-            <div class="stat-value" id="stat-pnl">— €</div>
-            <div class="stat-value" id="stat-pnl-pct" style="font-size:16px">—</div>
+      <!-- KPIs — layout bento (dark minimal) -->
+      <div class="pf-kpis">
+        <div class="pf-card pf-hero">
+          <div class="pf-kl">Valorisation totale</div>
+          <div class="pf-kv mono" id="stat-networth">— €</div>
+          <div class="pf-heline">
+            <span class="pf-pill" id="stat-networth-pct">—</span>
+            <span class="pf-ks" id="stat-networth-sub">—</span>
           </div>
-          <div class="stat-change neg">Latente sur titres en portefeuille</div>
-          <canvas class="stat-sparkline" id="spark-pnl"></canvas>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">P&L réalisé</div>
-          <div class="stat-value" id="stat-realized">— €</div>
-          <div class="stat-change" id="stat-realized-sub">Gains/pertes clôturés</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Cumul versements</div>
-          <div class="stat-value" id="stat-versements">— €</div>
-          <div class="stat-change pos" id="stat-versements-sub">Total versé sur le PEA</div>
-        </div>
-        <div class="stat-card">
-          <div class="stat-label">Solde espèces</div>
-          <div class="stat-value" id="stat-cash">— €</div>
-          <div class="stat-change" id="stat-cash-sub">Disponible</div>
-          <div style="margin-top:8px;display:flex;gap:6px;align-items:center">
-            <button class="btn-add" onclick="openVersementModal()" style="font-size:10px;padding:5px 10px">＋ Versement</button>
-            <button onclick="openVersementsListModal()" class="btn-cash-edit"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7z"/><circle cx="12" cy="12" r="3"/></svg>Voir / modifier</button>
+          <div class="pf-spark"><canvas id="spark-total"></canvas></div>
+          <div class="pf-footrow">
+            <div class="pf-foot"><div class="l">Investi (titres)</div><div class="v mono" id="stat-invested">— €</div></div>
+            <div class="pf-foot"><div class="l">Cumul versements</div><div class="v mono" id="stat-versements">— €</div></div>
           </div>
-          <div id="versements-list" style="display:none;margin-top:8px;max-height:200px;overflow-y:auto"></div>
         </div>
-        <div class="stat-card">
-          <div class="stat-label">Investi (titres)</div>
-          <div class="stat-value" id="stat-invested">— €</div>
-          <canvas class="stat-sparkline" id="spark-invested"></canvas>
+
+        <div class="pf-card">
+          <div class="pf-kl">+/- Value latente</div>
+          <div class="pf-kv mono" id="stat-pnl">— €</div>
+          <div class="pf-ks"><span class="mono" id="stat-pnl-pct">—</span> · titres détenus</div>
         </div>
-      </div>
+
+        <div class="pf-card">
+          <div class="pf-kl">Solde espèces</div>
+          <div class="pf-kv mono" id="stat-cash">— €</div>
+          <div class="pf-ks">Disponible</div>
+          <div class="pf-btnrow">
+            <button class="pf-btn primary" onclick="openVersementModal()">＋ Versement</button>
+            <button class="pf-btn ghost" onclick="openVersementsListModal()">Voir / modifier</button>
+          </div>
+          <div id="versements-list" style="display:none;margin-top:10px;max-height:200px;overflow-y:auto"></div>
+        </div>
+
+        <div class="pf-card">
+          <div class="pf-kl">P&L réalisé</div>
+          <div class="pf-kv mono" id="stat-realized">— €</div>
+          <div class="pf-ks" id="stat-realized-sub">Gains/pertes clôturés</div>
+        </div>
+
+        <div class="pf-card">
+          <div class="pf-kl">Évaluation des titres</div>
+          <div class="pf-kv mono" id="stat-total">— €</div>
+          <div class="pf-ks">Hors espèces</div>
+        </div>
       </div>
 
       <!-- Graphique évolution portefeuille -->
@@ -538,7 +539,7 @@
           <div class="portf-chart-pct" id="portf-pct-display">—</div>
           <div class="portf-chart-since">depuis le début</div>
         </div>
-        <div id="portf-tagline" style="font-size:11px;color:#8892a8;padding:0 4px 6px;font-style:italic;min-height:16px"></div>
+        <div id="portf-tagline" style="font-size:12px;color:var(--text3);padding:0 20px 6px;font-style:italic;min-height:16px"></div>
         <div id="portfolio-chart-sub" style="display:none"></div>
         <div class="portf-canvas-wrap">
           <canvas id="chart-portfolio"></canvas>
@@ -1551,7 +1552,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260719b"></script>
+<script src="js/app.js?v=20260719d"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

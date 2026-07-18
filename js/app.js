@@ -2740,11 +2740,11 @@ function renderPortfolio() {
   document.getElementById('stat-total').textContent = data.length ? fmt(totalVal) : '— €';
   document.getElementById('stat-invested').textContent = data.length ? fmt(totalInvested) : '— €';
   const pnlEl = document.getElementById('stat-pnl');
-  pnlEl.textContent = data.length ? (totalPnl >= 0 ? '+' : '') + fmt(totalPnl) + ' (' + (totalPnl >= 0 ? '+' : '') + totalPct.toFixed(2) + '%)' : '— €';
+  pnlEl.textContent = data.length ? (totalPnl >= 0 ? '+' : '') + fmt(totalPnl) : '— €';
   pnlEl.style.color = totalPnl >= 0 ? 'var(--positive)' : 'var(--negative)';
-  document.getElementById('stat-pnl-pct').textContent = data.length && totalInvested > 0 ? (totalPnl >= 0 ? '+' : '') + (totalPnl / totalInvested * 100).toFixed(2) + '%' : '—';
-  document.getElementById('stat-pnl-pct').style.color = totalPnl >= 0 ? 'var(--positive)' : 'var(--negative)';
-  document.getElementById('stat-pnl-pct').className = '';
+  const pnlPctEl = document.getElementById('stat-pnl-pct');
+  pnlPctEl.textContent = data.length && totalInvested > 0 ? (totalPnl >= 0 ? '+' : '') + (totalPnl / totalInvested * 100).toFixed(2) + '%' : '—';
+  pnlPctEl.style.color = totalPnl >= 0 ? 'var(--positive)' : 'var(--negative)';
 
   // Calculate realized P&L from transaction history
   const txs = getTransactions(currentUser);
@@ -2757,8 +2757,9 @@ function renderPortfolio() {
   const realEl = document.getElementById('stat-realized');
   realEl.textContent = (realizedTotal >= 0 ? '+' : '') + fmt(realizedTotal);
   realEl.style.color = realizedTotal >= 0 ? 'var(--positive)' : 'var(--negative)';
-  document.getElementById('stat-realized-sub').textContent = realizedTotal >= 0 ? 'Gains clôturés' : 'Pertes clôturées';
-  document.getElementById('stat-realized-sub').className = 'stat-change ' + (realizedTotal >= 0 ? 'pos' : 'neg');
+  const realSub = document.getElementById('stat-realized-sub');
+  realSub.textContent = realizedTotal >= 0 ? 'Gains clôturés' : 'Pertes clôturées';
+  realSub.style.color = realizedTotal >= 0 ? 'var(--positive)' : 'var(--negative)';
 
   // Versements & cash
   const versements = getVersements(currentUser);
@@ -2777,6 +2778,18 @@ function renderPortfolio() {
   const cashEl = document.getElementById('stat-cash');
   cashEl.textContent = fmt(cash);
   cashEl.style.color = cash >= 0 ? 'var(--positive)' : 'var(--negative)';
+
+  // Héro — Valorisation totale (titres + espèces)
+  const networth = totalVal + cash;
+  const nwEl = document.getElementById('stat-networth');
+  if (nwEl) nwEl.textContent = data.length ? fmt(networth) : '— €';
+  const nwPct = document.getElementById('stat-networth-pct');
+  if (nwPct) {
+    nwPct.textContent = data.length ? (totalPnl >= 0 ? '↗ +' : '↘ ') + totalPct.toFixed(2) + ' %' : '—';
+    nwPct.className = 'pf-pill' + (totalPnl >= 0 ? '' : ' neg');
+  }
+  const nwSub = document.getElementById('stat-networth-sub');
+  if (nwSub) nwSub.textContent = data.length ? (totalPnl >= 0 ? '+' : '') + fmt(totalPnl) + ' depuis le début' : '';
 
   // Render transaction history
   renderTxHistory();
