@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260719p';
+const APP_VERSION = '20260719q';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1990,10 +1990,16 @@ let _updateGateShown = false;
 async function _checkVersion() {
   try {
     const res = await fetch('data/version.json?t=' + Date.now(), { cache: 'no-store' });
-    if (!res.ok) return;
-    const { v } = await res.json();
-    if (v && v !== APP_VERSION) _showUpdateGate();   // strict : bloque tout
+    if (res.ok) {
+      const { v } = await res.json();
+      if (v && v !== APP_VERSION) { _showUpdateGate(); return; }   // strict : bloque tout
+    }
   } catch(e) { /* silencieux — pas de blocage si offline */ }
+  // MAJ forcée par l'admin (config/app.minVersion)
+  try {
+    const cfg = await _getAppConfig();
+    if (cfg.minVersion && cfg.minVersion !== APP_VERSION) _showUpdateGate();
+  } catch(_) {}
 }
 // Écran bloquant : impossible d'utiliser une version obsolète, seule action = recharger.
 function _showUpdateGate() {
@@ -12477,8 +12483,15 @@ async function renderAdminPage() {
     : JSON.parse(JSON.stringify(DEFAULT_NAV));
   renderNavEditor();
 
-  // Liste utilisateurs
+  // Version / MAJ
+  const vs = document.getElementById('admin-version-status');
+  if (vs) vs.innerHTML = 'Version actuelle : <span class="mono">' + APP_VERSION + '</span>' +
+    (cfg.minVersion ? ' · minimum forcé : <span class="mono">' + cfg.minVersion + '</span>' : '');
+
+  // Stats + liste utilisateurs + journal d'audit
+  renderAdminStats();
   renderAdminUsers();
+  renderAuditLog();
 }
 
 async function adminToggleFeature(key, el) {
@@ -12487,6 +12500,7 @@ async function adminToggleFeature(key, el) {
   el.disabled = true;
   try {
     await _setAppConfig({ features: { [key]: on } });
+    _audit('feature', key + '=' + (on ? 'on' : 'off'));
     _featureFlags[key] = on;
     applyFeatureFlags(_featureFlags);
     if (_navDraft) renderNavEditor();
@@ -12544,7 +12558,7 @@ async function _saveNav() {
   applyNavLayout(_navDraft);
   applyFeatureFlags(_featureFlags);
   renderNavEditor();
-  try { await _setAppConfig({ nav: _navDraft }); }
+  try { await _setAppConfig({ nav: _navDraft }); _audit('nav_update', ''); }
   catch (e) { console.error('[admin] save nav:', e); }
 }
 
@@ -12669,7 +12683,73 @@ async function _doAdminDeleteUser(uid) {
   // Rôle + présence
   await del(firestoreDoc(db, 'roles', uid));
   await del(firestoreDoc(db, 'presence', uid));
+  _audit('rgpd_delete', 'uid=' + uid);
   renderAdminUsers();
+}
+
+// ─── Journal d'audit ───
+async function _audit(action, details) {
+  try {
+    await addFirestoreDoc(firestoreCollection(db, 'auditLog'), {
+      action, details: details || '', by: currentUser || null, at: serverTimestamp(),
+    });
+  } catch (e) { console.warn('[audit]', e && e.message); }
+}
+async function renderAuditLog() {
+  const box = document.getElementById('admin-audit');
+  if (!box) return;
+  box.innerHTML = 'Chargement…';
+  try {
+    const q = firestoreQuery(firestoreCollection(db, 'auditLog'), firestoreOrderBy('at', 'desc'));
+    const snap = await getDocs(q);
+    const rows = snap.docs.slice(0, 30).map(d => {
+      const a = d.data();
+      const t = a.at && a.at.toDate ? a.at.toDate() : null;
+      const when = t ? t.toLocaleString('fr-FR') : '—';
+      return '<div style="display:flex;justify-content:space-between;gap:12px;padding:8px 0;border-bottom:1px solid var(--border)">' +
+        '<div style="min-width:0"><span style="color:var(--text);font-weight:600">' + (a.action || '?') + '</span> <span style="color:var(--text3)">' + (a.details || '') + '</span></div>' +
+        '<div style="color:var(--text3);font-family:var(--mono);font-size:11px;white-space:nowrap">' + when + '</div>' +
+      '</div>';
+    });
+    box.innerHTML = rows.length ? rows.join('') : 'Aucune action enregistrée.';
+  } catch (e) { box.innerHTML = 'Journal indisponible (droits Firestore ?).'; }
+}
+
+// ─── Tableau de stats ───
+async function renderAdminStats() {
+  const box = document.getElementById('admin-stats');
+  if (!box) return;
+  const empty = { forEach() {} };
+  try {
+    const [roles, pres, threads] = await Promise.all([
+      getDocs(firestoreCollection(db, 'roles')).catch(() => empty),
+      getDocs(firestoreCollection(db, 'presence')).catch(() => empty),
+      getDocs(firestoreCollection(db, 'supportThreads')).catch(() => empty),
+    ]);
+    let inscrits = 0; roles.forEach(() => inscrits++);
+    let online = 0, actifs24 = 0; const now = Date.now();
+    pres.forEach(d => { const p = d.data(); if (p.online) online++; const ls = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate().getTime() : 0; if (now - ls < 86400000) actifs24++; });
+    let openTickets = 0; threads.forEach(d => { const t = d.data(); if (t && t.closed !== true) openTickets++; });
+    const tile = (l, v, c) => '<div style="background:#0f1119;border:1px solid var(--border);border-radius:14px;padding:14px 16px">' +
+      '<div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">' + l + '</div>' +
+      '<div style="font-size:22px;font-weight:800;margin-top:6px;font-family:var(--mono);color:' + (c || 'var(--text)') + '">' + v + '</div></div>';
+    box.innerHTML = tile('Inscrits', inscrits) + tile('Actifs 24 h', actifs24, 'var(--positive)') + tile('En ligne', online, 'var(--accent2)') + tile('Tickets ouverts', openTickets, 'var(--gold)');
+  } catch (e) { box.innerHTML = '<div style="color:var(--text3)">Stats indisponibles.</div>'; }
+}
+
+// ─── Forcer la mise à jour (éjecte les versions obsolètes) ───
+async function adminForceUpdate(btn) {
+  if (!isAdmin()) return;
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    await _setAppConfig({ minVersion: APP_VERSION });
+    _audit('force_update', 'minVersion=' + APP_VERSION);
+    const s = document.getElementById('admin-version-status');
+    if (s) s.innerHTML = '<span style="color:var(--positive)">● MAJ forcée — les clients sur une autre version sont bloqués jusqu\'au rechargement.</span>';
+  } catch (e) {
+    const s = document.getElementById('admin-version-status');
+    if (s) s.textContent = 'Échec de l\'enregistrement.';
+  } finally { if (btn) { btn.disabled = false; btn.textContent = '↻ Forcer la MAJ'; } }
 }
 
 function _adminMaintStatus(on) {
@@ -12694,6 +12774,7 @@ async function adminToggleMaintenance(el) {
   try {
     const msg = (document.getElementById('admin-maint-msg') || {}).value || '';
     await _setAppConfig({ maintenance: wanted, maintenanceMsg: msg });
+    _audit('maintenance', wanted ? 'ON' : 'OFF');
     _adminMaintStatus(wanted);
   } catch (e) {
     console.error('[admin] maintenance:', e);
@@ -12719,6 +12800,7 @@ async function adminToggleSignup(el) {
   el.disabled = true;
   try {
     await _setAppConfig({ signupOpen: open });
+    _audit('signup', open ? 'ouvert' : 'fermé');
     _adminSignupStatus(open);
   } catch (e) {
     console.error('[admin] signup:', e);
