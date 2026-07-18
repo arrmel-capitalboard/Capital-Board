@@ -1,3 +1,18 @@
+// ─── MOTION OVERRIDE (voir les anims malgré prefers-reduced-motion) ───
+// Flag localStorage 'cb_force_motion'=='1' → force les animations.
+// Console : toggleMotion()  pour activer/désactiver puis recharger.
+try { if (localStorage.getItem('cb_force_motion') === '1') document.documentElement.classList.add('force-motion'); } catch(_) {}
+function _reduceMotion() {
+  try { if (localStorage.getItem('cb_force_motion') === '1') return false; } catch(_) {}
+  return window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+}
+window.toggleMotion = function() {
+  let on = false;
+  try { on = localStorage.getItem('cb_force_motion') === '1'; localStorage.setItem('cb_force_motion', on ? '0' : '1'); } catch(_) {}
+  console.log('[motion] anims forcées : ' + (!on));
+  location.reload();
+};
+
 // ─── ICON SYSTEM (colored SVG) ─────────────────────────
 const IC = {
   briefcase: '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>',
@@ -1130,7 +1145,7 @@ window.pinLockSubmit = async function() {
 
 // Séquence déverrouillage réussi : dots verts → check pop → fondu carte → app.
 function _pinUnlockSuccess(user) {
-  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const reduce = _reduceMotion();
   const view = document.getElementById('pin-lock-view');
   const dotsWrap = document.getElementById('pin-dots');
   const dots = document.querySelectorAll('#pin-dots .pin-dot');

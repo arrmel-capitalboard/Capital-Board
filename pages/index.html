@@ -624,7 +624,7 @@
   }
   .reveal.in { opacity: 1; transform: none; }
   @media (prefers-reduced-motion: reduce) {
-    .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
+    html:not(.force-motion) .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
   }
 </style>
 </head>
@@ -1082,7 +1082,10 @@
     }
 
     // ─── Scroll reveal ───
-    const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    let forceMotion = false;
+    try { forceMotion = localStorage.getItem('cb_force_motion') === '1'; } catch(_) {}
+    if (forceMotion) document.documentElement.classList.add('force-motion');
+    const reduce = !forceMotion && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const targets = document.querySelectorAll(
       '.section-head, .feature, .compare-wrap, .security-item, .faq-item, .guide-card, .about-card, .discord-card, .cta-card'
     );

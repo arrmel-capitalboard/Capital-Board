@@ -755,7 +755,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   to   { opacity: 1; transform: none; }
 }
 @media (prefers-reduced-motion: reduce) {
-  #pin-unlock-check, .pin-card-exit, .app-enter { animation: none !important; }
+  html:not(.force-motion) #pin-unlock-check,
+  html:not(.force-motion) .pin-card-exit,
+  html:not(.force-motion) .app-enter { animation: none !important; }
 }
 
 /* ═══════════════════════════════════════════════════
