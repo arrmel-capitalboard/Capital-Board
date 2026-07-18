@@ -1401,6 +1401,51 @@ function showMaintenanceScreen(msg) {
   el.style.display = 'flex';
 }
 
+// ─── Prénom + Nom obligatoires (comptes existants sans nom) ───
+async function _ensureUserName(user) {
+  if (window.IS_DEMO || !user) return;
+  try {
+    const snap = await getFirestoreDoc(firestoreDoc(db, 'roles', user.uid));
+    const d = snap.exists() ? (snap.data() || {}) : {};
+    if (d.firstName && d.lastName) return;
+  } catch (_) { return; } // erreur de lecture → on ne bloque pas
+  showNameSetupModal(user);
+}
+function showNameSetupModal(user) {
+  let el = document.getElementById('name-setup-modal');
+  if (!el) { el = document.createElement('div'); el.id = 'name-setup-modal'; document.body.appendChild(el); }
+  el.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.78);backdrop-filter:blur(6px);padding:20px';
+  const inp = 'flex:1;background:var(--s2);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-size:14px;padding:11px 13px;outline:none;font-family:var(--sans)';
+  el.innerHTML =
+    '<div style="max-width:400px;width:100%;background:#0f1119;border:1px solid var(--border2);border-radius:18px;padding:26px">' +
+      '<div style="font-size:19px;font-weight:800;color:var(--text);margin-bottom:6px">Bienvenue 👋</div>' +
+      '<div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:18px">Indiquez votre prénom et votre nom pour continuer à utiliser Capital Board.</div>' +
+      '<div style="display:flex;gap:10px;margin-bottom:12px">' +
+        '<input id="name-setup-first" placeholder="Prénom" style="' + inp + '">' +
+        '<input id="name-setup-last" placeholder="Nom" style="' + inp + '">' +
+      '</div>' +
+      '<div id="name-setup-error" style="display:none;color:#ff5d78;font-size:12px;margin-bottom:10px"></div>' +
+      '<button onclick="saveNameSetup(\'' + user.uid + '\')" style="width:100%;padding:12px;border:none;border-radius:11px;background:var(--accent);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans)">Continuer</button>' +
+    '</div>';
+}
+async function saveNameSetup(uid) {
+  const f = (document.getElementById('name-setup-first').value || '').trim();
+  const l = (document.getElementById('name-setup-last').value || '').trim();
+  const errEl = document.getElementById('name-setup-error');
+  if (!f || !l) { if (errEl) { errEl.textContent = 'Prénom et nom requis.'; errEl.style.display = 'block'; } return; }
+  try {
+    await setFirestoreDoc(firestoreDoc(db, 'roles', uid), { firstName: f, lastName: l }, { merge: true });
+    try { if (auth.updateProfile && fbAuth.currentUser) await auth.updateProfile(fbAuth.currentUser, { displayName: f + ' ' + l }); } catch (_) {}
+    const el = document.getElementById('name-setup-modal'); if (el) el.remove();
+    try {
+      const nd = document.getElementById('user-name-display'); if (nd) nd.textContent = f;
+      const av = document.getElementById('user-avatar'); if (av) av.textContent = (f[0] || '?').toUpperCase();
+    } catch (_) {}
+  } catch (e) {
+    if (errEl) { errEl.textContent = 'Échec de l\'enregistrement, réessayez.'; errEl.style.display = 'block'; }
+  }
+}
+
 async function _setupPin(uid, pin) {
   if (!/^\d{6}$/.test(pin)) throw new Error('PIN doit faire 6 chiffres');
   const salt = _genSalt();
@@ -1777,6 +1822,8 @@ window.doLogin = async function() {
 
 // ─── REGISTER ─────────────────────────────────────────
 window.doRegister = async function() {
+  const firstName = (document.getElementById('reg-firstname').value || '').trim();
+  const lastName  = (document.getElementById('reg-lastname').value || '').trim();
   const email = document.getElementById('reg-email').value.trim();
   const pass  = document.getElementById('reg-pass').value;
   const pass2 = document.getElementById('reg-pass2').value;
@@ -1784,6 +1831,7 @@ window.doRegister = async function() {
   const rgpdErr = document.getElementById('register-rgpd-error');
   err.textContent = ''; err.style.display = 'none';
   if (rgpdErr) rgpdErr.style.display = 'none';
+  if (!firstName || !lastName) { err.textContent = 'Veuillez indiquer votre prénom et votre nom.'; err.style.display = 'block'; return; }
   if (!email || !pass || !pass2) { err.textContent = 'Veuillez remplir tous les champs.'; err.style.display = 'block'; return; }
   if (pass !== pass2) { err.textContent = 'Les mots de passe ne correspondent pas.'; err.style.display = 'block'; return; }
   if (pass.length < 6) { err.textContent = 'Mot de passe trop court (6 caractères min).'; err.style.display = 'block'; return; }
@@ -1803,6 +1851,11 @@ window.doRegister = async function() {
   const wantsRecap = document.getElementById('reg-recap')?.checked !== false;
   try {
     const cred = await createUserWithEmailAndPassword(fbAuth, email, pass);
+    // Prénom + Nom → roles/{uid} (lisible admin) + displayName Auth
+    try {
+      await setFirestoreDoc(firestoreDoc(db, 'roles', cred.user.uid), { firstName, lastName }, { merge: true });
+    } catch (_) {}
+    try { if (auth.updateProfile) await auth.updateProfile(cred.user, { displayName: firstName + ' ' + lastName }); } catch (_) {}
     // Sauvegarder préférence recap — onAuthStateChanged prend le relai ensuite
     // On sauvegarde après le login via startApp, mais on stocke en attendant
     window._pendingRecapPref = wantsRecap;
@@ -1988,6 +2041,7 @@ async function startApp(user) {
     _updateNotifBadge();
     if (!window.IS_DEMO && Notification.permission === 'granted') initPush(user.uid).catch(() => {});
     try { _initSupportBadge(); } catch(e) { console.warn('support badge:', e); }
+    try { _ensureUserName(user); } catch(e) { console.warn('name setup:', e); }
     if (isAdmin()) {
       const na = document.getElementById('nav-admin');
       const nl = document.getElementById('nav-admin-label');
@@ -12481,7 +12535,7 @@ async function renderAdminUsers() {
     ]);
     const users = {};
     const get = uid => (users[uid] = users[uid] || { uid });
-    rolesSnap.forEach(d => { get(d.id).role = d.data().role || 'user'; });
+    rolesSnap.forEach(d => { const u = get(d.id), r = d.data(); u.role = r.role || 'user'; u.firstName = r.firstName; u.lastName = r.lastName; });
     presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.online = p.online; u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; });
     threadsSnap.forEach(d => { const u = get(d.id), t = d.data(); u.name = t.userName; u.email = t.userEmail; });
     const list = Object.values(users).sort((a, b) => (b.lastSeen ? b.lastSeen.getTime() : 0) - (a.lastSeen ? a.lastSeen.getTime() : 0));
@@ -12490,7 +12544,8 @@ async function renderAdminUsers() {
     box.innerHTML = list.map(u => {
       const isSuper = u.role === 'superadmin';
       const self = u.uid === currentUser;
-      const label = u.name || u.email || (u.uid.slice(0, 10) + '…');
+      const fullName = (u.firstName || u.lastName) ? ((u.firstName || '') + ' ' + (u.lastName || '')).trim() : '';
+      const label = fullName || u.name || u.email || (u.uid.slice(0, 10) + '…');
       const sub = (u.email && u.name ? u.email + ' · ' : '') + _relTime(u.lastSeen);
       const dot = u.online ? '<span style="width:7px;height:7px;border-radius:50%;background:var(--positive);box-shadow:0 0 8px var(--positive);flex-shrink:0"></span>' : '<span style="width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0"></span>';
       const roleBadge = '<span style="font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:5px;font-family:var(--mono);' + (isSuper ? 'background:rgba(255,77,106,.14);color:#ff5d78' : 'background:rgba(255,255,255,.06);color:var(--text3)') + '">' + (isSuper ? 'ADMIN' : 'USER') + '</span>';
