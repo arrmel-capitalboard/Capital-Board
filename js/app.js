@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260719n';
+const APP_VERSION = '20260719o';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1407,34 +1407,52 @@ async function _ensureUserName(user) {
   try {
     const snap = await getFirestoreDoc(firestoreDoc(db, 'roles', user.uid));
     const d = snap.exists() ? (snap.data() || {}) : {};
-    if (d.firstName && d.lastName) return;
+    if (d.firstName && d.lastName && d.username) return;
   } catch (_) { return; } // erreur de lecture → on ne bloque pas
   showNameSetupModal(user);
 }
 function showNameSetupModal(user) {
   let el = document.getElementById('name-setup-modal');
   if (!el) { el = document.createElement('div'); el.id = 'name-setup-modal'; document.body.appendChild(el); }
-  el.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.78);backdrop-filter:blur(6px);padding:20px';
-  const inp = 'flex:1;background:var(--s2);border:1px solid var(--border2);border-radius:10px;color:var(--text);font-size:14px;padding:11px 13px;outline:none;font-family:var(--sans)';
+  el.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.78);backdrop-filter:blur(6px);padding:20px;box-sizing:border-box';
+  const inp = 'width:100%;box-sizing:border-box;background:#0a0c14;border:1px solid rgba(255,255,255,.10);border-radius:10px;color:#f0f2f8;font-size:14px;padding:11px 13px;outline:none;font-family:inherit';
   el.innerHTML =
-    '<div style="max-width:400px;width:100%;background:#0f1119;border:1px solid var(--border2);border-radius:18px;padding:26px">' +
-      '<div style="font-size:19px;font-weight:800;color:var(--text);margin-bottom:6px">Bienvenue 👋</div>' +
-      '<div style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:18px">Indiquez votre prénom et votre nom pour continuer à utiliser Capital Board.</div>' +
-      '<div style="display:flex;gap:10px;margin-bottom:12px">' +
-        '<input id="name-setup-first" placeholder="Prénom" style="' + inp + '">' +
-        '<input id="name-setup-last" placeholder="Nom" style="' + inp + '">' +
+    '<div style="max-width:400px;width:100%;box-sizing:border-box;background:#12141e;border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:28px;box-shadow:0 24px 60px -20px rgba(0,0,0,.8);font-family:var(--sans,sans-serif)">' +
+      '<div style="font-size:20px;font-weight:800;color:#f0f2f8;margin-bottom:8px">Bienvenue 👋</div>' +
+      '<div style="font-size:13px;color:#98a1b5;line-height:1.6;margin-bottom:20px">Choisissez comment vous apparaissez sur Capital Board pour continuer.</div>' +
+      '<div style="display:flex;gap:10px;margin-bottom:11px">' +
+        '<input id="name-setup-first" placeholder="Prénom" autocomplete="given-name" style="' + inp + '">' +
+        '<input id="name-setup-last" placeholder="Nom" autocomplete="family-name" style="' + inp + '">' +
+      '</div>' +
+      '<div style="position:relative;margin-bottom:11px">' +
+        '<span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#5b6377;font-size:14px;pointer-events:none">@</span>' +
+        '<input id="name-setup-username" placeholder="nom_utilisateur" autocomplete="off" style="' + inp + ';padding-left:26px">' +
       '</div>' +
       '<div id="name-setup-error" style="display:none;color:#ff5d78;font-size:12px;margin-bottom:10px"></div>' +
-      '<button onclick="saveNameSetup(\'' + user.uid + '\')" style="width:100%;padding:12px;border:none;border-radius:11px;background:var(--accent);color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans)">Continuer</button>' +
+      '<button id="name-setup-btn" onclick="saveNameSetup(\'' + user.uid + '\')" style="width:100%;box-sizing:border-box;padding:12px;border:none;border-radius:12px;background:#7c6df5;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Continuer</button>' +
     '</div>';
 }
+
+async function _isUsernameTaken(username, selfUid) {
+  const q = firestoreQuery(firestoreCollection(db, 'roles'), firestoreWhere('username', '==', username));
+  const snap = await getDocs(q);
+  return snap.docs.some(d => d.id !== selfUid);
+}
+
 async function saveNameSetup(uid) {
   const f = (document.getElementById('name-setup-first').value || '').trim();
   const l = (document.getElementById('name-setup-last').value || '').trim();
+  const uRaw = (document.getElementById('name-setup-username').value || '').trim().toLowerCase();
   const errEl = document.getElementById('name-setup-error');
-  if (!f || !l) { if (errEl) { errEl.textContent = 'Prénom et nom requis.'; errEl.style.display = 'block'; } return; }
+  const btn = document.getElementById('name-setup-btn');
+  const fail = m => { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } };
+  if (errEl) errEl.style.display = 'none';
+  if (!f || !l) return fail('Prénom et nom requis.');
+  if (!/^[a-z0-9_.]{3,20}$/.test(uRaw)) return fail('Nom d\'utilisateur : 3–20 caractères (lettres, chiffres, _ ou .).');
+  if (btn) { btn.disabled = true; btn.textContent = 'Vérification…'; }
   try {
-    await setFirestoreDoc(firestoreDoc(db, 'roles', uid), { firstName: f, lastName: l }, { merge: true });
+    if (await _isUsernameTaken(uRaw, uid)) { if (btn) { btn.disabled = false; btn.textContent = 'Continuer'; } return fail('Ce nom d\'utilisateur est déjà pris.'); }
+    await setFirestoreDoc(firestoreDoc(db, 'roles', uid), { firstName: f, lastName: l, username: uRaw }, { merge: true });
     try { if (auth.updateProfile && fbAuth.currentUser) await auth.updateProfile(fbAuth.currentUser, { displayName: f + ' ' + l }); } catch (_) {}
     const el = document.getElementById('name-setup-modal'); if (el) el.remove();
     try {
@@ -1442,7 +1460,9 @@ async function saveNameSetup(uid) {
       const av = document.getElementById('user-avatar'); if (av) av.textContent = (f[0] || '?').toUpperCase();
     } catch (_) {}
   } catch (e) {
-    if (errEl) { errEl.textContent = 'Échec de l\'enregistrement, réessayez.'; errEl.style.display = 'block'; }
+    console.error('[name] save:', e);
+    if (btn) { btn.disabled = false; btn.textContent = 'Continuer'; }
+    fail('Échec de l\'enregistrement, réessayez.');
   }
 }
 
@@ -1824,6 +1844,7 @@ window.doLogin = async function() {
 window.doRegister = async function() {
   const firstName = (document.getElementById('reg-firstname').value || '').trim();
   const lastName  = (document.getElementById('reg-lastname').value || '').trim();
+  const username  = (document.getElementById('reg-username').value || '').trim().toLowerCase();
   const email = document.getElementById('reg-email').value.trim();
   const pass  = document.getElementById('reg-pass').value;
   const pass2 = document.getElementById('reg-pass2').value;
@@ -1832,7 +1853,11 @@ window.doRegister = async function() {
   err.textContent = ''; err.style.display = 'none';
   if (rgpdErr) rgpdErr.style.display = 'none';
   if (!firstName || !lastName) { err.textContent = 'Veuillez indiquer votre prénom et votre nom.'; err.style.display = 'block'; return; }
+  if (!/^[a-z0-9_.]{3,20}$/.test(username)) { err.textContent = 'Nom d\'utilisateur : 3–20 caractères (lettres, chiffres, _ ou .).'; err.style.display = 'block'; return; }
   if (!email || !pass || !pass2) { err.textContent = 'Veuillez remplir tous les champs.'; err.style.display = 'block'; return; }
+  try {
+    if (await _isUsernameTaken(username, '')) { err.textContent = 'Ce nom d\'utilisateur est déjà pris.'; err.style.display = 'block'; return; }
+  } catch (_) { /* si la vérif échoue on laisse passer, contrôle repassé au 1er login */ }
   if (pass !== pass2) { err.textContent = 'Les mots de passe ne correspondent pas.'; err.style.display = 'block'; return; }
   if (pass.length < 6) { err.textContent = 'Mot de passe trop court (6 caractères min).'; err.style.display = 'block'; return; }
   const rgpdChecked = document.getElementById('reg-rgpd')?.checked;
@@ -1853,7 +1878,7 @@ window.doRegister = async function() {
     const cred = await createUserWithEmailAndPassword(fbAuth, email, pass);
     // Prénom + Nom → roles/{uid} (lisible admin) + displayName Auth
     try {
-      await setFirestoreDoc(firestoreDoc(db, 'roles', cred.user.uid), { firstName, lastName }, { merge: true });
+      await setFirestoreDoc(firestoreDoc(db, 'roles', cred.user.uid), { firstName, lastName, username }, { merge: true });
     } catch (_) {}
     try { if (auth.updateProfile) await auth.updateProfile(cred.user, { displayName: firstName + ' ' + lastName }); } catch (_) {}
     // Sauvegarder préférence recap — onAuthStateChanged prend le relai ensuite
@@ -12578,7 +12603,7 @@ async function renderAdminUsers() {
     ]);
     const users = {};
     const get = uid => (users[uid] = users[uid] || { uid });
-    rolesSnap.forEach(d => { const u = get(d.id), r = d.data(); u.role = r.role || 'user'; u.firstName = r.firstName; u.lastName = r.lastName; });
+    rolesSnap.forEach(d => { const u = get(d.id), r = d.data(); u.role = r.role || 'user'; u.firstName = r.firstName; u.lastName = r.lastName; u.username = r.username; });
     presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.online = p.online; u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; });
     threadsSnap.forEach(d => { const u = get(d.id), t = d.data(); u.name = t.userName; u.email = t.userEmail; });
     const list = Object.values(users).sort((a, b) => (b.lastSeen ? b.lastSeen.getTime() : 0) - (a.lastSeen ? a.lastSeen.getTime() : 0));
@@ -12589,7 +12614,7 @@ async function renderAdminUsers() {
       const self = u.uid === currentUser;
       const fullName = (u.firstName || u.lastName) ? ((u.firstName || '') + ' ' + (u.lastName || '')).trim() : '';
       const label = fullName || u.name || u.email || (u.uid.slice(0, 10) + '…');
-      const sub = (u.email && u.name ? u.email + ' · ' : '') + _relTime(u.lastSeen);
+      const sub = (u.username ? '@' + u.username + ' · ' : '') + (u.email ? u.email + ' · ' : '') + _relTime(u.lastSeen);
       const dot = u.online ? '<span style="width:7px;height:7px;border-radius:50%;background:var(--positive);box-shadow:0 0 8px var(--positive);flex-shrink:0"></span>' : '<span style="width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0"></span>';
       const roleBadge = '<span style="font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:5px;font-family:var(--mono);' + (isSuper ? 'background:rgba(255,77,106,.14);color:#ff5d78' : 'background:rgba(255,255,255,.06);color:var(--text3)') + '">' + (isSuper ? 'ADMIN' : 'USER') + '</span>';
       const delBtn = (self || u.uid === ADMIN_UID) ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px;border-color:rgba(255,93,120,.3);color:#ff5d78" onclick="adminDeleteUser(\'' + u.uid + '\',\'' + label.replace(/'/g, '') + '\')">Effacer (RGPD)</button>';
