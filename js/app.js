@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260602b';
+const APP_VERSION = '20260719n';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1961,21 +1961,42 @@ function _withTimeout(promise, ms) {
 // ─── DÉMARRAGE APP ────────────────────────────────────
 // ─── VERSION CHECK ───────────────────────────────────────────
 let _versionCheckInterval = null;
+let _updateGateShown = false;
 async function _checkVersion() {
   try {
-    const res = await fetch('data/version.json?t=' + Date.now());
+    const res = await fetch('data/version.json?t=' + Date.now(), { cache: 'no-store' });
     if (!res.ok) return;
     const { v } = await res.json();
-    if (v && v !== APP_VERSION) {
-      const banner = document.getElementById('update-banner');
-      if (banner) banner.style.display = 'flex';
-    }
-  } catch(e) { /* silencieux */ }
+    if (v && v !== APP_VERSION) _showUpdateGate();   // strict : bloque tout
+  } catch(e) { /* silencieux — pas de blocage si offline */ }
+}
+// Écran bloquant : impossible d'utiliser une version obsolète, seule action = recharger.
+function _showUpdateGate() {
+  if (_updateGateShown) return;
+  _updateGateShown = true;
+  let el = document.getElementById('update-gate');
+  if (!el) { el = document.createElement('div'); el.id = 'update-gate'; document.body.appendChild(el); }
+  el.style.cssText = 'position:fixed;inset:0;z-index:2147483647;display:flex;align-items:center;justify-content:center;background:#04060b;padding:24px;text-align:center';
+  el.innerHTML =
+    '<div style="max-width:420px">' +
+    '<div style="width:64px;height:64px;margin:0 auto 20px;border-radius:16px;background:rgba(124,109,245,.12);display:grid;place-items:center">' +
+    '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg>' +
+    '</div>' +
+    '<div style="font-size:22px;font-weight:800;color:#f0f2f8;margin-bottom:12px">Nouvelle version disponible</div>' +
+    '<div style="font-size:14px;color:#98a1b5;line-height:1.7;margin-bottom:22px">Une version plus récente de Capital Board est en ligne. Rechargez la page pour continuer.</div>' +
+    '<button onclick="_forceReload()" style="padding:12px 28px;border:none;border-radius:12px;background:#7c6df5;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans, sans-serif)">Recharger maintenant</button>' +
+    '</div>';
+}
+function _forceReload() {
+  try { if (window.caches && caches.keys) caches.keys().then(ks => ks.forEach(k => caches.delete(k))); } catch(_) {}
+  const u = new URL(window.location.href);
+  u.searchParams.set('_v', Date.now());   // casse le cache HTML
+  window.location.replace(u.toString());
 }
 function _startVersionCheck() {
   _checkVersion();
   if (_versionCheckInterval) clearInterval(_versionCheckInterval);
-  _versionCheckInterval = setInterval(_checkVersion, 5 * 60 * 1000);
+  _versionCheckInterval = setInterval(_checkVersion, 60 * 1000);
 }
 
 // ─── Chrono perf dashboard (F12) ──────────────────────────────────────────
@@ -2042,17 +2063,15 @@ async function startApp(user) {
     if (!window.IS_DEMO && Notification.permission === 'granted') initPush(user.uid).catch(() => {});
     try { _initSupportBadge(); } catch(e) { console.warn('support badge:', e); }
     try { _ensureUserName(user); } catch(e) { console.warn('name setup:', e); }
-    if (isAdmin()) {
-      const na = document.getElementById('nav-admin');
-      const nl = document.getElementById('nav-admin-label');
-      if (na) na.style.display = '';
-      if (nl) nl.style.display = '';
-    }
     // Menu custom + feature flags — organisation et sections désactivées
+    // (applyNavLayout gère aussi la visibilité de l'entrée Admin)
     _getAppConfig().then(c => {
       applyNavLayout(c.nav);
       applyFeatureFlags(c.features);
-    }).catch(() => {});
+    }).catch(() => {
+      applyNavLayout(null);
+      applyFeatureFlags({});
+    });
     try { _startPresenceHeartbeat(); } catch(e) { console.warn('presence:', e); }
     try { _processDiscordLink(user); } catch(e) { console.warn('discord link:', e); }
   } catch(e) {
@@ -2736,12 +2755,16 @@ const SECTION_LABELS = {
   portfolio: 'Portefeuille', activite: 'Activité', dividendes: 'Dividendes', watchlist: 'Watchlist',
   performance: 'Performance', benchmark: 'Benchmark', projections: 'Projections', earnings: 'Calendrier résultats',
   recap: 'Récap du jour', alertes: 'Alertes prix', notifications: 'Notifications', support: 'Support',
+  admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord',
 };
 const ALL_SECTIONS = Object.keys(SECTION_LABELS);
+const ADMIN_ONLY_KEYS = ['admin']; // rendus uniquement pour l'admin
 const DEFAULT_NAV = [
-  { title: 'Mon PEA',  items: ['portfolio', 'activite', 'dividendes', 'watchlist'] },
-  { title: 'Analyse',  items: ['performance', 'benchmark', 'projections', 'earnings'] },
-  { title: 'Outils',   items: ['recap', 'alertes', 'notifications', 'support'] },
+  { title: 'Mon PEA',        items: ['portfolio', 'activite', 'dividendes', 'watchlist'] },
+  { title: 'Analyse',        items: ['performance', 'benchmark', 'projections', 'earnings'] },
+  { title: 'Outils',         items: ['recap', 'alertes', 'notifications', 'support'] },
+  { title: 'Administration', items: ['admin'] },
+  { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord'] },
 ];
 let _navNodes = null;   // cache des noeuds .nav-item par clé
 let _navDraft = null;   // brouillon d'édition admin
@@ -2752,8 +2775,15 @@ function _cacheNavNodes() {
   if (!container) return;
   _navNodes = {};
   container.querySelectorAll('.nav-item').forEach(el => {
-    const m = (el.getAttribute('onclick') || '').match(/showPage\('([^']+)'\)/);
-    if (m) _navNodes[m[1]] = el;
+    const oc = el.getAttribute('onclick') || '';
+    let key = null;
+    const m = oc.match(/showPage\('([^']+)'\)/);
+    if (m) key = m[1];
+    else if (/instagram\.com/.test(oc)) key = 'instagram';
+    else if (/tiktok\.com/.test(oc)) key = 'tiktok';
+    else if (/youtube\.com/.test(oc)) key = 'youtube';
+    else if (/discord\.gg/.test(oc)) key = 'discord';
+    if (key) _navNodes[key] = el;
   });
 }
 
@@ -2763,17 +2793,30 @@ function applyNavLayout(nav) {
   _cacheNavNodes();
   const layout = (Array.isArray(nav) && nav.length) ? nav : DEFAULT_NAV;
   container.innerHTML = '';
-  layout.forEach((cat, ci) => {
+  layout.forEach(cat => {
+    // clés visibles de la catégorie (admin réservé à l'admin)
+    const visible = (cat.items || []).filter(key => {
+      if (!_navNodes[key]) return false;
+      if (ADMIN_ONLY_KEYS.includes(key) && !isAdmin()) return false;
+      return true;
+    });
+    if (!visible.length) return; // catégorie vide → pas de titre
     const lab = document.createElement('div');
     lab.className = 'nav-section-label';
-    if (ci > 0) lab.style.marginTop = '14px';
+    if (container.children.length) lab.style.marginTop = '14px';
     lab.textContent = cat.title || '';
     container.appendChild(lab);
-    (cat.items || []).forEach(key => {
-      const node = _navNodes[key];
-      if (node) container.appendChild(node);
-    });
+    visible.forEach(key => container.appendChild(_navNodes[key]));
   });
+  // Sécurité : l'admin garde toujours son entrée, même si la config l'omet
+  if (isAdmin() && _navNodes.admin && !container.contains(_navNodes.admin)) {
+    const lab = document.createElement('div');
+    lab.className = 'nav-section-label';
+    if (container.children.length) lab.style.marginTop = '14px';
+    lab.textContent = 'Administration';
+    container.appendChild(lab);
+    container.appendChild(_navNodes.admin);
+  }
 }
 
 function showPage(id) {
@@ -13447,4 +13490,7 @@ function _initSupportBadge() {
 }
 window.renderSupportPage = renderSupportPage;
 window._initSupportBadge = _initSupportBadge;
+
+// Version-lock strict : vérifie dès l'accès/refresh (avant même le login)
+try { _checkVersion(); } catch(_) {}
 
