@@ -82,11 +82,34 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 }
 .login-bg {
   position: absolute; inset: 0;
+  background: var(--bg);
+  overflow: hidden;
+}
+.login-bg::before, .login-bg::after {
+  content: ""; position: absolute; inset: -20%;
+  will-change: transform;
+}
+.login-bg::before {
   background:
     radial-gradient(ellipse 70% 50% at 20% 80%, rgba(0,224,158,0.05) 0%, transparent 60%),
-    radial-gradient(ellipse 50% 50% at 80% 20%, rgba(124,109,245,0.06) 0%, transparent 60%),
-    radial-gradient(ellipse 40% 40% at 50% 50%, rgba(91,141,238,0.03) 0%, transparent 60%),
-    var(--bg);
+    radial-gradient(ellipse 40% 40% at 50% 50%, rgba(91,141,238,0.03) 0%, transparent 60%);
+  animation: loginBgA 26s ease-in-out infinite alternate;
+}
+.login-bg::after {
+  background:
+    radial-gradient(ellipse 50% 50% at 80% 20%, rgba(124,109,245,0.06) 0%, transparent 60%);
+  animation: loginBgB 34s ease-in-out infinite alternate;
+}
+@keyframes loginBgA {
+  from { transform: translate3d(0,0,0) scale(1); }
+  to   { transform: translate3d(4%, 3%, 0) scale(1.12); }
+}
+@keyframes loginBgB {
+  from { transform: translate3d(0,0,0) scale(1); }
+  to   { transform: translate3d(-5%, -2%, 0) scale(1.15); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .login-bg::before, .login-bg::after { animation: none; }
 }
 .login-grid {
   position: absolute; inset: 0;

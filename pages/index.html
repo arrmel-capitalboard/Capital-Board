@@ -97,15 +97,38 @@
   }
   a { color: inherit; text-decoration: none; }
 
-  /* ═══ BG ambient ═══ */
+  /* ═══ BG ambient (dérive lente) ═══ */
   .ambient {
-    position: fixed; inset: 0;
+    position: fixed; inset: -20%;
     pointer-events: none;
     z-index: 0;
+    overflow: hidden;
+  }
+  .ambient::before, .ambient::after {
+    content: ""; position: absolute; inset: 0;
+    will-change: transform;
+  }
+  .ambient::before {
     background:
       radial-gradient(ellipse 800px 600px at 20% 10%, rgba(124,109,245,0.18), transparent 60%),
-      radial-gradient(ellipse 700px 500px at 85% 30%, rgba(91,141,238,0.12), transparent 60%),
       radial-gradient(ellipse 600px 400px at 50% 90%, rgba(0,224,158,0.08), transparent 60%);
+    animation: ambientA 26s ease-in-out infinite alternate;
+  }
+  .ambient::after {
+    background:
+      radial-gradient(ellipse 700px 500px at 85% 30%, rgba(91,141,238,0.12), transparent 60%);
+    animation: ambientB 34s ease-in-out infinite alternate;
+  }
+  @keyframes ambientA {
+    from { transform: translate3d(0,0,0) scale(1); }
+    to   { transform: translate3d(4%, 3%, 0) scale(1.12); }
+  }
+  @keyframes ambientB {
+    from { transform: translate3d(0,0,0) scale(1); }
+    to   { transform: translate3d(-5%, -2%, 0) scale(1.15); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .ambient::before, .ambient::after { animation: none; }
   }
   /* ═══ NAV ═══ */
   nav {
