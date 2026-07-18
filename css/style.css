@@ -689,40 +689,52 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 .pin-keypad {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
-  gap: 10px;
+  gap: 12px;
   margin-bottom: 14px;
+  max-width: 300px;
+  margin-left: auto;
+  margin-right: auto;
 }
 .pin-key {
-  padding: 16px 0;
-  background: var(--s2);
+  aspect-ratio: 1 / 1;
+  display: flex; align-items: center; justify-content: center;
+  background: linear-gradient(180deg, var(--s2), var(--s1));
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: 16px;
   color: var(--text);
-  font-size: 22px;
+  font-size: 24px;
   font-weight: 700;
   font-family: var(--mono);
   cursor: pointer;
   user-select: none;
   -webkit-tap-highlight-color: transparent;
-  transition: background 0.1s, transform 0.05s;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.2), inset 0 1px 0 rgba(255,255,255,0.03);
+  transition: background 0.12s, border-color 0.12s, transform 0.08s, box-shadow 0.12s;
 }
-.pin-key:hover { background: rgba(124,109,245,0.08); }
-.pin-key:active { background: rgba(124,109,245,0.18); transform: scale(0.96); }
-.pin-key.empty { visibility: hidden; cursor: default; }
+.pin-key:hover { background: linear-gradient(180deg, rgba(124,109,245,0.14), rgba(124,109,245,0.05)); border-color: rgba(124,109,245,0.4); transform: translateY(-1px); }
+.pin-key:active { background: rgba(124,109,245,0.22); transform: scale(0.95); box-shadow: inset 0 2px 6px rgba(0,0,0,0.3); }
+.pin-key.empty { visibility: hidden; cursor: default; box-shadow: none; }
 .pin-key.back { color: var(--accent); }
 .pin-key.back svg { display: inline-block; vertical-align: middle; }
 
 /* ─── Lock PIN dots ───────────────────────────────── */
+#pin-dots { margin-bottom: 26px !important; gap: 14px !important; }
 .pin-dot {
-  width: 14px; height: 14px; border-radius: 50%;
+  width: 15px; height: 15px; border-radius: 50%;
   border: 2px solid var(--border2);
   background: transparent;
-  transition: all 0.15s;
+  transition: transform 0.18s cubic-bezier(.2,.8,.2,1), background 0.18s, border-color 0.18s, box-shadow 0.18s;
 }
 .pin-dot.filled {
   background: var(--accent);
   border-color: var(--accent);
-  box-shadow: 0 0 8px rgba(124,109,245,0.4);
+  box-shadow: 0 0 10px rgba(124,109,245,0.5);
+  animation: pin-dot-pop 0.22s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes pin-dot-pop {
+  0% { transform: scale(0.6); }
+  55% { transform: scale(1.25); }
+  100% { transform: scale(1); }
 }
 .pin-dot.shake { animation: pin-shake 0.4s; }
 @keyframes pin-shake {

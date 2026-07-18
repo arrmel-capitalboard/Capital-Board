@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260718b">
+<link rel="stylesheet" href="css/style.css?v=20260718c">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -196,7 +196,8 @@
       <span class="pin-dot"></span><span class="pin-dot"></span><span class="pin-dot"></span>
       <span class="pin-dot"></span><span class="pin-dot"></span><span class="pin-dot"></span>
     </div>
-    <input id="pin-lock-input" type="password" inputmode="none" readonly autocomplete="off" maxlength="6" placeholder="••••••" style="width:100%;padding:14px;border-radius:10px;border:1px solid var(--border2);background:var(--s2);color:var(--text);font-size:24px;font-family:var(--mono);font-weight:700;text-align:center;letter-spacing:10px;margin-bottom:14px;outline:none;caret-color:transparent;-webkit-text-security:disc">
+    <!-- Champ réel masqué : les dots servent d'indicateur visuel unique. -->
+    <input id="pin-lock-input" type="password" inputmode="none" readonly autocomplete="off" maxlength="6" style="position:absolute;width:1px;height:1px;opacity:0;pointer-events:none;left:-9999px">
     <div id="pin-lock-error" style="display:none;font-size:12px;color:#ff4d6a;margin-bottom:10px;text-align:center;padding:8px 12px;background:rgba(255,77,106,0.08);border-radius:8px"></div>
     <div class="pin-keypad" id="pin-lock-keypad"></div>
     <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--text3)">
@@ -1502,7 +1503,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260718b"></script>
+<script src="js/app.js?v=20260718c"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
