@@ -677,7 +677,18 @@ window.showLoginView = function() {
   document.getElementById('login-error').textContent = '';
   stopVerifyPolling();
 };
-window.showRegisterView = function() {
+window.showRegisterView = async function() {
+  // Inscriptions fermées → on ne montre même pas le formulaire
+  let open = true;
+  try { open = (await _getAppConfig()).signupOpen !== false; } catch(_) {}
+  if (!open) {
+    const lv = document.getElementById('login-view');
+    if (lv) lv.style.display = 'block';
+    const rv = document.getElementById('register-view'); if (rv) rv.style.display = 'none';
+    const err = document.getElementById('login-error');
+    if (err) { err.textContent = 'Les inscriptions sont actuellement fermées.'; err.style.display = 'block'; }
+    return;
+  }
   document.getElementById('login-view').style.display = 'none';
   document.getElementById('register-view').style.display = 'block';
   const vv = document.getElementById('verify-view'); if (vv) vv.style.display = 'none';
@@ -12483,7 +12494,6 @@ async function renderAdminUsers() {
       const sub = (u.email && u.name ? u.email + ' · ' : '') + _relTime(u.lastSeen);
       const dot = u.online ? '<span style="width:7px;height:7px;border-radius:50%;background:var(--positive);box-shadow:0 0 8px var(--positive);flex-shrink:0"></span>' : '<span style="width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0"></span>';
       const roleBadge = '<span style="font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:5px;font-family:var(--mono);' + (isSuper ? 'background:rgba(255,77,106,.14);color:#ff5d78' : 'background:rgba(255,255,255,.06);color:var(--text3)') + '">' + (isSuper ? 'ADMIN' : 'USER') + '</span>';
-      const roleBtn = self ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px" onclick="adminSetRole(\'' + u.uid + '\',\'' + (isSuper ? 'user' : 'superadmin') + '\')">' + (isSuper ? 'Rétrograder' : 'Promouvoir admin') + '</button>';
       const delBtn = (self || u.uid === ADMIN_UID) ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px;border-color:rgba(255,93,120,.3);color:#ff5d78" onclick="adminDeleteUser(\'' + u.uid + '\',\'' + label.replace(/'/g, '') + '\')">Effacer (RGPD)</button>';
       return '<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)">' +
         dot +
@@ -12491,7 +12501,7 @@ async function renderAdminUsers() {
           '<div style="font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:7px">' + label + ' ' + roleBadge + '</div>' +
           '<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + sub + '</div>' +
         '</div>' +
-        '<div style="display:flex;gap:6px;flex-shrink:0">' + roleBtn + delBtn + '</div>' +
+        '<div style="display:flex;gap:6px;flex-shrink:0">' + delBtn + '</div>' +
       '</div>';
     }).join('');
   } catch (e) {
