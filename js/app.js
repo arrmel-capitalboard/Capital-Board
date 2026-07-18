@@ -207,7 +207,17 @@ _splashWatchdog = setTimeout(() => {
     const redirectResult = await getRedirectResult(fbAuth);
     if (redirectResult && redirectResult.user) {
       const isNew = redirectResult._tokenResponse && redirectResult._tokenResponse.isNewUser;
-      if (isNew) { try { localStorage.setItem('signup_auto_trust', '1'); } catch(_) {} }
+      if (isNew) {
+        // Inscriptions fermées : refuse le nouveau compte Google
+        if (!(await _isSignupOpen())) {
+          try { await redirectResult.user.delete(); } catch(_) {}
+          try { await signOut(fbAuth); } catch(_) {}
+          const errEl = document.getElementById('login-error');
+          if (errEl) errEl.textContent = 'Les inscriptions sont temporairement fermées.';
+        } else {
+          try { localStorage.setItem('signup_auto_trust', '1'); } catch(_) {}
+        }
+      }
     }
   } catch(e) {
     console.warn('[google] getRedirectResult:', e && e.message);
@@ -235,6 +245,14 @@ _splashWatchdog = setTimeout(() => {
         showVerifyView(u.email);
         return;
       }
+      // Gate maintenance — bloque tout le monde sauf admin
+      try {
+        const cfg = await _getAppConfig();
+        if (cfg.maintenance && u.uid !== ADMIN_UID) {
+          showMaintenanceScreen(cfg.maintenanceMsg);
+          return;
+        }
+      } catch(_) { /* fail-open : pas de blocage si lecture KO */ }
       // Gate 2FA device — vérif appareil de confiance (90j)
       try {
         const deviceId = _getDeviceId();
@@ -1324,12 +1342,52 @@ async function _isPinGloballyDisabled() {
 }
 
 async function _setPinGloballyDisabled(disabled) {
+  await _setAppConfig({ pinDisabled: !!disabled });
+}
+
+// ─── Config globale app (config/app) — lu par tous, écrit par admin ────
+async function _getAppConfig() {
+  try {
+    const snap = await getFirestoreDoc(firestoreDoc(db, 'config', 'app'));
+    return snap.exists() ? (snap.data() || {}) : {};
+  } catch (e) {
+    console.warn('[config] lecture échouée:', e);
+    return {};
+  }
+}
+async function _setAppConfig(fields) {
   const ref = firestoreDoc(db, 'config', 'app');
-  await setFirestoreDoc(ref, {
-    pinDisabled: !!disabled,
+  await setFirestoreDoc(ref, Object.assign({
     updatedAt: Date.now(),
     updatedBy: currentUser || null,
-  }, { merge: true });
+  }, fields), { merge: true });
+}
+// Maintenance : bloque tout le monde sauf admin. Défaut : off.
+async function _isMaintenance() { const c = await _getAppConfig(); return !!c.maintenance; }
+// Inscriptions : ouvertes par défaut (n'importe quelle erreur → on ne bloque pas).
+async function _isSignupOpen() { const c = await _getAppConfig(); return c.signupOpen !== false; }
+
+function showMaintenanceScreen(msg) {
+  const login = document.getElementById('login-screen');
+  const app = document.getElementById('app');
+  if (login) login.style.display = 'none';
+  if (app) app.style.display = 'none';
+  let el = document.getElementById('maintenance-screen');
+  if (!el) {
+    el = document.createElement('div');
+    el.id = 'maintenance-screen';
+    el.style.cssText = 'position:fixed;inset:0;z-index:99999;display:flex;align-items:center;justify-content:center;background:var(--bg);padding:24px;text-align:center';
+    document.body.appendChild(el);
+  }
+  el.innerHTML =
+    '<div style="max-width:440px">' +
+    '<div style="width:64px;height:64px;margin:0 auto 20px;border-radius:16px;background:rgba(245,183,49,.12);display:grid;place-items:center">' +
+    '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>' +
+    '</div>' +
+    '<div style="font-size:22px;font-weight:800;color:var(--text);margin-bottom:12px">Maintenance en cours</div>' +
+    '<div style="font-size:14px;color:var(--text2);line-height:1.7">' + (msg || 'Capital Board revient très vite. Merci de votre patience.') + '</div>' +
+    '</div>';
+  el.style.display = 'flex';
 }
 
 async function _setupPin(uid, pin) {
@@ -1720,6 +1778,11 @@ window.doRegister = async function() {
   if (pass.length < 6) { err.textContent = 'Mot de passe trop court (6 caractères min).'; err.style.display = 'block'; return; }
   const rgpdChecked = document.getElementById('reg-rgpd')?.checked;
   if (!rgpdChecked) { if (rgpdErr) { rgpdErr.style.display = 'block'; } return; }
+  if (!(await _isSignupOpen())) {
+    err.textContent = 'Les inscriptions sont temporairement fermées.';
+    err.style.display = 'block';
+    return;
+  }
   if (_checkTurnstile('turnstile-register') !== 'ready') {
     err.textContent = 'Veuillez compléter la vérification de sécurité.';
     err.style.display = 'block';
@@ -12182,20 +12245,81 @@ function isAdmin() { return currentUser === ADMIN_UID; }
 // ─── PAGE ADMIN ──────────────────────────────────────────────────
 async function renderAdminPage() {
   if (!isAdmin()) { showPage('portfolio'); return; }
-  const toggle = document.getElementById('admin-pin-toggle');
-  const status = document.getElementById('admin-pin-status');
-  if (!toggle) return;
-  toggle.disabled = true;
-  if (status) status.textContent = 'Chargement…';
+  let cfg = {};
+  try { cfg = await _getAppConfig(); } catch (_) {}
+
+  // PIN
+  const pinT = document.getElementById('admin-pin-toggle');
+  if (pinT) { pinT.checked = !!cfg.pinDisabled; _adminPinStatusText(!!cfg.pinDisabled); }
+
+  // Maintenance
+  const maintT = document.getElementById('admin-maint-toggle');
+  const maintMsg = document.getElementById('admin-maint-msg');
+  if (maintT) maintT.checked = !!cfg.maintenance;
+  if (maintMsg) maintMsg.value = cfg.maintenanceMsg || '';
+  _adminMaintStatus(!!cfg.maintenance);
+
+  // Inscriptions
+  const signupT = document.getElementById('admin-signup-toggle');
+  const signupOpen = cfg.signupOpen !== false;
+  if (signupT) signupT.checked = signupOpen;
+  _adminSignupStatus(signupOpen);
+}
+
+function _adminMaintStatus(on) {
+  const s = document.getElementById('admin-maint-status');
+  if (!s) return;
+  s.innerHTML = on
+    ? '<span style="color:var(--negative)">● Maintenance ACTIVE — app bloquée pour les utilisateurs.</span>'
+    : '<span style="color:var(--positive)">● App accessible normalement.</span>';
+}
+function _adminSignupStatus(open) {
+  const s = document.getElementById('admin-signup-status');
+  if (!s) return;
+  s.innerHTML = open
+    ? '<span style="color:var(--positive)">● Inscriptions ouvertes.</span>'
+    : '<span style="color:var(--negative)">● Inscriptions fermées — accès sur invitation.</span>';
+}
+
+async function adminToggleMaintenance(el) {
+  if (!isAdmin()) return;
+  const wanted = el.checked;
+  el.disabled = true;
   try {
-    const disabled = await _isPinGloballyDisabled();
-    toggle.checked = disabled;
-    _adminPinStatusText(disabled);
+    const msg = (document.getElementById('admin-maint-msg') || {}).value || '';
+    await _setAppConfig({ maintenance: wanted, maintenanceMsg: msg });
+    _adminMaintStatus(wanted);
   } catch (e) {
-    if (status) status.textContent = 'Erreur de lecture de la configuration.';
-  } finally {
-    toggle.disabled = false;
+    console.error('[admin] maintenance:', e);
+    el.checked = !wanted;
+    const s = document.getElementById('admin-maint-status');
+    if (s) s.textContent = 'Échec de l\'enregistrement.';
+  } finally { el.disabled = false; }
+}
+async function adminSaveMaintenanceMsg() {
+  if (!isAdmin()) return;
+  const s = document.getElementById('admin-maint-status');
+  try {
+    const msg = (document.getElementById('admin-maint-msg') || {}).value || '';
+    await _setAppConfig({ maintenanceMsg: msg });
+    if (s) { const prev = s.innerHTML; s.textContent = '✓ Message enregistré.'; setTimeout(() => { s.innerHTML = prev; }, 1800); }
+  } catch (e) {
+    if (s) s.textContent = 'Échec de l\'enregistrement du message.';
   }
+}
+async function adminToggleSignup(el) {
+  if (!isAdmin()) return;
+  const open = el.checked;
+  el.disabled = true;
+  try {
+    await _setAppConfig({ signupOpen: open });
+    _adminSignupStatus(open);
+  } catch (e) {
+    console.error('[admin] signup:', e);
+    el.checked = !open;
+    const s = document.getElementById('admin-signup-status');
+    if (s) s.textContent = 'Échec de l\'enregistrement.';
+  } finally { el.disabled = false; }
 }
 
 function _adminPinStatusText(disabled) {
