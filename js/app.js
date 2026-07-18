@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260719o';
+const APP_VERSION = '20260719p';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1448,7 +1448,7 @@ async function saveNameSetup(uid) {
   const fail = m => { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } };
   if (errEl) errEl.style.display = 'none';
   if (!f || !l) return fail('Prénom et nom requis.');
-  if (!/^[a-z0-9_.]{3,20}$/.test(uRaw)) return fail('Nom d\'utilisateur : 3–20 caractères (lettres, chiffres, _ ou .).');
+  if (!/^[a-z0-9._-]{3,20}$/.test(uRaw)) return fail('Nom d\'utilisateur : 3–20 caractères (lettres, chiffres, . - _).');
   if (btn) { btn.disabled = true; btn.textContent = 'Vérification…'; }
   try {
     if (await _isUsernameTaken(uRaw, uid)) { if (btn) { btn.disabled = false; btn.textContent = 'Continuer'; } return fail('Ce nom d\'utilisateur est déjà pris.'); }
@@ -1853,7 +1853,7 @@ window.doRegister = async function() {
   err.textContent = ''; err.style.display = 'none';
   if (rgpdErr) rgpdErr.style.display = 'none';
   if (!firstName || !lastName) { err.textContent = 'Veuillez indiquer votre prénom et votre nom.'; err.style.display = 'block'; return; }
-  if (!/^[a-z0-9_.]{3,20}$/.test(username)) { err.textContent = 'Nom d\'utilisateur : 3–20 caractères (lettres, chiffres, _ ou .).'; err.style.display = 'block'; return; }
+  if (!/^[a-z0-9._-]{3,20}$/.test(username)) { err.textContent = 'Nom d\'utilisateur : 3–20 caractères (lettres, chiffres, . - _).'; err.style.display = 'block'; return; }
   if (!email || !pass || !pass2) { err.textContent = 'Veuillez remplir tous les champs.'; err.style.display = 'block'; return; }
   try {
     if (await _isUsernameTaken(username, '')) { err.textContent = 'Ce nom d\'utilisateur est déjà pris.'; err.style.display = 'block'; return; }
