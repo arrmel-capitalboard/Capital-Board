@@ -1104,9 +1104,8 @@ window.pinLockSubmit = async function() {
   try {
     const ok = await _verifyPin(user.uid, val);
     if (ok) {
-      document.getElementById('pin-lock-view').style.display = 'none';
       _pinLockAttempts = 0;
-      startApp(user);
+      _pinUnlockSuccess(user);
     } else {
       _pinLockAttempts++;
       _shakePinDots();
@@ -1128,6 +1127,36 @@ window.pinLockSubmit = async function() {
     setLoading('pin-lock-btn', false);
   }
 };
+
+// Séquence déverrouillage réussi : dots verts → check pop → fondu carte → app.
+function _pinUnlockSuccess(user) {
+  const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  const view = document.getElementById('pin-lock-view');
+  const dotsWrap = document.getElementById('pin-dots');
+  const dots = document.querySelectorAll('#pin-dots .pin-dot');
+  const finish = () => {
+    if (view) { view.style.display = 'none'; view.classList.remove('pin-card-exit'); }
+    if (dotsWrap) { dotsWrap.classList.remove('unlocked'); dotsWrap.style.position = ''; }
+    const chk = document.getElementById('pin-unlock-check'); if (chk) chk.remove();
+    dots.forEach(d => d.classList.remove('success'));
+    startApp(user);
+  };
+  if (reduce || !view) { finish(); return; }
+  dots.forEach(d => { d.classList.remove('filled'); d.classList.add('success'); });
+  if (dotsWrap && !document.getElementById('pin-unlock-check')) {
+    dotsWrap.style.position = 'relative';
+    const chk = document.createElement('div');
+    chk.id = 'pin-unlock-check';
+    chk.innerHTML = '<svg width="34" height="34" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>';
+    dotsWrap.appendChild(chk);
+    // léger délai pour laisser les dots verdir avant de disparaître
+    setTimeout(() => dotsWrap.classList.add('unlocked'), 120);
+  }
+  setTimeout(() => {
+    view.classList.add('pin-card-exit');
+    setTimeout(finish, 320);
+  }, 560);
+}
 
 window.pinLockLogout = async function() {
   _pinLockUser = null;
@@ -1801,7 +1830,10 @@ async function startApp(user) {
     window.currentUser = user.uid;
     const displayName = user.displayName || user.email.split('@')[0];
     document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('app').style.display = 'block';
+    const appEl = document.getElementById('app');
+    appEl.style.display = 'block';
+    appEl.classList.add('app-enter');
+    setTimeout(() => appEl.classList.remove('app-enter'), 600);
     _restoreHideBalances();
     _startVersionCheck();
     document.getElementById('user-avatar').textContent = (displayName[0] || '?').toUpperCase();

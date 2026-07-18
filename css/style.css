@@ -730,6 +730,33 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   25% { transform: translateX(-6px); }
   75% { transform: translateX(6px); }
 }
+/* Déverrouillage réussi : dots verts → disparaissent, check pop */
+.pin-dot.success { background: #22d98a; border-color: #22d98a; box-shadow: 0 0 12px rgba(34,217,138,0.55); }
+#pin-dots.unlocked .pin-dot { opacity: 0; transform: scale(0.4); }
+#pin-unlock-check {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  color: #22d98a;
+  animation: check-pop 0.42s cubic-bezier(.2,.8,.2,1);
+}
+@keyframes check-pop {
+  0%   { opacity: 0; transform: scale(0.4); }
+  60%  { opacity: 1; transform: scale(1.15); }
+  100% { opacity: 1; transform: scale(1); }
+}
+.pin-card-exit { animation: pin-card-exit 0.32s forwards cubic-bezier(.4,0,1,1); }
+@keyframes pin-card-exit {
+  to { opacity: 0; transform: scale(0.94) translateY(-8px); }
+}
+/* Entrée app après déverrouillage / login */
+.app-enter { animation: app-enter 0.5s cubic-bezier(.16,1,.3,1); }
+@keyframes app-enter {
+  from { opacity: 0; transform: scale(0.985); }
+  to   { opacity: 1; transform: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  #pin-unlock-check, .pin-card-exit, .app-enter { animation: none !important; }
+}
 
 /* ═══════════════════════════════════════════════════
    PORTFOLIO CHART SECTION
