@@ -12068,15 +12068,43 @@ function renderSupportPage() {
 }
 
 // Modale à l'entrée de l'onglet Support : recommander le Discord.
+const DISCORD_INVITE_URL = "https://discord.gg/DpYjWWegR";
+const DISCORD_LOGO_SVG = '<svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.6 12.6 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.056c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028ZM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.333-.955 2.418-2.157 2.418Zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z"/></svg>';
+
 function _showSupportDiscordReco() {
-  showConfirmModal({
-    icon: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#5865F2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a5 5 0 0 0-5-5H8a5 5 0 0 0 0 10h5"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/></svg>',
-    title: "Support plus rapide sur Discord",
-    body: "Pour une réponse plus rapide, nous vous conseillons d'ouvrir un ticket sur notre Discord, dans le salon ticket. Vous pouvez aussi faire votre demande directement ici si vous préférez.",
-    okLabel: "Ouvrir Discord",
-    cancelLabel: "Continuer ici",
-    onConfirm: () => { window.open("https://discord.gg/DpYjWWegR", "_blank", "noopener"); },
-  });
+  // Modale dédiée (retirée à la fermeture) — CSS soigné, branding Discord.
+  const prev = document.getElementById("discord-reco-modal");
+  if (prev) prev.remove();
+  const close = () => { const m = document.getElementById("discord-reco-modal"); if (m) m.remove(); };
+  const wrap = document.createElement("div");
+  wrap.id = "discord-reco-modal";
+  wrap.style.cssText = "position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.62);backdrop-filter:blur(6px);display:flex;align-items:center;justify-content:center;padding:16px;animation:dscFade .18s ease";
+  wrap.innerHTML =
+    '<style>'
+    + '@keyframes dscFade{from{opacity:0}to{opacity:1}}'
+    + '@keyframes dscPop{from{opacity:0;transform:translateY(12px) scale(.97)}to{opacity:1;transform:none}}'
+    + '#discord-reco-modal .dsc-card{animation:dscPop .22s cubic-bezier(.2,.8,.2,1)}'
+    + '#discord-reco-modal .dsc-btn-primary{transition:transform .12s,box-shadow .12s,background .12s}'
+    + '#discord-reco-modal .dsc-btn-primary:hover{transform:translateY(-1px);box-shadow:0 8px 22px rgba(88,101,242,.45);background:#4752e6}'
+    + '#discord-reco-modal .dsc-btn-ghost{transition:background .12s,color .12s,border-color .12s}'
+    + '#discord-reco-modal .dsc-btn-ghost:hover{background:#20222e;color:#fff;border-color:#3a3c50}'
+    + '</style>'
+    + '<div class="dsc-card" style="position:relative;width:100%;max-width:400px;background:#181923;border:1px solid #2a2b3d;border-radius:20px;overflow:hidden;box-shadow:0 28px 70px rgba(0,0,0,.65)">'
+    // bandeau blurple
+    + '<div style="background:linear-gradient(135deg,#5865F2 0%,#7c6df5 100%);padding:26px 24px 22px;display:flex;flex-direction:column;align-items:center;text-align:center">'
+    + '<div style="width:56px;height:56px;border-radius:16px;background:rgba(255,255,255,.14);display:flex;align-items:center;justify-content:center;margin-bottom:12px;box-shadow:inset 0 0 0 1px rgba(255,255,255,.15)">' + DISCORD_LOGO_SVG + '</div>'
+    + '<div style="font-size:17px;font-weight:800;color:#fff;letter-spacing:-.2px">Support plus rapide sur Discord</div>'
+    + '</div>'
+    // corps
+    + '<div style="padding:20px 24px 24px;text-align:center">'
+    + '<p style="font-size:13px;color:#a4abc0;line-height:1.65;margin:0 0 16px">Pour une réponse plus rapide, ouvrez un ticket sur notre Discord dans le salon <b style="color:#c9cef0">#ticket</b>. Vous pouvez aussi faire votre demande directement ici si vous préférez.</p>'
+    + '<button class="dsc-btn-primary" id="dsc-open" style="width:100%;padding:12px;border:none;border-radius:11px;background:#5865F2;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans);display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:9px"><svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.6 12.6 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.056c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028ZM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.333-.955 2.418-2.157 2.418Zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z"/></svg>Ouvrir Discord</button>'
+    + '<button class="dsc-btn-ghost" id="dsc-stay" style="width:100%;padding:11px;border:1px solid #2a2b3d;border-radius:11px;background:transparent;color:#8892a8;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)">Continuer ici</button>'
+    + '</div></div>';
+  document.body.appendChild(wrap);
+  wrap.addEventListener("click", (e) => { if (e.target === wrap) close(); });
+  wrap.querySelector("#dsc-open").onclick = () => { window.open(DISCORD_INVITE_URL, "_blank", "noopener"); close(); };
+  wrap.querySelector("#dsc-stay").onclick = close;
 }
 
 async function renderSupportUser() {
