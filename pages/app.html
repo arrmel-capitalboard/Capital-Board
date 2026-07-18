@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260719q">
+<link rel="stylesheet" href="css/style.css?v=20260719r">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -1157,6 +1157,39 @@
         </div>
         <div id="admin-audit" style="font-size:12px;color:var(--text3)">Chargement…</div>
       </div>
+
+      <div class="section-card" style="max-width:560px;margin-top:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Diffusion — notification push</div>
+        <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:12px">Envoie une notification à <strong>tous les utilisateurs</strong> abonnés au push.</div>
+        <input id="bc-push-title" placeholder="Titre" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;margin-bottom:8px;outline:none;font-family:var(--sans)">
+        <textarea id="bc-push-body" placeholder="Message" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;resize:vertical;min-height:56px;outline:none;font-family:var(--sans)"></textarea>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:12px">
+          <div id="bc-push-status" style="font-size:12px;color:var(--text3)"></div>
+          <button class="pf-btn primary" onclick="adminBroadcastPush()" style="font-size:11.5px;flex-shrink:0">Envoyer le push</button>
+        </div>
+      </div>
+
+      <div class="section-card" style="max-width:560px;margin-top:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Diffusion — email</div>
+        <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:12px">Envoie un email à <strong>tous les comptes</strong>.</div>
+        <input id="bc-mail-subject" placeholder="Sujet" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;margin-bottom:8px;outline:none;font-family:var(--sans)">
+        <textarea id="bc-mail-body" placeholder="Message (texte)" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;resize:vertical;min-height:80px;outline:none;font-family:var(--sans)"></textarea>
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:12px">
+          <div id="bc-mail-status" style="font-size:12px;color:var(--text3)"></div>
+          <button class="pf-btn primary" onclick="adminBroadcastEmail()" style="font-size:11.5px;flex-shrink:0">Envoyer l'email</button>
+        </div>
+      </div>
+
+      <div class="section-card" style="max-width:560px;margin-top:16px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">État des services</div>
+            <div style="font-size:12px;color:var(--text3);line-height:1.6">Firestore, Google/FCM, email, cours.</div>
+          </div>
+          <button class="pf-btn ghost" onclick="adminCheckHealth()" style="font-size:11.5px;flex-shrink:0">Vérifier</button>
+        </div>
+        <div id="admin-health" style="font-size:12.5px;color:var(--text3);font-family:var(--mono)">—</div>
+      </div>
     </div>
 
     <!-- ALERTES PRIX PAGE -->
@@ -1651,7 +1684,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260719q"></script>
+<script src="js/app.js?v=20260719r"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

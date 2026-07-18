@@ -33,7 +33,7 @@ async function makeServiceJWT(sa) {
     iss: sa.client_email, sub: sa.client_email,
     aud: 'https://oauth2.googleapis.com/token',
     iat: now, exp: now + 3600,
-    scope: 'https://www.googleapis.com/auth/datastore',
+    scope: 'https://www.googleapis.com/auth/datastore https://www.googleapis.com/auth/firebase.messaging https://www.googleapis.com/auth/identitytoolkit',
   }));
   const sigInput = `${header}.${payload}`;
   const key = await crypto.subtle.importKey(
@@ -147,6 +147,52 @@ async function firestoreDelete(path, env) {
   const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${path}`;
   const res = await fetch(url, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok && res.status !== 404) throw new Error(`Firestore delete ${res.status}`);
+}
+
+// Liste tous les documents d'une collection (paginé).
+async function firestoreList(collection, env) {
+  const token = await getAccessToken(env);
+  const base = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}`;
+  let docs = [], pageToken = '';
+  do {
+    const url = base + `?pageSize=300` + (pageToken ? `&pageToken=${encodeURIComponent(pageToken)}` : '');
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) throw new Error(`Firestore list ${res.status}`);
+    const data = await res.json();
+    docs = docs.concat(data.documents || []);
+    pageToken = data.nextPageToken || '';
+  } while (pageToken);
+  return docs;
+}
+
+// Envoie une notif FCM (HTTP v1) à un token.
+async function sendFcm(fcmToken, title, body, env) {
+  const at = await getAccessToken(env);
+  const res = await fetch(`https://fcm.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/messages:send`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${at}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ message: { token: fcmToken, notification: { title, body } } }),
+  });
+  return res.ok;
+}
+
+// Liste tous les emails des comptes Auth (Identity Toolkit, paginé).
+async function listAuthEmails(env) {
+  const at = await getAccessToken(env);
+  const url = `https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:query`;
+  let emails = [], nextPageToken = '';
+  do {
+    const res = await fetch(url, {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${at}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ returnUserInfo: true, limit: '500', nextPageToken: nextPageToken || undefined }),
+    });
+    if (!res.ok) throw new Error(`identitytoolkit ${res.status}: ${await res.text()}`);
+    const data = await res.json();
+    (data.userInfo || []).forEach(u => { if (u.email) emails.push(u.email); });
+    nextPageToken = data.nextPageToken || '';
+  } while (nextPageToken);
+  return emails;
 }
 
 // ── SHA-256 ────────────────────────────────────────────────────────────────
@@ -400,6 +446,44 @@ export default {
 
         const computed = await sha256(pinSalt + pin);
         return json({ valid: computed === pinHash });
+      }
+
+      // ── POST /admin/health ──────────────────────────────────────────────
+      if (url.pathname === '/admin/health' && request.method === 'POST') {
+        const { idToken } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        if (!user || user.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        const out = {};
+        try { await firestoreGet('config/app', env); out.firestore = 'ok'; } catch (_) { out.firestore = 'ko'; }
+        try { await getAccessToken(env); out.google = 'ok'; } catch (_) { out.google = 'ko'; }
+        out.email = env.RESEND_API_KEY ? 'ok' : 'ko';
+        try { await getYahooCreds(env); out.yahoo = 'ok'; } catch (_) { out.yahoo = 'ko'; }
+        return json({ ok: true, services: out });
+      }
+
+      // ── POST /admin/broadcast-push ──────────────────────────────────────
+      if (url.pathname === '/admin/broadcast-push' && request.method === 'POST') {
+        const { idToken, title, body } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        if (!user || user.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        if (!title || !body) return json({ error: 'Titre et message requis' }, 400);
+        const roles = await firestoreList('roles', env);
+        const tokens = roles.map(d => fsStr(d, 'fcmToken')).filter(Boolean);
+        let sent = 0, failed = 0;
+        for (const t of tokens) { (await sendFcm(t, title, body, env)) ? sent++ : failed++; }
+        return json({ ok: true, sent, failed, total: tokens.length });
+      }
+
+      // ── POST /admin/broadcast-email ─────────────────────────────────────
+      if (url.pathname === '/admin/broadcast-email' && request.method === 'POST') {
+        const { idToken, subject, html } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        if (!user || user.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        if (!subject || !html) return json({ error: 'Sujet et contenu requis' }, 400);
+        const emails = await listAuthEmails(env);
+        let sent = 0, failed = 0;
+        for (const e of emails) { try { await sendEmail(e, subject, html, env); sent++; } catch (_) { failed++; } }
+        return json({ ok: true, sent, failed, total: emails.length });
       }
 
       // ── POST /send-otp ──────────────────────────────────────────────────

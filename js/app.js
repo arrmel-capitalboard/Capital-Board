@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260719q';
+const APP_VERSION = '20260719r';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -12750,6 +12750,67 @@ async function adminForceUpdate(btn) {
     const s = document.getElementById('admin-version-status');
     if (s) s.textContent = 'Échec de l\'enregistrement.';
   } finally { if (btn) { btn.disabled = false; btn.textContent = '↻ Forcer la MAJ'; } }
+}
+
+// ─── Diffusion + état des services (worker) ───
+async function _adminAuthPost(path, payload) {
+  const idToken = await fbAuth.currentUser.getIdToken();
+  const res = await fetch(WORKER_URL + path, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(Object.assign({ idToken }, payload)),
+  });
+  return res.json();
+}
+async function adminCheckHealth() {
+  const box = document.getElementById('admin-health');
+  if (!box) return;
+  box.innerHTML = 'Vérification…';
+  try {
+    const r = await _adminAuthPost('/admin/health', {});
+    if (!r || !r.services) { box.textContent = r && r.error ? r.error : 'Erreur.'; return; }
+    const dot = s => s === 'ok' ? '<span style="color:var(--positive)">● OK</span>' : '<span style="color:var(--negative)">● KO</span>';
+    const s = r.services;
+    box.innerHTML = [
+      'Firestore ' + dot(s.firestore),
+      'Google / FCM ' + dot(s.google),
+      'Email (Resend) ' + dot(s.email),
+      'Cours (Yahoo) ' + dot(s.yahoo),
+    ].map(x => '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>' + x.split(' <')[0] + '</span><span>' + x.slice(x.indexOf('<')) + '</span></div>').join('');
+  } catch (e) { box.textContent = 'Worker injoignable.'; }
+}
+async function adminBroadcastPush() {
+  if (!isAdmin()) return;
+  const title = (document.getElementById('bc-push-title').value || '').trim();
+  const body = (document.getElementById('bc-push-body').value || '').trim();
+  const st = document.getElementById('bc-push-status');
+  if (!title || !body) { st.textContent = 'Titre et message requis.'; return; }
+  if (!confirm('Envoyer cette notification push à TOUS les utilisateurs ?')) return;
+  st.textContent = 'Envoi…';
+  try {
+    const r = await _adminAuthPost('/admin/broadcast-push', { title, body });
+    st.textContent = r && r.ok ? ('Envoyé : ' + r.sent + '/' + r.total + (r.failed ? ' (échecs ' + r.failed + ')' : '')) : ((r && r.error) || 'Erreur.');
+    if (r && r.ok) _audit('broadcast_push', title);
+  } catch (e) { st.textContent = 'Échec (worker injoignable ?).'; }
+}
+async function adminBroadcastEmail() {
+  if (!isAdmin()) return;
+  const subject = (document.getElementById('bc-mail-subject').value || '').trim();
+  const text = (document.getElementById('bc-mail-body').value || '').trim();
+  const st = document.getElementById('bc-mail-status');
+  if (!subject || !text) { st.textContent = 'Sujet et message requis.'; return; }
+  if (!confirm('Envoyer cet email à TOUS les comptes ?')) return;
+  st.textContent = 'Envoi…';
+  const html = '<div style="font-family:sans-serif;background:#0f0f13;color:#e8eaf0;padding:32px">' +
+    '<div style="max-width:480px;margin:0 auto;background:#1a1a24;border-radius:16px;padding:32px;border:1px solid #2a2a3a">' +
+    '<div style="font-size:18px;font-weight:700;color:#7c6df5;margin-bottom:20px">Capital Board</div>' +
+    '<div style="color:#e8eaf0;line-height:1.7;font-size:15px;white-space:pre-wrap">' + _escapeHtmlChat(text) + '</div>' +
+    '</div></div>';
+  try {
+    const r = await _adminAuthPost('/admin/broadcast-email', { subject, html });
+    st.textContent = r && r.ok ? ('Envoyé : ' + r.sent + '/' + r.total + (r.failed ? ' (échecs ' + r.failed + ')' : '')) : ((r && r.error) || 'Erreur.');
+    if (r && r.ok) _audit('broadcast_email', subject);
+  } catch (e) { st.textContent = 'Échec (worker injoignable ?).'; }
 }
 
 function _adminMaintStatus(on) {
