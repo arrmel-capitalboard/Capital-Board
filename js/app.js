@@ -263,6 +263,12 @@ _splashWatchdog = setTimeout(() => {
       }
       // Gate PIN — obligatoire pour tous les users, à chaque chargement (refresh inclus)
       try {
+        // Kill-switch global (admin) : désactive le PIN pour TOUS les comptes.
+        // Erreur de lecture → on garde le PIN actif (fail-safe, pas de bypass).
+        if (await _isPinGloballyDisabled()) {
+          startApp(u);
+          return;
+        }
         const pinOn = await _isPinEnabled(u.uid);
         if (!pinOn) {
           // Compte sans PIN : force la configuration avant l'accès
@@ -1305,6 +1311,27 @@ async function _isPinEnabled(uid) {
   return !!(sec && sec.enabled && sec.pinHash && sec.pinSalt);
 }
 
+// ─── Kill-switch PIN global (admin) ──────────────────────────────
+// Doc Firestore config/app { pinDisabled: bool }. Lu par tous, écrit par admin.
+async function _isPinGloballyDisabled() {
+  try {
+    const snap = await getFirestoreDoc(firestoreDoc(db, 'config', 'app'));
+    return !!(snap.exists() && snap.data().pinDisabled);
+  } catch (e) {
+    console.warn('[pin] lecture config globale échouée:', e);
+    return false; // fail-safe : PIN reste actif
+  }
+}
+
+async function _setPinGloballyDisabled(disabled) {
+  const ref = firestoreDoc(db, 'config', 'app');
+  await setFirestoreDoc(ref, {
+    pinDisabled: !!disabled,
+    updatedAt: Date.now(),
+    updatedBy: currentUser || null,
+  }, { merge: true });
+}
+
 async function _setupPin(uid, pin) {
   if (!/^\d{6}$/.test(pin)) throw new Error('PIN doit faire 6 chiffres');
   const salt = _genSalt();
@@ -1887,6 +1914,12 @@ async function startApp(user) {
     _updateNotifBadge();
     if (!window.IS_DEMO && Notification.permission === 'granted') initPush(user.uid).catch(() => {});
     try { _initSupportBadge(); } catch(e) { console.warn('support badge:', e); }
+    if (isAdmin()) {
+      const na = document.getElementById('nav-admin');
+      const nl = document.getElementById('nav-admin-label');
+      if (na) na.style.display = '';
+      if (nl) nl.style.display = '';
+    }
     try { _startPresenceHeartbeat(); } catch(e) { console.warn('presence:', e); }
     try { _processDiscordLink(user); } catch(e) { console.warn('discord link:', e); }
   } catch(e) {
@@ -2563,6 +2596,7 @@ function showPage(id) {
   if (id === 'alertes')     renderAlertsList();
   if (id === 'support')     renderSupportPage();
   if (id === 'earnings')    renderEarningsCalendar();
+  if (id === 'admin')       renderAdminPage();
 }
 
 function _renderDemoBlocked(pageId, sectionTitle) {
@@ -2597,6 +2631,7 @@ function showPageMobile(id) {
   if (id === 'alertes')     renderAlertsList();
   if (id === 'support')     renderSupportPage();
   if (id === 'earnings')    renderEarningsCalendar();
+  if (id === 'admin')       renderAdminPage();
 }
 
 // ─── PORTFOLIO ────────────────────────────────────────
@@ -12102,6 +12137,51 @@ function _startPresenceHeartbeat() {
 }
 
 function isAdmin() { return currentUser === ADMIN_UID; }
+
+// ─── PAGE ADMIN ──────────────────────────────────────────────────
+async function renderAdminPage() {
+  if (!isAdmin()) { showPage('portfolio'); return; }
+  const toggle = document.getElementById('admin-pin-toggle');
+  const status = document.getElementById('admin-pin-status');
+  if (!toggle) return;
+  toggle.disabled = true;
+  if (status) status.textContent = 'Chargement…';
+  try {
+    const disabled = await _isPinGloballyDisabled();
+    toggle.checked = disabled;
+    _adminPinStatusText(disabled);
+  } catch (e) {
+    if (status) status.textContent = 'Erreur de lecture de la configuration.';
+  } finally {
+    toggle.disabled = false;
+  }
+}
+
+function _adminPinStatusText(disabled) {
+  const status = document.getElementById('admin-pin-status');
+  if (!status) return;
+  status.innerHTML = disabled
+    ? '<span style="color:var(--negative)">● PIN désactivé pour tous les comptes.</span>'
+    : '<span style="color:var(--positive)">● PIN actif — chaque compte doit saisir son code.</span>';
+}
+
+async function adminTogglePinGlobal(el) {
+  if (!isAdmin()) return;
+  const wanted = el.checked;
+  el.disabled = true;
+  const status = document.getElementById('admin-pin-status');
+  if (status) status.textContent = 'Enregistrement…';
+  try {
+    await _setPinGloballyDisabled(wanted);
+    _adminPinStatusText(wanted);
+  } catch (e) {
+    console.error('[admin] toggle PIN global échoué:', e);
+    el.checked = !wanted; // rollback UI
+    if (status) status.textContent = 'Échec de l\'enregistrement. Réessayez.';
+  } finally {
+    el.disabled = false;
+  }
+}
 
 function _escapeHtmlChat(s) {
   return String(s||"").replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;");
