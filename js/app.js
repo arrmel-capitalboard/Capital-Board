@@ -12063,7 +12063,8 @@ function _escapeHtmlChat(s) {
 function renderSupportPage() {
   if (window.IS_DEMO) { _renderDemoBlocked("page-support", "Support"); return; }
   if (isAdmin()) renderSupportAdmin();
-  else { window._supportUserView = "list"; renderSupportUser(); _showSupportDiscordReco(); }
+  else { window._supportUserView = "list"; renderSupportUser(); }
+  _showSupportDiscordReco();
 }
 
 // Modale à l'entrée de l'onglet Support : recommander le Discord.
