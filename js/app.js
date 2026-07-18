@@ -12063,7 +12063,19 @@ function _escapeHtmlChat(s) {
 function renderSupportPage() {
   if (window.IS_DEMO) { _renderDemoBlocked("page-support", "Support"); return; }
   if (isAdmin()) renderSupportAdmin();
-  else { window._supportUserView = "list"; renderSupportUser(); }
+  else { window._supportUserView = "list"; renderSupportUser(); _showSupportDiscordReco(); }
+}
+
+// Modale à l'entrée de l'onglet Support : recommander le Discord.
+function _showSupportDiscordReco() {
+  showConfirmModal({
+    icon: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#5865F2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a5 5 0 0 0-5-5H8a5 5 0 0 0 0 10h5"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/></svg>',
+    title: "Support plus rapide sur Discord",
+    body: "Pour une réponse plus rapide, nous vous conseillons d'ouvrir un ticket sur notre Discord, dans le salon ticket. Vous pouvez aussi faire votre demande directement ici si vous préférez.",
+    okLabel: "Ouvrir Discord",
+    cancelLabel: "Continuer ici",
+    onConfirm: () => { window.open("https://discord.gg/DpYjWWegR", "_blank", "noopener"); },
+  });
 }
 
 async function renderSupportUser() {
@@ -12596,19 +12608,6 @@ async function _postSystemMessage(uid, text) {
 }
 
 window.openNewTicketForm = function() {
-  // Étape 1 : recommander Discord avant d'ouvrir un ticket ici.
-  showConfirmModal({
-    icon: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#5865F2" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 9a5 5 0 0 0-5-5H8a5 5 0 0 0 0 10h5"/><circle cx="9" cy="9" r="1"/><circle cx="15" cy="9" r="1"/></svg>',
-    title: "Support plus rapide sur Discord",
-    body: "Pour une réponse plus rapide, nous vous conseillons d'ouvrir un ticket sur notre Discord, dans le salon ticket. Vous pouvez aussi faire votre demande directement ici si vous préférez.",
-    okLabel: "Ouvrir Discord",
-    cancelLabel: "Continuer ici",
-    onConfirm: () => { window.open("https://discord.gg/DpYjWWegR", "_blank", "noopener"); },
-    onCancel: () => { _openTicketFormReal(); },
-  });
-};
-
-function _openTicketFormReal() {
   showPromptModal({
     title: "Nouveau ticket",
     body: "Décrivez votre demande pour ouvrir une conversation avec le support.",
