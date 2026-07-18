@@ -1983,6 +1983,8 @@ async function startApp(user) {
       if (na) na.style.display = '';
       if (nl) nl.style.display = '';
     }
+    // Feature flags — masque les sections désactivées globalement
+    _getAppConfig().then(c => applyFeatureFlags(c.features)).catch(() => {});
     try { _startPresenceHeartbeat(); } catch(e) { console.warn('presence:', e); }
     try { _processDiscordLink(user); } catch(e) { console.warn('discord link:', e); }
   } catch(e) {
@@ -2643,7 +2645,26 @@ window.setAvatarHue = async function(deg) {
   if (st) { st.textContent = '✓ Couleur enregistrée'; setTimeout(() => { st.textContent = ''; }, 2000); }
 };
 
+// ─── Feature flags (config/app.features) ───
+const FLAGGABLE = ['watchlist','dividendes','performance','benchmark','projections','earnings','recap','alertes'];
+let _featureFlags = {};
+function _isFeatureOn(key) { return _featureFlags[key] !== false; }
+function applyFeatureFlags(features) {
+  _featureFlags = features || {};
+  FLAGGABLE.forEach(key => {
+    const on = _featureFlags[key] !== false;
+    const needles = ["showPage('" + key + "')", "showPageMobile('" + key + "')"];
+    document.querySelectorAll('[onclick]').forEach(el => {
+      const oc = el.getAttribute('onclick') || '';
+      if (needles.some(n => oc.includes(n))) {
+        el.style.display = on ? '' : 'none';
+      }
+    });
+  });
+}
+
 function showPage(id) {
+  if (FLAGGABLE.includes(id) && !_isFeatureOn(id)) return; // section désactivée
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
@@ -2678,6 +2699,7 @@ function _renderDemoBlocked(pageId, sectionTitle) {
 }
 
 function showPageMobile(id) {
+  if (FLAGGABLE.includes(id) && !_isFeatureOn(id)) return; // section désactivée
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
   syncMobileNav(id);
@@ -12264,6 +12286,40 @@ async function renderAdminPage() {
   const signupOpen = cfg.signupOpen !== false;
   if (signupT) signupT.checked = signupOpen;
   _adminSignupStatus(signupOpen);
+
+  // Feature flags
+  const feats = cfg.features || {};
+  applyFeatureFlags(feats); // reflète aussi tout de suite dans le menu
+  const box = document.getElementById('admin-features');
+  if (box) {
+    const LBL = {
+      watchlist: 'Watchlist', dividendes: 'Dividendes', performance: 'Performance',
+      benchmark: 'Benchmark', projections: 'Projections', earnings: 'Calendrier résultats',
+      recap: 'Récap du jour', alertes: 'Alertes prix',
+    };
+    box.innerHTML = FLAGGABLE.map(key => {
+      const on = feats[key] !== false;
+      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:10px 0;border-bottom:1px solid var(--border)">' +
+        '<span style="font-size:13px;color:var(--text)">' + (LBL[key] || key) + '</span>' +
+        '<label class="toggle-switch"><input type="checkbox" ' + (on ? 'checked' : '') +
+        ' onchange="adminToggleFeature(\'' + key + '\',this)"><span class="toggle-track"></span></label>' +
+        '</div>';
+    }).join('');
+  }
+}
+
+async function adminToggleFeature(key, el) {
+  if (!isAdmin()) return;
+  const on = el.checked;
+  el.disabled = true;
+  try {
+    await _setAppConfig({ features: { [key]: on } });
+    _featureFlags[key] = on;
+    applyFeatureFlags(_featureFlags);
+  } catch (e) {
+    console.error('[admin] feature flag:', e);
+    el.checked = !on;
+  } finally { el.disabled = false; }
 }
 
 function _adminMaintStatus(on) {
