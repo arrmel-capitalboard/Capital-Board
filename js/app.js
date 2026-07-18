@@ -12945,20 +12945,21 @@ function _initSupportBadge() {
 window.renderSupportPage = renderSupportPage;
 window._initSupportBadge = _initSupportBadge;
 
-// ─── Écran login : particules montantes (bokeh) ───
-(function initLoginParticles(){
-  const cv = document.getElementById('login-particles');
+// ─── Particules montantes (bokeh) — moteur réutilisable ───
+function _spawnParticles(canvasId, opts){
+  const cv = document.getElementById(canvasId);
   if (!cv) return;
+  const o = Object.assign({ density: 14000, opacityMul: 1, blur: 8 }, opts || {});
   const ctx = cv.getContext('2d');
   let w = 0, h = 0, dpr = 1, P = [], running = false;
   const reduce = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   function seed(){
-    P = []; const n = Math.round(w * h / 14000);
+    P = []; const n = Math.round(w * h / o.density);
     for (let i = 0; i < n; i++) P.push({
       x: Math.random(), y: Math.random(),
       r: 0.6 + Math.random() * 2.2,
       s: 0.02 + Math.random() * 0.05,
-      a: 0.15 + Math.random() * 0.45,
+      a: (0.15 + Math.random() * 0.45) * o.opacityMul,
       c: Math.random() < 0.5 ? '124,109,245' : '0,224,158'
     });
   }
@@ -12979,7 +12980,7 @@ window._initSupportBadge = _initSupportBadge;
       if (move) { p.y -= p.s / 100; if (p.y < -0.05) { p.y = 1.05; p.x = Math.random(); } }
       ctx.beginPath(); ctx.arc(p.x * w, p.y * h, p.r, 0, 7);
       ctx.fillStyle = 'rgba(' + p.c + ',' + p.a + ')';
-      ctx.shadowColor = 'rgba(' + p.c + ',.7)'; ctx.shadowBlur = 8; ctx.fill();
+      ctx.shadowColor = 'rgba(' + p.c + ',.7)'; ctx.shadowBlur = o.blur; ctx.fill();
     }
     ctx.shadowBlur = 0;
   }
@@ -12987,4 +12988,7 @@ window._initSupportBadge = _initSupportBadge;
   if (window.ResizeObserver) { new ResizeObserver(resize).observe(cv); }
   window.addEventListener('resize', resize);
   resize();
-})();
+}
+// Écran login : dense. Fond dashboard : discret (moins dense, plus faible).
+_spawnParticles('login-particles');
+_spawnParticles('app-particles', { density: 30000, opacityMul: 0.55, blur: 6 });
