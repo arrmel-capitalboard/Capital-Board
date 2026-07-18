@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260719j">
+<link rel="stylesheet" href="css/style.css?v=20260719k">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -1109,6 +1109,17 @@
           <button class="pf-btn ghost" onclick="adminNavReset()" style="font-size:11.5px">Réinitialiser</button>
         </div>
       </div>
+
+      <div class="section-card" style="max-width:680px;margin-top:16px">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
+          <div>
+            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Utilisateurs</div>
+            <div style="font-size:12px;color:var(--text3);line-height:1.6;max-width:420px">Comptes connus (rôles, présence, support). Gérez les rôles ou effacez les données d'un compte (RGPD).</div>
+          </div>
+          <button class="pf-btn ghost" onclick="renderAdminUsers()" style="font-size:11.5px;flex-shrink:0">↻ Actualiser</button>
+        </div>
+        <div id="admin-users" style="font-size:12px;color:var(--text3)">Chargement…</div>
+      </div>
     </div>
 
     <!-- ALERTES PRIX PAGE -->
@@ -1603,7 +1614,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260719j"></script>
+<script src="js/app.js?v=20260719k"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

@@ -12343,6 +12343,9 @@ async function renderAdminPage() {
     ? JSON.parse(JSON.stringify(cfg.nav))
     : JSON.parse(JSON.stringify(DEFAULT_NAV));
   renderNavEditor();
+
+  // Liste utilisateurs
+  renderAdminUsers();
 }
 
 async function adminToggleFeature(key, el) {
@@ -12443,6 +12446,98 @@ function adminNavMoveCategory(ci, dir) {
 }
 function adminNavAddCategory() { _navDraft.push({ title: 'Nouvelle catégorie', items: [] }); _saveNav(); }
 function adminNavReset() { _navDraft = JSON.parse(JSON.stringify(DEFAULT_NAV)); _saveNav(); }
+
+// ─── Utilisateurs (admin) ───
+function _relTime(d) {
+  if (!d) return 'jamais';
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (s < 60) return 'à l\'instant';
+  if (s < 3600) return 'il y a ' + Math.floor(s / 60) + ' min';
+  if (s < 86400) return 'il y a ' + Math.floor(s / 3600) + ' h';
+  return 'il y a ' + Math.floor(s / 86400) + ' j';
+}
+async function renderAdminUsers() {
+  if (!isAdmin()) return;
+  const box = document.getElementById('admin-users');
+  if (!box) return;
+  box.innerHTML = 'Chargement…';
+  const empty = { forEach() {} };
+  try {
+    const [rolesSnap, presSnap, threadsSnap] = await Promise.all([
+      getDocs(firestoreCollection(db, 'roles')).catch(() => empty),
+      getDocs(firestoreCollection(db, 'presence')).catch(() => empty),
+      getDocs(firestoreCollection(db, 'supportThreads')).catch(() => empty),
+    ]);
+    const users = {};
+    const get = uid => (users[uid] = users[uid] || { uid });
+    rolesSnap.forEach(d => { get(d.id).role = d.data().role || 'user'; });
+    presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.online = p.online; u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; });
+    threadsSnap.forEach(d => { const u = get(d.id), t = d.data(); u.name = t.userName; u.email = t.userEmail; });
+    const list = Object.values(users).sort((a, b) => (b.lastSeen ? b.lastSeen.getTime() : 0) - (a.lastSeen ? a.lastSeen.getTime() : 0));
+    if (!list.length) { box.innerHTML = 'Aucun utilisateur trouvé.'; return; }
+
+    box.innerHTML = list.map(u => {
+      const isSuper = u.role === 'superadmin';
+      const self = u.uid === currentUser;
+      const label = u.name || u.email || (u.uid.slice(0, 10) + '…');
+      const sub = (u.email && u.name ? u.email + ' · ' : '') + _relTime(u.lastSeen);
+      const dot = u.online ? '<span style="width:7px;height:7px;border-radius:50%;background:var(--positive);box-shadow:0 0 8px var(--positive);flex-shrink:0"></span>' : '<span style="width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0"></span>';
+      const roleBadge = '<span style="font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:5px;font-family:var(--mono);' + (isSuper ? 'background:rgba(255,77,106,.14);color:#ff5d78' : 'background:rgba(255,255,255,.06);color:var(--text3)') + '">' + (isSuper ? 'ADMIN' : 'USER') + '</span>';
+      const roleBtn = self ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px" onclick="adminSetRole(\'' + u.uid + '\',\'' + (isSuper ? 'user' : 'superadmin') + '\')">' + (isSuper ? 'Rétrograder' : 'Promouvoir admin') + '</button>';
+      const delBtn = (self || u.uid === ADMIN_UID) ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px;border-color:rgba(255,93,120,.3);color:#ff5d78" onclick="adminDeleteUser(\'' + u.uid + '\',\'' + label.replace(/'/g, '') + '\')">Effacer (RGPD)</button>';
+      return '<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)">' +
+        dot +
+        '<div style="flex:1;min-width:0">' +
+          '<div style="font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:7px">' + label + ' ' + roleBadge + '</div>' +
+          '<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + sub + '</div>' +
+        '</div>' +
+        '<div style="display:flex;gap:6px;flex-shrink:0">' + roleBtn + delBtn + '</div>' +
+      '</div>';
+    }).join('');
+  } catch (e) {
+    console.error('[admin] users:', e);
+    box.innerHTML = 'Erreur de chargement (droits Firestore insuffisants ?).';
+  }
+}
+
+async function adminSetRole(uid, role) {
+  if (!isAdmin()) return;
+  try {
+    await setFirestoreDoc(firestoreDoc(db, 'roles', uid), { role }, { merge: true });
+    renderAdminUsers();
+  } catch (e) {
+    console.error('[admin] setRole:', e);
+    alert('Échec du changement de rôle (droits Firestore ?).');
+  }
+}
+
+async function adminDeleteUser(uid, label) {
+  if (!isAdmin() || uid === currentUser || uid === ADMIN_UID) return;
+  showConfirmModal({
+    icon: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#ff5d78" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>',
+    title: 'Effacer les données de ce compte ?',
+    body: 'Efface toutes les données Firestore de « ' + label + ' » (portefeuille, transactions, support, rôle). Le compte de connexion (Auth) doit être supprimé côté serveur. Action irréversible.',
+    okLabel: 'Effacer', cancelLabel: 'Annuler', danger: true,
+    onConfirm: () => _doAdminDeleteUser(uid),
+  });
+}
+
+async function _doAdminDeleteUser(uid) {
+  const del = ref => deleteFirestoreDoc(ref).catch(e => console.warn('[rgpd] skip', e && e.message));
+  // Données utilisateur (nécessite la règle admin sur users/{uid})
+  const dataDocs = ['portfolio', 'transactions', 'versements', 'settings', 'recap', 'weeklyRecap', 'security'];
+  await Promise.all(dataDocs.map(c => del(firestoreDoc(db, 'users', uid, 'data', c))));
+  // Support : messages + thread
+  try {
+    const msgs = await getDocs(firestoreCollection(db, 'supportChats', uid, 'messages'));
+    await Promise.all(msgs.docs.map(m => del(m.ref)));
+  } catch (_) {}
+  await del(firestoreDoc(db, 'supportThreads', uid));
+  // Rôle + présence
+  await del(firestoreDoc(db, 'roles', uid));
+  await del(firestoreDoc(db, 'presence', uid));
+  renderAdminUsers();
+}
 
 function _adminMaintStatus(on) {
   const s = document.getElementById('admin-maint-status');
