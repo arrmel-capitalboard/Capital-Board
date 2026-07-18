@@ -1983,8 +1983,11 @@ async function startApp(user) {
       if (na) na.style.display = '';
       if (nl) nl.style.display = '';
     }
-    // Feature flags — masque les sections désactivées globalement
-    _getAppConfig().then(c => applyFeatureFlags(c.features)).catch(() => {});
+    // Menu custom + feature flags — organisation et sections désactivées
+    _getAppConfig().then(c => {
+      applyNavLayout(c.nav);
+      applyFeatureFlags(c.features);
+    }).catch(() => {});
     try { _startPresenceHeartbeat(); } catch(e) { console.warn('presence:', e); }
     try { _processDiscordLink(user); } catch(e) { console.warn('discord link:', e); }
   } catch(e) {
@@ -2659,6 +2662,51 @@ function applyFeatureFlags(features) {
       if (needles.some(n => oc.includes(n))) {
         el.style.display = on ? '' : 'none';
       }
+    });
+  });
+}
+
+// ─── Organisation du menu (config/app.nav) ───
+const SECTION_LABELS = {
+  portfolio: 'Portefeuille', activite: 'Activité', dividendes: 'Dividendes', watchlist: 'Watchlist',
+  performance: 'Performance', benchmark: 'Benchmark', projections: 'Projections', earnings: 'Calendrier résultats',
+  recap: 'Récap du jour', alertes: 'Alertes prix', notifications: 'Notifications', support: 'Support',
+};
+const ALL_SECTIONS = Object.keys(SECTION_LABELS);
+const DEFAULT_NAV = [
+  { title: 'Mon PEA',  items: ['portfolio', 'activite', 'dividendes', 'watchlist'] },
+  { title: 'Analyse',  items: ['performance', 'benchmark', 'projections', 'earnings'] },
+  { title: 'Outils',   items: ['recap', 'alertes', 'notifications', 'support'] },
+];
+let _navNodes = null;   // cache des noeuds .nav-item par clé
+let _navDraft = null;   // brouillon d'édition admin
+
+function _cacheNavNodes() {
+  if (_navNodes) return;
+  const container = document.getElementById('nav-dynamic');
+  if (!container) return;
+  _navNodes = {};
+  container.querySelectorAll('.nav-item').forEach(el => {
+    const m = (el.getAttribute('onclick') || '').match(/showPage\('([^']+)'\)/);
+    if (m) _navNodes[m[1]] = el;
+  });
+}
+
+function applyNavLayout(nav) {
+  const container = document.getElementById('nav-dynamic');
+  if (!container) return;
+  _cacheNavNodes();
+  const layout = (Array.isArray(nav) && nav.length) ? nav : DEFAULT_NAV;
+  container.innerHTML = '';
+  layout.forEach((cat, ci) => {
+    const lab = document.createElement('div');
+    lab.className = 'nav-section-label';
+    if (ci > 0) lab.style.marginTop = '14px';
+    lab.textContent = cat.title || '';
+    container.appendChild(lab);
+    (cat.items || []).forEach(key => {
+      const node = _navNodes[key];
+      if (node) container.appendChild(node);
     });
   });
 }
@@ -12306,6 +12354,12 @@ async function renderAdminPage() {
         '</div>';
     }).join('');
   }
+
+  // Éditeur d'organisation du menu
+  _navDraft = (Array.isArray(cfg.nav) && cfg.nav.length)
+    ? JSON.parse(JSON.stringify(cfg.nav))
+    : JSON.parse(JSON.stringify(DEFAULT_NAV));
+  renderNavEditor();
 }
 
 async function adminToggleFeature(key, el) {
@@ -12321,6 +12375,83 @@ async function adminToggleFeature(key, el) {
     el.checked = !on;
   } finally { el.disabled = false; }
 }
+
+// ─── Éditeur d'organisation du menu (admin) ───
+function renderNavEditor() {
+  const box = document.getElementById('admin-nav-editor');
+  if (!box || !_navDraft) return;
+  const used = new Set();
+  _navDraft.forEach(c => (c.items || []).forEach(k => used.add(k)));
+  const pool = ALL_SECTIONS.filter(k => !used.has(k));
+  const mini = 'width:26px;height:26px;border-radius:7px;border:1px solid var(--border);background:var(--s3);color:var(--text3);cursor:pointer;font-size:12px;display:inline-flex;align-items:center;justify-content:center';
+
+  box.innerHTML = _navDraft.map((cat, ci) => {
+    const items = (cat.items || []).map((key, ii) =>
+      '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--s2);border:1px solid var(--border);border-radius:9px;margin-bottom:5px">' +
+        '<span style="font-size:12.5px;color:var(--text)">' + (SECTION_LABELS[key] || key) + '</span>' +
+        '<span style="display:flex;gap:4px">' +
+          '<button style="' + mini + '" onclick="adminNavMoveItem(' + ci + ',' + ii + ',-1)" title="Monter">▲</button>' +
+          '<button style="' + mini + '" onclick="adminNavMoveItem(' + ci + ',' + ii + ',1)" title="Descendre">▼</button>' +
+          '<button style="' + mini + '" onclick="adminNavRemoveItem(' + ci + ',' + ii + ')" title="Retirer du menu">✕</button>' +
+        '</span>' +
+      '</div>'
+    ).join('');
+    const addOpts = pool.length
+      ? '<select onchange="adminNavAddSection(' + ci + ',this)" style="width:100%;margin-top:4px;background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:12px;padding:7px 10px;font-family:var(--sans);outline:none">' +
+          '<option value="">＋ Ajouter une section…</option>' +
+          pool.map(k => '<option value="' + k + '">' + (SECTION_LABELS[k] || k) + '</option>').join('') +
+        '</select>'
+      : '';
+    return '<div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:#0f1119">' +
+      '<div style="display:flex;gap:6px;align-items:center;margin-bottom:9px">' +
+        '<input value="' + (cat.title || '').replace(/"/g, '&quot;') + '" onchange="adminNavRenameCategory(' + ci + ',this)" placeholder="Titre catégorie" style="flex:1;background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-weight:600;padding:8px 10px;font-family:var(--sans);outline:none">' +
+        '<button style="' + mini + '" onclick="adminNavMoveCategory(' + ci + ',-1)" title="Monter catégorie">▲</button>' +
+        '<button style="' + mini + '" onclick="adminNavMoveCategory(' + ci + ',1)" title="Descendre catégorie">▼</button>' +
+        '<button style="' + mini + ';color:#ff5d78" onclick="adminNavDeleteCategory(' + ci + ')" title="Supprimer catégorie">✕</button>' +
+      '</div>' + items + addOpts +
+    '</div>';
+  }).join('');
+}
+
+async function _saveNav() {
+  applyNavLayout(_navDraft);
+  applyFeatureFlags(_featureFlags);
+  renderNavEditor();
+  try { await _setAppConfig({ nav: _navDraft }); }
+  catch (e) { console.error('[admin] save nav:', e); }
+}
+
+function adminNavMoveItem(ci, ii, dir) {
+  const cats = _navDraft;
+  const items = cats[ci].items;
+  const ni = ii + dir;
+  if (ni >= 0 && ni < items.length) {
+    [items[ii], items[ni]] = [items[ni], items[ii]];
+  } else if (dir < 0 && ci > 0) {
+    cats[ci - 1].items.push(items.splice(ii, 1)[0]);       // remonte dans la catégorie précédente
+  } else if (dir > 0 && ci < cats.length - 1) {
+    cats[ci + 1].items.unshift(items.splice(ii, 1)[0]);    // descend dans la catégorie suivante
+  } else { return; }
+  _saveNav();
+}
+function adminNavRemoveItem(ci, ii) { _navDraft[ci].items.splice(ii, 1); _saveNav(); }
+function adminNavAddSection(ci, sel) {
+  const key = sel.value;
+  if (!key) return;
+  _navDraft.forEach(c => { c.items = c.items.filter(k => k !== key); }); // évite les doublons
+  _navDraft[ci].items.push(key);
+  _saveNav();
+}
+function adminNavRenameCategory(ci, inp) { _navDraft[ci].title = inp.value; _saveNav(); }
+function adminNavDeleteCategory(ci) { _navDraft.splice(ci, 1); _saveNav(); }
+function adminNavMoveCategory(ci, dir) {
+  const ni = ci + dir;
+  if (ni < 0 || ni >= _navDraft.length) return;
+  [_navDraft[ci], _navDraft[ni]] = [_navDraft[ni], _navDraft[ci]];
+  _saveNav();
+}
+function adminNavAddCategory() { _navDraft.push({ title: 'Nouvelle catégorie', items: [] }); _saveNav(); }
+function adminNavReset() { _navDraft = JSON.parse(JSON.stringify(DEFAULT_NAV)); _saveNav(); }
 
 function _adminMaintStatus(on) {
   const s = document.getElementById('admin-maint-status');
