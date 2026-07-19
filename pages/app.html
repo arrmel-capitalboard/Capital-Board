@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260720g">
+<link rel="stylesheet" href="css/style.css?v=20260720h">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -522,33 +522,37 @@
           </div>
         </div>
 
-        <div class="pf-card">
-          <div class="pf-kl">+/- Value latente</div>
-          <div class="pf-kv mono" id="stat-pnl">— €</div>
-          <div class="pf-ks"><span class="mono" id="stat-pnl-pct">—</span> · titres détenus</div>
-        </div>
-
-        <div class="pf-card">
-          <div class="pf-kl">Solde espèces</div>
-          <div class="pf-kv mono" id="stat-cash">— €</div>
-          <div class="pf-ks">Disponible</div>
-          <div class="pf-btnrow">
-            <button class="pf-btn primary" onclick="openVersementModal()">＋ Versement</button>
-            <button class="pf-btn ghost" onclick="openVersementsListModal()">Voir / modifier</button>
+        <div class="pf-pair">
+          <div class="pf-card">
+            <div class="pf-kl">+/- Value latente</div>
+            <div class="pf-kv mono" id="stat-pnl">— €</div>
+            <div class="pf-ks"><span class="mono" id="stat-pnl-pct">—</span> · titres détenus</div>
           </div>
-          <div id="versements-list" style="display:none;margin-top:10px;max-height:200px;overflow-y:auto"></div>
+
+          <div class="pf-card">
+            <div class="pf-kl">Solde espèces</div>
+            <div class="pf-kv mono" id="stat-cash">— €</div>
+            <div class="pf-ks">Disponible</div>
+            <div class="pf-btnrow">
+              <button class="pf-btn primary" onclick="openVersementModal()">＋ Versement</button>
+              <button class="pf-btn ghost" onclick="openVersementsListModal()">Voir / modifier</button>
+            </div>
+            <div id="versements-list" style="display:none;margin-top:10px;max-height:200px;overflow-y:auto"></div>
+          </div>
         </div>
 
-        <div class="pf-card">
-          <div class="pf-kl">P&L réalisé</div>
-          <div class="pf-kv mono" id="stat-realized">— €</div>
-          <div class="pf-ks" id="stat-realized-sub">Gains/pertes clôturés</div>
-        </div>
+        <div class="pf-pair">
+          <div class="pf-card">
+            <div class="pf-kl">P&L réalisé</div>
+            <div class="pf-kv mono" id="stat-realized">— €</div>
+            <div class="pf-ks" id="stat-realized-sub">Gains/pertes clôturés</div>
+          </div>
 
-        <div class="pf-card">
-          <div class="pf-kl">Évaluation des titres</div>
-          <div class="pf-kv mono" id="stat-total">— €</div>
-          <div class="pf-ks">Hors espèces</div>
+          <div class="pf-card">
+            <div class="pf-kl">Évaluation des titres</div>
+            <div class="pf-kv mono" id="stat-total">— €</div>
+            <div class="pf-ks">Hors espèces</div>
+          </div>
         </div>
       </div>
 
@@ -1709,7 +1713,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260720g"></script>
+<script src="js/app.js?v=20260720h"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

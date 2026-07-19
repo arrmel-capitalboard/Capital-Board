@@ -699,6 +699,9 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   transition: background .2s, border-color .2s, transform .2s;
 }
 .pf-card:hover { background: #12141e; border-color: var(--border2); transform: translateY(-2px); }
+/* Paires de KPI : transparentes en desktop/tablette (les 2 cartes vont
+   directement dans la grille), fusionnées en une seule carte sur mobile. */
+.pf-pair { display: contents; }
 .pf-kl { font-size: 12.5px; font-weight: 500; color: var(--text3); margin-bottom: 12px; }
 .pf-kv { font-size: 25px; font-weight: 800; letter-spacing: -.4px; color: var(--text); }
 .pf-ks { font-size: 13px; color: var(--text3); margin-top: 7px; }
@@ -754,6 +757,19 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   .pf-kpis { grid-template-columns: 1fr; gap: 12px; }
   .pf-hero { grid-column: span 1; }
   .pf-hero .pf-kv { font-size: 34px; }
+  /* Chaque paire devient UNE carte : Value latente + Solde ensemble,
+     P&L réalisé + Évaluation des titres ensemble. */
+  .pf-kpis .pf-pair {
+    display: block;
+    background: #0f1119; border: 1px solid var(--border);
+    border-radius: 18px; overflow: hidden;
+  }
+  .pf-kpis .pf-pair > .pf-card {
+    background: transparent; border: none; border-radius: 0;
+    padding: 16px 18px; transform: none;
+  }
+  .pf-kpis .pf-pair > .pf-card:hover { background: transparent; transform: none; border: none; }
+  .pf-kpis .pf-pair > .pf-card + .pf-card { border-top: 1px solid var(--border); }
 }
 
 /* ─── Masquer le solde : JS remplace les chiffres par bullets (• via WeakMap) ───
