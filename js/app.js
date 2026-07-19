@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260719x';
+const APP_VERSION = '20260719y';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -12732,6 +12732,19 @@ async function renderAdminUsers() {
     rolesSnap.forEach(d => { const u = get(d.id), r = d.data(); u.role = r.role || 'user'; u.firstName = r.firstName; u.lastName = r.lastName; u.username = r.username; });
     presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.online = p.online; u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; });
     threadsSnap.forEach(d => { const u = get(d.id), t = d.data(); u.name = t.userName; u.email = t.userEmail; });
+
+    // Ne garder que les comptes réellement présents dans Firebase Auth : masque
+    // les docs roles/presence orphelins (compte Auth supprimé). Si la liste Auth
+    // est indisponible (worker injoignable), on n'exclut personne (repli).
+    let authUsers = null;
+    try { const r = await _adminAuthPost('/admin/list-auth-users', {}); if (r && r.ok && Array.isArray(r.users)) authUsers = r.users; } catch (_) {}
+    if (authUsers) {
+      const authEmail = {};
+      const validUids = new Set(authUsers.map(a => { authEmail[a.localId] = a.email; return a.localId; }));
+      Object.keys(users).forEach(uid => { if (!validUids.has(uid)) delete users[uid]; });
+      Object.values(users).forEach(u => { if (!u.email && authEmail[u.uid]) u.email = authEmail[u.uid]; });
+    }
+
     const list = Object.values(users).sort((a, b) => (b.lastSeen ? b.lastSeen.getTime() : 0) - (a.lastSeen ? a.lastSeen.getTime() : 0));
     if (!list.length) { box.innerHTML = 'Aucun utilisateur trouvé.'; return; }
 

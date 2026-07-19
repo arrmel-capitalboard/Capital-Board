@@ -191,11 +191,11 @@ async function sendFcm(fcmToken, title, body, env) {
   return res.ok;
 }
 
-// Liste tous les emails des comptes Auth (Identity Toolkit, paginé).
-async function listAuthEmails(env) {
+// Liste tous les comptes Auth (Identity Toolkit, paginé) : { localId, email }.
+async function listAuthUsers(env) {
   const at = await getAccessToken(env);
   const url = `https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:query`;
-  let emails = [], nextPageToken = '';
+  let users = [], nextPageToken = '';
   do {
     const res = await fetch(url, {
       method: 'POST',
@@ -204,10 +204,15 @@ async function listAuthEmails(env) {
     });
     if (!res.ok) throw new Error(`identitytoolkit ${res.status}: ${await res.text()}`);
     const data = await res.json();
-    (data.userInfo || []).forEach(u => { if (u.email) emails.push(u.email); });
+    (data.userInfo || []).forEach(u => { if (u.localId) users.push({ localId: u.localId, email: u.email || '' }); });
     nextPageToken = data.nextPageToken || '';
   } while (nextPageToken);
-  return emails;
+  return users;
+}
+
+// Emails des comptes Auth (pour les diffusions).
+async function listAuthEmails(env) {
+  return (await listAuthUsers(env)).map(u => u.email).filter(Boolean);
 }
 
 // Génère un mot de passe temporaire lisible (sans caractères ambigus), avec au
@@ -507,6 +512,19 @@ export default {
         out.email = env.RESEND_API_KEY ? 'ok' : 'ko';
         try { await getYahooCreds(env); out.yahoo = 'ok'; } catch (_) { out.yahoo = 'ko'; }
         return json({ ok: true, services: out });
+      }
+
+      // ── POST /admin/list-auth-users ─────────────────────────────────────
+      // Retourne les comptes réellement présents dans Firebase Auth
+      // ({ localId, email }), pour filtrer les docs roles orphelins côté admin.
+      if (url.pathname === '/admin/list-auth-users' && request.method === 'POST') {
+        const { idToken } = await request.json();
+        const admin = await verifyIdToken(idToken, env);
+        if (!admin || admin.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        try {
+          const users = await listAuthUsers(env);
+          return json({ ok: true, users });
+        } catch (e) { return json({ error: e.message }, 500); }
       }
 
       // ── POST /admin/reset-password ──────────────────────────────────────
