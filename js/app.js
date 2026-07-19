@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260720c';
+const APP_VERSION = '20260720d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -7194,38 +7194,54 @@ function setColorTheme(color) {
 // ═══════════════════════════════════════════════════
 // FEATURE 3: SPARKLINES
 // ═══════════════════════════════════════════════════
+// Convertit une couleur (#hex ou rgb()) en rgba avec l'alpha donné.
+function _toRgba(col, a) {
+  col = (col || '').trim();
+  if (col[0] === '#') {
+    let h = col.slice(1);
+    if (h.length === 3) h = h.split('').map(c => c + c).join('');
+    const n = parseInt(h, 16);
+    return `rgba(${(n >> 16) & 255},${(n >> 8) & 255},${n & 255},${a})`;
+  }
+  const m = col.match(/(\d+)[,\s]+(\d+)[,\s]+(\d+)/);
+  return m ? `rgba(${m[1]},${m[2]},${m[3]},${a})` : `rgba(0,224,158,${a})`;
+}
+
 function drawSparkline(canvasId, data, color) {
   const canvas = document.getElementById(canvasId);
   if (!canvas || !data || data.length < 2) return;
   const ctx = canvas.getContext('2d');
-  const w = canvas.parentElement.offsetWidth;
-  const h = 32;
-  canvas.width = w; canvas.height = h;
+  const dpr = window.devicePixelRatio || 1;
+  const w = canvas.parentElement.offsetWidth || 300;
+  const h = Math.max(40, (canvas.parentElement.offsetHeight || 60)); // suit la hauteur réelle
+  canvas.width = w * dpr; canvas.height = h * dpr;
+  canvas.style.width = w + 'px'; canvas.style.height = h + 'px';
+  ctx.scale(dpr, dpr);
   ctx.clearRect(0, 0, w, h);
 
+  const pad = 3;
   const min = Math.min(...data);
   const max = Math.max(...data);
   const range = max - min || 1;
+  const xAt = i => (i / (data.length - 1)) * w;
+  const yAt = v => h - ((v - min) / range) * (h - pad * 2) - pad;
 
+  // Tracé (lignes droites = marches fidèles à la grande courbe)
   ctx.beginPath();
+  data.forEach((v, i) => { const x = xAt(i), y = yAt(v); i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y); });
   ctx.strokeStyle = color;
-  ctx.lineWidth = 1.5;
-  data.forEach((v, i) => {
-    const x = (i / (data.length - 1)) * w;
-    const y = h - ((v - min) / range) * (h - 4) - 2;
-    i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
-  });
+  ctx.lineWidth = 1.6;
+  ctx.lineJoin = 'round';
   ctx.stroke();
 
-  // Fill gradient below
-  const lastX = w;
-  const lastY = h - ((data[data.length-1] - min) / range) * (h - 4) - 2;
-  ctx.lineTo(lastX, h);
+  // Remplissage dégradé sous la courbe
+  ctx.lineTo(w, h);
   ctx.lineTo(0, h);
   ctx.closePath();
   const grad = ctx.createLinearGradient(0, 0, 0, h);
-  grad.addColorStop(0, color.replace(')', ',0.15)').replace('rgb', 'rgba'));
-  grad.addColorStop(1, 'rgba(0,0,0,0)');
+  grad.addColorStop(0, _toRgba(color, 0.24));
+  grad.addColorStop(0.5, _toRgba(color, 0.08));
+  grad.addColorStop(1, _toRgba(color, 0));
   ctx.fillStyle = grad;
   ctx.fill();
 }
