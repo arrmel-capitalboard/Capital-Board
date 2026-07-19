@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260719w';
+const APP_VERSION = '20260719x';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2813,6 +2813,7 @@ const SECTION_LABELS = {
   performance: 'Performance', benchmark: 'Benchmark', projections: 'Projections', earnings: 'Calendrier résultats',
   recap: 'Récap du jour', alertes: 'Alertes prix', notifications: 'Notifications', support: 'Support',
   admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord',
+  paypal: 'Faire un don',
 };
 const ALL_SECTIONS = Object.keys(SECTION_LABELS);
 const ADMIN_ONLY_KEYS = ['admin']; // rendus uniquement pour l'admin
@@ -2822,17 +2823,21 @@ const DEFAULT_NAV = [
   { title: 'Outils',         items: ['recap', 'alertes', 'notifications', 'support'] },
   { title: 'Administration', items: ['admin'] },
   { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord'] },
+  { title: 'Nous soutenir',  items: ['paypal'] },
 ];
 let _navNodes = null;   // cache des noeuds .nav-item par clé
 let _navDraft = null;   // brouillon d'édition admin
 
-// ─── Liens réseaux sociaux (éditables par l'admin via config/app.social) ───
-const SOCIAL_KEYS = ['instagram', 'tiktok', 'youtube', 'discord'];
+// ─── Liens externes éditables par l'admin (config/app.social) ───
+// Entrées de menu ouvrant un lien (réseaux sociaux + don), URL modifiable
+// depuis l'éditeur d'organisation du menu.
+const SOCIAL_KEYS = ['instagram', 'tiktok', 'youtube', 'discord', 'paypal'];
 const DEFAULT_SOCIAL = {
   instagram: 'https://www.instagram.com/capitalboard',
   tiktok:    'https://www.tiktok.com/@capitalboard',
   youtube:   'https://www.youtube.com/@capitalboard',
   discord:   'https://discord.gg/ZN9459TCTQ',
+  paypal:    'https://www.paypal.com/paypalme/capitalboard',
 };
 let _socialLinks = { ...DEFAULT_SOCIAL };
 let _socialDraft = null; // brouillon d'édition admin
@@ -12599,7 +12604,6 @@ function renderNavEditor() {
   if (!box || !_navDraft) return;
   const used = new Set();
   _navDraft.forEach(c => (c.items || []).forEach(k => used.add(k)));
-  const pool = ALL_SECTIONS.filter(k => !used.has(k));
   const mini = 'width:26px;height:26px;border-radius:7px;border:1px solid var(--border);background:var(--s3);color:var(--text3);cursor:pointer;font-size:12px;display:inline-flex;align-items:center;justify-content:center';
 
   box.innerHTML = _navDraft.map((cat, ci) => {
@@ -12626,10 +12630,20 @@ function renderNavEditor() {
         '</div>' + socialInput +
       '</div>';
     }).join('');
-    const addOpts = pool.length
+    // Entrées ajoutables ici : celles inutilisées, plus celles présentes dans
+    // une AUTRE catégorie (les sélectionner les déplace ici). Permet de remplir
+    // n'importe quelle catégorie, y compris une nouvelle vide.
+    const inThisCat = new Set(cat.items || []);
+    const unused    = ALL_SECTIONS.filter(k => !used.has(k));
+    const elsewhere = ALL_SECTIONS.filter(k => used.has(k) && !inThisCat.has(k));
+    const optGroup = (label, arr) => arr.length
+      ? '<optgroup label="' + label + '">' + arr.map(k => '<option value="' + k + '">' + (SECTION_LABELS[k] || k) + '</option>').join('') + '</optgroup>'
+      : '';
+    const addOpts = (unused.length || elsewhere.length)
       ? '<select onchange="adminNavAddSection(' + ci + ',this)" style="width:100%;margin-top:4px;background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:12px;padding:7px 10px;font-family:var(--sans);outline:none">' +
-          '<option value="">＋ Ajouter une section…</option>' +
-          pool.map(k => '<option value="' + k + '">' + (SECTION_LABELS[k] || k) + '</option>').join('') +
+          '<option value="">＋ Ajouter une entrée…</option>' +
+          optGroup('Nouvelles', unused) +
+          optGroup('Déplacer depuis une autre catégorie', elsewhere) +
         '</select>'
       : '';
     return '<div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:#0f1119">' +

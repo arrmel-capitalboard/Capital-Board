@@ -522,7 +522,12 @@ export default {
         try {
           await setAuthPassword(uid, tempPassword, env);
           await firestoreUpdate(`roles/${uid}`, { mustChangePassword: { booleanValue: true } }, ['mustChangePassword'], env);
-        } catch (e) { return json({ error: e.message }, 500); }
+        } catch (e) {
+          const msg = /USER_NOT_FOUND/.test(e.message)
+            ? "Aucun compte de connexion pour cet utilisateur (compte Auth supprimé ou inscription incomplète)."
+            : e.message;
+          return json({ error: msg }, 400);
+        }
         return json({ ok: true, tempPassword });
       }
 
