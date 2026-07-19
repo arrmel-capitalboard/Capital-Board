@@ -8,6 +8,7 @@ const statusmonitor = require('./lib/statusmonitor');
 const linkcleaner = require('./lib/linkcleaner');
 const restartmonitor = require('./lib/restartmonitor');
 const tickets = require('./lib/tickets');
+const ticketstats = require('./lib/ticketstats');
 const { checkPub } = require('./lib/automod-pub');
 
 const LOG_CHANNEL   = '1520208505880187042';
@@ -35,8 +36,13 @@ client.once(Events.ClientReady, (c) => {
   tempbans.start(c);
   statusmonitor.start(c);
   linkcleaner.start();
+  ticketstats.start(c);
   restartmonitor.handleOnReady(c).catch(() => {});
 });
+
+// Rafraîchit le compteur de tickets dès qu'un salon est créé/supprimé.
+client.on(Events.ChannelCreate, () => ticketstats.push(client));
+client.on(Events.ChannelDelete, () => ticketstats.push(client));
 
 client.on(Events.GuildMemberAdd, async (member) => {
   try { await member.roles.add(ROLE_VISITEUR); } catch {}
