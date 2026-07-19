@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260720j';
+const APP_VERSION = '20260720k';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -132,12 +132,23 @@ _splashWatchdog = setTimeout(() => {
   if (s && s.style.display !== 'none') {
     _splashError("Le chargement prend trop de temps. Vérifiez votre connexion internet puis rechargez.");
   }
-}, 15000);
+}, 20000);
 
 (async function initFirebase() {
  try {
-  const { initializeApp } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app.js");
-  const auth = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-auth.js");
+  // Imports Firebase en PARALLÈLE (au lieu de 6 imports CDN séquentiels).
+  // Sur mobile à forte latence, le séquentiel cumulait les allers-retours et
+  // dépassait le watchdog de 15 s (« chargement trop long »).
+  const V = "https://www.gstatic.com/firebasejs/10.12.0/";
+  const [appMod, auth, firestore, appCheckMod, msgMod, storageMod] = await Promise.all([
+    import(V + "firebase-app.js"),
+    import(V + "firebase-auth.js"),
+    import(V + "firebase-firestore.js"),
+    import(V + "firebase-app-check.js").catch(e => (console.warn('[appcheck] import KO:', e.message), null)),
+    import(V + "firebase-messaging.js").catch(e => (console.warn('[fcm] import KO:', e.message), null)),
+    import(V + "firebase-storage.js").catch(e => (console.warn('[storage] import KO:', e.message), null)),
+  ]);
+  const { initializeApp } = appMod;
 
   createUserWithEmailAndPassword = auth.createUserWithEmailAndPassword;
   signInWithEmailAndPassword     = auth.signInWithEmailAndPassword;
@@ -154,8 +165,6 @@ _splashWatchdog = setTimeout(() => {
   EmailAuthProvider              = auth.EmailAuthProvider;
   deleteUser                     = auth.deleteUser;
 
-
-  const firestore = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
   getFirestoreDoc     = firestore.getDoc;
   getDocFromServer    = firestore.getDocFromServer;
   setFirestoreDoc     = firestore.setDoc;
@@ -177,10 +186,9 @@ _splashWatchdog = setTimeout(() => {
   fbApp  = initializeApp(firebaseConfig);
 
   // App Check — protège Firestore et Auth contre les appels hors navigateur
-  try {
-    const { initializeAppCheck, ReCaptchaV3Provider } = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-app-check.js");
-    initializeAppCheck(fbApp, {
-      provider: new ReCaptchaV3Provider('6LcrZwstAAAAAIOKXUFbgxO49SUoVmoQycZf3Ekq'),
+  if (appCheckMod) try {
+    appCheckMod.initializeAppCheck(fbApp, {
+      provider: new appCheckMod.ReCaptchaV3Provider('6LcrZwstAAAAAIOKXUFbgxO49SUoVmoQycZf3Ekq'),
       isTokenAutoRefreshEnabled: true,
     });
   } catch(e) { console.warn('[appcheck] init échoué:', e.message); }
@@ -188,19 +196,17 @@ _splashWatchdog = setTimeout(() => {
   fbAuth = auth.getAuth(fbApp);
   db     = firestore.getFirestore(fbApp);
 
-  try {
-    const msg = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-messaging.js");
-    getFCMToken  = msg.getToken;
-    onFCMMessage = msg.onMessage;
-    fcmMessaging = msg.getMessaging(fbApp);
+  if (msgMod) try {
+    getFCMToken  = msgMod.getToken;
+    onFCMMessage = msgMod.onMessage;
+    fcmMessaging = msgMod.getMessaging(fbApp);
   } catch(e) { console.warn('FCM unavailable:', e.message); }
 
-  try {
-    const storage = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-storage.js");
-    fbStorage = storage.getStorage(fbApp);
-    fbStorageRef = storage.ref;
-    fbStorageUploadBytes = storage.uploadBytes;
-    fbStorageGetDownloadURL = storage.getDownloadURL;
+  if (storageMod) try {
+    fbStorage = storageMod.getStorage(fbApp);
+    fbStorageRef = storageMod.ref;
+    fbStorageUploadBytes = storageMod.uploadBytes;
+    fbStorageGetDownloadURL = storageMod.getDownloadURL;
   } catch(e) { console.warn('Storage unavailable:', e.message); }
 
   // Google Sign-In : récupère le résultat du signInWithRedirect (iOS/PWA standalone).
