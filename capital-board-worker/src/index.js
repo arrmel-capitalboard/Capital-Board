@@ -142,6 +142,21 @@ async function firestoreSet(path, fields, env) {
   return res.json();
 }
 
+// Met à jour uniquement les champs de `maskPaths` (updateMask) sans écraser le
+// reste du document — contrairement à firestoreSet qui remplace tout.
+async function firestoreUpdate(path, fields, maskPaths, env) {
+  const token = await getAccessToken(env);
+  const mask = (maskPaths || Object.keys(fields)).map(f => `updateMask.fieldPaths=${encodeURIComponent(f)}`).join('&');
+  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${path}?${mask}`;
+  const res = await fetch(url, {
+    method: 'PATCH',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields }),
+  });
+  if (!res.ok) throw new Error(`Firestore update ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
 async function firestoreDelete(path, env) {
   const token = await getAccessToken(env);
   const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${path}`;
@@ -193,6 +208,31 @@ async function listAuthEmails(env) {
     nextPageToken = data.nextPageToken || '';
   } while (nextPageToken);
   return emails;
+}
+
+// Génère un mot de passe temporaire lisible (sans caractères ambigus), avec au
+// moins une majuscule, une minuscule et un chiffre. 10 caractères.
+function genTempPassword() {
+  const U = 'ABCDEFGHJKMNPQRSTUVWXYZ', L = 'abcdefghijkmnpqrstuvwxyz', D = '23456789';
+  const all = U + L + D;
+  const r = new Uint32Array(16); crypto.getRandomValues(r);
+  const pick = (set, i) => set[r[i] % set.length];
+  const p = [pick(U, 0), pick(L, 1), pick(D, 2)];
+  for (let i = 3; i < 10; i++) p.push(pick(all, i));
+  for (let i = p.length - 1; i > 0; i--) { const j = r[10 + i % 6] % (i + 1); [p[i], p[j]] = [p[j], p[i]]; }
+  return p.join('');
+}
+
+// Définit le mot de passe d'un compte Auth via l'API Admin Identity Toolkit.
+async function setAuthPassword(localId, password, env) {
+  const at = await getAccessToken(env);
+  const res = await fetch(`https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:update`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${at}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ localId, password }),
+  });
+  if (!res.ok) throw new Error(`identitytoolkit update ${res.status}: ${await res.text()}`);
+  return res.json();
 }
 
 // Envoie `subject`/`html` à tous les comptes Auth. Retourne {sent, failed, total}.
@@ -467,6 +507,23 @@ export default {
         out.email = env.RESEND_API_KEY ? 'ok' : 'ko';
         try { await getYahooCreds(env); out.yahoo = 'ok'; } catch (_) { out.yahoo = 'ko'; }
         return json({ ok: true, services: out });
+      }
+
+      // ── POST /admin/reset-password ──────────────────────────────────────
+      // Définit un mot de passe temporaire pour un utilisateur et marque son
+      // compte pour changement obligatoire à la prochaine connexion.
+      if (url.pathname === '/admin/reset-password' && request.method === 'POST') {
+        const { idToken, uid } = await request.json();
+        const admin = await verifyIdToken(idToken, env);
+        if (!admin || admin.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        if (!uid) return json({ error: 'uid requis' }, 400);
+        if (uid === env.ADMIN_UID) return json({ error: 'Action interdite sur le compte admin' }, 400);
+        const tempPassword = genTempPassword();
+        try {
+          await setAuthPassword(uid, tempPassword, env);
+          await firestoreUpdate(`roles/${uid}`, { mustChangePassword: { booleanValue: true } }, ['mustChangePassword'], env);
+        } catch (e) { return json({ error: e.message }, 500); }
+        return json({ ok: true, tempPassword });
       }
 
       // ── POST /admin/broadcast-push ──────────────────────────────────────

@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260719v';
+const APP_VERSION = '20260719w';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2117,6 +2117,7 @@ async function startApp(user) {
     if (!window.IS_DEMO && Notification.permission === 'granted') initPush(user.uid).catch(() => {});
     try { _initSupportBadge(); } catch(e) { console.warn('support badge:', e); }
     try { _ensureUserName(user); } catch(e) { console.warn('name setup:', e); }
+    try { _enforcePasswordChange(user); } catch(e) { console.warn('pw change:', e); }
     // Menu custom + feature flags — organisation et sections désactivées
     // (applyNavLayout gère aussi la visibilité de l'entrée Admin)
     _getAppConfig().then(c => {
@@ -12728,14 +12729,16 @@ async function renderAdminUsers() {
       const sub = (u.username ? '@' + u.username + ' · ' : '') + (u.email ? u.email + ' · ' : '') + _relTime(u.lastSeen);
       const dot = u.online ? '<span style="width:7px;height:7px;border-radius:50%;background:var(--positive);box-shadow:0 0 8px var(--positive);flex-shrink:0"></span>' : '<span style="width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0"></span>';
       const roleBadge = '<span style="font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:5px;font-family:var(--mono);' + (isSuper ? 'background:rgba(255,77,106,.14);color:#ff5d78' : 'background:rgba(255,255,255,.06);color:var(--text3)') + '">' + (isSuper ? 'ADMIN' : 'USER') + '</span>';
-      const delBtn = (self || u.uid === ADMIN_UID) ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px;border-color:rgba(255,93,120,.3);color:#ff5d78" onclick="adminDeleteUser(\'' + u.uid + '\',\'' + label.replace(/'/g, '') + '\')">Effacer (RGPD)</button>';
+      const safeLabel = label.replace(/'/g, '');
+      const resetBtn = (self || u.uid === ADMIN_UID) ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px" onclick="adminResetPassword(\'' + u.uid + '\',\'' + safeLabel + '\')">Reset mdp</button>';
+      const delBtn = (self || u.uid === ADMIN_UID) ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px;border-color:rgba(255,93,120,.3);color:#ff5d78" onclick="adminDeleteUser(\'' + u.uid + '\',\'' + safeLabel + '\')">Effacer (RGPD)</button>';
       return '<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)">' +
         dot +
         '<div style="flex:1;min-width:0">' +
           '<div style="font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:7px">' + label + ' ' + roleBadge + '</div>' +
           '<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + sub + '</div>' +
         '</div>' +
-        '<div style="display:flex;gap:6px;flex-shrink:0">' + delBtn + '</div>' +
+        '<div style="display:flex;gap:6px;flex-shrink:0">' + resetBtn + delBtn + '</div>' +
       '</div>';
     };
 
@@ -12810,6 +12813,118 @@ async function _doAdminDeleteUser(uid) {
   await del(firestoreDoc(db, 'presence', uid));
   _audit('rgpd_delete', 'uid=' + uid);
   renderAdminUsers();
+}
+
+// ─── Réinitialisation mot de passe (admin) ───
+async function adminResetPassword(uid, label) {
+  if (!isAdmin() || uid === currentUser || uid === ADMIN_UID) return;
+  showConfirmModal({
+    icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>',
+    title: 'Réinitialiser le mot de passe ?',
+    body: 'Un mot de passe temporaire sera généré pour « ' + label + ' ». Il devra le changer à sa prochaine connexion. Transmettez-le-lui de façon sécurisée (jamais par un canal public).',
+    okLabel: 'Générer', cancelLabel: 'Annuler',
+    onConfirm: () => _doAdminResetPassword(uid, label),
+  });
+}
+async function _doAdminResetPassword(uid, label) {
+  try {
+    const r = await _adminAuthPost('/admin/reset-password', { uid });
+    if (!r || !r.ok) { _showTempPasswordModal(label, null, (r && r.error) || 'Erreur.'); return; }
+    _audit('reset_password', 'uid=' + uid);
+    _showTempPasswordModal(label, r.tempPassword, null);
+  } catch (e) {
+    _showTempPasswordModal(label, null, 'Worker injoignable.');
+  }
+}
+function _showTempPasswordModal(label, temp, error) {
+  let el = document.getElementById('temp-pw-modal');
+  if (!el) { el = document.createElement('div'); el.id = 'temp-pw-modal'; document.body.appendChild(el); }
+  el.style.cssText = 'position:fixed;inset:0;z-index:100001;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.78);backdrop-filter:blur(6px);padding:20px;box-sizing:border-box';
+  const close = "document.getElementById('temp-pw-modal').remove()";
+  if (error) {
+    el.innerHTML =
+      '<div style="max-width:400px;width:100%;background:#12141e;border:1px solid rgba(255,93,120,.25);border-radius:20px;padding:28px;font-family:var(--sans,sans-serif);text-align:center">' +
+        '<div style="font-size:16px;font-weight:800;color:#ff5d78;margin-bottom:10px">Échec</div>' +
+        '<div style="font-size:13px;color:#98a1b5;margin-bottom:20px">' + error + '</div>' +
+        '<button onclick="' + close + '" style="padding:11px 22px;border:none;border-radius:10px;background:#2a2d3a;color:#f0f2f8;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit">Fermer</button>' +
+      '</div>';
+    return;
+  }
+  const safeTemp = String(temp).replace(/"/g, '&quot;');
+  el.innerHTML =
+    '<div style="max-width:420px;width:100%;box-sizing:border-box;background:#12141e;border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:28px;font-family:var(--sans,sans-serif)">' +
+      '<div style="font-size:19px;font-weight:800;color:#f0f2f8;margin-bottom:6px">Mot de passe temporaire</div>' +
+      '<div style="font-size:13px;color:#98a1b5;line-height:1.6;margin-bottom:18px">Pour « ' + label + ' ». Transmettez-le de façon sécurisée. L\'utilisateur devra le changer à sa prochaine connexion.</div>' +
+      '<div style="display:flex;gap:8px;align-items:center;margin-bottom:16px">' +
+        '<code id="temp-pw-value" style="flex:1;background:#0a0c14;border:1px solid rgba(255,255,255,.10);border-radius:10px;color:#7c6df5;font-size:18px;font-weight:700;letter-spacing:1px;padding:12px 14px;text-align:center;font-family:var(--mono,monospace)">' + safeTemp + '</code>' +
+        '<button id="temp-pw-copy" onclick="_copyTempPassword()" style="padding:12px 14px;border:1px solid rgba(124,109,245,.35);border-radius:10px;background:rgba(124,109,245,.12);color:#b3a9ff;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;white-space:nowrap">Copier</button>' +
+      '</div>' +
+      '<button onclick="' + close + '" style="width:100%;padding:12px;border:none;border-radius:12px;background:#7c6df5;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Fermer</button>' +
+    '</div>';
+}
+function _copyTempPassword() {
+  const v = document.getElementById('temp-pw-value'); const b = document.getElementById('temp-pw-copy');
+  if (!v) return;
+  const txt = v.textContent;
+  const done = () => { if (b) { b.textContent = 'Copié ✓'; setTimeout(() => { if (b) b.textContent = 'Copier'; }, 1800); } };
+  if (navigator.clipboard && navigator.clipboard.writeText) navigator.clipboard.writeText(txt).then(done).catch(() => {});
+  else { try { const r = document.createRange(); r.selectNode(v); const s = getSelection(); s.removeAllRanges(); s.addRange(r); document.execCommand('copy'); s.removeAllRanges(); done(); } catch (_) {} }
+}
+
+// ─── Changement de mot de passe imposé (après reset admin) ───
+async function _enforcePasswordChange(user) {
+  if (window.IS_DEMO || !user) return;
+  // Comptes uniquement Google : pas de mot de passe à changer.
+  const providers = (user.providerData || []).map(p => p.providerId);
+  if (providers.includes('google.com') && !providers.includes('password')) return;
+  let snap;
+  try { snap = await getDocFromServer(firestoreDoc(db, 'roles', user.uid)); }
+  catch (_) { return; } // pas de confirmation serveur → on ne bloque pas
+  const d = snap.exists() ? (snap.data() || {}) : {};
+  if (d.mustChangePassword === true) _showForcedPasswordModal(user);
+}
+function _showForcedPasswordModal(user) {
+  let el = document.getElementById('forced-password-modal');
+  if (!el) { el = document.createElement('div'); el.id = 'forced-password-modal'; document.body.appendChild(el); }
+  el.style.cssText = 'position:fixed;inset:0;z-index:100002;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.82);backdrop-filter:blur(6px);padding:20px;box-sizing:border-box';
+  const inp = 'width:100%;box-sizing:border-box;background:#0a0c14;border:1px solid rgba(255,255,255,.10);border-radius:10px;color:#f0f2f8;font-size:14px;padding:11px 13px;outline:none;font-family:inherit;margin-bottom:11px';
+  el.innerHTML =
+    '<div style="max-width:400px;width:100%;box-sizing:border-box;background:#12141e;border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:28px;font-family:var(--sans,sans-serif)">' +
+      '<div style="font-size:20px;font-weight:800;color:#f0f2f8;margin-bottom:8px">Changement de mot de passe requis</div>' +
+      '<div style="font-size:13px;color:#98a1b5;line-height:1.6;margin-bottom:20px">Votre mot de passe a été réinitialisé par un administrateur. Choisissez un nouveau mot de passe pour continuer.</div>' +
+      '<input id="fp-current" type="password" placeholder="Mot de passe temporaire" autocomplete="current-password" style="' + inp + '">' +
+      '<input id="fp-new" type="password" placeholder="Nouveau mot de passe (8 caractères min.)" autocomplete="new-password" style="' + inp + '">' +
+      '<input id="fp-confirm" type="password" placeholder="Confirmer le nouveau mot de passe" autocomplete="new-password" style="' + inp + '">' +
+      '<div id="fp-error" style="display:none;color:#ff5d78;font-size:12px;margin-bottom:10px"></div>' +
+      '<button id="fp-btn" onclick="saveForcedPassword(\'' + user.uid + '\')" style="width:100%;box-sizing:border-box;padding:12px;border:none;border-radius:12px;background:#7c6df5;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Valider</button>' +
+    '</div>';
+}
+async function saveForcedPassword(uid) {
+  const cur = document.getElementById('fp-current').value;
+  const np  = document.getElementById('fp-new').value;
+  const np2 = document.getElementById('fp-confirm').value;
+  const errEl = document.getElementById('fp-error');
+  const btn = document.getElementById('fp-btn');
+  const fail = m => { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } };
+  if (errEl) errEl.style.display = 'none';
+  if (!cur) return fail('Saisissez le mot de passe temporaire.');
+  if (np.length < 8) return fail('Nouveau mot de passe : 8 caractères minimum.');
+  if (np !== np2) return fail('Les mots de passe ne correspondent pas.');
+  if (np === cur) return fail('Choisissez un mot de passe différent du temporaire.');
+  if (btn) { btn.disabled = true; btn.textContent = 'Enregistrement…'; }
+  try {
+    const user = fbAuth.currentUser;
+    await reauthenticateWithCredential(user, EmailAuthProvider.credential(user.email, cur));
+    await updatePassword(user, np);
+    await setFirestoreDoc(firestoreDoc(db, 'roles', uid), { mustChangePassword: false }, { merge: true });
+    const el = document.getElementById('forced-password-modal'); if (el) el.remove();
+  } catch (e) {
+    if (btn) { btn.disabled = false; btn.textContent = 'Valider'; }
+    const code = (e && e.code) || '';
+    if (code === 'auth/wrong-password' || code === 'auth/invalid-credential') fail('Mot de passe temporaire incorrect.');
+    else if (code === 'auth/weak-password') fail('Mot de passe trop faible.');
+    else fail('Erreur : ' + ((e && e.message) || code));
+  }
 }
 
 // ─── Journal d'audit ───
