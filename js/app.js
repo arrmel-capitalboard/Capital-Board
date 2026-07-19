@@ -2848,15 +2848,26 @@ function applyNavLayout(nav) {
     container.appendChild(lab);
     visible.forEach(key => container.appendChild(_navNodes[key]));
   });
-  // Sécurité : l'admin garde toujours son entrée, même si la config l'omet
-  if (isAdmin() && _navNodes.admin && !container.contains(_navNodes.admin)) {
+  // Récupération des orphelins : entrées connues absentes de la config
+  // sauvegardée (ex. catégorie « Réseaux » ajoutée après la dernière
+  // personnalisation admin, ou entrée Admin omise). Regroupées sous leur
+  // catégorie DEFAULT_NAV pour ne jamais disparaître du menu.
+  const placed = new Set();
+  layout.forEach(cat => (cat.items || []).forEach(key => placed.add(key)));
+  DEFAULT_NAV.forEach(cat => {
+    const missing = (cat.items || []).filter(key => {
+      if (!_navNodes[key] || placed.has(key)) return false;
+      if (ADMIN_ONLY_KEYS.includes(key) && !isAdmin()) return false;
+      return true;
+    });
+    if (!missing.length) return;
     const lab = document.createElement('div');
     lab.className = 'nav-section-label';
     if (container.children.length) lab.style.marginTop = '14px';
-    lab.textContent = 'Administration';
+    lab.textContent = cat.title || '';
     container.appendChild(lab);
-    container.appendChild(_navNodes.admin);
-  }
+    missing.forEach(key => container.appendChild(_navNodes[key]));
+  });
 }
 
 function showPage(id) {
@@ -12847,13 +12858,27 @@ async function adminBroadcastPush() {
     if (r && r.ok) _audit('broadcast_push', title);
   } catch (e) { st.textContent = 'Échec (worker injoignable ?).'; }
 }
+// Liens utiles affichés dans le footer des emails de diffusion.
+const _MAIL_FOOTER_LINKS = [
+  ['Site',      'https://capitalboard.fr'],
+  ['Discord',   'https://discord.gg/ZN9459TCTQ'],
+  ['Instagram', 'https://www.instagram.com/capitalboard'],
+  ['TikTok',    'https://www.tiktok.com/@capitalboard'],
+  ['GitHub',    'https://github.com/arrmel-capitalboard/Capital-Board'],
+];
 // Construit le HTML de l'email de diffusion à partir du texte saisi.
 function _bcMailHtml(text) {
+  const links = _MAIL_FOOTER_LINKS
+    .map(([label, url]) => '<a href="' + url + '" style="color:#7c6df5;text-decoration:none;margin:0 6px" target="_blank" rel="noopener">' + label + '</a>')
+    .join('<span style="color:#2a2a3a">·</span>');
   return '<div style="font-family:sans-serif;background:#0f0f13;color:#e8eaf0;padding:32px">' +
     '<div style="max-width:480px;margin:0 auto;background:#1a1a24;border-radius:16px;padding:32px;border:1px solid #2a2a3a">' +
     '<div style="font-size:18px;font-weight:700;color:#7c6df5;margin-bottom:20px">Capital Board</div>' +
     '<div style="color:#e8eaf0;line-height:1.7;font-size:15px;white-space:pre-wrap">' + _escapeHtmlChat(text) + '</div>' +
-    '</div></div>';
+    '</div>' +
+    '<div style="max-width:480px;margin:20px auto 0;text-align:center;font-size:12px;line-height:2.2">' + links + '</div>' +
+    '<div style="max-width:480px;margin:6px auto 0;text-align:center;font-size:11px;color:#4a5266">Capital Board · Ne pas répondre à cet email.</div>' +
+    '</div>';
 }
 // Lit sujet + texte, valide, retourne {subject, text, html} ou null (message d'erreur affiché).
 function _bcMailPayload(st) {
