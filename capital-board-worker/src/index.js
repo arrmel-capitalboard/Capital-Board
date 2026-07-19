@@ -195,6 +195,14 @@ async function listAuthEmails(env) {
   return emails;
 }
 
+// Envoie `subject`/`html` à tous les comptes Auth. Retourne {sent, failed, total}.
+async function broadcastEmailToAll(subject, html, env) {
+  const emails = await listAuthEmails(env);
+  let sent = 0, failed = 0;
+  for (const e of emails) { try { await sendEmail(e, subject, html, env); sent++; } catch (_) { failed++; } }
+  return { sent, failed, total: emails.length };
+}
+
 // ── SHA-256 ────────────────────────────────────────────────────────────────
 
 async function sha256(str) {
@@ -476,14 +484,63 @@ export default {
 
       // ── POST /admin/broadcast-email ─────────────────────────────────────
       if (url.pathname === '/admin/broadcast-email' && request.method === 'POST') {
-        const { idToken, subject, html } = await request.json();
+        const { idToken, subject, html, testEmail } = await request.json();
         const user = await verifyIdToken(idToken, env);
         if (!user || user.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
         if (!subject || !html) return json({ error: 'Sujet et contenu requis' }, 400);
-        const emails = await listAuthEmails(env);
-        let sent = 0, failed = 0;
-        for (const e of emails) { try { await sendEmail(e, subject, html, env); sent++; } catch (_) { failed++; } }
-        return json({ ok: true, sent, failed, total: emails.length });
+        // Envoi test : une seule adresse, pas de diffusion générale.
+        if (testEmail) {
+          if (!/^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(testEmail)) return json({ error: 'Email de test invalide' }, 400);
+          try { await sendEmail(testEmail, subject, html, env); }
+          catch (e) { return json({ ok: false, error: 'Échec envoi : ' + e.message }, 500); }
+          return json({ ok: true, sent: 1, failed: 0, total: 1, test: true });
+        }
+        const r = await broadcastEmailToAll(subject, html, env);
+        return json({ ok: true, ...r });
+      }
+
+      // ── POST /admin/schedule-email ──────────────────────────────────────
+      // Programme une diffusion email pour plus tard (envoyée par le cron).
+      if (url.pathname === '/admin/schedule-email' && request.method === 'POST') {
+        const { idToken, subject, html, sendAt } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        if (!user || user.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        if (!subject || !html) return json({ error: 'Sujet et contenu requis' }, 400);
+        const ts = Number(sendAt);
+        if (!ts || ts < Date.now() - 60000) return json({ error: 'Date d\'envoi invalide (passée)' }, 400);
+        const id = `${ts}-${Math.random().toString(36).slice(2, 8)}`;
+        await firestoreSet(`scheduledEmails/${id}`, {
+          subject:   { stringValue: subject },
+          html:      { stringValue: html },
+          sendAt:    { integerValue: String(ts) },
+          createdAt: { integerValue: String(Date.now()) },
+        }, env);
+        return json({ ok: true, id, sendAt: ts });
+      }
+
+      // ── POST /admin/schedule-list ───────────────────────────────────────
+      if (url.pathname === '/admin/schedule-list' && request.method === 'POST') {
+        const { idToken } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        if (!user || user.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        let docs = [];
+        try { docs = await firestoreList('scheduledEmails', env); } catch (_) {}
+        const items = docs.map(d => ({
+          id: d.name.split('/').pop(),
+          subject: fsStr(d, 'subject'),
+          sendAt: fsNum(d, 'sendAt'),
+        })).sort((a, b) => a.sendAt - b.sendAt);
+        return json({ ok: true, items });
+      }
+
+      // ── POST /admin/schedule-cancel ─────────────────────────────────────
+      if (url.pathname === '/admin/schedule-cancel' && request.method === 'POST') {
+        const { idToken, id } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        if (!user || user.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        if (!id || /[^\w.-]/.test(id)) return json({ error: 'id invalide' }, 400);
+        await firestoreDelete(`scheduledEmails/${id}`, env);
+        return json({ ok: true });
       }
 
       // ── POST /send-otp ──────────────────────────────────────────────────
@@ -642,5 +699,27 @@ export default {
       console.error(e.message);
       return json({ error: e.message }, 500);
     }
+  },
+
+  // Cron : envoie les diffusions email programmées arrivées à échéance.
+  async scheduled(event, env, ctx) {
+    ctx.waitUntil((async () => {
+      let docs;
+      try { docs = await firestoreList('scheduledEmails', env); }
+      catch (e) { console.error('scheduled list: ' + e.message); return; }
+      const now = Date.now();
+      for (const d of docs) {
+        const sendAt = fsNum(d, 'sendAt');
+        if (sendAt == null || sendAt > now) continue;
+        const id = d.name.split('/').pop();
+        const subject = fsStr(d, 'subject');
+        const html = fsStr(d, 'html');
+        // Supprime d'abord : évite un double-envoi si deux crons se chevauchent.
+        try { await firestoreDelete(`scheduledEmails/${id}`, env); }
+        catch (e) { console.error('scheduled delete ' + id + ': ' + e.message); continue; }
+        try { await broadcastEmailToAll(subject, html, env); }
+        catch (e) { console.error('scheduled send ' + id + ': ' + e.message); }
+      }
+    })());
   },
 };

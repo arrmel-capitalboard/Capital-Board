@@ -17,6 +17,10 @@ ADMIN_UID = "A6nZQ8PcxdURytSesA17xK81I9T2"
 binding = "EARNINGS"
 id = "994d84c5a364477e869b4fb12605a57d"
 
+# Cron : vérifie toutes les 5 min les diffusions email programmées (scheduled()).
+[triggers]
+crons = ["*/5 * * * *"]
+
 # Secrets à injecter via : wrangler secret put <NOM>
 #   FIREBASE_SERVICE_ACCOUNT   → JSON complet du service account Firebase
 #   RESEND_API_KEY             → clé API Resend

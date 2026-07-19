@@ -1171,13 +1171,28 @@
 
       <div class="section-card" style="max-width:560px;margin-top:16px">
         <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Diffusion — email</div>
-        <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:12px">Envoie un email à <strong>tous les comptes</strong>.</div>
+        <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:12px">Envoie un email à <strong>tous les comptes</strong>. Testez d'abord sur une seule adresse, ou programmez l'envoi pour plus tard.</div>
         <input id="bc-mail-subject" placeholder="Sujet" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;margin-bottom:8px;outline:none;font-family:var(--sans)">
         <textarea id="bc-mail-body" placeholder="Message (texte)" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;resize:vertical;min-height:80px;outline:none;font-family:var(--sans)"></textarea>
+
+        <!-- Envoi test sur une seule adresse -->
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input id="bc-mail-test" type="email" placeholder="Email de test (optionnel)" style="flex:1;min-width:0;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;outline:none;font-family:var(--sans)">
+          <button class="pf-btn ghost" onclick="adminBroadcastEmailTest()" style="font-size:11.5px;flex-shrink:0;white-space:nowrap">Envoyer test</button>
+        </div>
+
+        <!-- Envoi programmé -->
+        <div style="display:flex;gap:8px;margin-top:8px">
+          <input id="bc-mail-when" type="datetime-local" style="flex:1;min-width:0;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;outline:none;font-family:var(--sans)">
+          <button class="pf-btn ghost" onclick="adminScheduleEmail()" style="font-size:11.5px;flex-shrink:0;white-space:nowrap">Programmer</button>
+        </div>
+
         <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:12px">
           <div id="bc-mail-status" style="font-size:12px;color:var(--text3)"></div>
-          <button class="pf-btn primary" onclick="adminBroadcastEmail()" style="font-size:11.5px;flex-shrink:0">Envoyer l'email</button>
+          <button class="pf-btn primary" onclick="adminBroadcastEmail()" style="font-size:11.5px;flex-shrink:0">Envoyer à tous</button>
         </div>
+
+        <div id="bc-mail-scheduled" style="margin-top:14px;font-size:12px;color:var(--text3)"></div>
       </div>
 
       <div class="section-card" style="max-width:560px;margin-top:16px">

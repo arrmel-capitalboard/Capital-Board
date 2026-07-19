@@ -12492,6 +12492,7 @@ async function renderAdminPage() {
   renderAdminStats();
   renderAdminUsers();
   renderAuditLog();
+  adminLoadScheduled();
 }
 
 async function adminToggleFeature(key, el) {
@@ -12793,24 +12794,98 @@ async function adminBroadcastPush() {
     if (r && r.ok) _audit('broadcast_push', title);
   } catch (e) { st.textContent = 'Échec (worker injoignable ?).'; }
 }
-async function adminBroadcastEmail() {
-  if (!isAdmin()) return;
-  const subject = (document.getElementById('bc-mail-subject').value || '').trim();
-  const text = (document.getElementById('bc-mail-body').value || '').trim();
-  const st = document.getElementById('bc-mail-status');
-  if (!subject || !text) { st.textContent = 'Sujet et message requis.'; return; }
-  if (!confirm('Envoyer cet email à TOUS les comptes ?')) return;
-  st.textContent = 'Envoi…';
-  const html = '<div style="font-family:sans-serif;background:#0f0f13;color:#e8eaf0;padding:32px">' +
+// Construit le HTML de l'email de diffusion à partir du texte saisi.
+function _bcMailHtml(text) {
+  return '<div style="font-family:sans-serif;background:#0f0f13;color:#e8eaf0;padding:32px">' +
     '<div style="max-width:480px;margin:0 auto;background:#1a1a24;border-radius:16px;padding:32px;border:1px solid #2a2a3a">' +
     '<div style="font-size:18px;font-weight:700;color:#7c6df5;margin-bottom:20px">Capital Board</div>' +
     '<div style="color:#e8eaf0;line-height:1.7;font-size:15px;white-space:pre-wrap">' + _escapeHtmlChat(text) + '</div>' +
     '</div></div>';
+}
+// Lit sujet + texte, valide, retourne {subject, text, html} ou null (message d'erreur affiché).
+function _bcMailPayload(st) {
+  const subject = (document.getElementById('bc-mail-subject').value || '').trim();
+  const text = (document.getElementById('bc-mail-body').value || '').trim();
+  if (!subject || !text) { st.textContent = 'Sujet et message requis.'; return null; }
+  return { subject, text, html: _bcMailHtml(text) };
+}
+async function adminBroadcastEmail() {
+  if (!isAdmin()) return;
+  const st = document.getElementById('bc-mail-status');
+  const p = _bcMailPayload(st);
+  if (!p) return;
+  if (!confirm('Envoyer cet email à TOUS les comptes ?')) return;
+  st.textContent = 'Envoi…';
   try {
-    const r = await _adminAuthPost('/admin/broadcast-email', { subject, html });
+    const r = await _adminAuthPost('/admin/broadcast-email', { subject: p.subject, html: p.html });
     st.textContent = r && r.ok ? ('Envoyé : ' + r.sent + '/' + r.total + (r.failed ? ' (échecs ' + r.failed + ')' : '')) : ((r && r.error) || 'Erreur.');
-    if (r && r.ok) _audit('broadcast_email', subject);
+    if (r && r.ok) _audit('broadcast_email', p.subject);
   } catch (e) { st.textContent = 'Échec (worker injoignable ?).'; }
+}
+// Envoi test : une seule adresse.
+async function adminBroadcastEmailTest() {
+  if (!isAdmin()) return;
+  const st = document.getElementById('bc-mail-status');
+  const p = _bcMailPayload(st);
+  if (!p) return;
+  const testEmail = (document.getElementById('bc-mail-test').value || '').trim();
+  if (!testEmail) { st.textContent = 'Renseignez une adresse de test.'; return; }
+  st.textContent = 'Envoi test…';
+  try {
+    const r = await _adminAuthPost('/admin/broadcast-email', { subject: p.subject, html: p.html, testEmail });
+    st.textContent = r && r.ok ? ('Test envoyé à ' + testEmail) : ((r && r.error) || 'Erreur.');
+  } catch (e) { st.textContent = 'Échec (worker injoignable ?).'; }
+}
+// Programme la diffusion pour une date/heure future.
+async function adminScheduleEmail() {
+  if (!isAdmin()) return;
+  const st = document.getElementById('bc-mail-status');
+  const p = _bcMailPayload(st);
+  if (!p) return;
+  const whenVal = document.getElementById('bc-mail-when').value;
+  if (!whenVal) { st.textContent = 'Choisissez une date/heure d\'envoi.'; return; }
+  const sendAt = new Date(whenVal).getTime(); // heure locale du navigateur
+  if (!sendAt || sendAt < Date.now() + 30000) { st.textContent = 'La date doit être dans le futur.'; return; }
+  const when = new Date(sendAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+  if (!confirm('Programmer cet email à TOUS les comptes pour le ' + when + ' ?')) return;
+  st.textContent = 'Programmation…';
+  try {
+    const r = await _adminAuthPost('/admin/schedule-email', { subject: p.subject, html: p.html, sendAt });
+    if (r && r.ok) {
+      st.textContent = 'Programmé pour le ' + when + '.';
+      _audit('schedule_email', p.subject + ' → ' + when);
+      document.getElementById('bc-mail-when').value = '';
+      adminLoadScheduled();
+    } else { st.textContent = (r && r.error) || 'Erreur.'; }
+  } catch (e) { st.textContent = 'Échec (worker injoignable ?).'; }
+}
+// Charge et affiche les diffusions programmées.
+async function adminLoadScheduled() {
+  if (!isAdmin()) return;
+  const box = document.getElementById('bc-mail-scheduled');
+  if (!box) return;
+  try {
+    const r = await _adminAuthPost('/admin/schedule-list', {});
+    if (!r || !r.ok) { box.textContent = ''; return; }
+    if (!r.items.length) { box.innerHTML = '<span style="color:var(--text3)">Aucun email programmé.</span>'; return; }
+    box.innerHTML = '<div style="font-weight:600;color:var(--text);margin-bottom:6px">Programmés (' + r.items.length + ')</div>' +
+      r.items.map(it => {
+        const when = new Date(it.sendAt).toLocaleString('fr-FR', { dateStyle: 'short', timeStyle: 'short' });
+        return '<div style="display:flex;align-items:center;justify-content:space-between;gap:12px;padding:7px 0;border-bottom:1px solid var(--border)">' +
+          '<span style="min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap"><strong>' + when + '</strong> — ' + _escapeHtmlChat(it.subject || '') + '</span>' +
+          '<button class="pf-btn ghost" onclick="adminCancelScheduled(\'' + it.id + '\')" style="font-size:11px;flex-shrink:0">Annuler</button>' +
+          '</div>';
+      }).join('');
+  } catch (e) { box.textContent = ''; }
+}
+// Annule une diffusion programmée.
+async function adminCancelScheduled(id) {
+  if (!isAdmin()) return;
+  if (!confirm('Annuler cet email programmé ?')) return;
+  try {
+    const r = await _adminAuthPost('/admin/schedule-cancel', { id });
+    if (r && r.ok) { _audit('schedule_cancel', id); adminLoadScheduled(); }
+  } catch (e) {}
 }
 
 function _adminMaintStatus(on) {
