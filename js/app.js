@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260719t';
+const APP_VERSION = '20260719u';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2005,10 +2005,14 @@ async function _checkVersion() {
       if (v && v !== APP_VERSION) { window._serverVersion = v; _showUpdateGate(); return; }   // strict : bloque tout
     }
   } catch(e) { /* silencieux — pas de blocage si offline */ }
-  // MAJ forcée par l'admin (config/app.minVersion)
+  // MAJ forcée par l'admin (config/app.minVersion) : bloque uniquement les
+  // versions STRICTEMENT plus anciennes que le plancher. Les versions égales
+  // ou plus récentes passent (sinon chaque nouveau déploiement, dont la version
+  // diffère du plancher figé, rebloquerait tout le monde). Comparaison de
+  // chaînes datées de même format (ex. 20260719r) → tri lexicographique correct.
   try {
     const cfg = await _getAppConfig();
-    if (cfg.minVersion && cfg.minVersion !== APP_VERSION) _showUpdateGate();
+    if (cfg.minVersion && APP_VERSION < cfg.minVersion) { window._serverVersion = cfg.minVersion; _showUpdateGate(); }
   } catch(_) {}
 }
 // Écran bloquant : impossible d'utiliser une version obsolète, seule action = recharger.
