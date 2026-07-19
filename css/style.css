@@ -724,6 +724,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 .pf-pill.neg { background: rgba(255,77,106,.10); color: var(--negative); }
 .pf-spark { margin-top: auto; padding-top: 22px; min-height: 46px; display: flex; align-items: flex-end; }
 .pf-spark canvas { width: 100%; display: block; }
+.pf-alloc { margin-top: auto; padding-top: 22px; }
+.pf-alloc-bar { height: 9px; border-radius: 6px; overflow: hidden; display: flex; background: var(--s3); }
+.pf-alloc-bar > span { display: block; height: 100%; transition: width .5s ease; }
+.pf-alloc-legend { display: flex; gap: 18px; margin-top: 10px; font-size: 11px; color: var(--text3); }
+.pf-alloc-legend b { color: var(--text2); font-weight: 700; }
+.pf-alloc-legend .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; vertical-align: middle; }
 .pf-footrow {
   display: flex; gap: 28px; margin-top: 20px;
   padding-top: 18px; border-top: 1px solid var(--border);

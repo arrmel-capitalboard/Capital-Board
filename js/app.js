@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260720f';
+const APP_VERSION = '20260720g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3130,6 +3130,28 @@ function renderPortfolio() {
   }
   const nwSub = document.getElementById('stat-networth-sub');
   if (nwSub) nwSub.textContent = data.length ? (totalPnl >= 0 ? '+' : '') + fmt(totalPnl) + ' depuis le début' : '';
+
+  // Répartition Titres / Espèces (barre d'allocation du héro)
+  const allocEl = document.getElementById('pf-alloc');
+  if (allocEl) {
+    const titres = Math.max(0, totalVal);
+    const espece = Math.max(0, cash);
+    const tot = titres + espece;
+    if (!data.length || tot <= 0) { allocEl.innerHTML = ''; }
+    else {
+      const tPct = titres / tot * 100;
+      const ePct = 100 - tPct;
+      allocEl.innerHTML =
+        '<div class="pf-alloc-bar">' +
+          '<span style="width:' + tPct.toFixed(1) + '%;background:var(--positive)"></span>' +
+          '<span style="width:' + ePct.toFixed(1) + '%;background:var(--gold)"></span>' +
+        '</div>' +
+        '<div class="pf-alloc-legend">' +
+          '<span><span class="dot" style="background:var(--positive)"></span>Titres <b>' + tPct.toFixed(1) + '%</b></span>' +
+          '<span><span class="dot" style="background:var(--gold)"></span>Espèces <b>' + ePct.toFixed(1) + '%</b></span>' +
+        '</div>';
+    }
+  }
 
   // Render transaction history
   renderTxHistory();
