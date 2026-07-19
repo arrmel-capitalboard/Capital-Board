@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260720a';
+const APP_VERSION = '20260720b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6685,6 +6685,17 @@ async function renderPortfolioChart() {
 
     _perfMark('courbe affichée', _fromCache ? '(cache)' : '(Yahoo)');
 
+    // Mini courbe « Valorisation totale » (spark-total) : même série réelle que
+    // le grand graphique, au lieu du random-walk factice.
+    try {
+      const realTotal = dataset.map(p => p.valeurTotale).filter(v => typeof v === 'number' && v > 0);
+      if (realTotal.length >= 2) {
+        sparkData.total = realTotal;
+        const pos = getComputedStyle(document.documentElement).getPropertyValue('--positive').trim() || '#00e09e';
+        drawSparkline('spark-total', realTotal, isUp ? pos : '#ff4d6a');
+      }
+    } catch(_) {}
+
   } catch(e) {
     document.getElementById('portfolio-chart-sub').textContent = 'Données indisponibles pour cette période.';
     console.error('Portfolio chart error:', e);
@@ -12989,21 +13000,28 @@ async function renderAdminStats() {
   if (!box) return;
   const empty = { forEach() {} };
   try {
-    const [roles, pres, dstats] = await Promise.all([
+    const [roles, pres, threads, dstats] = await Promise.all([
       getDocs(firestoreCollection(db, 'roles')).catch(() => empty),
       getDocs(firestoreCollection(db, 'presence')).catch(() => empty),
+      getDocs(firestoreCollection(db, 'supportThreads')).catch(() => empty),
       getFirestoreDoc(firestoreDoc(db, 'config', 'discordStats')).catch(() => null),
     ]);
     let inscrits = 0; roles.forEach(() => inscrits++);
     let actifs24 = 0; const now = Date.now();
     pres.forEach(d => { const p = d.data(); const ls = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate().getTime() : 0; if (now - ls < 86400000) actifs24++; });
-    // Tickets ouverts = salons Discord dans la catégorie ticket, compteur écrit
-    // par le bot dans config/discordStats.openTickets.
-    const ticketCount = (dstats && dstats.exists() && typeof dstats.data().openTickets === 'number') ? dstats.data().openTickets : '—';
-    const tile = (l, v, c) => '<div style="background:#0f1119;border:1px solid var(--border);border-radius:14px;padding:14px 16px">' +
+    // Tickets ouverts = support in-app (Capital Board) + salons Discord de la
+    // catégorie ticket (compteur écrit par le bot dans config/discordStats).
+    let cbTickets = 0; threads.forEach(d => { const t = d.data(); if (t && t.closed !== true) cbTickets++; });
+    const discKnown = !!(dstats && dstats.exists() && typeof dstats.data().openTickets === 'number');
+    const discTickets = discKnown ? dstats.data().openTickets : 0;
+    const totalTickets = cbTickets + discTickets;
+    const tile = (l, v, c, sub) => '<div style="background:#0f1119;border:1px solid var(--border);border-radius:14px;padding:14px 16px">' +
       '<div style="font-size:10.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">' + l + '</div>' +
-      '<div style="font-size:22px;font-weight:800;margin-top:6px;font-family:var(--mono);color:' + (c || 'var(--text)') + '">' + v + '</div></div>';
-    box.innerHTML = tile('Inscrits', inscrits) + tile('Actifs 24 h', actifs24, 'var(--positive)') + tile('Tickets ouverts', ticketCount, 'var(--gold)');
+      '<div style="font-size:22px;font-weight:800;margin-top:6px;font-family:var(--mono);color:' + (c || 'var(--text)') + '">' + v + '</div>' +
+      (sub ? '<div style="font-size:10.5px;color:var(--text3);margin-top:5px;font-family:var(--mono)">' + sub + '</div>' : '') +
+      '</div>';
+    const ticketSub = 'CB ' + cbTickets + ' · Discord ' + (discKnown ? discTickets : '—');
+    box.innerHTML = tile('Inscrits', inscrits) + tile('Actifs 24 h', actifs24, 'var(--positive)') + tile('Tickets ouverts', totalTickets, 'var(--gold)', ticketSub);
   } catch (e) { box.innerHTML = '<div style="color:var(--text3)">Stats indisponibles.</div>'; }
 }
 
