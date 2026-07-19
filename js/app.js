@@ -1406,16 +1406,17 @@ function showMaintenanceScreen(msg) {
 async function _ensureUserName(user) {
   if (window.IS_DEMO || !user) return;
   if (window._nameSetupDone) return; // déjà validé pendant cette session
+  const ref = firestoreDoc(db, 'roles', user.uid);
+  let snap;
   try {
-    // Lecture serveur autoritative : évite d'ouvrir le modal à tort quand le
-    // cache local n'a pas encore synchronisé le doc juste après le login.
-    const ref = firestoreDoc(db, 'roles', user.uid);
-    let snap;
-    try { snap = await getDocFromServer(ref); }
-    catch (_) { snap = await getFirestoreDoc(ref); } // hors-ligne → repli cache
-    const d = snap.exists() ? (snap.data() || {}) : {};
-    if (d.firstName && d.lastName && d.username) { window._nameSetupDone = true; return; }
-  } catch (_) { return; } // erreur de lecture → on ne bloque pas
+    // Lecture serveur autoritative UNIQUEMENT. Si elle échoue (réseau, session
+    // Firestore pas encore prête juste après le login), on NE montre PAS le
+    // modal : un repli sur le cache local lirait un doc pas encore synchronisé
+    // et rouvrirait le modal à tort à un utilisateur déjà renseigné.
+    snap = await getDocFromServer(ref);
+  } catch (_) { return; } // pas de confirmation serveur → on ne bloque pas
+  const d = snap.exists() ? (snap.data() || {}) : {};
+  if (d.firstName && d.lastName && d.username) { window._nameSetupDone = true; return; }
   showNameSetupModal(user);
 }
 function showNameSetupModal(user) {
