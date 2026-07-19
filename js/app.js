@@ -12502,6 +12502,7 @@ async function renderAdminPage() {
   renderAdminUsers();
   renderAuditLog();
   adminLoadScheduled();
+  _startHealthAuto();
 }
 
 async function adminToggleFeature(key, el) {
@@ -12772,10 +12773,23 @@ async function _adminAuthPost(path, payload) {
   });
   return res.json();
 }
-async function adminCheckHealth() {
+// Lance l'affichage temps réel de l'état des services : charge tout de suite
+// puis rafraîchit tant que la page Admin est visible (auto-stop sinon).
+function _startHealthAuto() {
+  adminCheckHealth(true);
+  if (window._healthTimer) { clearInterval(window._healthTimer); window._healthTimer = null; }
+  window._healthTimer = setInterval(() => {
+    const p = document.getElementById('page-admin');
+    if (!p || !p.classList.contains('active') || !isAdmin()) {
+      clearInterval(window._healthTimer); window._healthTimer = null; return;
+    }
+    adminCheckHealth(true);
+  }, 20000);
+}
+async function adminCheckHealth(silent) {
   const box = document.getElementById('admin-health');
   if (!box) return;
-  box.innerHTML = 'Vérification…';
+  if (!silent || box.textContent === '—' || !box.textContent) box.innerHTML = 'Vérification…';
   try {
     const r = await _adminAuthPost('/admin/health', {});
     if (!r || !r.services) { box.textContent = r && r.error ? r.error : 'Erreur.'; return; }
@@ -12787,6 +12801,8 @@ async function adminCheckHealth() {
       'Email (Resend) ' + dot(s.email),
       'Cours (Yahoo) ' + dot(s.yahoo),
     ].map(x => '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>' + x.split(' <')[0] + '</span><span>' + x.slice(x.indexOf('<')) + '</span></div>').join('');
+    const auto = document.getElementById('admin-health-auto');
+    if (auto) auto.textContent = '· mis à jour à ' + new Date().toLocaleTimeString('fr-FR');
   } catch (e) { box.textContent = 'Worker injoignable.'; }
 }
 async function adminBroadcastPush() {
@@ -12817,6 +12833,27 @@ function _bcMailPayload(st) {
   const text = (document.getElementById('bc-mail-body').value || '').trim();
   if (!subject || !text) { st.textContent = 'Sujet et message requis.'; return null; }
   return { subject, text, html: _bcMailHtml(text) };
+}
+// Rend l'aperçu du mail dans l'iframe (seulement s'il est visible).
+function _renderMailPreview() {
+  const ifr = document.getElementById('bc-mail-preview');
+  if (!ifr || ifr.style.display === 'none') return;
+  const text = (document.getElementById('bc-mail-body').value || '');
+  const subject = (document.getElementById('bc-mail-subject').value || '').trim();
+  const inner = _bcMailHtml(text.trim() ? text : '(votre message ici)');
+  ifr.srcdoc = '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0">' +
+    '<div style="font-family:sans-serif;background:#0f0f13;color:#8a93a8;font-size:12px;padding:12px 16px 0">Sujet : <strong style="color:#e8eaf0">' + (subject ? _escapeHtmlChat(subject) : '(sans sujet)') + '</strong></div>' +
+    inner + '</body></html>';
+}
+// Affiche/masque l'aperçu.
+function adminToggleMailPreview() {
+  const ifr = document.getElementById('bc-mail-preview');
+  const btn = document.getElementById('bc-mail-preview-btn');
+  if (!ifr) return;
+  const show = ifr.style.display === 'none';
+  ifr.style.display = show ? 'block' : 'none';
+  if (btn) btn.textContent = show ? '✕ Masquer l’aperçu' : '👁 Aperçu';
+  if (show) _renderMailPreview();
 }
 async function adminBroadcastEmail() {
   if (!isAdmin()) return;
