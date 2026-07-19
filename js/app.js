@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260719r';
+const APP_VERSION = '20260719s';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2107,9 +2107,11 @@ async function startApp(user) {
     // Menu custom + feature flags — organisation et sections désactivées
     // (applyNavLayout gère aussi la visibilité de l'entrée Admin)
     _getAppConfig().then(c => {
+      applySocialLinks(c.social);
       applyNavLayout(c.nav);
       applyFeatureFlags(c.features);
     }).catch(() => {
+      applySocialLinks(null);
       applyNavLayout(null);
       applyFeatureFlags({});
     });
@@ -2810,6 +2812,33 @@ const DEFAULT_NAV = [
 let _navNodes = null;   // cache des noeuds .nav-item par clé
 let _navDraft = null;   // brouillon d'édition admin
 
+// ─── Liens réseaux sociaux (éditables par l'admin via config/app.social) ───
+const SOCIAL_KEYS = ['instagram', 'tiktok', 'youtube', 'discord'];
+const DEFAULT_SOCIAL = {
+  instagram: 'https://www.instagram.com/capitalboard',
+  tiktok:    'https://www.tiktok.com/@capitalboard',
+  youtube:   'https://www.youtube.com/@capitalboard',
+  discord:   'https://discord.gg/ZN9459TCTQ',
+};
+let _socialLinks = { ...DEFAULT_SOCIAL };
+let _socialDraft = null; // brouillon d'édition admin
+
+// Applique la config des liens sociaux. Les entrées de menu appellent
+// openSocial(key) qui lit _socialLinks au clic : aucune mutation du DOM.
+function applySocialLinks(social) {
+  _socialLinks = { ...DEFAULT_SOCIAL };
+  if (social && typeof social === 'object') {
+    SOCIAL_KEYS.forEach(k => { if (social[k]) _socialLinks[k] = String(social[k]); });
+  }
+}
+// Ouvre le lien social configuré. `mobile` ferme le tiroir mobile après.
+function openSocial(key, mobile) {
+  const url = _socialLinks[key] || DEFAULT_SOCIAL[key];
+  if (url) window.open(url, '_blank', 'noopener');
+  if (mobile) { try { closeMobileDrawer(); } catch (_) {} }
+}
+window.openSocial = openSocial;
+
 function _cacheNavNodes() {
   if (_navNodes) return;
   const container = document.getElementById('nav-dynamic');
@@ -2817,13 +2846,11 @@ function _cacheNavNodes() {
   _navNodes = {};
   container.querySelectorAll('.nav-item').forEach(el => {
     const oc = el.getAttribute('onclick') || '';
-    let key = null;
-    const m = oc.match(/showPage\('([^']+)'\)/);
-    if (m) key = m[1];
-    else if (/instagram\.com/.test(oc)) key = 'instagram';
-    else if (/tiktok\.com/.test(oc)) key = 'tiktok';
-    else if (/youtube\.com/.test(oc)) key = 'youtube';
-    else if (/discord\.gg/.test(oc)) key = 'discord';
+    let key = el.dataset.social || null; // entrées réseaux : data-social
+    if (!key) {
+      const m = oc.match(/showPage\('([^']+)'\)/);
+      if (m) key = m[1];
+    }
     if (key) _navNodes[key] = el;
   });
 }
@@ -12502,6 +12529,7 @@ async function renderAdminPage() {
   _navDraft = (Array.isArray(cfg.nav) && cfg.nav.length)
     ? JSON.parse(JSON.stringify(cfg.nav))
     : JSON.parse(JSON.stringify(DEFAULT_NAV));
+  _socialDraft = { ...DEFAULT_SOCIAL, ...(cfg.social && typeof cfg.social === 'object' ? cfg.social : {}) };
   renderNavEditor();
 
   // Version / MAJ
@@ -12550,14 +12578,20 @@ function renderNavEditor() {
         ? '<label class="toggle-switch" style="transform:scale(.78);transform-origin:right center" title="Activer / masquer"><input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="adminToggleFeature(\'' + key + '\',this)"><span class="toggle-track"></span></label>'
         : '<span style="font-size:8.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">core</span>';
       const dim = flaggable && !on ? 'opacity:.45' : '';
-      return '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--s2);border:1px solid var(--border);border-radius:9px;margin-bottom:5px">' +
-        '<span style="font-size:12.5px;color:var(--text);' + dim + '">' + (SECTION_LABELS[key] || key) + '</span>' +
-        '<span style="display:flex;gap:6px;align-items:center">' +
-          flagCtrl +
-          '<button style="' + mini + '" onclick="adminNavMoveItem(' + ci + ',' + ii + ',-1)" title="Monter">▲</button>' +
-          '<button style="' + mini + '" onclick="adminNavMoveItem(' + ci + ',' + ii + ',1)" title="Descendre">▼</button>' +
-          '<button style="' + mini + '" onclick="adminNavRemoveItem(' + ci + ',' + ii + ')" title="Retirer du menu">✕</button>' +
-        '</span>' +
+      const isSocial = SOCIAL_KEYS.includes(key);
+      const socialInput = isSocial
+        ? '<input value="' + ((_socialDraft && _socialDraft[key]) || '').replace(/"/g, '&quot;') + '" onchange="adminNavSetSocial(\'' + key + '\',this)" placeholder="https://…" spellcheck="false" style="width:100%;margin:5px 0 0;background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:11.5px;padding:6px 9px;font-family:var(--mono,monospace);outline:none;box-sizing:border-box">'
+        : '';
+      return '<div style="padding:7px 10px;background:var(--s2);border:1px solid var(--border);border-radius:9px;margin-bottom:5px">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between">' +
+          '<span style="font-size:12.5px;color:var(--text);' + dim + '">' + (SECTION_LABELS[key] || key) + '</span>' +
+          '<span style="display:flex;gap:6px;align-items:center">' +
+            flagCtrl +
+            '<button style="' + mini + '" onclick="adminNavMoveItem(' + ci + ',' + ii + ',-1)" title="Monter">▲</button>' +
+            '<button style="' + mini + '" onclick="adminNavMoveItem(' + ci + ',' + ii + ',1)" title="Descendre">▼</button>' +
+            '<button style="' + mini + '" onclick="adminNavRemoveItem(' + ci + ',' + ii + ')" title="Retirer du menu">✕</button>' +
+          '</span>' +
+        '</div>' + socialInput +
       '</div>';
     }).join('');
     const addOpts = pool.length
@@ -12605,6 +12639,15 @@ function adminNavAddSection(ci, sel) {
   _navDraft.forEach(c => { c.items = c.items.filter(k => k !== key); }); // évite les doublons
   _navDraft[ci].items.push(key);
   _saveNav();
+}
+async function adminNavSetSocial(key, inp) {
+  if (!SOCIAL_KEYS.includes(key)) return;
+  const url = (inp.value || '').trim();
+  if (!_socialDraft) _socialDraft = { ...DEFAULT_SOCIAL };
+  _socialDraft[key] = url || DEFAULT_SOCIAL[key];
+  applySocialLinks(_socialDraft); // effet immédiat sur les liens du menu
+  try { await _setAppConfig({ social: _socialDraft }); _audit('social_update', key + '=' + _socialDraft[key]); }
+  catch (e) { console.error('[admin] save social:', e); }
 }
 function adminNavRenameCategory(ci, inp) { _navDraft[ci].title = inp.value; _saveNav(); }
 function adminNavDeleteCategory(ci) { _navDraft.splice(ci, 1); _saveNav(); }
@@ -12859,26 +12902,32 @@ async function adminBroadcastPush() {
     if (r && r.ok) _audit('broadcast_push', title);
   } catch (e) { st.textContent = 'Échec (worker injoignable ?).'; }
 }
-// Liens utiles affichés dans le footer des emails de diffusion.
+// Liens utiles (footer email diffusion). [label, url, fichier icône].
+// Icônes = PNG hébergés (URL absolue obligatoire : les emails ne rendent ni
+// SVG ni data:URI). Générés dans assets/email/. L'alt sert de repli quand le
+// client bloque les images.
+const _MAIL_ICON_BASE = 'https://capitalboard.fr/assets/email/';
 const _MAIL_FOOTER_LINKS = [
-  ['Site',      'https://capitalboard.fr'],
-  ['Discord',   'https://discord.gg/ZN9459TCTQ'],
-  ['Instagram', 'https://www.instagram.com/capitalboard'],
-  ['TikTok',    'https://www.tiktok.com/@capitalboard'],
-  ['GitHub',    'https://github.com/arrmel-capitalboard/Capital-Board'],
+  ['Site',      'https://capitalboard.fr',                         'site.png'],
+  ['Discord',   'https://discord.gg/ZN9459TCTQ',                   'discord.png'],
+  ['Instagram', 'https://www.instagram.com/capitalboard',          'instagram.png'],
+  ['TikTok',    'https://www.tiktok.com/@capitalboard',            'tiktok.png'],
+  ['GitHub',    'https://github.com/arrmel-capitalboard/Capital-Board', 'github.png'],
 ];
 // Construit le HTML de l'email de diffusion à partir du texte saisi.
 function _bcMailHtml(text) {
-  const links = _MAIL_FOOTER_LINKS
-    .map(([label, url]) => '<a href="' + url + '" style="color:#7c6df5;text-decoration:none;margin:0 6px" target="_blank" rel="noopener">' + label + '</a>')
-    .join('<span style="color:#2a2a3a">·</span>');
+  const cells = _MAIL_FOOTER_LINKS.map(([label, url, icon]) =>
+    '<td style="padding:0 7px"><a href="' + url + '" target="_blank" rel="noopener">' +
+    '<img src="' + _MAIL_ICON_BASE + icon + '" width="34" height="34" alt="' + label + '" ' +
+    'style="display:block;border:0;border-radius:9px;width:34px;height:34px"></a></td>'
+  ).join('');
   return '<div style="font-family:sans-serif;background:#0f0f13;color:#e8eaf0;padding:32px">' +
     '<div style="max-width:480px;margin:0 auto;background:#1a1a24;border-radius:16px;padding:32px;border:1px solid #2a2a3a">' +
     '<div style="font-size:18px;font-weight:700;color:#7c6df5;margin-bottom:20px">Capital Board</div>' +
     '<div style="color:#e8eaf0;line-height:1.7;font-size:15px;white-space:pre-wrap">' + _escapeHtmlChat(text) + '</div>' +
     '</div>' +
-    '<div style="max-width:480px;margin:20px auto 0;text-align:center;font-size:12px;line-height:2.2">' + links + '</div>' +
-    '<div style="max-width:480px;margin:6px auto 0;text-align:center;font-size:11px;color:#4a5266">Capital Board · Ne pas répondre à cet email.</div>' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:20px auto 0"><tr>' + cells + '</tr></table>' +
+    '<div style="max-width:480px;margin:12px auto 0;text-align:center;font-size:11px;color:#4a5266">Capital Board · Ne pas répondre à cet email.</div>' +
     '</div>';
 }
 // Lit sujet + texte, valide, retourne {subject, text, html} ou null (message d'erreur affiché).
