@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260719u';
+const APP_VERSION = '20260719v';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -12540,7 +12540,7 @@ async function renderAdminPage() {
 
   // Éditeur d'organisation du menu
   _navDraft = (Array.isArray(cfg.nav) && cfg.nav.length)
-    ? JSON.parse(JSON.stringify(cfg.nav))
+    ? _mergeNavOrphans(cfg.nav)
     : JSON.parse(JSON.stringify(DEFAULT_NAV));
   _socialDraft = { ...DEFAULT_SOCIAL, ...(cfg.social && typeof cfg.social === 'object' ? cfg.social : {}) };
   renderNavEditor();
@@ -12575,6 +12575,24 @@ async function adminToggleFeature(key, el) {
 }
 
 // ─── Éditeur d'organisation du menu (admin) ───
+// Complète une config nav sauvegardée avec les entrées connues (DEFAULT_NAV)
+// qui en sont absentes — ex. la catégorie « Réseaux » et les liens sociaux,
+// ajoutés après la dernière sauvegarde admin. Sans ça l'éditeur ne les
+// afficherait pas et on ne pourrait pas éditer leurs URLs.
+function _mergeNavOrphans(nav) {
+  const layout = JSON.parse(JSON.stringify(nav));
+  const placed = new Set();
+  layout.forEach(c => (c.items || []).forEach(k => placed.add(k)));
+  DEFAULT_NAV.forEach(dc => {
+    const missing = (dc.items || []).filter(k => ALL_SECTIONS.includes(k) && !placed.has(k));
+    if (!missing.length) return;
+    const cat = layout.find(c => (c.title || '') === (dc.title || ''));
+    if (cat) cat.items = (cat.items || []).concat(missing);
+    else layout.push({ title: dc.title, items: missing.slice() });
+    missing.forEach(k => placed.add(k));
+  });
+  return layout;
+}
 function renderNavEditor() {
   const box = document.getElementById('admin-nav-editor');
   if (!box || !_navDraft) return;
