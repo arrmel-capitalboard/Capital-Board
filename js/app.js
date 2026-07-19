@@ -58,7 +58,7 @@ let fbApp, fbAuth, db,
     signOut, onAuthStateChanged, GoogleAuthProvider, signInWithPopup,
     signInWithRedirect, getRedirectResult,
     updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser,
-    getFirestoreDoc, setFirestoreDoc, firestoreDoc, firestoreCollection, deleteFirestoreDoc, getDocs,
+    getFirestoreDoc, getDocFromServer, setFirestoreDoc, firestoreDoc, firestoreCollection, deleteFirestoreDoc, getDocs,
     addFirestoreDoc, onSnapshot, firestoreQuery, firestoreWhere, firestoreOrderBy, serverTimestamp,
     firestoreArrayUnion, firestoreArrayRemove, firestoreOr, firestoreDeleteField;
 
@@ -157,6 +157,7 @@ _splashWatchdog = setTimeout(() => {
 
   const firestore = await import("https://www.gstatic.com/firebasejs/10.12.0/firebase-firestore.js");
   getFirestoreDoc     = firestore.getDoc;
+  getDocFromServer    = firestore.getDocFromServer;
   setFirestoreDoc     = firestore.setDoc;
   firestoreDoc        = firestore.doc;
   firestoreCollection = firestore.collection;
@@ -1404,10 +1405,16 @@ function showMaintenanceScreen(msg) {
 // ─── Prénom + Nom obligatoires (comptes existants sans nom) ───
 async function _ensureUserName(user) {
   if (window.IS_DEMO || !user) return;
+  if (window._nameSetupDone) return; // déjà validé pendant cette session
   try {
-    const snap = await getFirestoreDoc(firestoreDoc(db, 'roles', user.uid));
+    // Lecture serveur autoritative : évite d'ouvrir le modal à tort quand le
+    // cache local n'a pas encore synchronisé le doc juste après le login.
+    const ref = firestoreDoc(db, 'roles', user.uid);
+    let snap;
+    try { snap = await getDocFromServer(ref); }
+    catch (_) { snap = await getFirestoreDoc(ref); } // hors-ligne → repli cache
     const d = snap.exists() ? (snap.data() || {}) : {};
-    if (d.firstName && d.lastName && d.username) return;
+    if (d.firstName && d.lastName && d.username) { window._nameSetupDone = true; return; }
   } catch (_) { return; } // erreur de lecture → on ne bloque pas
   showNameSetupModal(user);
 }
@@ -1453,6 +1460,7 @@ async function saveNameSetup(uid) {
   try {
     if (await _isUsernameTaken(uRaw, uid)) { if (btn) { btn.disabled = false; btn.textContent = 'Continuer'; } return fail('Ce nom d\'utilisateur est déjà pris.'); }
     await setFirestoreDoc(firestoreDoc(db, 'roles', uid), { firstName: f, lastName: l, username: uRaw }, { merge: true });
+    window._nameSetupDone = true;
     try { if (auth.updateProfile && fbAuth.currentUser) await auth.updateProfile(fbAuth.currentUser, { displayName: f + ' ' + l }); } catch (_) {}
     const el = document.getElementById('name-setup-modal'); if (el) el.remove();
     try {
@@ -1879,6 +1887,7 @@ window.doRegister = async function() {
     // Prénom + Nom → roles/{uid} (lisible admin) + displayName Auth
     try {
       await setFirestoreDoc(firestoreDoc(db, 'roles', cred.user.uid), { firstName, lastName, username }, { merge: true });
+      window._nameSetupDone = true;
     } catch (_) {}
     try { if (auth.updateProfile) await auth.updateProfile(cred.user, { displayName: firstName + ' ' + lastName }); } catch (_) {}
     // Sauvegarder préférence recap — onAuthStateChanged prend le relai ensuite
