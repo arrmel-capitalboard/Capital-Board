@@ -147,8 +147,16 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
+    if (interaction.isModalSubmit()) {
+      if (interaction.customId === 'ticket_modal') {
+        const reason = interaction.fields.getTextInputValue('ticket_reason');
+        await tickets.openTicket(interaction, reason);
+      }
+      return;
+    }
+
     if (interaction.isButton()) {
-      if (interaction.customId === 'open_ticket') { await tickets.openTicket(interaction); return; }
+      if (interaction.customId === 'open_ticket') { await tickets.promptTicketReason(interaction); return; }
       if (interaction.customId === 'close_ticket') { await tickets.closeTicket(interaction); return; }
 
       if (interaction.customId === 'accept_rules') {

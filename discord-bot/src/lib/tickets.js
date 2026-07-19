@@ -6,6 +6,7 @@ const {
   PermissionFlagsBits, ChannelType,
   ActionRowBuilder, ButtonBuilder, ButtonStyle,
   AttachmentBuilder, EmbedBuilder,
+  ModalBuilder, TextInputBuilder, TextInputStyle,
 } = require('discord.js');
 const E = require('./emojis');
 
@@ -32,7 +33,42 @@ function getOwnerId(channelId) {
   return Object.keys(tickets).find((uid) => tickets[uid] === channelId) || null;
 }
 
-async function openTicket(interaction) {
+// Popup demandant le motif du contact, affiché au clic sur « Ouvrir un ticket ».
+// Vérifie d'abord qu'aucun ticket n'est déjà ouvert (showModal doit être la
+// première réponse à l'interaction : impossible de defer avant).
+async function promptTicketReason(interaction) {
+  const { guild, user } = interaction;
+  const tickets = load();
+  if (tickets[user.id]) {
+    const existing = guild.channels.cache.get(tickets[user.id]);
+    if (existing) {
+      await interaction.reply({ content: `Vous avez deja un ticket ouvert : <#${existing.id}>`, ephemeral: true });
+      return;
+    }
+    delete tickets[user.id];
+    save(tickets);
+  }
+
+  const modal = new ModalBuilder()
+    .setCustomId('ticket_modal')
+    .setTitle('Ouvrir un ticket')
+    .addComponents(
+      new ActionRowBuilder().addComponents(
+        new TextInputBuilder()
+          .setCustomId('ticket_reason')
+          .setLabel('Pour quelle raison nous contactez-vous ?')
+          .setStyle(TextInputStyle.Paragraph)
+          .setPlaceholder('Décrivez votre demande en quelques mots…')
+          .setMinLength(5)
+          .setMaxLength(500)
+          .setRequired(true),
+      ),
+    );
+
+  await interaction.showModal(modal);
+}
+
+async function openTicket(interaction, reason) {
   const { guild, user } = interaction;
   const tickets = load();
 
@@ -72,17 +108,20 @@ async function openTicket(interaction) {
     new ButtonBuilder().setCustomId('close_ticket').setLabel('Fermer le ticket').setStyle(ButtonStyle.Danger).setEmoji('🔒'),
   );
 
+  const embed = new EmbedBuilder()
+    .setColor(0x2563eb)
+    .setTitle(`${E.ARROW}  Ticket de support`)
+    .setDescription(
+      "Un membre de l'equipe vous repondra des que possible.\n\nCliquez sur **Fermer le ticket** une fois votre demande traitee.",
+    )
+    .setFooter({ text: 'CapitalBoard - https://capitalboard.fr' });
+
+  const cleanReason = (reason || '').trim();
+  if (cleanReason) embed.addFields({ name: 'Motif du contact', value: cleanReason.slice(0, 1024) });
+
   await channel.send({
     content: `<@${user.id}>`,
-    embeds: [
-      new EmbedBuilder()
-        .setColor(0x2563eb)
-        .setTitle(`${E.ARROW}  Ticket de support`)
-        .setDescription(
-          "Decrivez votre demande ci-dessous.\nUn membre de l'equipe vous repondra des que possible.\n\nCliquez sur **Fermer le ticket** une fois votre demande traitee.",
-        )
-        .setFooter({ text: 'CapitalBoard - https://capitalboard.fr' }),
-    ],
+    embeds: [embed],
     components: [row],
   });
 
@@ -141,4 +180,4 @@ async function closeTicket(interaction) {
   await channel.delete();
 }
 
-module.exports = { openTicket, closeTicket, isTicketChannel, getOwnerId };
+module.exports = { promptTicketReason, openTicket, closeTicket, isTicketChannel, getOwnerId };
