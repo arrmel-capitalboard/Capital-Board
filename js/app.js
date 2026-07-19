@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260719s';
+const APP_VERSION = '20260719t';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2002,7 +2002,7 @@ async function _checkVersion() {
     const res = await fetch('data/version.json?t=' + Date.now(), { cache: 'no-store' });
     if (res.ok) {
       const { v } = await res.json();
-      if (v && v !== APP_VERSION) { _showUpdateGate(); return; }   // strict : bloque tout
+      if (v && v !== APP_VERSION) { window._serverVersion = v; _showUpdateGate(); return; }   // strict : bloque tout
     }
   } catch(e) { /* silencieux — pas de blocage si offline */ }
   // MAJ forcée par l'admin (config/app.minVersion)
@@ -2028,10 +2028,19 @@ function _showUpdateGate() {
     '<button onclick="_forceReload()" style="padding:12px 28px;border:none;border-radius:12px;background:#7c6df5;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans, sans-serif)">Recharger maintenant</button>' +
     '</div>';
 }
-function _forceReload() {
-  try { if (window.caches && caches.keys) caches.keys().then(ks => ks.forEach(k => caches.delete(k))); } catch(_) {}
+async function _forceReload() {
+  // 1) Vider CacheStorage + désinscrire les service workers.
+  try { if (window.caches && caches.keys) { const ks = await caches.keys(); await Promise.all(ks.map(k => caches.delete(k))); } } catch(_) {}
+  try { if (navigator.serviceWorker) { const rs = await navigator.serviceWorker.getRegistrations(); await Promise.all(rs.map(r => r.unregister())); } } catch(_) {}
+  // 2) Re-fetch forcé de l'app.js CIBLE (celle que le nouvel HTML référencera :
+  //    js/app.js?v=<version serveur>). Réécrit l'entrée de cache HTTP éventuellement
+  //    empoisonnée pendant un déploiement (edge CDN incohérent), sinon le reload
+  //    resservirait l'ancien app.js et le gate boucle.
+  const target = window._serverVersion || String(Date.now());
+  try { await fetch('js/app.js?v=' + target, { cache: 'reload' }); } catch(_) {}
+  // 3) Recharger le document en cassant le cache HTML.
   const u = new URL(window.location.href);
-  u.searchParams.set('_v', Date.now());   // casse le cache HTML
+  u.searchParams.set('_v', Date.now());
   window.location.replace(u.toString());
 }
 function _startVersionCheck() {
