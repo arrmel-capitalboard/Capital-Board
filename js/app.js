@@ -12634,7 +12634,7 @@ async function renderAdminUsers() {
     const list = Object.values(users).sort((a, b) => (b.lastSeen ? b.lastSeen.getTime() : 0) - (a.lastSeen ? a.lastSeen.getTime() : 0));
     if (!list.length) { box.innerHTML = 'Aucun utilisateur trouvé.'; return; }
 
-    box.innerHTML = list.map(u => {
+    const rowHtml = u => {
       const isSuper = u.role === 'superadmin';
       const self = u.uid === currentUser;
       const fullName = (u.firstName || u.lastName) ? ((u.firstName || '') + ' ' + (u.lastName || '')).trim() : '';
@@ -12651,11 +12651,39 @@ async function renderAdminUsers() {
         '</div>' +
         '<div style="display:flex;gap:6px;flex-shrink:0">' + delBtn + '</div>' +
       '</div>';
-    }).join('');
+    };
+
+    // Inscrits = prénom + nom + username renseignés. Les autres derrière un bouton.
+    const registered = list.filter(u => u.firstName && u.lastName && u.username);
+    const pending = list.filter(u => !(u.firstName && u.lastName && u.username));
+
+    let html = registered.length
+      ? registered.map(rowHtml).join('')
+      : '<div style="color:var(--text3);padding:8px 0">Aucun utilisateur enregistré.</div>';
+
+    if (pending.length) {
+      html += '<button class="pf-btn ghost" id="admin-pending-btn" onclick="adminTogglePendingUsers()" style="font-size:11.5px;margin-top:12px">Voir les personnes non enregistrées (' + pending.length + ')</button>' +
+        '<div id="admin-pending-users" style="display:none;margin-top:4px">' +
+          '<div style="font-size:11px;color:var(--text3);line-height:1.6;margin:8px 0">Comptes sans prénom/nom/nom d\'utilisateur complet.</div>' +
+          pending.map(rowHtml).join('') +
+        '</div>';
+    }
+    box.innerHTML = html;
   } catch (e) {
     console.error('[admin] users:', e);
     box.innerHTML = 'Erreur de chargement (droits Firestore insuffisants ?).';
   }
+}
+
+// Affiche/masque la liste des comptes non enregistrés.
+function adminTogglePendingUsers() {
+  const el = document.getElementById('admin-pending-users');
+  const btn = document.getElementById('admin-pending-btn');
+  if (!el) return;
+  const show = el.style.display === 'none';
+  el.style.display = show ? 'block' : 'none';
+  const n = el.querySelectorAll(':scope > div[style*="border-bottom"]').length;
+  if (btn) btn.textContent = (show ? 'Masquer' : 'Voir') + ' les personnes non enregistrées (' + n + ')';
 }
 
 async function adminSetRole(uid, role) {
