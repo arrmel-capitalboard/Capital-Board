@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260720b';
+const APP_VERSION = '20260720c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -7973,13 +7973,10 @@ renderPortfolio = function() {
       tickerCell.prepend(handle);
     }
   });
-  // Update sparklines
-  const data = getPortfolio(currentUser);
-  let totalVal = 0, totalInv = 0;
-  data.forEach(r => { totalVal += r.qty * r.currentPrice; totalInv += r.qty * r.buyPrice; });
-  sparkData.total = generateSparkData(totalVal, 20);
-  sparkData.invested = generateSparkData(totalInv, 20);
-  sparkData.pnl = generateSparkData(totalVal - totalInv, 20);
+  // Mini courbe « Valorisation totale » : dessinée avec la VRAIE série
+  // d'historique par renderPortfolioChart (plus de random-walk factice, qui
+  // écrasait auparavant la vraie courbe). On redessine juste au cas où
+  // sparkData.total est déjà rempli.
   setTimeout(updateSparklines, 50);
   // Keep filter
   filterTable();
