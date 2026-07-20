@@ -51,8 +51,8 @@ function validationPayload(id, text, status = 'pending', decidedBy = null) {
     .setDescription(text)
     .setFooter({
       text: status === 'pending'
-        ? 'Publiée aux membres lundi 18h si validée.'
-        : 'Vous pouvez encore changer d\'avis jusqu\'à la publication.',
+        ? 'Publiée lundi 18h si validée. Répondez avec des images pour les joindre.'
+        : 'Changement d\'avis possible jusqu\'à la publication. Répondez avec des images pour les joindre.',
     })
     .setTimestamp();
 
@@ -69,6 +69,43 @@ function validationPayload(id, text, status = 'pending', decidedBy = null) {
       .setStyle(rejected ? ButtonStyle.Danger : ButtonStyle.Secondary),
   );
   return { embeds: [embed], components: [row] };
+}
+
+/** Une pièce jointe est-elle une image ? */
+function isImageAttachment(att) {
+  if (att.contentType && att.contentType.startsWith('image/')) return true;
+  return /\.(png|jpe?g|gif|webp)$/i.test(att.name || '');
+}
+
+/**
+ * Réponse à un message de validation contenant des images : rattache ces
+ * photos à la nouveauté (par référence au message, pour récupérer des URLs
+ * fraîches le lundi). Retourne true si le message a été traité.
+ */
+async function handlePhotoReply(message) {
+  if (message.channelId !== VALIDATION_CHANNEL) return false;
+  const refId = message.reference?.messageId;
+  if (!refId) return false;
+
+  const images = [...message.attachments.values()].filter(isImageAttachment);
+  if (!images.length) return false;
+
+  const q = await col().where('messageId', '==', refId).limit(1).get();
+  if (q.empty) return false; // réponse à un autre message : on laisse passer
+
+  const doc = q.docs[0];
+  if (doc.data().sentAt) {
+    const warn = await message.reply('Nouveauté déjà publiée — photo non prise en compte.').catch(() => null);
+    if (warn) setTimeout(() => warn.delete().catch(() => {}), 6000);
+    return true;
+  }
+
+  const refs = doc.data().photoRefs || [];
+  refs.push({ msgId: message.id, channelId: message.channelId });
+  await doc.ref.update({ photoRefs: refs });
+
+  await message.react('✅').catch(() => {});
+  return true;
 }
 
 /** Message verrouillé après publication (plus de boutons). */
@@ -143,7 +180,9 @@ function startWatch(client) {
 module.exports = {
   startWatch,
   handleButton,
+  handlePhotoReply,
   addPending,
   publishedPayload,
+  isImageAttachment,
   isNewsButton: (id) => id.startsWith('nv:'),
 };

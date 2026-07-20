@@ -15,6 +15,7 @@ const newsqueue = require('./newsqueue');
 
 const COMMUNITY_CHANNEL = '1512909014990586047';
 const NEWS_IMAGE = 'https://raw.githubusercontent.com/arrmel-capitalboard/Capital-Board/main/discord-bot/assets/nouveaute.gif';
+const VIOLET = 0x8b5cf6;
 const COL = 'newsQueue';
 const META = 'botState/newsWeekly';
 const CHECK_INTERVAL = 10 * 60 * 1000;
@@ -45,6 +46,23 @@ async function lockMessage(client, data) {
   }
 }
 
+/** URLs fraîches des photos rattachées à une nouveauté (ré-résout les liens signés). */
+async function freshImageUrls(client, photoRefs) {
+  const urls = [];
+  for (const ref of photoRefs || []) {
+    try {
+      const channel = await client.channels.fetch(ref.channelId);
+      const msg = await channel.messages.fetch(ref.msgId);
+      for (const att of msg.attachments.values()) {
+        if (newsqueue.isImageAttachment(att)) urls.push(att.url);
+      }
+    } catch (e) {
+      console.error('[newsweekly] photo introuvable :', e.message);
+    }
+  }
+  return urls;
+}
+
 /**
  * Publie les nouveautés validées non envoyées. Retourne le nombre publié.
  * Partagé par l'envoi automatique du lundi et l'envoi forcé.
@@ -56,7 +74,7 @@ async function publish(client) {
   if (!toSend.length) return 0;
 
   const embed = new EmbedBuilder()
-    .setColor(0xfde047)
+    .setColor(VIOLET)
     .setTitle('✨ Nouveautés de la semaine')
     .setDescription(toSend.map((d) => `✅  ${d.data().text}`).join('\n'))
     .setImage(NEWS_IMAGE)
@@ -65,6 +83,18 @@ async function publish(client) {
 
   const channel = await client.channels.fetch(COMMUNITY_CHANNEL);
   await channel.send({ embeds: [embed] });
+
+  // Photos rattachées : un message par nouveauté qui en a, sous le récap.
+  for (const d of toSend) {
+    const urls = await freshImageUrls(client, d.data().photoRefs);
+    if (!urls.length) continue;
+    const embeds = urls.slice(0, 4).map((url, i) => {
+      const e = new EmbedBuilder().setColor(VIOLET).setImage(url);
+      if (i === 0) e.setTitle(`✅  ${d.data().text}`);
+      return e;
+    });
+    await channel.send({ embeds }).catch((e) => console.error('[newsweekly] envoi photos :', e.message));
+  }
 
   const batch = db.batch();
   toSend.forEach((d) => batch.update(d.ref, { sentAt: Date.now() }));

@@ -88,6 +88,10 @@ const FONDATEUR_ROLE_AUTOMOD = '1512905140108001391';
 
 client.on(Events.MessageCreate, async (message) => {
   if (message.author.bot || !message.guild) return;
+
+  // Photos rattachées à une nouveauté (réponse au message de validation).
+  try { if (await newsqueue.handlePhotoReply(message)) return; } catch (e) { console.error('[newsqueue] photo :', e.message); }
+
   if (message.member?.roles.cache.has(FONDATEUR_ROLE_AUTOMOD)) return;
 
   // ── Filtre liens ──────────────────────────────────────────────
