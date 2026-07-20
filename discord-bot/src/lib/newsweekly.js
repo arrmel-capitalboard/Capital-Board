@@ -14,6 +14,7 @@ const { getDb, isConfigured } = require('../firebase');
 const newsqueue = require('./newsqueue');
 
 const COMMUNITY_CHANNEL = '1512909014990586047';
+const NEWS_IMAGE = 'https://raw.githubusercontent.com/arrmel-capitalboard/Capital-Board/main/discord-bot/assets/nouveaute.gif';
 const COL = 'newsQueue';
 const META = 'botState/newsWeekly';
 const CHECK_INTERVAL = 10 * 60 * 1000;
@@ -58,6 +59,7 @@ async function publish(client) {
     .setColor(0xfde047)
     .setTitle('✨ Nouveautés de la semaine')
     .setDescription(toSend.map((d) => `✅  ${d.data().text}`).join('\n'))
+    .setImage(NEWS_IMAGE)
     .setFooter({ text: 'CapitalBoard - https://capitalboard.fr' })
     .setTimestamp();
 
