@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260720k';
+const APP_VERSION = '20260720l';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2832,7 +2832,8 @@ const DEFAULT_NAV = [
   { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord'] },
   { title: 'Nous soutenir',  items: ['paypal'] },
 ];
-let _navNodes = null;   // cache des noeuds .nav-item par clé
+let _navNodes = null;   // cache des noeuds .nav-item par clé (sidebar desktop)
+let _mobNavNodes = null; // cache des noeuds .mobile-drawer-item par clé (drawer)
 let _navDraft = null;   // brouillon d'édition admin
 
 // ─── Liens externes éditables par l'admin (config/app.social) ───
@@ -2881,26 +2882,40 @@ function _cacheNavNodes() {
   });
 }
 
-function applyNavLayout(nav) {
-  const container = document.getElementById('nav-dynamic');
+// Même cache pour le tiroir mobile : les entrées portent data-mob (pages)
+// ou data-social (liens externes).
+function _cacheMobNavNodes() {
+  if (_mobNavNodes) return;
+  const container = document.getElementById('mobile-nav-dynamic');
   if (!container) return;
-  _cacheNavNodes();
-  const layout = (Array.isArray(nav) && nav.length) ? nav : DEFAULT_NAV;
+  _mobNavNodes = {};
+  container.querySelectorAll('.mobile-drawer-item').forEach(el => {
+    const key = el.dataset.social || el.dataset.mob || null;
+    if (key) _mobNavNodes[key] = el;
+  });
+}
+
+// Rend une nav (sidebar ou drawer) selon `layout`, en réutilisant les noeuds
+// déjà présents dans le DOM. `labelCls` diffère entre desktop et mobile.
+function _renderNavInto(container, nodes, layout, labelCls, spaced) {
+  const addSection = (title, keys) => {
+    const lab = document.createElement('div');
+    lab.className = labelCls;
+    if (spaced && container.children.length) lab.style.marginTop = '14px';
+    lab.textContent = title || '';
+    container.appendChild(lab);
+    keys.forEach(key => container.appendChild(nodes[key]));
+  };
+  const usable = key => {
+    if (!nodes[key]) return false;
+    if (ADMIN_ONLY_KEYS.includes(key) && !isAdmin()) return false;
+    return true;
+  };
   container.innerHTML = '';
   layout.forEach(cat => {
-    // clés visibles de la catégorie (admin réservé à l'admin)
-    const visible = (cat.items || []).filter(key => {
-      if (!_navNodes[key]) return false;
-      if (ADMIN_ONLY_KEYS.includes(key) && !isAdmin()) return false;
-      return true;
-    });
+    const visible = (cat.items || []).filter(usable);
     if (!visible.length) return; // catégorie vide → pas de titre
-    const lab = document.createElement('div');
-    lab.className = 'nav-section-label';
-    if (container.children.length) lab.style.marginTop = '14px';
-    lab.textContent = cat.title || '';
-    container.appendChild(lab);
-    visible.forEach(key => container.appendChild(_navNodes[key]));
+    addSection(cat.title, visible);
   });
   // Récupération des orphelins : entrées connues absentes de la config
   // sauvegardée (ex. catégorie « Réseaux » ajoutée après la dernière
@@ -2909,19 +2924,24 @@ function applyNavLayout(nav) {
   const placed = new Set();
   layout.forEach(cat => (cat.items || []).forEach(key => placed.add(key)));
   DEFAULT_NAV.forEach(cat => {
-    const missing = (cat.items || []).filter(key => {
-      if (!_navNodes[key] || placed.has(key)) return false;
-      if (ADMIN_ONLY_KEYS.includes(key) && !isAdmin()) return false;
-      return true;
-    });
-    if (!missing.length) return;
-    const lab = document.createElement('div');
-    lab.className = 'nav-section-label';
-    if (container.children.length) lab.style.marginTop = '14px';
-    lab.textContent = cat.title || '';
-    container.appendChild(lab);
-    missing.forEach(key => container.appendChild(_navNodes[key]));
+    const missing = (cat.items || []).filter(key => !placed.has(key) && usable(key));
+    if (missing.length) addSection(cat.title, missing);
   });
+}
+
+function applyNavLayout(nav) {
+  const layout = (Array.isArray(nav) && nav.length) ? nav : DEFAULT_NAV;
+  const container = document.getElementById('nav-dynamic');
+  if (container) {
+    _cacheNavNodes();
+    _renderNavInto(container, _navNodes, layout, 'nav-section-label', true);
+  }
+  // Le tiroir mobile suit la même config : même ordre, mêmes entrées admin.
+  const mob = document.getElementById('mobile-nav-dynamic');
+  if (mob) {
+    _cacheMobNavNodes();
+    _renderNavInto(mob, _mobNavNodes, layout, 'mobile-drawer-section', false);
+  }
 }
 
 function showPage(id) {
