@@ -37,8 +37,24 @@ jobs:
         id: deployment
 
       # Publie une annonce Discord uniquement si le commit porte un trailer
-      # « Annonce: » (voir scripts/announce-deploy.js).
-      - name: Annonce Discord
-        env:
-          DISCORD_ANNOUNCE_WEBHOOK: ${{ secrets.DISCORD_ANNOUNCE_WEBHOOK }}
+      # « Annonce: » (voir scripts/announce-deploy.js). Le runner ne fait que
+      # détecter et parser ; le post est fait sur la VM avec le token du bot
+      # qui y réside déjà — le token ne transite jamais par GitHub.
+      - name: Détecter une annonce
+        id: annonce
         run: node scripts/announce-deploy.js
+
+      - name: Publier l'annonce sur Discord
+        if: steps.annonce.outputs.publish == 'true'
+        uses: appleboy/ssh-action@v1.2.0
+        env:
+          ANNOUNCE_TITLE: ${{ steps.annonce.outputs.title }}
+          ANNOUNCE_DESC: ${{ steps.annonce.outputs.desc }}
+        with:
+          host: ${{ secrets.VM_HOST }}
+          username: ${{ secrets.VM_USER }}
+          key: ${{ secrets.VM_SSH_KEY }}
+          envs: ANNOUNCE_TITLE,ANNOUNCE_DESC
+          script: |
+            cd ~/Capital-Board
+            node discord-bot/scripts/post-announce.js

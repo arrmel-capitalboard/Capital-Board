@@ -1,6 +1,6 @@
 // ─────────────────────────────────────────────────────────────
-// announce-deploy.js — Annonce produit dans le salon Discord
-// Lancé par GitHub Actions à la fin d'un déploiement réussi.
+// announce-deploy.js — Détection d'annonce produit au déploiement
+// Lancé sur le runner GitHub Actions.
 //
 // N'annonce PAS chaque déploiement : seulement les commits qui
 // portent un trailer « Annonce: », pour ne pas noyer le salon sous
@@ -9,16 +9,23 @@
 //   Annonce: Titre de la nouveauté
 //   Annonce: Titre | Description affichée sous le titre
 //
-// Sans trailer, le script sort en silence (code 0) — le workflow
-// ne doit jamais échouer à cause d'une annonce.
+// Ce script ne poste rien lui-même : il écrit le résultat dans
+// GITHUB_OUTPUT (publish/title/desc). C'est un step SSH suivant qui
+// poste depuis la VM, avec le token du bot qui y réside déjà — le
+// token ne transite jamais par GitHub.
 // ─────────────────────────────────────────────────────────────
 
 import { execSync } from 'child_process';
+import { appendFileSync } from 'fs';
+import { randomUUID } from 'crypto';
 
-const WEBHOOK = process.env.DISCORD_ANNOUNCE_WEBHOOK;
-const ARROW   = '<a:arrow:1520177073816211627>';
-const IMAGE   = 'https://raw.githubusercontent.com/arrmel-capitalboard/Capital-Board/main/discord-bot/assets/annonce.gif';
-const COLOR   = 0xfde047; // même jaune que /announce côté bot
+/** Écrit une sortie de step, en gérant les valeurs multi-lignes. */
+function setOutput(name, value) {
+  const out = process.env.GITHUB_OUTPUT;
+  if (!out) return; // exécution hors CI : on ignore
+  const delim = `__EOF_${randomUUID()}__`;
+  appendFileSync(out, `${name}<<${delim}\n${value}\n${delim}\n`);
+}
 
 /** Trailer « Annonce: » du dernier commit, ou null. */
 function parseAnnounce() {
@@ -37,32 +44,11 @@ const annonce = parseAnnounce();
 
 if (!annonce) {
   console.log('[announce] pas de trailer « Annonce: » sur ce commit — rien à publier.');
+  setOutput('publish', 'false');
   process.exit(0);
 }
 
-if (!WEBHOOK) {
-  console.error('[announce] DISCORD_ANNOUNCE_WEBHOOK manquant — annonce ignorée.');
-  process.exit(0);
-}
-
-const embed = {
-  title: `${ARROW}  ${annonce.titre}`,
-  color: COLOR,
-  image: { url: IMAGE },
-  footer: { text: 'CapitalBoard - https://capitalboard.fr' },
-  timestamp: new Date().toISOString(),
-};
-if (annonce.description) embed.description = annonce.description;
-
-const res = await fetch(WEBHOOK, {
-  method: 'POST',
-  headers: { 'Content-Type': 'application/json' },
-  body: JSON.stringify({ embeds: [embed] }),
-});
-
-if (!res.ok) {
-  console.error(`[announce] échec Discord ${res.status} : ${await res.text()}`);
-  process.exit(0); // le déploiement reste un succès
-}
-
-console.log(`[announce] publiée : ${annonce.titre}`);
+console.log(`[announce] annonce détectée : ${annonce.titre}`);
+setOutput('publish', 'true');
+setOutput('title', annonce.titre);
+setOutput('desc', annonce.description);
