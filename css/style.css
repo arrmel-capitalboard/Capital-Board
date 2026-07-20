@@ -1871,13 +1871,27 @@ tr.drag-over td { border-top: 2px solid var(--accent) !important; }
 .sidebar.collapsed .sidebar-logo-icon { margin: 0; }
 .sidebar.collapsed .user-card { justify-content: center; padding: 8px; }
 .sidebar.collapsed .btn-logout { padding: 6px; }
-/* Bas de sidebar : passe en icônes seules quand replié */
+/* Bas de sidebar replié : le groupe secondaire (présentation, légal, masquer
+   solde) est regroupé derrière un bouton « ⋯ » qui ouvre un popover flottant. */
 .sidebar.collapsed .sidebar-user { padding: 8px; }
-.sidebar.collapsed .sidebar-legal-links { display: none; }
-.sidebar.collapsed .sidebar-home-btn span,
-.sidebar.collapsed #sidebar-hide-label { display: none; }
-.sidebar.collapsed .sidebar-home-btn { justify-content: center; padding: 8px 0; gap: 0; }
-.sidebar.collapsed #sidebar-hide-btn { padding: 8px 0; gap: 0; }
+.sidebar-more-btn { display: none; }
+.sidebar.collapsed .sidebar-extra { display: none; }
+.sidebar.collapsed .sidebar-more-btn {
+  display: flex; align-items: center; justify-content: center;
+  width: 100%; padding: 9px 0; margin-bottom: 8px;
+  background: var(--s2); border: 1px solid var(--border);
+  color: var(--text2); border-radius: 8px; cursor: pointer;
+  transition: background .15s, color .15s;
+}
+.sidebar.collapsed .sidebar-more-btn:hover { background: var(--s3); color: var(--text); }
+.sidebar.collapsed .sidebar-extra.open {
+  display: flex; flex-direction: column; gap: 8px;
+  position: absolute; left: calc(100% + 8px); bottom: 14px;
+  width: 214px; padding: 12px;
+  background: var(--s1); border: 1px solid var(--border2);
+  border-radius: 12px; box-shadow: 0 16px 44px rgba(0,0,0,0.55);
+  z-index: 250;
+}
 .sidebar-toggle {
   position: absolute; top: 16px; right: -13px;
   width: 26px; height: 26px; border-radius: 50%;
