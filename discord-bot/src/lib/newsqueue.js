@@ -187,8 +187,10 @@ async function handleImageModal(interaction) {
   }
 
   const id = interaction.customId.slice('nvimg:'.length);
-  const files = interaction.fields.getUploadedFiles('images') || [];
-  const images = [...files].filter(isImageAttachment);
+  const raw = interaction.fields.getUploadedFiles('images');
+  // getUploadedFiles renvoie une Collection : .values() marche aussi pour un array.
+  const files = raw ? [...raw.values()] : [];
+  const images = files.filter(isImageAttachment);
   if (!images.length) {
     await interaction.reply({ content: 'Aucune image valide reçue.', flags: MessageFlags.Ephemeral });
     return;
