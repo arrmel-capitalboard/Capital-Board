@@ -153,16 +153,18 @@ il suffit de résoudre l'uid vers le discordId.
 
 Effort faible.
 
-### 7.2 Annonces produit dans un salon
+### 7.2 Annonces produit — FAIT (validation + envoi hebdo)
 
-Message automatique dans un salon annonces à chaque déploiement. `announce.js` existe
-déjà côté bot, il reste à le déclencher depuis `.github/workflows/deploy.yml`.
+File de validation avant publication communautaire :
+- `.github/workflows/nouveautes.yml` + `scripts/queue-feature.mjs` : à chaque push,
+  les commits `feat` deviennent une entrée `newsQueue/{id}` en `pending` (Firestore).
+- Bot (`discord-bot/src/lib/newsqueue.js`) : poste chaque entrée dans le salon
+  validation `1528790209150324807` avec boutons ✅/❌ (réservés fondateur).
+- `/nouveaute texte:…` : ajout manuel à la même file (nouveauté hors commit feat).
+- Bot (`discord-bot/src/lib/newsweekly.js`) : chaque lundi 18h (Paris), récap groupé
+  des entrées `approved` non envoyées → salon nouveautés `1512909014990586047`.
 
-- Contenu : reprendre le message de commit, ou un champ dédié pour éviter de publier
-  des messages techniques.
-- Ne pas poster à chaque bump de version — seulement les changements visibles.
-
-Effort faible.
+Config serveur : rôle fondateur `1512905140108001391` doit pouvoir cliquer les boutons.
 
 ### 7.3 Dividendes du jour de la communauté
 

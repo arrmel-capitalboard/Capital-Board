@@ -7,6 +7,8 @@ const tempbans = require('./lib/tempbans');
 const statusmonitor = require('./lib/statusmonitor');
 const linkcleaner = require('./lib/linkcleaner');
 const rolesync = require('./lib/rolesync');
+const newsqueue = require('./lib/newsqueue');
+const newsweekly = require('./lib/newsweekly');
 const restartmonitor = require('./lib/restartmonitor');
 const tickets = require('./lib/tickets');
 const ticketstats = require('./lib/ticketstats');
@@ -38,6 +40,8 @@ client.once(Events.ClientReady, (c) => {
   statusmonitor.start(c);
   linkcleaner.start();
   rolesync.start(c);
+  newsqueue.startWatch(c);
+  newsweekly.start(c);
   ticketstats.start(c);
   restartmonitor.handleOnReady(c).catch(() => {});
 });
@@ -178,6 +182,8 @@ client.on(Events.InteractionCreate, async (interaction) => {
         await interaction.reply({ content: "Règlement accepté ! Bienvenue sur Capital Board.", flags: MessageFlags.Ephemeral });
         return;
       }
+
+      if (newsqueue.isNewsButton(interaction.customId)) { await newsqueue.handleButton(interaction); return; }
 
       if (interaction.customId.startsWith('role_')) {
         const roleId = interaction.customId.slice(5);
