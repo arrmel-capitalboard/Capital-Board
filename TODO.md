@@ -118,13 +118,100 @@ transitions entre pages, ou animations d'entrée des données (compteurs, graphi
 
 ---
 
+## 7. Intégrations Discord ↔ app
+
+**État commun** — Le bot a déjà un accès admin SDK à Firestore (`discord-bot/src/firebase.js`)
+et la liaison de compte fonctionne (`discordLinks/{discordId} = {uid}`). Les commandes
+existantes (`/portefeuille`, `/dividendes`, `/watchlist`, `/price`) ne font que **lire**.
+Le Worker dispose déjà d'un pipeline de notifications (`sendFcm()`,
+`capital-board-worker/src/index.js:184`).
+
+**Bug à corriger d'abord** — Deux invitations Discord différentes coexistent :
+`communaute/index.html` pointe sur `discord.gg/p73QMm4xDm`, `DEFAULT_SOCIAL` dans
+`js/app.js:2846` sur `discord.gg/ZN9459TCTQ`. L'une des deux est probablement morte.
+
+### 7.1 Alertes de prix en DM Discord
+
+Quand une alerte se déclenche, envoyer un DM en plus de la notification push.
+Même déclencheur que FCM, transport supplémentaire — le Worker connaît déjà l'uid,
+il suffit de résoudre l'uid vers le discordId.
+
+- Nécessite l'index inverse `uid → discordId` (aujourd'hui seul `discordId → uid` existe).
+- Opt-in, au même endroit que le réglage `pushRecap`.
+- Un DM échoue silencieusement si l'utilisateur bloque les DM du serveur : prévoir
+  le cas, ne pas retenter en boucle.
+
+Effort faible.
+
+### 7.2 Annonces produit dans un salon
+
+Message automatique dans un salon annonces à chaque déploiement. `announce.js` existe
+déjà côté bot, il reste à le déclencher depuis `.github/workflows/deploy.yml`.
+
+- Contenu : reprendre le message de commit, ou un champ dédié pour éviter de publier
+  des messages techniques.
+- Ne pas poster à chaque bump de version — seulement les changements visibles.
+
+Effort faible.
+
+### 7.3 Dividendes du jour de la communauté
+
+Salon où le bot poste le total agrégé et anonyme des dividendes perçus par l'ensemble
+des utilisateurs.
+
+**Réserve importante** — En phase de pré-lancement, avec peu d'utilisateurs actifs,
+un « total communauté » peut revenir à publier le portefeuille d'une seule personne.
+À ne mettre en place qu'avec un seuil minimum de contributeurs (ex. ne rien poster
+en dessous de 10 utilisateurs distincts sur la journée), et sans jamais afficher
+de ticker isolé. À revalider quand la base grossit.
+
+Effort moyen.
+
+### 7.4 Widget Discord dans l'app
+
+Bloc dans l'app affichant les dernières annonces du serveur. Aujourd'hui `communaute/`
+ne fait que des liens sortants.
+
+- Le bot pousse les annonces dans un doc Firestore que l'app lit, plutôt qu'un appel
+  direct à l'API Discord depuis le client (pas de token exposé, pas de rate limit).
+- Réutiliser le doc `config/` qui est déjà en lecture publique, ou un doc dédié.
+
+Effort moyen.
+
+### 7.5 Relancer la feature Idées
+
+La collection `ideas` existe dans les règles Firestore mais **aucun code ne l'utilise** :
+règle morte aujourd'hui. La brancher pour du partage d'idées d'investissement,
+côté app et côté Discord.
+
+**Prérequis sécurité** — les règles actuelles autorisent tout compte vérifié à écrire
+et supprimer l'idée de n'importe qui (aucun contrôle de propriété). Si la feature n'est
+pas relancée maintenant, retirer le bloc des règles ; si elle l'est, ajouter un
+`resource.data.author == request.auth.uid` sur update et delete.
+
+- Modération : quels garde-fous ? Ce sont des idées d'investissement publiées entre
+  particuliers, prévoir signalement et une clause de non-conseil.
+
+Effort élevé — c'est une feature produit à part entière, pas une intégration.
+
+---
+
 ## Ordre suggéré
 
-1. **Mot de passe oublié** — court, la moitié est faite, et c'est un manque
+1. **Lien Discord incohérent** (7) — deux invitations différentes en prod, correction
+   d'une ligne, à faire tout de suite.
+2. **Mot de passe oublié** (2) — court, la moitié est faite, et c'est un manque
    fonctionnel visible pour un utilisateur bloqué.
-2. **Username + délai** — à faire avec la correction d'unicité, sinon la dette grossit.
-3. **Screenshots landing** — sans dépendance technique, gain marketing immédiat.
-4. **Permissions Discord** — dépend surtout de décisions produit.
-5. **Animations** — cosmétique, à faire quand le reste est stable.
-6. **Coin actualité** — le plus gros, et le seul à impliquer un coût récurrent
-   potentiel (API). À cadrer avant de s'engager.
+3. **Annonces produit Discord** (7.2) — court, `announce.js` existe déjà.
+4. **Username + délai** (3) — à faire avec la correction d'unicité, sinon la dette grossit.
+5. **Screenshots landing** (5) — sans dépendance technique, gain marketing immédiat.
+6. **Alertes en DM Discord** (7.1) — demande l'index inverse `uid → discordId`.
+7. **Permissions salon Discord** (1) — dépend surtout de décisions produit.
+8. **Widget Discord dans l'app** (7.4).
+9. **Animations** (6) — cosmétique, à faire quand le reste est stable.
+10. **Dividendes communauté** (7.3) — à repousser jusqu'à ce que la base d'utilisateurs
+    rende l'agrégat réellement anonyme.
+11. **Coin actualité** (4) — gros chantier, seul à impliquer un coût récurrent
+    potentiel (API). À cadrer avant de s'engager.
+12. **Feature Idées** (7.5) — la plus lourde. En attendant, retirer le bloc `ideas`
+    des règles Firestore puisqu'il est ouvert et inutilisé.
