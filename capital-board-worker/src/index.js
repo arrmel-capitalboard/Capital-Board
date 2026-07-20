@@ -301,6 +301,46 @@ function email2fa(code, deviceLabel, location) {
 </div></body></html>`;
 }
 
+function emailPasswordReset(link) {
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${CSS_BASE}
+  .btn{display:inline-block;background:#7c6df5;color:#ffffff !important;text-decoration:none;
+    font-weight:700;font-size:15px;padding:15px 30px;border-radius:10px;margin:8px 0 8px}
+  .link-fallback{word-break:break-all;font-size:12px;color:#5a6178;margin-top:20px}
+  </style></head><body>
+<div class="card">
+  <div class="logo">Capital Board</div>
+  <h2>Réinitialisation de votre mot de passe</h2>
+  <p>Vous avez demandé à réinitialiser le mot de passe de votre compte Capital Board. Cliquez sur le bouton ci-dessous pour en définir un nouveau :</p>
+  <p style="text-align:center;margin:24px 0"><a class="btn" href="${link}">Choisir un nouveau mot de passe</a></p>
+  <p>Ce lien est valable <strong>1 heure</strong> et ne peut être utilisé qu'une seule fois.</p>
+  <p class="warn">Si vous n'êtes pas à l'origine de cette demande, ignorez cet email — votre mot de passe reste inchangé.</p>
+  <p class="link-fallback">Le bouton ne fonctionne pas ? Copiez ce lien dans votre navigateur :<br>${link}</p>
+  <div class="footer">Capital Board · Ne pas répondre à cet email.</div>
+</div></body></html>`;
+}
+
+// ── Génération lien de réinitialisation (admin, sans envoi Firebase) ────────
+// Utilise l'endpoint admin Identity Toolkit avec returnOobLink : renvoie le
+// lien au lieu d'envoyer l'email Firebase par défaut. On extrait le oobCode et
+// on reconstruit un lien vers notre page auth-action.html (contrôle total du
+// domaine + du template, contourne la config console).
+async function generateResetLink(email, env) {
+  const token = await getAccessToken(env);
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:sendOobCode`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestType: 'PASSWORD_RESET', email, returnOobLink: true }),
+    }
+  );
+  if (!res.ok) throw new Error(`sendOobCode ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const oobCode = new URL(data.oobLink).searchParams.get('oobCode');
+  const base = env.ALLOWED_ORIGIN || 'https://capitalboard.fr';
+  return `${base}/auth-action.html?mode=resetPassword&oobCode=${encodeURIComponent(oobCode)}`;
+}
+
 // ── Resend sender ─────────────────────────────────────────────────────────
 
 async function sendEmail(to, subject, html, env) {
@@ -643,6 +683,30 @@ export default {
           : ['Code de vérification — nouvel appareil Capital Board', email2fa(code, deviceLabel, location)];
 
         await sendEmail(user.email, subject, html, env);
+        return json({ ok: true });
+      }
+
+      // ── POST /forgot-password ───────────────────────────────────────────
+      // Génère un lien de réinitialisation (admin) et l'envoie via Resend
+      // depuis noreply@capitalboard.fr. Réponse toujours générique : ne
+      // révèle jamais si l'adresse correspond à un compte (anti-énumération).
+      if (url.pathname === '/forgot-password' && request.method === 'POST') {
+        const { email, turnstileToken } = await request.json();
+        const addr = (email || '').trim();
+        if (!addr || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) {
+          return json({ ok: false, error: 'Email invalide' }, 400);
+        }
+        const humanVerified = await verifyTurnstile(turnstileToken, env);
+        if (!humanVerified) return json({ ok: false, error: 'Vérification humaine échouée' }, 403);
+
+        try {
+          const link = await generateResetLink(addr, env);
+          await sendEmail(addr, 'Réinitialisation de votre mot de passe — Capital Board', emailPasswordReset(link), env);
+        } catch (e) {
+          // EMAIL_NOT_FOUND ou compte fédéré sans mot de passe : on ne remonte
+          // rien au client pour ne pas révéler l'existence du compte.
+          console.warn('[forgot-password]', e.message);
+        }
         return json({ ok: true });
       }
 

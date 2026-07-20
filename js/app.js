@@ -54,7 +54,7 @@ const IC = {
 // ─── FIREBASE AUTH ────────────────────────────────────
 // ─── FIREBASE (chargement dynamique, compatible sans bundler) ─────
 let fbApp, fbAuth, db,
-    createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail,
+    createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification,
     signOut, onAuthStateChanged, GoogleAuthProvider, signInWithPopup,
     signInWithRedirect, getRedirectResult,
     updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser,
@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721a';
+const APP_VERSION = '20260721b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -85,6 +85,8 @@ window.onTurnstileLoginSuccess   = () => { _turnstileState['turnstile-login']   
 window.onTurnstileLoginError     = () => { _turnstileState['turnstile-login']    = 'error'; };
 window.onTurnstileRegisterSuccess = () => { _turnstileState['turnstile-register'] = 'ready'; };
 window.onTurnstileRegisterError   = () => { _turnstileState['turnstile-register'] = 'error'; };
+window.onTurnstileForgotSuccess   = () => { _turnstileState['turnstile-forgot']   = 'ready'; };
+window.onTurnstileForgotError     = () => { _turnstileState['turnstile-forgot']   = 'error'; };
 
 function _checkTurnstile(containerId) {
   const state = _turnstileState[containerId];
@@ -153,7 +155,6 @@ _splashWatchdog = setTimeout(() => {
   createUserWithEmailAndPassword = auth.createUserWithEmailAndPassword;
   signInWithEmailAndPassword     = auth.signInWithEmailAndPassword;
   sendEmailVerification          = auth.sendEmailVerification;
-  sendPasswordResetEmail         = auth.sendPasswordResetEmail;
   signOut                        = auth.signOut;
   onAuthStateChanged             = auth.onAuthStateChanged;
   GoogleAuthProvider             = auth.GoogleAuthProvider;
@@ -724,6 +725,11 @@ window.doForgotPassword = async function() {
     err.style.display = 'block';
     return;
   }
+  if (_checkTurnstile('turnstile-forgot') !== 'ready') {
+    err.textContent = 'Veuillez compléter la vérification de sécurité.';
+    err.style.display = 'block';
+    return;
+  }
   const now = Date.now();
   if (now - _fpLastSent < 60000) {
     const wait = Math.ceil((60000 - (now - _fpLastSent)) / 1000);
@@ -733,28 +739,28 @@ window.doForgotPassword = async function() {
   }
   setLoading('btn-forgot-submit', true);
   try {
-    await sendPasswordResetEmail(fbAuth, email, {
-      url: window.location.origin + window.location.pathname,
-      handleCodeInApp: false
+    const res = await fetch(`${WORKER_URL}/forgot-password`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ email, turnstileToken: _getTurnstileToken('turnstile-forgot') }),
     });
+    if (!res.ok) {
+      const d = await res.json().catch(() => ({}));
+      throw new Error(d.error || 'Échec');
+    }
     _fpLastSent = now;
   } catch(e) {
-    // On ne révèle jamais si l'adresse existe : seuls les vrais problèmes
-    // techniques (réseau, quota) sont remontés. user-not-found est ignoré.
-    if (e && (e.code === 'auth/too-many-requests')) {
-      err.textContent = 'Trop de tentatives. Réessayez plus tard.';
-      err.style.display = 'block';
-      setLoading('btn-forgot-submit', false);
-      return;
-    }
-    // auth/user-not-found, auth/invalid-email déjà filtré → on affiche quand même le succès générique
-    console.warn('[forgot] envoi:', e && e.code);
+    _resetTurnstile('turnstile-forgot');
+    err.textContent = "Échec de l'envoi. Réessayez dans un instant.";
+    err.style.display = 'block';
+    setLoading('btn-forgot-submit', false);
+    return;
   }
+  _resetTurnstile('turnstile-forgot');
   setLoading('btn-forgot-submit', false);
-  // Message identique que l'adresse existe ou non
+  // Message identique que l'adresse existe ou non (anti-énumération)
   document.getElementById('forgot-form').style.display = 'none';
-  const ok = document.getElementById('forgot-success');
-  ok.style.display = 'block';
+  document.getElementById('forgot-success').style.display = 'block';
 };
 window.showRegisterView = async function() {
   // Inscriptions fermées → on ne montre même pas le formulaire

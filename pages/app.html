@@ -118,6 +118,7 @@
         <label class="form-label">Email</label>
         <input type="email" class="form-input" id="forgot-email" placeholder="vous@exemple.com" autocomplete="email" onkeydown="if(event.key==='Enter')doForgotPassword()">
       </div>
+      <div class="cf-turnstile" data-sitekey="0x4AAAAAADn5LAr4t8vCvyjS" data-theme="dark" id="turnstile-forgot" data-callback="onTurnstileForgotSuccess" data-error-callback="onTurnstileForgotError" style="margin-bottom:12px"></div>
       <button class="btn-login" id="btn-forgot-submit" onclick="doForgotPassword()">Envoyer le lien</button>
     </div>
     <div id="forgot-success" style="display:none;text-align:center">
@@ -1760,7 +1761,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260721a"></script>
+<script src="js/app.js?v=20260721b"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
