@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721c';
+const APP_VERSION = '20260721d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2316,7 +2316,79 @@ function loadProfilePage(user) {
   // Préférence récap quotidien push
   const settings    = getUserSettings(user.uid);
   _paintRecapButtons(settings.pushRecap !== false);
+
+  // Nom d'utilisateur + état du cooldown
+  _loadProfileUsername(user.uid);
 }
+
+const USERNAME_COOLDOWN_MS = 30 * 24 * 60 * 60 * 1000;
+
+// Charge le username courant dans le champ profil + verrouille si cooldown actif.
+async function _loadProfileUsername(uid) {
+  const input  = document.getElementById('profil-username-input');
+  const status = document.getElementById('profil-username-status');
+  const btn    = document.getElementById('profil-username-btn');
+  if (!input) return;
+  const lock = (locked) => {
+    input.disabled = locked;
+    if (btn) { btn.disabled = locked; btn.style.opacity = locked ? '0.5' : '1'; btn.style.cursor = locked ? 'not-allowed' : 'pointer'; }
+  };
+  try {
+    const snap = await getFirestoreDoc(firestoreDoc(db, 'roles', uid));
+    const d = snap.exists() ? snap.data() : {};
+    input.value = d.username || '';
+    input.dataset.current = d.username || '';
+    const rem = d.usernameChangedAt ? (USERNAME_COOLDOWN_MS - (Date.now() - d.usernameChangedAt)) : 0;
+    if (rem > 0) {
+      const days = Math.ceil(rem / (24 * 60 * 60 * 1000));
+      status.textContent = `Prochain changement possible dans ${days} jour(s).`;
+      status.style.color = 'var(--text3)';
+      lock(true);
+    } else {
+      status.textContent = 'Modifiable une fois par mois. 3–20 caractères (lettres, chiffres, . - _).';
+      status.style.color = 'var(--text3)';
+      lock(false);
+    }
+  } catch (e) {
+    console.warn('[username] load:', e.message);
+  }
+}
+
+window.saveUsername = async function() {
+  const input  = document.getElementById('profil-username-input');
+  const status = document.getElementById('profil-username-status');
+  const btn    = document.getElementById('profil-username-btn');
+  const uname  = (input.value || '').trim().toLowerCase();
+  const current = input.dataset.current || '';
+  const set = (msg, ok) => { status.textContent = msg; status.style.color = ok ? 'var(--positive)' : 'var(--negative)'; };
+  if (!/^[a-z0-9._-]{3,20}$/.test(uname)) return set('3–20 caractères : lettres, chiffres, . - _.', false);
+  if (/capitalboard/.test(uname))         return set("Ce nom d'utilisateur n'est pas autorisé.", false);
+  if (uname === current)                  return set("C'est déjà votre nom d'utilisateur.", false);
+  if (btn) { btn.disabled = true; btn.textContent = '…'; }
+  try {
+    const idToken = await fbAuth.currentUser.getIdToken();
+    const res = await fetch(`${WORKER_URL}/change-username`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, username: uname }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.ok) {
+      set(d.error || 'Échec du changement.', false);
+      if (btn) { btn.disabled = false; btn.textContent = 'Changer'; }
+      return;
+    }
+    input.value = d.username;
+    input.dataset.current = d.username;
+    set("✓ Nom d'utilisateur mis à jour !", true);
+    if (btn) btn.textContent = 'Changer';
+    // Cooldown désormais actif → recharge l'état (verrouille l'UI)
+    setTimeout(() => _loadProfileUsername(fbAuth.currentUser.uid), 1500);
+  } catch (e) {
+    set('Erreur réseau, réessayez.', false);
+    if (btn) { btn.disabled = false; btn.textContent = 'Changer'; }
+  }
+};
 
 // Met en évidence le bouton actif du toggle Récap quotidien (Activé/Désactivé).
 function _paintRecapButtons(on) {

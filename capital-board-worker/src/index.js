@@ -157,6 +157,42 @@ async function firestoreUpdate(path, fields, maskPaths, env) {
   return res.json();
 }
 
+// Crée un document avec un id imposé. Retourne false si le doc existe déjà
+// (HTTP 409) — sert de réservation atomique « création seule ».
+async function firestoreCreate(collection, docId, fields, env) {
+  const token = await getAccessToken(env);
+  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${collection}?documentId=${encodeURIComponent(docId)}`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ fields }),
+  });
+  if (res.status === 409) return false;
+  if (!res.ok) throw new Error(`Firestore create ${res.status}: ${await res.text()}`);
+  return true;
+}
+
+// Renvoie les uid des docs roles portant ce username (couvre les comptes
+// existants qui n'ont pas encore de réservation dans usernames/).
+async function rolesWithUsername(username, env) {
+  const token = await getAccessToken(env);
+  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: 'roles' }],
+        where: { fieldFilter: { field: { fieldPath: 'username' }, op: 'EQUAL', value: { stringValue: username } } },
+        limit: 5,
+      },
+    }),
+  });
+  if (!res.ok) throw new Error(`Firestore runQuery ${res.status}: ${await res.text()}`);
+  const rows = await res.json();
+  return rows.filter((r) => r.document).map((r) => r.document.name.split('/').pop());
+}
+
 async function firestoreDelete(path, env) {
   const token = await getAccessToken(env);
   const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${path}`;
@@ -708,6 +744,62 @@ export default {
           console.warn('[forgot-password]', e.message);
         }
         return json({ ok: true });
+      }
+
+      // ── POST /change-username ───────────────────────────────────────────
+      // Change le nom d'utilisateur (roles/{uid}.username). Autorité serveur :
+      // format + blocklist « capitalboard », unicité (réservation usernames/
+      // création seule + balayage des comptes existants), cooldown 30 j. La
+      // création initiale ne pose pas usernameChangedAt → 1er changement libre.
+      if (url.pathname === '/change-username' && request.method === 'POST') {
+        const { idToken, username } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        const uid = user.localId;
+        const uname = (username || '').trim().toLowerCase();
+
+        if (!/^[a-z0-9._-]{3,20}$/.test(uname)) {
+          return json({ ok: false, error: 'Format invalide : 3–20 caractères (lettres, chiffres, . - _).' }, 400);
+        }
+        if (/capitalboard/.test(uname)) {
+          return json({ ok: false, error: "Ce nom d'utilisateur n'est pas autorisé." }, 400);
+        }
+
+        let roleDoc = null;
+        try { roleDoc = await firestoreGet(`roles/${uid}`, env); } catch (_) {}
+        const current = roleDoc ? fsStr(roleDoc, 'username') : null;
+        const lastChanged = roleDoc ? fsNum(roleDoc, 'usernameChangedAt') : null;
+
+        if (current === uname) {
+          return json({ ok: false, error: "C'est déjà votre nom d'utilisateur." }, 400);
+        }
+
+        const COOLDOWN = 30 * 24 * 60 * 60 * 1000;
+        if (lastChanged && Date.now() - lastChanged < COOLDOWN) {
+          const days = Math.ceil((COOLDOWN - (Date.now() - lastChanged)) / (24 * 60 * 60 * 1000));
+          return json({ ok: false, error: `Vous pourrez changer de nom d'utilisateur dans ${days} jour(s).`, cooldownDays: days }, 429);
+        }
+
+        // Unicité : comptes existants (roles) + réservation atomique (usernames/)
+        const holders = await rolesWithUsername(uname, env);
+        if (holders.some((h) => h !== uid)) {
+          return json({ ok: false, error: "Ce nom d'utilisateur est déjà pris." }, 409);
+        }
+        const claimed = await firestoreCreate('usernames', uname, { uid: { stringValue: uid } }, env);
+        if (!claimed) {
+          return json({ ok: false, error: "Ce nom d'utilisateur est déjà pris." }, 409);
+        }
+
+        const now = Date.now();
+        await firestoreUpdate(
+          `roles/${uid}`,
+          { username: { stringValue: uname }, usernameChangedAt: { integerValue: String(now) } },
+          ['username', 'usernameChangedAt'],
+          env,
+        );
+        // Libère l'ancienne réservation (best-effort).
+        if (current) { try { await firestoreDelete(`usernames/${current}`, env); } catch (_) {} }
+
+        return json({ ok: true, username: uname, changedAt: now });
       }
 
       // ── GET /earnings?symbols=A,B&from=&to= ─────────────────────────────
