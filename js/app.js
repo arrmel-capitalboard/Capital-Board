@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721b';
+const APP_VERSION = '20260721c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -679,6 +679,7 @@ function setLoading(btnId, loading) {
   btn.disabled = loading;
   const labels = {
     'btn-login-submit': 'Connexion',
+    'btn-forgot-submit': 'Envoyer le lien',
     'del-final-btn': 'Envoyer le mail',
   };
   btn.textContent = loading ? 'Chargement…' : (labels[btnId] || 'Créer le compte');
