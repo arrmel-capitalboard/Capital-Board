@@ -13,11 +13,12 @@
 //   }
 //
 // Flux : un doc « pending » est créé (par le workflow à chaque commit feat,
-// ou par /nouveaute). Le bot poste un message avec trois boutons dans le salon
-// validation : Valider, Rejeter, et Ajouter/Changer l'image. Le fondateur peut
-// changer d'avis tant que la nouveauté n'a pas été publiée. Le lundi,
-// newsweekly.js publie les « approved » non envoyés (texte + photos) et
-// verrouille leur message de validation.
+// ou par /nouveaute). Le bot poste un message avec deux boutons dans le salon
+// validation : Valider / Rejeter. Les images se joignent via /nouveaute-image
+// (pièce jointe native), qui ré-héberge l'image dans le salon validation pour
+// disposer d'URLs fraîches à la publication (les liens CDN Discord expirent).
+// Le lundi, newsweekly.js publie les « approved » non envoyés (texte + photos)
+// et verrouille leur message de validation.
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
@@ -25,7 +26,6 @@ const { getDb, isConfigured } = require('../firebase');
 const VALIDATION_CHANNEL = '1528790209150324807';
 const FONDATEUR_ROLE     = '1512905140108001391';
 const COL = 'newsQueue';
-const COLLECT_MS = 60_000;
 
 const col = () => getDb().collection(COL);
 
@@ -35,9 +35,9 @@ function isImageAttachment(att) {
   return /\.(png|jpe?g|gif|webp)$/i.test(att.name || '');
 }
 
-/** Ajoute une nouveauté manuelle à la file (le watcher postera le message). */
-async function addPending(text, { source = 'manuel', sha = null } = {}) {
-  await col().add({
+/** Ajoute une nouveauté à la file. Retourne l'id du doc créé. */
+async function addPending(text, { source = 'manuel', sha = null, photoRefs = [] } = {}) {
+  const ref = await col().add({
     text,
     source,
     sha,
@@ -45,11 +45,12 @@ async function addPending(text, { source = 'manuel', sha = null } = {}) {
     createdAt: Date.now(),
     sentAt: null,
     messageId: null,
-    photoRefs: [],
+    photoRefs,
   });
+  return ref.id;
 }
 
-/** Message de validation, reflétant le statut courant. Boutons toujours cliquables. */
+/** Message de validation, reflétant le statut courant. */
 function validationPayload(id, text, status = 'pending', decidedBy = null, hasImage = false) {
   const approved = status === 'approved';
   const rejected = status === 'rejected';
@@ -60,7 +61,7 @@ function validationPayload(id, text, status = 'pending', decidedBy = null, hasIm
     .setDescription(text)
     .setFooter({
       text: status === 'pending'
-        ? 'Publiée lundi 18h si validée.'
+        ? 'Publiée lundi 18h si validée. Image : /nouveaute-image'
         : 'Changement d\'avis possible jusqu\'à la publication.',
     })
     .setTimestamp();
@@ -69,19 +70,8 @@ function validationPayload(id, text, status = 'pending', decidedBy = null, hasIm
   if (hasImage) embed.addFields({ name: 'Image', value: '🖼️ jointe', inline: true });
 
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder()
-      .setCustomId(`nv:ok:${id}`)
-      .setLabel('Valider')
-      .setStyle(approved ? ButtonStyle.Success : ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId(`nv:no:${id}`)
-      .setLabel('Rejeter')
-      .setStyle(rejected ? ButtonStyle.Danger : ButtonStyle.Secondary),
-    new ButtonBuilder()
-      .setCustomId(`nv:img:${id}`)
-      .setLabel(hasImage ? 'Changer l\'image' : 'Ajouter une image')
-      .setStyle(ButtonStyle.Secondary)
-      .setEmoji('🖼️'),
+    new ButtonBuilder().setCustomId(`nv:ok:${id}`).setLabel('Valider').setStyle(approved ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`nv:no:${id}`).setLabel('Rejeter').setStyle(rejected ? ButtonStyle.Danger : ButtonStyle.Secondary),
   );
   return { embeds: [embed], components: [row] };
 }
@@ -103,9 +93,9 @@ function publishedPayload(text) {
 }
 
 /** Poste le message de validation et mémorise son id. */
-async function postValidation(client, id, text) {
+async function postValidation(client, id, data) {
   const channel = await client.channels.fetch(VALIDATION_CHANNEL);
-  const msg = await channel.send(validationPayload(id, text, 'pending'));
+  const msg = await channel.send(payloadFromDoc(id, data));
   await col().doc(id).update({ messageId: msg.id, channelId: channel.id });
 }
 
@@ -119,7 +109,7 @@ function watch(client) {
           if (change.type !== 'added') continue;
           const doc = change.doc;
           if (doc.data().messageId) continue; // déjà posté (chargement initial)
-          postValidation(client, doc.id, doc.data().text)
+          postValidation(client, doc.id, doc.data())
             .catch((e) => console.error('[newsqueue] post validation :', e.message));
         }
       },
@@ -127,72 +117,62 @@ function watch(client) {
     );
 }
 
-/** Garde commune aux boutons : fondateur, doc existant, non publié. Retourne le doc ou null. */
-async function guardButton(interaction, id) {
+/** Clic ✅/❌ (fondateur, tant que non publié). */
+async function handleButton(interaction) {
   if (!interaction.member.roles.cache.has(FONDATEUR_ROLE)) {
     await interaction.reply({ content: 'Réservé au rôle fondateur.', flags: MessageFlags.Ephemeral });
-    return null;
+    return;
   }
+  const [, action, id] = interaction.customId.split(':');
   const snap = await col().doc(id).get();
   if (!snap.exists) {
     await interaction.reply({ content: 'Nouveauté introuvable (déjà supprimée ?).', flags: MessageFlags.Ephemeral });
-    return null;
+    return;
   }
   if (snap.data().sentAt) {
     await interaction.reply({ content: 'Déjà publiée aux membres — non modifiable.', flags: MessageFlags.Ephemeral });
-    return null;
+    return;
   }
-  return snap;
-}
 
-/** Routeur des boutons nv:*. */
-async function handleButton(interaction) {
-  const [, action, id] = interaction.customId.split(':');
-  if (action === 'img') return addImage(interaction, id);
-  return decide(interaction, id, action === 'ok' ? 'approved' : 'rejected');
-}
-
-/** Valider / rejeter. */
-async function decide(interaction, id, status) {
-  const snap = await guardButton(interaction, id);
-  if (!snap) return;
+  const status = action === 'ok' ? 'approved' : 'rejected';
   await snap.ref.update({ status, decidedBy: interaction.user.id, decidedAt: Date.now() });
-  const data = { ...snap.data(), status, decidedBy: interaction.user.id };
-  await interaction.update(payloadFromDoc(id, data));
+  await interaction.update(payloadFromDoc(id, { ...snap.data(), status, decidedBy: interaction.user.id }));
 }
 
-/** Bouton « Ajouter/Changer l'image » : capte le prochain message-image du fondateur. */
-async function addImage(interaction, id) {
-  const snap = await guardButton(interaction, id);
-  if (!snap) return;
+/** Ré-héberge une image dans le salon validation (URLs fraîches durables). */
+async function rehost(client, url, text) {
+  const channel = await client.channels.fetch(VALIDATION_CHANNEL);
+  const msg = await channel.send({ content: `🖼️ ${text}`.slice(0, 200), files: [url] });
+  return { msgId: msg.id, channelId: channel.id };
+}
 
-  await interaction.reply({
-    content: 'Envoyez l\'image dans ce salon (60 s). Elle remplacera l\'image actuelle.',
-    flags: MessageFlags.Ephemeral,
-  });
+/** Nouveautés encore modifiables (pour l'autocomplétion de /nouveaute-image). */
+async function listOpen() {
+  const snap = await col().where('status', 'in', ['pending', 'approved']).get();
+  return snap.docs.filter((d) => !d.data().sentAt).map((d) => ({ id: d.id, text: d.data().text }));
+}
 
-  const filter = (m) =>
-    m.author.id === interaction.user.id && [...m.attachments.values()].some(isImageAttachment);
-  const collector = interaction.channel.createMessageCollector({ filter, time: COLLECT_MS, max: 1 });
+/** Joint (ou remplace) l'image d'une nouveauté existante. */
+async function attachImage(client, id, url, text) {
+  const ref = col().doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) return { ok: false, reason: 'Nouveauté introuvable.' };
+  if (snap.data().sentAt) return { ok: false, reason: 'Déjà publiée — non modifiable.' };
 
-  collector.on('collect', async (m) => {
+  const photoRef = await rehost(client, url, text || snap.data().text);
+  await ref.update({ photoRefs: [photoRef] });
+
+  const data = (await ref.get()).data();
+  if (data.messageId && data.channelId) {
     try {
-      await snap.ref.update({ photoRefs: [{ msgId: m.id, channelId: m.channelId }] });
-      await m.react('✅').catch(() => {});
-      const fresh = (await snap.ref.get()).data();
-      await interaction.message.edit(payloadFromDoc(id, fresh)).catch(() => {});
-      await interaction.editReply({ content: 'Image enregistrée.' }).catch(() => {});
+      const ch = await client.channels.fetch(data.channelId);
+      const vm = await ch.messages.fetch(data.messageId);
+      await vm.edit(payloadFromDoc(id, data));
     } catch (e) {
-      console.error('[newsqueue] enregistrement image :', e.message);
-      await interaction.editReply({ content: 'Erreur lors de l\'enregistrement.' }).catch(() => {});
+      console.error('[newsqueue] refresh validation msg :', e.message);
     }
-  });
-
-  collector.on('end', (collected) => {
-    if (!collected.size) {
-      interaction.editReply({ content: 'Temps écoulé, aucune image ajoutée.' }).catch(() => {});
-    }
-  });
+  }
+  return { ok: true };
 }
 
 function startWatch(client) {
@@ -207,6 +187,9 @@ module.exports = {
   startWatch,
   handleButton,
   addPending,
+  rehost,
+  attachImage,
+  listOpen,
   publishedPayload,
   isImageAttachment,
   isNewsButton: (id) => id.startsWith('nv:'),
