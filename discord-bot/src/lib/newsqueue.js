@@ -14,8 +14,9 @@
 // Flux : un doc « pending » est créé (par le workflow à chaque commit feat,
 // ou par /nouveaute). Le bot écoute la collection, poste un message avec deux
 // boutons dans le salon validation, et enregistre le messageId. Le fondateur
-// clique ✅/❌ → statut mis à jour. Le lundi, newsweekly.js publie les
-// « approved » non encore envoyés (voir ce module).
+// clique ✅/❌ — et peut changer d'avis tant que la nouveauté n'a pas été
+// publiée. Le lundi, newsweekly.js publie les « approved » non envoyés et
+// verrouille leur message de validation.
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
@@ -39,25 +40,52 @@ async function addPending(text, { source = 'manuel', sha = null } = {}) {
   });
 }
 
-function validationPayload(id, text) {
+/** Message de validation, reflétant le statut courant. Boutons toujours cliquables. */
+function validationPayload(id, text, status = 'pending', decidedBy = null) {
+  const approved = status === 'approved';
+  const rejected = status === 'rejected';
+
   const embed = new EmbedBuilder()
-    .setColor(0x2563eb)
-    .setTitle('🆕 Nouveauté à valider')
+    .setColor(approved ? 0x16a34a : rejected ? 0xdc2626 : 0x2563eb)
+    .setTitle(approved ? '✅ Nouveauté validée' : rejected ? '❌ Nouveauté rejetée' : '🆕 Nouveauté à valider')
     .setDescription(text)
-    .setFooter({ text: 'Publiée aux membres lundi 18h si validée.' })
+    .setFooter({
+      text: status === 'pending'
+        ? 'Publiée aux membres lundi 18h si validée.'
+        : 'Vous pouvez encore changer d\'avis jusqu\'à la publication.',
+    })
     .setTimestamp();
 
+  if (decidedBy) embed.addFields({ name: 'Décision', value: `<@${decidedBy}>`, inline: true });
+
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`nv:ok:${id}`).setLabel('Valider').setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId(`nv:no:${id}`).setLabel('Rejeter').setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId(`nv:ok:${id}`)
+      .setLabel('Valider')
+      .setStyle(approved ? ButtonStyle.Success : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`nv:no:${id}`)
+      .setLabel('Rejeter')
+      .setStyle(rejected ? ButtonStyle.Danger : ButtonStyle.Secondary),
   );
   return { embeds: [embed], components: [row] };
+}
+
+/** Message verrouillé après publication (plus de boutons). */
+function publishedPayload(text) {
+  const embed = new EmbedBuilder()
+    .setColor(0x16a34a)
+    .setTitle('📢 Publiée aux membres')
+    .setDescription(text)
+    .setFooter({ text: 'Nouveauté envoyée dans le salon communautaire.' })
+    .setTimestamp();
+  return { embeds: [embed], components: [] };
 }
 
 /** Poste le message de validation et mémorise son id. */
 async function postValidation(client, id, text) {
   const channel = await client.channels.fetch(VALIDATION_CHANNEL);
-  const msg = await channel.send(validationPayload(id, text));
+  const msg = await channel.send(validationPayload(id, text, 'pending'));
   await col().doc(id).update({ messageId: msg.id, channelId: channel.id });
 }
 
@@ -87,22 +115,21 @@ async function handleButton(interaction) {
   }
 
   const [, action, id] = interaction.customId.split(':');
-  const approved = action === 'ok';
+  const ref = col().doc(id);
+  const snap = await ref.get();
 
-  await col().doc(id).update({
-    status: approved ? 'approved' : 'rejected',
-    decidedBy: interaction.user.id,
-    decidedAt: Date.now(),
-  });
+  if (!snap.exists) {
+    await interaction.reply({ content: 'Nouveauté introuvable (déjà supprimée ?).', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (snap.data().sentAt) {
+    await interaction.reply({ content: 'Déjà publiée aux membres — non modifiable.', flags: MessageFlags.Ephemeral });
+    return;
+  }
 
-  const base = interaction.message.embeds[0];
-  const embed = EmbedBuilder.from(base)
-    .setColor(approved ? 0x16a34a : 0xdc2626)
-    .setTitle(approved ? '✅ Nouveauté validée' : '❌ Nouveauté rejetée')
-    .setFields({ name: 'Décision', value: `<@${interaction.user.id}>`, inline: true })
-    .setFooter({ text: approved ? 'Sera publiée au prochain envoi (lundi 18h).' : 'Ne sera pas publiée.' });
-
-  await interaction.update({ embeds: [embed], components: [] });
+  const status = action === 'ok' ? 'approved' : 'rejected';
+  await ref.update({ status, decidedBy: interaction.user.id, decidedAt: Date.now() });
+  await interaction.update(validationPayload(id, snap.data().text, status, interaction.user.id));
 }
 
 function startWatch(client) {
@@ -113,4 +140,10 @@ function startWatch(client) {
   watch(client);
 }
 
-module.exports = { startWatch, handleButton, addPending, isNewsButton: (id) => id.startsWith('nv:') };
+module.exports = {
+  startWatch,
+  handleButton,
+  addPending,
+  publishedPayload,
+  isNewsButton: (id) => id.startsWith('nv:'),
+};
