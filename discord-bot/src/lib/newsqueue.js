@@ -246,29 +246,6 @@ async function handleImageModal(interaction) {
   await interaction.editReply(`${images.length} image(s) jointe(s).`);
 }
 
-/** Supprime toutes les entrées non publiées + leurs messages de validation. */
-async function clearOpen(client) {
-  const snap = await col().get();
-  const docs = snap.docs.filter((d) => !d.data().sentAt);
-
-  for (const d of docs) {
-    const { messageId, channelId } = d.data();
-    if (!messageId || !channelId) continue;
-    try {
-      const ch = await client.channels.fetch(channelId);
-      const m = await ch.messages.fetch(messageId);
-      await m.delete();
-    } catch (e) {
-      console.error('[newsqueue] suppression message :', e.message);
-    }
-  }
-
-  const batch = getDb().batch();
-  docs.forEach((d) => batch.delete(d.ref));
-  await batch.commit();
-  return docs.length;
-}
-
 function startWatch(client) {
   if (!isConfigured()) {
     console.log('[newsqueue] désactivé (Firestore non configuré)');
@@ -281,7 +258,6 @@ module.exports = {
   startWatch,
   handleButton,
   handleImageModal,
-  clearOpen,
   addPending,
   publishedPayload,
   isImageAttachment,
