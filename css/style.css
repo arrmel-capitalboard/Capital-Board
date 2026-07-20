@@ -1871,6 +1871,13 @@ tr.drag-over td { border-top: 2px solid var(--accent) !important; }
 .sidebar.collapsed .sidebar-logo-icon { margin: 0; }
 .sidebar.collapsed .user-card { justify-content: center; padding: 8px; }
 .sidebar.collapsed .btn-logout { padding: 6px; }
+/* Bas de sidebar : passe en icônes seules quand replié */
+.sidebar.collapsed .sidebar-user { padding: 8px; }
+.sidebar.collapsed .sidebar-legal-links { display: none; }
+.sidebar.collapsed .sidebar-home-btn span,
+.sidebar.collapsed #sidebar-hide-label { display: none; }
+.sidebar.collapsed .sidebar-home-btn { justify-content: center; padding: 8px 0; gap: 0; }
+.sidebar.collapsed #sidebar-hide-btn { padding: 8px 0; gap: 0; }
 .sidebar-toggle {
   position: absolute; top: 16px; right: -13px;
   width: 26px; height: 26px; border-radius: 50%;
@@ -2071,20 +2078,6 @@ body.sb-collapsed .main { margin-left: 58px; }
 .mobile-detail-row { display: none !important; }
 .btn-voir-plus { display: none !important; }
 .show-mobile-inline { display: none !important; }
-
-/* 769–900px : bascule en chrome mobile (sidebar desktop → header + bottom nav)
-   pour éviter la zone desktop trop serrée. Placé AVANT le bloc ≤768 pour que les
-   réglages fins téléphone (padding, grilles, ticker…) gardent la priorité. */
-@media (max-width: 900px) {
-  .sidebar { display: none !important; }
-  .sidebar-toggle { display: none !important; }
-  .mobile-header { display: flex; }
-  .mobile-nav { display: block; }
-  .main {
-    margin-left: 0 !important;
-    padding: 72px 24px calc(90px + env(safe-area-inset-bottom, 0px));
-  }
-}
 
 @media (max-width: 768px) {
   /* Masquer sidebar desktop */
