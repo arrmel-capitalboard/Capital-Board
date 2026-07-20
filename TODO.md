@@ -54,25 +54,22 @@ Lien « Mot de passe oublié ? » sur l'écran de connexion → vue `forgot-view
 
 ---
 
-## 3. Changement de nom d'utilisateur + délai
+## 3. Changement de nom d'utilisateur + délai — FAIT
 
-**État** — Le username est fixé une seule fois, au setup (`name-setup-modal`,
-js/app.js:1475) : regex `^[a-z0-9._-]{3,20}$` + `_isUsernameTaken()`. Aucun moyen
-de le changer ensuite.
+Section « Nom d'utilisateur » dans le profil → route Worker `/change-username`
+(autorité serveur, admin SDK).
 
-**À faire** — Permettre le changement depuis le profil, avec un délai entre deux
-changements.
+- Format `^[a-z0-9._-]{3,20}$` + blocklist « capitalboard ».
+- **Unicité serveur** : scan `roles` (comptes existants) + réservation atomique
+  `usernames/{nom}` en création seule (409 si concurrent), libère l'ancien.
+- **Cooldown 30 j** via `roles/{uid}.usernameChangedAt`. La création initiale ne
+  le pose pas → 1er changement libre, ensuite compteur 30 j. Le champ profil se
+  verrouille et affiche les jours restants pendant le cooldown.
+- Règles Firestore : collection `usernames/{name}` création seule ajoutée
+  (déployée en console le 2026-07-21).
 
-**À décider :**
-- Durée du cooldown (30 jours ?) et message quand il est actif.
-- Garde-t-on un historique des anciens pseudos ? (utile en modération)
-
-**Point technique important** — l'unicité n'est vérifiée que **côté client**, et les
-règles Firestore laissent chaque utilisateur écrire son propre `username`. Deux
-personnes peuvent donc prendre le même pseudo, ou usurper celui d'un autre. La
-correction propre est une collection `usernames/{username}` en création seule, qui
-sert aussi à stocker la date du dernier changement pour le cooldown. À traiter en
-même temps que ce chantier, sinon on empile de la dette.
+**Non retenu** — historique des anciens pseudos (pas jugé utile au lancement ;
+à rajouter si besoin modération).
 
 ---
 
