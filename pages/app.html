@@ -86,6 +86,9 @@
       <label class="form-label">Mot de passe</label>
       <input type="password" class="form-input" id="input-pass" placeholder="••••••••" autocomplete="current-password">
     </div>
+    <div style="text-align:right;margin:-6px 0 14px">
+      <span onclick="showForgotView()" style="color:var(--accent);cursor:pointer;font-size:12px;font-weight:600">Mot de passe oublié ?</span>
+    </div>
     <div class="cf-turnstile" data-sitekey="0x4AAAAAADn5LAr4t8vCvyjS" data-theme="dark" id="turnstile-login" data-callback="onTurnstileLoginSuccess" data-error-callback="onTurnstileLoginError" style="margin-bottom:12px"></div>
     <button class="btn-login" id="btn-login-submit" onclick="doLogin()">Connexion</button>
     <div style="display:flex;align-items:center;gap:12px;margin:16px 0;color:var(--text3);font-size:11px;font-weight:600">
@@ -98,6 +101,35 @@
     <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--text3)">
       Pas encore de compte ?
       <span onclick="showRegisterView()" style="color:var(--accent);cursor:pointer;font-weight:600;margin-left:4px">Créer un compte</span>
+    </div>
+  </div>
+
+  <!-- VUE MOT DE PASSE OUBLIÉ -->
+  <div class="login-card" id="forgot-view" style="display:none">
+    <div class="login-logo">
+      <div class="logo-icon"><img src="assets/logo.png" alt="logo" style="width:100%;height:100%;object-fit:contain;border-radius:inherit"></div>
+      <div class="login-title">Mot de passe oublié</div>
+      <div class="login-subtitle">Réinitialisation par email</div>
+    </div>
+    <div id="forgot-form">
+      <p style="font-size:13px;color:var(--text2);line-height:1.6;margin-bottom:18px;text-align:center">Saisissez l'adresse email de votre compte. Nous vous enverrons un lien pour définir un nouveau mot de passe.</p>
+      <div class="login-error" id="forgot-error" style="display:none"></div>
+      <div class="form-group">
+        <label class="form-label">Email</label>
+        <input type="email" class="form-input" id="forgot-email" placeholder="vous@exemple.com" autocomplete="email" onkeydown="if(event.key==='Enter')doForgotPassword()">
+      </div>
+      <button class="btn-login" id="btn-forgot-submit" onclick="doForgotPassword()">Envoyer le lien</button>
+    </div>
+    <div id="forgot-success" style="display:none;text-align:center">
+      <div style="width:56px;height:56px;margin:8px auto 16px;border-radius:50%;background:rgba(34,217,138,0.12);color:var(--positive,#22d98a);display:flex;align-items:center;justify-content:center">
+        <svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <p style="font-size:14px;color:var(--text);line-height:1.6;margin-bottom:10px;font-weight:600">Email envoyé</p>
+      <p style="font-size:13px;color:var(--text2);line-height:1.6">Si un compte est associé à cette adresse, un lien de réinitialisation vient d'être envoyé. Pensez à vérifier vos spams.</p>
+      <p style="font-size:12px;color:var(--text3);line-height:1.6;margin-top:12px">Vous vous connectez habituellement avec Google ? Utilisez plutôt le bouton « Continuer avec Google » sur l'écran de connexion — aucun mot de passe n'est associé à ce compte.</p>
+    </div>
+    <div style="text-align:center;margin-top:18px;font-size:12px;color:var(--text3)">
+      <span onclick="showLoginView()" style="color:var(--accent);cursor:pointer;font-weight:600">← Retour à la connexion</span>
     </div>
   </div>
 
@@ -1728,7 +1760,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260720p"></script>
+<script src="js/app.js?v=20260721a"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

@@ -54,7 +54,7 @@ const IC = {
 // ─── FIREBASE AUTH ────────────────────────────────────
 // ─── FIREBASE (chargement dynamique, compatible sans bundler) ─────
 let fbApp, fbAuth, db,
-    createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification,
+    createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification, sendPasswordResetEmail,
     signOut, onAuthStateChanged, GoogleAuthProvider, signInWithPopup,
     signInWithRedirect, getRedirectResult,
     updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser,
@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260720p';
+const APP_VERSION = '20260721a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -153,6 +153,7 @@ _splashWatchdog = setTimeout(() => {
   createUserWithEmailAndPassword = auth.createUserWithEmailAndPassword;
   signInWithEmailAndPassword     = auth.signInWithEmailAndPassword;
   sendEmailVerification          = auth.sendEmailVerification;
+  sendPasswordResetEmail         = auth.sendPasswordResetEmail;
   signOut                        = auth.signOut;
   onAuthStateChanged             = auth.onAuthStateChanged;
   GoogleAuthProvider             = auth.GoogleAuthProvider;
@@ -690,8 +691,70 @@ window.showLoginView = function() {
   const dv = document.getElementById('device-verify-view'); if (dv) dv.style.display = 'none';
   const pv = document.getElementById('pin-lock-view'); if (pv) pv.style.display = 'none';
   const ps = document.getElementById('pin-setup-view'); if (ps) ps.style.display = 'none';
+  const fv = document.getElementById('forgot-view'); if (fv) fv.style.display = 'none';
   document.getElementById('login-error').textContent = '';
   stopVerifyPolling();
+};
+window.showForgotView = function() {
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('register-view').style.display = 'none';
+  const vv = document.getElementById('verify-view'); if (vv) vv.style.display = 'none';
+  const dv = document.getElementById('device-verify-view'); if (dv) dv.style.display = 'none';
+  const pv = document.getElementById('pin-lock-view'); if (pv) pv.style.display = 'none';
+  const ps = document.getElementById('pin-setup-view'); if (ps) ps.style.display = 'none';
+  document.getElementById('forgot-view').style.display = 'block';
+  const err = document.getElementById('forgot-error'); if (err) { err.textContent = ''; err.style.display = 'none'; }
+  const ok = document.getElementById('forgot-success'); if (ok) ok.style.display = 'none';
+  const form = document.getElementById('forgot-form'); if (form) form.style.display = 'block';
+  // Pré-remplit avec l'email déjà saisi sur l'écran de connexion
+  const le = document.getElementById('input-email');
+  const fe = document.getElementById('forgot-email');
+  if (le && fe && le.value.trim()) fe.value = le.value.trim();
+  stopVerifyPolling();
+};
+
+// ─── MOT DE PASSE OUBLIÉ ─────────────────────────────
+let _fpLastSent = 0;
+window.doForgotPassword = async function() {
+  const email = (document.getElementById('forgot-email').value || '').trim();
+  const err   = document.getElementById('forgot-error');
+  err.textContent = ''; err.style.display = 'none';
+  if (!email || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email)) {
+    err.textContent = 'Veuillez saisir une adresse email valide.';
+    err.style.display = 'block';
+    return;
+  }
+  const now = Date.now();
+  if (now - _fpLastSent < 60000) {
+    const wait = Math.ceil((60000 - (now - _fpLastSent)) / 1000);
+    err.textContent = `Patientez ${wait}s avant de renvoyer un email.`;
+    err.style.display = 'block';
+    return;
+  }
+  setLoading('btn-forgot-submit', true);
+  try {
+    await sendPasswordResetEmail(fbAuth, email, {
+      url: window.location.origin + window.location.pathname,
+      handleCodeInApp: false
+    });
+    _fpLastSent = now;
+  } catch(e) {
+    // On ne révèle jamais si l'adresse existe : seuls les vrais problèmes
+    // techniques (réseau, quota) sont remontés. user-not-found est ignoré.
+    if (e && (e.code === 'auth/too-many-requests')) {
+      err.textContent = 'Trop de tentatives. Réessayez plus tard.';
+      err.style.display = 'block';
+      setLoading('btn-forgot-submit', false);
+      return;
+    }
+    // auth/user-not-found, auth/invalid-email déjà filtré → on affiche quand même le succès générique
+    console.warn('[forgot] envoi:', e && e.code);
+  }
+  setLoading('btn-forgot-submit', false);
+  // Message identique que l'adresse existe ou non
+  document.getElementById('forgot-form').style.display = 'none';
+  const ok = document.getElementById('forgot-success');
+  ok.style.display = 'block';
 };
 window.showRegisterView = async function() {
   // Inscriptions fermées → on ne montre même pas le formulaire
@@ -711,6 +774,7 @@ window.showRegisterView = async function() {
   const dv = document.getElementById('device-verify-view'); if (dv) dv.style.display = 'none';
   const pv = document.getElementById('pin-lock-view'); if (pv) pv.style.display = 'none';
   const ps = document.getElementById('pin-setup-view'); if (ps) ps.style.display = 'none';
+  const fv = document.getElementById('forgot-view'); if (fv) fv.style.display = 'none';
   document.getElementById('register-error').textContent = '';
   stopVerifyPolling();
 };
@@ -724,6 +788,7 @@ function showVerifyView(email) {
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-view').style.display = 'none';
   document.getElementById('register-view').style.display = 'none';
+  const fv = document.getElementById('forgot-view'); if (fv) fv.style.display = 'none';
   const view = document.getElementById('verify-view');
   if (view) view.style.display = 'block';
   const eDisp = document.getElementById('verify-email-display');
