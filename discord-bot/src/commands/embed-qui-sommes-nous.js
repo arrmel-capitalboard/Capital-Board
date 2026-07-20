@@ -25,7 +25,7 @@ module.exports = {
       .setColor(config.brandColor)
       .setTitle(`${E.ARROW}  Qui sommes-nous ?`)
       .setDescription(
-        "**Capital Board** est une plateforme patrimoniale française construite par Armel Plantier, passionné d'investissement et de cybersécurité.\n\n" +
+        "**Capital Board** est une plateforme patrimoniale française construite par Armel, passionné d'investissement et de cybersécurité.\n\n" +
         "Aucun outil existant ne réunissait ce dont nous avions besoin : **suivi de PEA** précis, analyse **IA**, **sans publicité**, **sans agrégation bancaire** et **sans abonnement**, totalement **gratuit**. Alors on l'a construit.",
       )
       .addFields(
