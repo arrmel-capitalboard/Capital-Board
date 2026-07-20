@@ -243,7 +243,17 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   margin-top: 1px; letter-spacing: 1px;
 }
 
-.sidebar-nav { flex: 1; padding: 14px 12px; }
+/* min-height:0 : sans lui un flex item refuse de passer sous la taille de son
+   contenu et overflow-y ne s'active jamais. */
+.sidebar-nav {
+  flex: 1; min-height: 0; padding: 14px 12px;
+  overflow-y: auto; overscroll-behavior: contain;
+  scrollbar-width: thin; scrollbar-color: var(--s3) transparent;
+}
+.sidebar-nav::-webkit-scrollbar { width: 6px; }
+.sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+.sidebar-nav::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 3px; }
+.sidebar-nav::-webkit-scrollbar-thumb:hover { background: var(--border2); }
 .nav-section-label {
   font-size: 9px; font-weight: 600; color: var(--text3);
   text-transform: uppercase; letter-spacing: 2.5px;
