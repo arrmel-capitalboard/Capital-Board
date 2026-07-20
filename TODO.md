@@ -33,23 +33,24 @@ rôle aujourd'hui, à généraliser le jour où le statut existe.
 
 ---
 
-## 2. Mot de passe oublié
+## 2. Mot de passe oublié — FAIT
 
-**État** — La moitié aval existe déjà : `pages/auth-action.html` gère
-`verifyPasswordResetCode` et `confirmPasswordReset` (le clic sur le lien reçu par mail).
-Il n'y a **aucun appel à `sendPasswordResetEmail`** dans `js/app.js` — le lien qui
-déclenche l'envoi n'existe nulle part.
+Lien « Mot de passe oublié ? » sur l'écran de connexion → vue `forgot-view` →
+`POST /forgot-password` sur le Worker.
 
-**À faire** — Lien « Mot de passe oublié ? » sur l'écran de connexion → saisie de
-l'email → `sendPasswordResetEmail` → écran de confirmation.
+- L'envoi ne passe **plus** par `sendPasswordResetEmail` (client Firebase). Le
+  Worker génère le lien via l'endpoint admin `accounts:sendOobCode`
+  (`returnOobLink`), extrait le `oobCode` et reconstruit un lien vers
+  `auth-action.html` (contrôle total du domaine, contourne la config console).
+- Email FR brandé envoyé via **Resend** depuis `noreply@capitalboard.fr` (fini
+  l'expéditeur `firebaseapp.com` en anglais qui tombait en spam).
+- Réponse toujours générique (anti-énumération : `EMAIL_NOT_FOUND` avalé),
+  Turnstile requis, throttle 60 s côté client, message pour comptes Google-only.
+- La moitié aval (`auth-action.html` : `verifyPasswordResetCode` +
+  `confirmPasswordReset`) existait déjà.
 
-**Points d'attention :**
-- Ne jamais révéler si l'email existe (message identique dans les deux cas).
-- Comptes Google-only : pas de mot de passe à réinitialiser, prévoir le message.
-- Vérifier le template d'email Firebase et que l'URL d'action pointe bien vers
-  `auth-action.html`.
-
-Chantier court — la partie compliquée est déjà écrite.
+**Reporté (hors code)** — avatar expéditeur sur Gmail = BIMI + VMC payant
+(~1000 $/an), abandonné. BIMI gratuit possible plus tard pour les autres clients.
 
 ---
 
@@ -206,8 +207,8 @@ Effort élevé — c'est une feature produit à part entière, pas une intégrat
 
 ## Ordre suggéré
 
-1. **Mot de passe oublié** (2) — court, la moitié est faite, et c'est un manque
-   fonctionnel visible pour un utilisateur bloqué.
+1. ~~**Mot de passe oublié** (2)~~ — FAIT : lien envoyé par le Worker via Resend
+   (email FR brandé, hors spam), voir §2.
 2. ~~**Annonces produit Discord** (7.2)~~ — FAIT : file de validation `/nouveaute` +
    envoi hebdo (lundi 18h), voir 7.2.
 3. **Username + délai** (3) — à faire avec la correction d'unicité, sinon la dette grossit.
