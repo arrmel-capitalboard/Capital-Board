@@ -1,9 +1,9 @@
 'use strict';
 
 // /nouveaute — ajoute manuellement une nouveauté à la file de validation
-// (pour ce qui n'est pas capté par un commit feat), avec image optionnelle.
-// Elle suit ensuite le même circuit : validation, puis publication le lundi
-// si validée. Réservée au rôle fondateur.
+// (pour ce qui n'est pas capté par un commit feat). Elle suit ensuite le même
+// circuit : message de validation (où l'on peut joindre une image via le
+// bouton 🖼️), puis publication le lundi si validée. Réservée au fondateur.
 
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const firebase = require('../firebase');
@@ -16,7 +16,6 @@ module.exports = {
     .setName('nouveaute')
     .setDescription('Ajoute une nouveauté à la file de validation.')
     .addStringOption((o) => o.setName('texte').setDescription('La nouveauté, telle qu\'elle sera affichée aux membres').setRequired(true))
-    .addAttachmentOption((o) => o.setName('image').setDescription('Image à joindre (optionnel)').setRequired(false))
     .setDMPermission(false),
 
   async execute(interaction) {
@@ -29,22 +28,8 @@ module.exports = {
       return;
     }
 
-    const text = interaction.options.getString('texte');
-    const image = interaction.options.getAttachment('image');
-    if (image && !newsqueue.isImageAttachment(image)) {
-      await interaction.reply({ content: 'Le fichier joint n\'est pas une image.', flags: MessageFlags.Ephemeral });
-      return;
-    }
-
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-
-    const photoRefs = image ? [await newsqueue.rehost(interaction.client, image.url, text)] : [];
-    await newsqueue.addPending(text, { source: 'manuel', photoRefs });
-
-    await interaction.editReply(
-      image
-        ? 'Nouveauté (avec image) ajoutée à la file. Un message de validation va apparaître.'
-        : 'Nouveauté ajoutée à la file. Un message de validation va apparaître.',
-    );
+    await newsqueue.addPending(interaction.options.getString('texte'), { source: 'manuel' });
+    await interaction.editReply('Nouveauté ajoutée. Un message de validation va apparaître — utilisez 🖼️ pour joindre une image.');
   },
 };

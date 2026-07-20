@@ -40,7 +40,7 @@ async function lockMessage(client, data) {
   try {
     const channel = await client.channels.fetch(data.channelId);
     const msg = await channel.messages.fetch(data.messageId);
-    await msg.edit(newsqueue.publishedPayload(data.text));
+    await msg.edit(newsqueue.publishedPayload(data.text, data.imageName || null));
   } catch (e) {
     console.error('[newsweekly] verrouillage message :', e.message);
   }

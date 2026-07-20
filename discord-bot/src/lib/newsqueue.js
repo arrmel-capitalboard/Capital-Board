@@ -22,7 +22,7 @@
 
 const {
   EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags,
-  ModalBuilder, LabelBuilder, FileUploadBuilder,
+  ModalBuilder, LabelBuilder, FileUploadBuilder, AttachmentBuilder,
 } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
 
@@ -36,6 +36,17 @@ const col = () => getDb().collection(COL);
 function isImageAttachment(att) {
   if (att.contentType && att.contentType.startsWith('image/')) return true;
   return /\.(png|jpe?g|gif|webp)$/i.test(att.name || '');
+}
+
+/** Extension image d'une pièce jointe (défaut jpg). */
+function imageExt(att) {
+  const m = (att.name || '').match(/\.(png|jpe?g|gif|webp)$/i);
+  if (m) return m[1].toLowerCase().replace('jpeg', 'jpg');
+  const ct = att.contentType || '';
+  if (ct.includes('gif')) return 'gif';
+  if (ct.includes('png')) return 'png';
+  if (ct.includes('webp')) return 'webp';
+  return 'jpg';
 }
 
 /** Ajoute une nouveauté à la file. Retourne l'id du doc créé. */
@@ -54,7 +65,7 @@ async function addPending(text, { source = 'manuel', sha = null, photoRefs = [] 
 }
 
 /** Message de validation, reflétant le statut courant. */
-function validationPayload(id, text, status = 'pending', decidedBy = null, hasImage = false) {
+function validationPayload(id, text, status = 'pending', decidedBy = null, imageName = null) {
   const approved = status === 'approved';
   const rejected = status === 'rejected';
 
@@ -64,35 +75,36 @@ function validationPayload(id, text, status = 'pending', decidedBy = null, hasIm
     .setDescription(text)
     .setFooter({
       text: status === 'pending'
-        ? 'Publiée lundi 18h si validée. Image : /nouveaute-image'
+        ? 'Publiée lundi 18h si validée.'
         : 'Changement d\'avis possible jusqu\'à la publication.',
     })
     .setTimestamp();
 
+  if (imageName) embed.setImage(`attachment://${imageName}`);
   if (decidedBy) embed.addFields({ name: 'Décision', value: `<@${decidedBy}>`, inline: true });
-  if (hasImage) embed.addFields({ name: 'Image', value: '🖼️ jointe', inline: true });
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`nv:ok:${id}`).setLabel('Valider').setStyle(approved ? ButtonStyle.Success : ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`nv:no:${id}`).setLabel('Rejeter').setStyle(rejected ? ButtonStyle.Danger : ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId(`nv:img:${id}`).setLabel(hasImage ? 'Changer l\'image' : 'Ajouter une image').setStyle(ButtonStyle.Secondary).setEmoji('🖼️'),
+    new ButtonBuilder().setCustomId(`nv:img:${id}`).setLabel(imageName ? 'Changer l\'image' : 'Ajouter une image').setStyle(ButtonStyle.Secondary).setEmoji('🖼️'),
   );
   return { embeds: [embed], components: [row] };
 }
 
 /** Payload depuis un doc Firestore. */
 function payloadFromDoc(id, data) {
-  return validationPayload(id, data.text, data.status || 'pending', data.decidedBy || null, Boolean(data.photoRefs?.length));
+  return validationPayload(id, data.text, data.status || 'pending', data.decidedBy || null, data.imageName || null);
 }
 
-/** Message verrouillé après publication (plus de boutons). */
-function publishedPayload(text) {
+/** Message verrouillé après publication (plus de boutons). L'image reste jointe. */
+function publishedPayload(text, imageName = null) {
   const embed = new EmbedBuilder()
     .setColor(0x16a34a)
     .setTitle('📢 Publiée aux membres')
     .setDescription(text)
     .setFooter({ text: 'Nouveauté envoyée dans le salon communautaire.' })
     .setTimestamp();
+  if (imageName) embed.setImage(`attachment://${imageName}`);
   return { embeds: [embed], components: [] };
 }
 
@@ -207,63 +219,31 @@ async function handleImageModal(interaction) {
     return;
   }
 
+  const data = snap.data();
+  if (!data.messageId || !data.channelId) {
+    await interaction.reply({ content: 'Message de validation pas encore prêt, réessayez dans un instant.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
   await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
-  const channel = await interaction.client.channels.fetch(VALIDATION_CHANNEL);
-  const msg = await channel.send({
-    content: `🖼️ ${snap.data().text}`.slice(0, 200),
-    files: images.map((a) => a.url),
-  });
-  await ref.update({ photoRefs: [{ msgId: msg.id, channelId: channel.id }] });
+  // Joint les images directement sur le message de validation → preview dans l'embed
+  // et URLs fraîches durables (l'attachment vit sur ce message).
+  const built = images.map((a, i) => new AttachmentBuilder(a.url, { name: `img${i}.${imageExt(a)}` }));
+  const imageName = built[0].name;
 
-  const data = (await ref.get()).data();
-  if (data.messageId && data.channelId) {
-    try {
-      const ch = await interaction.client.channels.fetch(data.channelId);
-      const vm = await ch.messages.fetch(data.messageId);
-      await vm.edit(payloadFromDoc(id, data));
-    } catch (e) {
-      console.error('[newsqueue] refresh validation msg :', e.message);
-    }
+  try {
+    const ch = await interaction.client.channels.fetch(data.channelId);
+    const vm = await ch.messages.fetch(data.messageId);
+    await vm.edit({ ...payloadFromDoc(id, { ...data, imageName }), files: built, attachments: [] });
+  } catch (e) {
+    console.error('[newsqueue] edit message validation :', e.message);
+    await interaction.editReply('Erreur lors de l\'ajout de l\'image.');
+    return;
   }
 
+  await ref.update({ imageName, photoRefs: [{ msgId: data.messageId, channelId: data.channelId }] });
   await interaction.editReply(`${images.length} image(s) jointe(s).`);
-}
-
-/** Ré-héberge une image dans le salon validation (URLs fraîches durables). */
-async function rehost(client, url, text) {
-  const channel = await client.channels.fetch(VALIDATION_CHANNEL);
-  const msg = await channel.send({ content: `🖼️ ${text}`.slice(0, 200), files: [url] });
-  return { msgId: msg.id, channelId: channel.id };
-}
-
-/** Nouveautés encore modifiables (pour l'autocomplétion de /nouveaute-image). */
-async function listOpen() {
-  const snap = await col().where('status', 'in', ['pending', 'approved']).get();
-  return snap.docs.filter((d) => !d.data().sentAt).map((d) => ({ id: d.id, text: d.data().text }));
-}
-
-/** Joint (ou remplace) l'image d'une nouveauté existante. */
-async function attachImage(client, id, url, text) {
-  const ref = col().doc(id);
-  const snap = await ref.get();
-  if (!snap.exists) return { ok: false, reason: 'Nouveauté introuvable.' };
-  if (snap.data().sentAt) return { ok: false, reason: 'Déjà publiée — non modifiable.' };
-
-  const photoRef = await rehost(client, url, text || snap.data().text);
-  await ref.update({ photoRefs: [photoRef] });
-
-  const data = (await ref.get()).data();
-  if (data.messageId && data.channelId) {
-    try {
-      const ch = await client.channels.fetch(data.channelId);
-      const vm = await ch.messages.fetch(data.messageId);
-      await vm.edit(payloadFromDoc(id, data));
-    } catch (e) {
-      console.error('[newsqueue] refresh validation msg :', e.message);
-    }
-  }
-  return { ok: true };
 }
 
 function startWatch(client) {
@@ -279,9 +259,6 @@ module.exports = {
   handleButton,
   handleImageModal,
   addPending,
-  rehost,
-  attachImage,
-  listOpen,
   publishedPayload,
   isImageAttachment,
   isNewsButton: (id) => id.startsWith('nv:'),
