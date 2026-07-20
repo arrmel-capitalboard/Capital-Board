@@ -214,7 +214,8 @@ Effort élevé — c'est une feature produit à part entière, pas une intégrat
    d'une ligne, à faire tout de suite.
 2. **Mot de passe oublié** (2) — court, la moitié est faite, et c'est un manque
    fonctionnel visible pour un utilisateur bloqué.
-3. **Annonces produit Discord** (7.2) — court, `announce.js` existe déjà.
+3. ~~**Annonces produit Discord** (7.2)~~ — FAIT : file de validation `/nouveaute` +
+   envoi hebdo (lundi 18h), voir 7.2.
 4. **Username + délai** (3) — à faire avec la correction d'unicité, sinon la dette grossit.
 5. **Screenshots landing** (5) — sans dépendance technique, gain marketing immédiat.
 6. **Alertes en DM Discord** (7.1) — demande l'index inverse `uid → discordId`.
@@ -225,5 +226,5 @@ Effort élevé — c'est une feature produit à part entière, pas une intégrat
     rende l'agrégat réellement anonyme.
 11. **Coin actualité** (4) — gros chantier, seul à impliquer un coût récurrent
     potentiel (API). À cadrer avant de s'engager.
-12. **Feature Idées** (7.5) — la plus lourde. En attendant, retirer le bloc `ideas`
-    des règles Firestore puisqu'il est ouvert et inutilisé.
+12. ~~**Feature Idées — bloc `ideas` à retirer**~~ — sans objet : aucun bloc `ideas`
+    dans les règles Firestore actuelles. La feature Idées reste à faire si voulue.
