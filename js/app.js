@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260720n';
+const APP_VERSION = '20260720p';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -9981,7 +9981,19 @@ function initChartExpandButtons() {
 function openDivModal() {
   const pf  = getPortfolio(currentUser);
   const sel = document.getElementById('div-modal-ticker');
-  if (sel) sel.innerHTML = pf.map(r => `<option value="${r.ticker}">${r.name||r.ticker}</option>`).join('');
+  // Positions actuelles + tickers seulement présents dans l'historique : un
+  // dividende peut concerner une ligne déjà revendue, que l'auto-détection
+  // ne couvre plus.
+  const opts = pf.map(r => ({ ticker: r.ticker, name: r.name || r.ticker }));
+  const seen = new Set(opts.map(o => o.ticker));
+  (getTransactions(currentUser) || []).forEach(t => {
+    if (!t.ticker || seen.has(t.ticker)) return;
+    seen.add(t.ticker);
+    opts.push({ ticker: t.ticker, name: (t.name || t.ticker) + ' (soldée)' });
+  });
+  if (sel) sel.innerHTML = opts.length
+    ? opts.map(o => `<option value="${o.ticker}">${o.name}</option>`).join('')
+    : '<option value="">Aucune action enregistrée</option>';
   document.getElementById('div-modal-date').value   = new Date().toISOString().slice(0,10);
   document.getElementById('div-modal-amount').value = '';
   document.getElementById('div-modal-overlay').classList.add('open');
@@ -9995,16 +10007,22 @@ function confirmDividende() {
   if (!ticker||!amount||amount<=0||!date) { alert('Veuillez remplir tous les champs.'); return; }
   const pf  = getPortfolio(currentUser);
   const row = pf.find(r => r.ticker === ticker);
-  const qty = row ? row.qty : 1;
+  // Quantité détenue le jour du versement, pas la quantité actuelle : sinon le
+  // montant par action est faussé dès que la position a bougé depuis.
+  const qty = getQtyAtDate(getTransactions(currentUser) || [], ticker, date)
+              || (row ? row.qty : 0) || 1;
   // Ressaisie manuelle d'un dividende précédemment supprimé : on lève la
   // pierre tombale, sinon l'historique le masquerait à nouveau.
   const ign = getDivIgnored(currentUser);
   if (ign.includes(_divKey(ticker, date))) {
     saveDivIgnored(currentUser, ign.filter(k => k !== _divKey(ticker, date)));
   }
-  logTransaction(currentUser, { type:'dividend', ticker, name: row?(row.name||ticker):ticker, qty, price: parseFloat((amount/qty).toFixed(6)), date });
+  const past = (getTransactions(currentUser) || []).find(t => t.ticker === ticker && t.name);
+  const name = (row && (row.name || ticker)) || (past && past.name) || ticker;
+  logTransaction(currentUser, { type:'dividend', ticker, name, qty, price: parseFloat((amount/qty).toFixed(6)), date });
   closeDivModal();
   initDividendes();
+  try { renderActivite(); } catch (_) {}
 }
 
 const _origShowPageAnalytique = showPage;
