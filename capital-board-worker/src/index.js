@@ -377,6 +377,21 @@ async function generateResetLink(email, env) {
   return `${base}/auth-action.html?mode=resetPassword&oobCode=${encodeURIComponent(oobCode)}`;
 }
 
+// ── Nom d'affichage (Firebase Auth, via Admin) ──────────────────────────────
+async function setAuthDisplayName(uid, displayName, env) {
+  const token = await getAccessToken(env);
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:update`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ localId: uid, displayName }),
+    },
+  );
+  if (!res.ok) throw new Error(`accounts:update ${res.status}: ${await res.text()}`);
+  return res.json();
+}
+
 // ── Resend sender ─────────────────────────────────────────────────────────
 
 async function sendEmail(to, subject, html, env) {
@@ -744,6 +759,24 @@ export default {
           console.warn('[forgot-password]', e.message);
         }
         return json({ ok: true });
+      }
+
+      // ── POST /change-displayname ────────────────────────────────────────
+      // Change le nom d'affichage (Firebase Auth). Autorité serveur : blocklist
+      // « capitalboard » (séparateurs retirés) appliquée côté Worker, impossible
+      // à contourner via l'UI. L'écriture passe par l'Admin SDK.
+      if (url.pathname === '/change-displayname' && request.method === 'POST') {
+        const { idToken, name } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        const nm = (name || '').trim();
+        if (!nm || nm.length > 40) {
+          return json({ ok: false, error: 'Nom invalide (1–40 caractères).' }, 400);
+        }
+        if (/capitalboard/i.test(nm.replace(/[\s._-]/g, ''))) {
+          return json({ ok: false, error: "Ce nom d'affichage n'est pas autorisé." }, 400);
+        }
+        await setAuthDisplayName(user.localId, nm, env);
+        return json({ ok: true, name: nm });
       }
 
       // ── POST /change-username ───────────────────────────────────────────

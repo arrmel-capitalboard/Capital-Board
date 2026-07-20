@@ -2072,6 +2072,20 @@ body.sb-collapsed .main { margin-left: 58px; }
 .btn-voir-plus { display: none !important; }
 .show-mobile-inline { display: none !important; }
 
+/* 769–900px : bascule en chrome mobile (sidebar desktop → header + bottom nav)
+   pour éviter la zone desktop trop serrée. Placé AVANT le bloc ≤768 pour que les
+   réglages fins téléphone (padding, grilles, ticker…) gardent la priorité. */
+@media (max-width: 900px) {
+  .sidebar { display: none !important; }
+  .sidebar-toggle { display: none !important; }
+  .mobile-header { display: flex; }
+  .mobile-nav { display: block; }
+  .main {
+    margin-left: 0 !important;
+    padding: 72px 24px calc(90px + env(safe-area-inset-bottom, 0px));
+  }
+}
+
 @media (max-width: 768px) {
   /* Masquer sidebar desktop */
   .sidebar { display: none !important; }

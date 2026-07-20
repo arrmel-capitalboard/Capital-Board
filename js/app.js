@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721e';
+const APP_VERSION = '20260721f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2409,17 +2409,29 @@ window.saveDisplayName = async function() {
   const name = document.getElementById('profil-name-input').value.trim();
   const status = document.getElementById('profil-name-status');
   if (!name) { status.textContent = 'Le nom ne peut pas être vide.'; status.style.color = 'var(--negative)'; return; }
+  // Pré-check client (UX) ; le refus autoritaire est fait côté Worker.
   if (/capitalboard/i.test(name.replace(/[\s._-]/g, ''))) { status.textContent = "Ce nom d'affichage n'est pas autorisé."; status.style.color = 'var(--negative)'; return; }
+  status.textContent = 'Enregistrement…'; status.style.color = 'var(--text3)';
   try {
-    await updateProfile(user, { displayName: name });
-    // Update sidebar (l'avatar ne dépend plus du nom)
-    document.getElementById('user-name-display').textContent = name;
-    document.getElementById('profil-display-name').textContent = name;
+    const idToken = await user.getIdToken();
+    const res = await fetch(`${WORKER_URL}/change-displayname`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, name }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.ok) { status.textContent = d.error || 'Échec de la mise à jour.'; status.style.color = 'var(--negative)'; return; }
+    // Rafraîchit le profil Auth local (le Worker a écrit côté serveur)
+    try { await user.reload(); } catch(_) {}
+    const applied = d.name || name;
+    document.getElementById('user-name-display').textContent = applied;
+    document.getElementById('profil-display-name').textContent = applied;
+    document.getElementById('profil-name-input').value = applied;
     status.textContent = '✓ Nom mis à jour !';
     status.style.color = 'var(--positive)';
     setTimeout(() => { status.textContent = ''; }, 3000);
   } catch(e) {
-    status.textContent = 'Erreur : ' + e.message;
+    status.textContent = 'Erreur réseau, réessayez.';
     status.style.color = 'var(--negative)';
   }
 };
