@@ -136,10 +136,6 @@ existantes (`/portefeuille`, `/dividendes`, `/watchlist`, `/price`) ne font que 
 Le Worker dispose déjà d'un pipeline de notifications (`sendFcm()`,
 `capital-board-worker/src/index.js:184`).
 
-**Bug à corriger d'abord** — Deux invitations Discord différentes coexistent :
-`communaute/index.html` pointe sur `discord.gg/p73QMm4xDm`, `DEFAULT_SOCIAL` dans
-`js/app.js:2846` sur `discord.gg/ZN9459TCTQ`. L'une des deux est probablement morte.
-
 ### 7.1 Alertes de prix en DM Discord
 
 Quand une alerte se déclenche, envoyer un DM en plus de la notification push.
@@ -210,21 +206,19 @@ Effort élevé — c'est une feature produit à part entière, pas une intégrat
 
 ## Ordre suggéré
 
-1. **Lien Discord incohérent** (7) — deux invitations différentes en prod, correction
-   d'une ligne, à faire tout de suite.
-2. **Mot de passe oublié** (2) — court, la moitié est faite, et c'est un manque
+1. **Mot de passe oublié** (2) — court, la moitié est faite, et c'est un manque
    fonctionnel visible pour un utilisateur bloqué.
-3. ~~**Annonces produit Discord** (7.2)~~ — FAIT : file de validation `/nouveaute` +
+2. ~~**Annonces produit Discord** (7.2)~~ — FAIT : file de validation `/nouveaute` +
    envoi hebdo (lundi 18h), voir 7.2.
-4. **Username + délai** (3) — à faire avec la correction d'unicité, sinon la dette grossit.
-5. **Screenshots landing** (5) — sans dépendance technique, gain marketing immédiat.
-6. **Alertes en DM Discord** (7.1) — demande l'index inverse `uid → discordId`.
-7. ~~**Permissions salon Discord** (1)~~ — code fait, reste la config du serveur Discord.
-8. **Widget Discord dans l'app** (7.4).
-9. **Animations** (6) — cosmétique, à faire quand le reste est stable.
-10. **Dividendes communauté** (7.3) — à repousser jusqu'à ce que la base d'utilisateurs
-    rende l'agrégat réellement anonyme.
-11. **Coin actualité** (4) — gros chantier, seul à impliquer un coût récurrent
+3. **Username + délai** (3) — à faire avec la correction d'unicité, sinon la dette grossit.
+4. **Screenshots landing** (5) — sans dépendance technique, gain marketing immédiat.
+5. **Alertes en DM Discord** (7.1) — demande l'index inverse `uid → discordId`.
+6. ~~**Permissions salon Discord** (1)~~ — code fait, reste la config du serveur Discord.
+7. **Widget Discord dans l'app** (7.4).
+8. **Animations** (6) — cosmétique, à faire quand le reste est stable.
+9. **Dividendes communauté** (7.3) — à repousser jusqu'à ce que la base d'utilisateurs
+   rende l'agrégat réellement anonyme.
+10. **Coin actualité** (4) — gros chantier, seul à impliquer un coût récurrent
     potentiel (API). À cadrer avant de s'engager.
-12. ~~**Feature Idées — bloc `ideas` à retirer**~~ — sans objet : aucun bloc `ideas`
+11. ~~**Feature Idées — bloc `ideas` à retirer**~~ — sans objet : aucun bloc `ideas`
     dans les règles Firestore actuelles. La feature Idées reste à faire si voulue.
