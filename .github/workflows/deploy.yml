@@ -35,3 +35,10 @@ jobs:
 
       - uses: actions/deploy-pages@v4
         id: deployment
+
+      # Publie une annonce Discord uniquement si le commit porte un trailer
+      # « Annonce: » (voir scripts/announce-deploy.js).
+      - name: Annonce Discord
+        env:
+          DISCORD_ANNOUNCE_WEBHOOK: ${{ secrets.DISCORD_ANNOUNCE_WEBHOOK }}
+        run: node scripts/announce-deploy.js
