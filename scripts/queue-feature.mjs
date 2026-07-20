@@ -29,14 +29,34 @@ function featureText(subject) {
   return t.charAt(0).toUpperCase() + t.slice(1);
 }
 
+/** Traduit EN→FR via l'endpoint gratuit Google translate (sans clé). En cas
+ *  d'échec réseau/format, on conserve le texte anglais (dégradé, pas bloquant :
+ *  le fondateur peut toujours le corriger via le bouton « Modifier le texte »). */
+async function translateToFr(text) {
+  try {
+    const url = 'https://translate.googleapis.com/translate_a/single'
+      + '?client=gtx&sl=en&tl=fr&dt=t&q=' + encodeURIComponent(text);
+    const res = await fetch(url);
+    if (!res.ok) throw new Error('http ' + res.status);
+    const data = await res.json();
+    const out = (data[0] || []).map((seg) => seg[0]).join('').trim();
+    return out || text;
+  } catch (e) {
+    console.warn(`[queue] traduction échouée (« ${text} »), texte EN conservé : ${e.message}`);
+    return text;
+  }
+}
+
 const event = JSON.parse(readFileSync(process.env.GITHUB_EVENT_PATH, 'utf8'));
 const commits = event.commits || [];
 
 const features = [];
 for (const c of commits) {
   const subject = (c.message || '').split('\n')[0];
-  const text = featureText(subject);
-  if (text) features.push({ text, sha: c.id });
+  const raw = featureText(subject);
+  if (!raw) continue;
+  const text = await translateToFr(raw);
+  features.push({ text, sha: c.id });
 }
 
 if (!features.length) {
