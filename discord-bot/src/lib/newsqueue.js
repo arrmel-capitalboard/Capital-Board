@@ -9,13 +9,14 @@
 //     status: 'pending'|'approved'|'rejected',
 //     createdAt, decidedAt, decidedBy, sentAt,
 //     messageId, channelId,     // message de validation Discord
+//     photoRefs: [{ msgId, channelId }], // messages portant les images jointes
 //   }
 //
 // Flux : un doc « pending » est créé (par le workflow à chaque commit feat,
-// ou par /nouveaute). Le bot écoute la collection, poste un message avec deux
-// boutons dans le salon validation, et enregistre le messageId. Le fondateur
-// clique ✅/❌ — et peut changer d'avis tant que la nouveauté n'a pas été
-// publiée. Le lundi, newsweekly.js publie les « approved » non envoyés et
+// ou par /nouveaute). Le bot poste un message avec trois boutons dans le salon
+// validation : Valider, Rejeter, et Ajouter/Changer l'image. Le fondateur peut
+// changer d'avis tant que la nouveauté n'a pas été publiée. Le lundi,
+// newsweekly.js publie les « approved » non envoyés (texte + photos) et
 // verrouille leur message de validation.
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
@@ -24,8 +25,15 @@ const { getDb, isConfigured } = require('../firebase');
 const VALIDATION_CHANNEL = '1528790209150324807';
 const FONDATEUR_ROLE     = '1512905140108001391';
 const COL = 'newsQueue';
+const COLLECT_MS = 60_000;
 
 const col = () => getDb().collection(COL);
+
+/** Une pièce jointe est-elle une image ? */
+function isImageAttachment(att) {
+  if (att.contentType && att.contentType.startsWith('image/')) return true;
+  return /\.(png|jpe?g|gif|webp)$/i.test(att.name || '');
+}
 
 /** Ajoute une nouveauté manuelle à la file (le watcher postera le message). */
 async function addPending(text, { source = 'manuel', sha = null } = {}) {
@@ -37,11 +45,12 @@ async function addPending(text, { source = 'manuel', sha = null } = {}) {
     createdAt: Date.now(),
     sentAt: null,
     messageId: null,
+    photoRefs: [],
   });
 }
 
 /** Message de validation, reflétant le statut courant. Boutons toujours cliquables. */
-function validationPayload(id, text, status = 'pending', decidedBy = null) {
+function validationPayload(id, text, status = 'pending', decidedBy = null, hasImage = false) {
   const approved = status === 'approved';
   const rejected = status === 'rejected';
 
@@ -51,12 +60,13 @@ function validationPayload(id, text, status = 'pending', decidedBy = null) {
     .setDescription(text)
     .setFooter({
       text: status === 'pending'
-        ? 'Publiée lundi 18h si validée. Répondez avec des images pour les joindre.'
-        : 'Changement d\'avis possible jusqu\'à la publication. Répondez avec des images pour les joindre.',
+        ? 'Publiée lundi 18h si validée.'
+        : 'Changement d\'avis possible jusqu\'à la publication.',
     })
     .setTimestamp();
 
   if (decidedBy) embed.addFields({ name: 'Décision', value: `<@${decidedBy}>`, inline: true });
+  if (hasImage) embed.addFields({ name: 'Image', value: '🖼️ jointe', inline: true });
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder()
@@ -67,45 +77,18 @@ function validationPayload(id, text, status = 'pending', decidedBy = null) {
       .setCustomId(`nv:no:${id}`)
       .setLabel('Rejeter')
       .setStyle(rejected ? ButtonStyle.Danger : ButtonStyle.Secondary),
+    new ButtonBuilder()
+      .setCustomId(`nv:img:${id}`)
+      .setLabel(hasImage ? 'Changer l\'image' : 'Ajouter une image')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('🖼️'),
   );
   return { embeds: [embed], components: [row] };
 }
 
-/** Une pièce jointe est-elle une image ? */
-function isImageAttachment(att) {
-  if (att.contentType && att.contentType.startsWith('image/')) return true;
-  return /\.(png|jpe?g|gif|webp)$/i.test(att.name || '');
-}
-
-/**
- * Réponse à un message de validation contenant des images : rattache ces
- * photos à la nouveauté (par référence au message, pour récupérer des URLs
- * fraîches le lundi). Retourne true si le message a été traité.
- */
-async function handlePhotoReply(message) {
-  if (message.channelId !== VALIDATION_CHANNEL) return false;
-  const refId = message.reference?.messageId;
-  if (!refId) return false;
-
-  const images = [...message.attachments.values()].filter(isImageAttachment);
-  if (!images.length) return false;
-
-  const q = await col().where('messageId', '==', refId).limit(1).get();
-  if (q.empty) return false; // réponse à un autre message : on laisse passer
-
-  const doc = q.docs[0];
-  if (doc.data().sentAt) {
-    const warn = await message.reply('Nouveauté déjà publiée — photo non prise en compte.').catch(() => null);
-    if (warn) setTimeout(() => warn.delete().catch(() => {}), 6000);
-    return true;
-  }
-
-  const refs = doc.data().photoRefs || [];
-  refs.push({ msgId: message.id, channelId: message.channelId });
-  await doc.ref.update({ photoRefs: refs });
-
-  await message.react('✅').catch(() => {});
-  return true;
+/** Payload depuis un doc Firestore. */
+function payloadFromDoc(id, data) {
+  return validationPayload(id, data.text, data.status || 'pending', data.decidedBy || null, Boolean(data.photoRefs?.length));
 }
 
 /** Message verrouillé après publication (plus de boutons). */
@@ -144,29 +127,72 @@ function watch(client) {
     );
 }
 
-/** Clic sur ✅/❌ sous un message de validation. */
-async function handleButton(interaction) {
+/** Garde commune aux boutons : fondateur, doc existant, non publié. Retourne le doc ou null. */
+async function guardButton(interaction, id) {
   if (!interaction.member.roles.cache.has(FONDATEUR_ROLE)) {
-    await interaction.reply({ content: 'Validation reservee au role fondateur.', flags: MessageFlags.Ephemeral });
-    return;
+    await interaction.reply({ content: 'Réservé au rôle fondateur.', flags: MessageFlags.Ephemeral });
+    return null;
   }
-
-  const [, action, id] = interaction.customId.split(':');
-  const ref = col().doc(id);
-  const snap = await ref.get();
-
+  const snap = await col().doc(id).get();
   if (!snap.exists) {
     await interaction.reply({ content: 'Nouveauté introuvable (déjà supprimée ?).', flags: MessageFlags.Ephemeral });
-    return;
+    return null;
   }
   if (snap.data().sentAt) {
     await interaction.reply({ content: 'Déjà publiée aux membres — non modifiable.', flags: MessageFlags.Ephemeral });
-    return;
+    return null;
   }
+  return snap;
+}
 
-  const status = action === 'ok' ? 'approved' : 'rejected';
-  await ref.update({ status, decidedBy: interaction.user.id, decidedAt: Date.now() });
-  await interaction.update(validationPayload(id, snap.data().text, status, interaction.user.id));
+/** Routeur des boutons nv:*. */
+async function handleButton(interaction) {
+  const [, action, id] = interaction.customId.split(':');
+  if (action === 'img') return addImage(interaction, id);
+  return decide(interaction, id, action === 'ok' ? 'approved' : 'rejected');
+}
+
+/** Valider / rejeter. */
+async function decide(interaction, id, status) {
+  const snap = await guardButton(interaction, id);
+  if (!snap) return;
+  await snap.ref.update({ status, decidedBy: interaction.user.id, decidedAt: Date.now() });
+  const data = { ...snap.data(), status, decidedBy: interaction.user.id };
+  await interaction.update(payloadFromDoc(id, data));
+}
+
+/** Bouton « Ajouter/Changer l'image » : capte le prochain message-image du fondateur. */
+async function addImage(interaction, id) {
+  const snap = await guardButton(interaction, id);
+  if (!snap) return;
+
+  await interaction.reply({
+    content: 'Envoyez l\'image dans ce salon (60 s). Elle remplacera l\'image actuelle.',
+    flags: MessageFlags.Ephemeral,
+  });
+
+  const filter = (m) =>
+    m.author.id === interaction.user.id && [...m.attachments.values()].some(isImageAttachment);
+  const collector = interaction.channel.createMessageCollector({ filter, time: COLLECT_MS, max: 1 });
+
+  collector.on('collect', async (m) => {
+    try {
+      await snap.ref.update({ photoRefs: [{ msgId: m.id, channelId: m.channelId }] });
+      await m.react('✅').catch(() => {});
+      const fresh = (await snap.ref.get()).data();
+      await interaction.message.edit(payloadFromDoc(id, fresh)).catch(() => {});
+      await interaction.editReply({ content: 'Image enregistrée.' }).catch(() => {});
+    } catch (e) {
+      console.error('[newsqueue] enregistrement image :', e.message);
+      await interaction.editReply({ content: 'Erreur lors de l\'enregistrement.' }).catch(() => {});
+    }
+  });
+
+  collector.on('end', (collected) => {
+    if (!collected.size) {
+      interaction.editReply({ content: 'Temps écoulé, aucune image ajoutée.' }).catch(() => {});
+    }
+  });
 }
 
 function startWatch(client) {
@@ -180,7 +206,6 @@ function startWatch(client) {
 module.exports = {
   startWatch,
   handleButton,
-  handlePhotoReply,
   addPending,
   publishedPayload,
   isImageAttachment,
