@@ -12,8 +12,8 @@ module.exports = {
   clientId: CLIENT_ID,
   guildId: GUILD_ID || null,
   // Rôle attribué automatiquement aux comptes Capital Board liés (voir lib/rolesync.js).
-  // Vide = attribution automatique désactivée.
-  roleCompteLie: ROLE_COMPTE_LIE || null,
+  // Surchargeable par ROLE_COMPTE_LIE pour tester sur un serveur de dev.
+  roleCompteLie: ROLE_COMPTE_LIE || '1528779341184635121',
   // Couleur de marque Capital Board (utilisée dans les embeds).
   brandColor: 0x2563eb,
   siteUrl: 'https://capitalboard.fr',

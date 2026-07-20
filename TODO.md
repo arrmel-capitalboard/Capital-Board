@@ -12,8 +12,8 @@ l'utilisateur tape `/link`, un doc `discordLinkRequests/{token}` est créé, la 
 confirme via le Worker qui écrit `discordLinks/{discordId} = {uid}` (js/app.js:441).
 `role.js` et `embed-role.js` existent pour l'attribution de rôles.
 
-**Fait côté bot** — `discord-bot/src/lib/rolesync.js` attribue le rôle défini par
-`ROLE_COMPTE_LIE`. Arbitrages retenus :
+**Fait côté bot** — `discord-bot/src/lib/rolesync.js` attribue le rôle
+`1528779341184635121` (`config.roleCompteLie`). Arbitrages retenus :
 - Critère : `discordLinks/{discordId}` existe **et** `users/{uid}` existe encore.
 - Listener Firestore sur `discordLinks` (attribution immédiate) + sweep de
   réconciliation toutes les 15 min (comptes supprimés, downtime du bot, rôles
@@ -24,8 +24,7 @@ confirme via le Worker qui écrit `discordLinks/{discordId} = {uid}` (js/app.js:
   par discordId.
 
 **Reste à faire — configuration serveur, pas du code :**
-- Créer le rôle sur Discord, renseigner `ROLE_COMPTE_LIE` dans le `.env` de la VM.
-- Placer le rôle du bot **au-dessus** de ce rôle dans la hiérarchie, sinon Discord
+- Placer le rôle du bot **au-dessus** du rôle dans la hiérarchie, sinon Discord
   refuse l'attribution (l'échec est loggé par `[rolesync]`).
 - Restreindre les salons voulus à ce rôle.
 
