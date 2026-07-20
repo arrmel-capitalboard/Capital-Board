@@ -88,7 +88,7 @@ async function publish(client) {
   for (const d of toSend) {
     const urls = await freshImageUrls(client, d.data().photoRefs);
     if (!urls.length) continue;
-    const embeds = urls.slice(0, 4).map((url, i) => {
+    const embeds = urls.slice(0, 10).map((url, i) => {
       const e = new EmbedBuilder().setColor(VIOLET).setImage(url);
       if (i === 0) e.setTitle(`✅  ${d.data().text}`);
       return e;

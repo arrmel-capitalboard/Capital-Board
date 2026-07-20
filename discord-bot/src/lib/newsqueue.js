@@ -20,7 +20,10 @@
 // Le lundi, newsweekly.js publie les « approved » non envoyés (texte + photos)
 // et verrouille leur message de validation.
 
-const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
+const {
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags,
+  ModalBuilder, LabelBuilder, FileUploadBuilder,
+} = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
 
 const VALIDATION_CHANNEL = '1528790209150324807';
@@ -72,6 +75,7 @@ function validationPayload(id, text, status = 'pending', decidedBy = null, hasIm
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`nv:ok:${id}`).setLabel('Valider').setStyle(approved ? ButtonStyle.Success : ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`nv:no:${id}`).setLabel('Rejeter').setStyle(rejected ? ButtonStyle.Danger : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`nv:img:${id}`).setLabel(hasImage ? 'Changer l\'image' : 'Ajouter une image').setStyle(ButtonStyle.Secondary).setEmoji('🖼️'),
   );
   return { embeds: [embed], components: [row] };
 }
@@ -117,13 +121,16 @@ function watch(client) {
     );
 }
 
-/** Clic ✅/❌ (fondateur, tant que non publié). */
+/** Routeur des boutons nv:*. */
 async function handleButton(interaction) {
+  const [, action, id] = interaction.customId.split(':');
+  if (action === 'img') return showImageModal(interaction, id);
+
+  // Valider / rejeter.
   if (!interaction.member.roles.cache.has(FONDATEUR_ROLE)) {
     await interaction.reply({ content: 'Réservé au rôle fondateur.', flags: MessageFlags.Ephemeral });
     return;
   }
-  const [, action, id] = interaction.customId.split(':');
   const snap = await col().doc(id).get();
   if (!snap.exists) {
     await interaction.reply({ content: 'Nouveauté introuvable (déjà supprimée ?).', flags: MessageFlags.Ephemeral });
@@ -137,6 +144,88 @@ async function handleButton(interaction) {
   const status = action === 'ok' ? 'approved' : 'rejected';
   await snap.ref.update({ status, decidedBy: interaction.user.id, decidedAt: Date.now() });
   await interaction.update(payloadFromDoc(id, { ...snap.data(), status, decidedBy: interaction.user.id }));
+}
+
+/** Bouton « Ajouter/Changer l'image » → ouvre un modal avec upload de fichiers. */
+async function showImageModal(interaction, id) {
+  if (!interaction.member.roles.cache.has(FONDATEUR_ROLE)) {
+    await interaction.reply({ content: 'Réservé au rôle fondateur.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const snap = await col().doc(id).get();
+  if (!snap.exists) {
+    await interaction.reply({ content: 'Nouveauté introuvable (déjà supprimée ?).', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (snap.data().sentAt) {
+    await interaction.reply({ content: 'Déjà publiée aux membres — non modifiable.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const upload = new FileUploadBuilder()
+    .setCustomId('images')
+    .setMinValues(1)
+    .setMaxValues(10)
+    .setRequired(true);
+  const label = new LabelBuilder()
+    .setLabel('Image(s) de la nouveauté')
+    .setDescription('Jusqu\'à 10 fichiers image. Remplace l\'image actuelle.')
+    .setFileUploadComponent(upload);
+  const modal = new ModalBuilder()
+    .setCustomId(`nvimg:${id}`)
+    .setTitle('Ajouter une image')
+    .addLabelComponents(label);
+
+  await interaction.showModal(modal);
+}
+
+/** Soumission du modal d'upload : ré-héberge les fichiers et les rattache. */
+async function handleImageModal(interaction) {
+  if (!interaction.member.roles.cache.has(FONDATEUR_ROLE)) {
+    await interaction.reply({ content: 'Réservé au rôle fondateur.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const id = interaction.customId.slice('nvimg:'.length);
+  const files = interaction.fields.getUploadedFiles('images') || [];
+  const images = [...files].filter(isImageAttachment);
+  if (!images.length) {
+    await interaction.reply({ content: 'Aucune image valide reçue.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const ref = col().doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    await interaction.reply({ content: 'Nouveauté introuvable.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (snap.data().sentAt) {
+    await interaction.reply({ content: 'Déjà publiée — non modifiable.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
+  const channel = await interaction.client.channels.fetch(VALIDATION_CHANNEL);
+  const msg = await channel.send({
+    content: `🖼️ ${snap.data().text}`.slice(0, 200),
+    files: images.map((a) => a.url),
+  });
+  await ref.update({ photoRefs: [{ msgId: msg.id, channelId: channel.id }] });
+
+  const data = (await ref.get()).data();
+  if (data.messageId && data.channelId) {
+    try {
+      const ch = await interaction.client.channels.fetch(data.channelId);
+      const vm = await ch.messages.fetch(data.messageId);
+      await vm.edit(payloadFromDoc(id, data));
+    } catch (e) {
+      console.error('[newsqueue] refresh validation msg :', e.message);
+    }
+  }
+
+  await interaction.editReply(`${images.length} image(s) jointe(s).`);
 }
 
 /** Ré-héberge une image dans le salon validation (URLs fraîches durables). */
@@ -186,6 +275,7 @@ function startWatch(client) {
 module.exports = {
   startWatch,
   handleButton,
+  handleImageModal,
   addPending,
   rehost,
   attachImage,
@@ -193,4 +283,5 @@ module.exports = {
   publishedPayload,
   isImageAttachment,
   isNewsButton: (id) => id.startsWith('nv:'),
+  isNewsModal: (id) => id.startsWith('nvimg:'),
 };
