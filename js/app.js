@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260720l';
+const APP_VERSION = '20260720m';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -348,6 +348,7 @@ async function loadAllUserData(uid) {
       _localCache[uid + '_alerts']       = data.alerts       || [];
       _localCache[uid + '_notifHistory'] = data.notifHistory || [];
       _localCache[uid + '_trCohort']     = data.trCohort     || [];
+      _localCache[uid + '_divIgnored']   = data.divIgnored   || [];
       _localCache[uid + '_settings']     = data.settings     || { pushRecap: false };
       _localCache[uid + '_recap']        = data.recap        || null;
       _localCache[uid + '_weeklyRecap']  = data.weeklyRecap  || null;
@@ -360,7 +361,7 @@ async function loadAllUserData(uid) {
   // Enregistrer l'email pour la recherche par email (gestion des rôles)
   const _u = fbAuth.currentUser;
   if (_u) setFirestoreDoc(firestoreDoc(db, 'users', uid), { email: _u.email }, { merge: true }).catch(() => {});
-  const cols = ['portfolio', 'transactions', 'versements', 'watchlist', 'dailyValues', 'alerts', 'notifHistory', 'trCohort'];
+  const cols = ['portfolio', 'transactions', 'versements', 'watchlist', 'dailyValues', 'alerts', 'notifHistory', 'trCohort', 'divIgnored'];
   await Promise.all(cols.map(async col => {
     try {
       const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', col));
@@ -433,6 +434,14 @@ function saveDailyValues(user, data)  { _perfCache = null; _fsWrite(user||curren
 // trCohort : résultat de perf cohorte importé depuis un CSV Trade Republic (objet unique en array)
 function getTRCohort(user)  { const a = _localCache[(user||currentUser) + '_trCohort']; return (a && a[0]) || null; }
 function saveTRCohort(user, obj) { _perfCache = null; _fsWrite(user||currentUser, 'trCohort', obj ? [obj] : []); }
+// divIgnored : dividendes auto-détectés (Yahoo) que l'utilisateur a supprimés
+// depuis l'Activité. Sans ces « pierres tombales », _autoLogDividends() les
+// re-crée au chargement suivant et la suppression paraît sans effet.
+function getDivIgnored(user)  { return _localCache[(user||currentUser) + '_divIgnored'] || []; }
+function saveDivIgnored(user, data) { _fsWrite(user||currentUser, 'divIgnored', data); }
+function _divKey(ticker, date) { return (ticker || '') + '|' + (date || ''); }
+function isDivIgnored(ticker, date) { return getDivIgnored().includes(_divKey(ticker, date)); }
+
 function getAlerts(user)       { return _localCache[(user||currentUser) + '_alerts']       || []; }
 function getNotifHistory(user) { return _localCache[(user||currentUser) + '_notifHistory']  || []; }
 function saveAlerts(user, data)       { _fsWrite(user||currentUser, 'alerts',       data); }
@@ -611,7 +620,7 @@ async function deleteAllUserData(uid) {
   // Docs sous users/{uid}/data
   const dataDocs = [
     'portfolio', 'transactions', 'versements', 'watchlist',
-    'dailyValues', 'alerts', 'notifHistory', 'trCohort',
+    'dailyValues', 'alerts', 'notifHistory', 'trCohort', 'divIgnored',
     'settings', 'recap', 'weeklyRecap', 'fcmTokens'
   ];
 
@@ -9589,6 +9598,7 @@ async function _autoLogDividends() {
       (history || []).forEach(d => {
         if (d.next || d.date < firstBuy || d.date > today) return;
         if (existingDiv.find(t => t.ticker === r.ticker && t.date === d.date)) return;
+        if (isDivIgnored(r.ticker, d.date)) return;   // supprimé par l'utilisateur
         const qty = getQtyAtDate(txs, r.ticker, d.date);
         if (!qty || !d.amount) return;
         logTransaction(currentUser, {
@@ -9661,7 +9671,8 @@ function initDividendes() {
       ? history.filter(d =>
           !d.next &&
           d.date >= firstBuy &&
-          d.date <= today
+          d.date <= today &&
+          !isDivIgnored(r.ticker, d.date)   // supprimé depuis l'Activité
         )
       : [];
 
@@ -9676,7 +9687,7 @@ function initDividendes() {
     });
 
     const totalRecu     = allReceived.reduce((s, t) => s + t.qty * t.price, 0);
-    const duringHolding = firstBuy ? history.filter(d => !d.next && d.date >= firstBuy && d.date <= today) : [];
+    const duringHolding = firstBuy ? history.filter(d => !d.next && d.date >= firstBuy && d.date <= today && !isDivIgnored(r.ticker, d.date)) : [];
     const nextEntry     = history.find(d => d.next === true);
     const nextEstim     = nextEntry ? new Date(nextEntry.date+'T12:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'}) : '—';
     const lastKnown     = history.find(d => !d.next) || null;
@@ -9803,6 +9814,7 @@ function initDividendes() {
       (history||[]).forEach(d => {
         const alreadyManual = divTxs.find(t => t.ticker===r.ticker && t.date===d.date);
         if (alreadyManual) return;
+        if (isDivIgnored(r.ticker, d.date)) return;   // supprimé depuis l'Activité
         const during = firstBuyDate ? (d.date >= firstBuyDate && d.date <= today && !d.next) : false;
         const isAutoReceived = during;
         const qtyForAmount = during ? getQtyAtDate(txs, r.ticker, d.date) : r.qty;
@@ -9984,6 +9996,12 @@ function confirmDividende() {
   const pf  = getPortfolio(currentUser);
   const row = pf.find(r => r.ticker === ticker);
   const qty = row ? row.qty : 1;
+  // Ressaisie manuelle d'un dividende précédemment supprimé : on lève la
+  // pierre tombale, sinon l'historique le masquerait à nouveau.
+  const ign = getDivIgnored(currentUser);
+  if (ign.includes(_divKey(ticker, date))) {
+    saveDivIgnored(currentUser, ign.filter(k => k !== _divKey(ticker, date)));
+  }
   logTransaction(currentUser, { type:'dividend', ticker, name: row?(row.name||ticker):ticker, qty, price: parseFloat((amount/qty).toFixed(6)), date });
   closeDivModal();
   initDividendes();
@@ -10774,10 +10792,18 @@ function _doDeleteActivite(kind, id) {
         savePortfolio(currentUser, pf);
       }
     }
+    // Un dividende détecté automatiquement serait re-créé au prochain
+    // chargement : on le note comme ignoré pour que la suppression tienne.
+    if (t.type === 'dividend') {
+      const key = _divKey(t.ticker, t.date);
+      const ign = getDivIgnored(currentUser);
+      if (!ign.includes(key)) saveDivIgnored(currentUser, ign.concat(key));
+    }
     saveTransactions(currentUser, txs.filter(x => x.id !== id));
   }
   try { renderPortfolio(); } catch (_) {}
   try { renderActivite(); } catch (_) {}
+  try { initDividendes(); } catch (_) {}
 }
 
 // Affiche l'état "aucune donnée" : graphe vidé + message dans le tableau.
