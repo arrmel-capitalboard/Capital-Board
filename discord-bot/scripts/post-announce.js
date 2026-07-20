@@ -12,7 +12,7 @@
 const path = require('node:path');
 require('dotenv').config({ path: path.join(__dirname, '..', '.env') });
 
-const ANNOUNCE_CHANNEL = '1512908999878639616';
+const ANNOUNCE_CHANNEL = '1512909014990586047'; // salon « nouveautés » Capital Board
 const ARROW = '<a:arrow:1520177073816211627>';
 const IMAGE = 'https://raw.githubusercontent.com/arrmel-capitalboard/Capital-Board/main/discord-bot/assets/annonce.gif';
 const COLOR = 0xfde047; // même jaune que la commande /announce
