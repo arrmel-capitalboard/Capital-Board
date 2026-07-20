@@ -27,7 +27,7 @@ jobs:
         uses: actions/configure-pages@v4
 
       - name: Prepare artifact
-        run: cp pages/index.html index.html && cp pages/app.html app.html && cp pages/auth-action.html auth-action.html && cp pages/404.html 404.html
+        run: cp pages/index.html index.html && cp pages/app.html app.html && cp pages/auth-action.html auth-action.html && cp pages/soutien.html soutien.html && cp pages/404.html 404.html
 
       - uses: actions/upload-pages-artifact@v3
         with:
