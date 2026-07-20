@@ -23,6 +23,7 @@
 const {
   EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags,
   ModalBuilder, LabelBuilder, FileUploadBuilder, AttachmentBuilder,
+  TextInputBuilder, TextInputStyle,
 } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
 
@@ -86,6 +87,7 @@ function validationPayload(id, text, status = 'pending', decidedBy = null, image
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId(`nv:ok:${id}`).setLabel('Valider').setStyle(approved ? ButtonStyle.Success : ButtonStyle.Secondary),
     new ButtonBuilder().setCustomId(`nv:no:${id}`).setLabel('Rejeter').setStyle(rejected ? ButtonStyle.Danger : ButtonStyle.Secondary),
+    new ButtonBuilder().setCustomId(`nv:edit:${id}`).setLabel('Modifier le texte').setStyle(ButtonStyle.Secondary).setEmoji('✏️'),
     new ButtonBuilder().setCustomId(`nv:img:${id}`).setLabel(imageName ? 'Changer l\'image' : 'Ajouter une image').setStyle(ButtonStyle.Secondary).setEmoji('🖼️'),
   );
   return { embeds: [embed], components: [row] };
@@ -137,6 +139,7 @@ function watch(client) {
 async function handleButton(interaction) {
   const [, action, id] = interaction.customId.split(':');
   if (action === 'img') return showImageModal(interaction, id);
+  if (action === 'edit') return showTextModal(interaction, id);
 
   // Valider / rejeter.
   if (!interaction.member.roles.cache.has(FONDATEUR_ROLE)) {
@@ -156,6 +159,82 @@ async function handleButton(interaction) {
   const status = action === 'ok' ? 'approved' : 'rejected';
   await snap.ref.update({ status, decidedBy: interaction.user.id, decidedAt: Date.now() });
   await interaction.update(payloadFromDoc(id, { ...snap.data(), status, decidedBy: interaction.user.id }));
+}
+
+/** Bouton « Modifier le texte » → modal pré-rempli avec le texte courant. */
+async function showTextModal(interaction, id) {
+  if (!interaction.member.roles.cache.has(FONDATEUR_ROLE)) {
+    await interaction.reply({ content: 'Réservé au rôle fondateur.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const snap = await col().doc(id).get();
+  if (!snap.exists) {
+    await interaction.reply({ content: 'Nouveauté introuvable (déjà supprimée ?).', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (snap.data().sentAt) {
+    await interaction.reply({ content: 'Déjà publiée aux membres — non modifiable.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const input = new TextInputBuilder()
+    .setCustomId('text')
+    .setStyle(TextInputStyle.Paragraph)
+    .setValue((snap.data().text || '').slice(0, 500))
+    .setRequired(true)
+    .setMaxLength(500);
+  const label = new LabelBuilder()
+    .setLabel('Texte de la nouveauté (en français)')
+    .setDescription('Ce texte sera affiché aux membres. Rédigez-le en français.')
+    .setTextInputComponent(input);
+  const modal = new ModalBuilder()
+    .setCustomId(`nvtxt:${id}`)
+    .setTitle('Modifier le texte')
+    .addLabelComponents(label);
+
+  await interaction.showModal(modal);
+}
+
+/** Soumission du modal texte : met à jour le texte et rafraîchit la validation. */
+async function handleTextModal(interaction) {
+  if (!interaction.member.roles.cache.has(FONDATEUR_ROLE)) {
+    await interaction.reply({ content: 'Réservé au rôle fondateur.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const id = interaction.customId.slice('nvtxt:'.length);
+  const text = (interaction.fields.getTextInputValue('text') || '').trim();
+  if (!text) {
+    await interaction.reply({ content: 'Le texte ne peut pas être vide.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const ref = col().doc(id);
+  const snap = await ref.get();
+  if (!snap.exists) {
+    await interaction.reply({ content: 'Nouveauté introuvable.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  if (snap.data().sentAt) {
+    await interaction.reply({ content: 'Déjà publiée — non modifiable.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+
+  const data = snap.data();
+  await ref.update({ text });
+
+  // Rafraîchit le message de validation avec le nouveau texte (image conservée).
+  try {
+    if (data.messageId && data.channelId) {
+      const ch = await interaction.client.channels.fetch(data.channelId);
+      const vm = await ch.messages.fetch(data.messageId);
+      await vm.edit(payloadFromDoc(id, { ...data, text }));
+    }
+  } catch (e) {
+    console.error('[newsqueue] edit texte validation :', e.message);
+  }
+
+  await interaction.reply({ content: 'Texte mis à jour.', flags: MessageFlags.Ephemeral });
 }
 
 /** Bouton « Ajouter/Changer l'image » → ouvre un modal avec upload de fichiers. */
@@ -258,9 +337,11 @@ module.exports = {
   startWatch,
   handleButton,
   handleImageModal,
+  handleTextModal,
   addPending,
   publishedPayload,
   isImageAttachment,
   isNewsButton: (id) => id.startsWith('nv:'),
   isNewsModal: (id) => id.startsWith('nvimg:'),
+  isNewsTextModal: (id) => id.startsWith('nvtxt:'),
 };

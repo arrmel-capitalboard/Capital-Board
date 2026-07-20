@@ -161,6 +161,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (interaction.isModalSubmit()) {
       if (newsqueue.isNewsModal(interaction.customId)) { await newsqueue.handleImageModal(interaction); return; }
+      if (newsqueue.isNewsTextModal(interaction.customId)) { await newsqueue.handleTextModal(interaction); return; }
       if (interaction.customId === 'ticket_modal') {
         const reason = interaction.fields.getTextInputValue('ticket_reason');
         await tickets.openTicket(interaction, reason);
