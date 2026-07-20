@@ -6,6 +6,7 @@ const { loadCommands } = require('./loadCommands');
 const tempbans = require('./lib/tempbans');
 const statusmonitor = require('./lib/statusmonitor');
 const linkcleaner = require('./lib/linkcleaner');
+const rolesync = require('./lib/rolesync');
 const restartmonitor = require('./lib/restartmonitor');
 const tickets = require('./lib/tickets');
 const ticketstats = require('./lib/ticketstats');
@@ -36,6 +37,7 @@ client.once(Events.ClientReady, (c) => {
   tempbans.start(c);
   statusmonitor.start(c);
   linkcleaner.start();
+  rolesync.start(c);
   ticketstats.start(c);
   restartmonitor.handleOnReady(c).catch(() => {});
 });

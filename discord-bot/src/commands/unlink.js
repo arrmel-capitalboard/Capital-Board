@@ -3,6 +3,7 @@
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const firebase = require('../firebase');
 const links = require('../lib/links');
+const rolesync = require('../lib/rolesync');
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -17,6 +18,7 @@ module.exports = {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     await links.unlink(interaction.user.id);
-    await interaction.editReply('Compte délié.');
+    await rolesync.revoke(interaction.client, interaction.user.id);
+    await interaction.editReply('Compte délié. Les salons réservés aux comptes liés ne sont plus accessibles.');
   },
 };

@@ -12,14 +12,25 @@ l'utilisateur tape `/link`, un doc `discordLinkRequests/{token}` est créé, la 
 confirme via le Worker qui écrit `discordLinks/{discordId} = {uid}` (js/app.js:441).
 `role.js` et `embed-role.js` existent pour l'attribution de rôles.
 
-**À faire** — Donner automatiquement un rôle Discord selon l'état du compte lié,
-et donc l'accès aux salons réservés.
+**Fait côté bot** — `discord-bot/src/lib/rolesync.js` attribue le rôle défini par
+`ROLE_COMPTE_LIE`. Arbitrages retenus :
+- Critère : `discordLinks/{discordId}` existe **et** `users/{uid}` existe encore.
+- Listener Firestore sur `discordLinks` (attribution immédiate) + sweep de
+  réconciliation toutes les 15 min (comptes supprimés, downtime du bot, rôles
+  retirés à la main).
+- `/unlink` retire le rôle immédiatement.
+- Le sweep supprime aussi les `discordLinks` orphelins : `deleteAllUserData()`
+  (js/app.js:642) efface `users/{uid}` mais ne peut pas retrouver le lien, indexé
+  par discordId.
 
-**À décider :**
-- Quel critère ouvre quel salon ? (compte lié / email vérifié / futur statut premium)
-- Attribution à la liaison seulement, ou re-synchronisation périodique ? Sans resync,
-  un compte supprimé garde son rôle Discord.
-- Que fait `/unlink` — retrait immédiat du rôle ?
+**Reste à faire — configuration serveur, pas du code :**
+- Créer le rôle sur Discord, renseigner `ROLE_COMPTE_LIE` dans le `.env` de la VM.
+- Placer le rôle du bot **au-dessus** de ce rôle dans la hiérarchie, sinon Discord
+  refuse l'attribution (l'échec est loggé par `[rolesync]`).
+- Restreindre les salons voulus à ce rôle.
+
+**Reporté** — un palier premium demandera un second rôle : `rolesync` gère un seul
+rôle aujourd'hui, à généraliser le jour où le statut existe.
 
 ---
 
@@ -206,7 +217,7 @@ Effort élevé — c'est une feature produit à part entière, pas une intégrat
 4. **Username + délai** (3) — à faire avec la correction d'unicité, sinon la dette grossit.
 5. **Screenshots landing** (5) — sans dépendance technique, gain marketing immédiat.
 6. **Alertes en DM Discord** (7.1) — demande l'index inverse `uid → discordId`.
-7. **Permissions salon Discord** (1) — dépend surtout de décisions produit.
+7. ~~**Permissions salon Discord** (1)~~ — code fait, reste la config du serveur Discord.
 8. **Widget Discord dans l'app** (7.4).
 9. **Animations** (6) — cosmétique, à faire quand le reste est stable.
 10. **Dividendes communauté** (7.3) — à repousser jusqu'à ce que la base d'utilisateurs
