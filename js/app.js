@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721i';
+const APP_VERSION = '20260721j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3032,7 +3032,8 @@ function openSocial(key, mobile) {
   // explication PayPal) plutôt que d'ouvrir PayPal directement.
   if (key === 'paypal') {
     const pp = _socialLinks.paypal || DEFAULT_SOCIAL.paypal;
-    window.open('soutien.html?url=' + encodeURIComponent(pp), '_blank', 'noopener');
+    // _v = APP_VERSION : casse le cache navigateur de soutien.html à chaque déploiement.
+    window.open('soutien.html?url=' + encodeURIComponent(pp) + '&_v=' + APP_VERSION, '_blank', 'noopener');
     if (mobile) { try { closeMobileDrawer(); } catch (_) {} }
     return;
   }
