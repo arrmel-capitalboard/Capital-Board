@@ -97,6 +97,37 @@
   }
   a { color: inherit; text-decoration: none; }
 
+  /* Fond animé — aurores dérivantes derrière tout le contenu */
+  body::before, body::after {
+    content: ''; position: fixed; z-index: 0; pointer-events: none;
+    inset: -25%; will-change: transform;
+  }
+  body::before {
+    background:
+      radial-gradient(38% 38% at 22% 20%, rgba(124,109,245,0.22), transparent 62%),
+      radial-gradient(34% 34% at 82% 32%, rgba(91,141,238,0.16), transparent 62%);
+    filter: blur(46px);
+    animation: aurora-a 26s ease-in-out infinite alternate;
+  }
+  body::after {
+    background:
+      radial-gradient(40% 40% at 68% 82%, rgba(0,224,158,0.10), transparent 62%),
+      radial-gradient(30% 30% at 12% 78%, rgba(124,109,245,0.12), transparent 62%);
+    filter: blur(54px);
+    animation: aurora-b 34s ease-in-out infinite alternate;
+  }
+  @keyframes aurora-a {
+    0%   { transform: translate(0,0) scale(1) rotate(0deg); }
+    100% { transform: translate(4%,-3%) scale(1.12) rotate(6deg); }
+  }
+  @keyframes aurora-b {
+    0%   { transform: translate(0,0) scale(1.05) rotate(0deg); }
+    100% { transform: translate(-4%,3%) scale(1) rotate(-8deg); }
+  }
+  @media (prefers-reduced-motion: reduce) {
+    body::before, body::after { animation: none; }
+  }
+
   /* ═══ NAV ═══ */
   nav {
     position: fixed; top: 0; left: 0; right: 0; z-index: 100;
@@ -616,6 +647,35 @@
   @media (prefers-reduced-motion: reduce) {
     html:not(.force-motion) .reveal { opacity: 1 !important; transform: none !important; transition: none !important; }
   }
+
+  /* Section Démo */
+  #demo .demo-frame {
+    max-width: 1120px; margin: 0 auto;
+    border: 1px solid var(--border2); border-radius: 16px; overflow: hidden;
+    background: var(--surface); box-shadow: 0 40px 100px rgba(0,0,0,0.55);
+  }
+  #demo .demo-bar {
+    display: flex; align-items: center; gap: 7px;
+    padding: 11px 16px; background: rgba(255,255,255,0.03);
+    border-bottom: 1px solid var(--border);
+  }
+  #demo .demo-bar i { width: 11px; height: 11px; border-radius: 50%; flex: none; }
+  #demo .demo-bar i:nth-child(1) { background: #ff5f57; }
+  #demo .demo-bar i:nth-child(2) { background: #febc2e; }
+  #demo .demo-bar i:nth-child(3) { background: #28c840; }
+  #demo .demo-bar em {
+    margin-left: 12px; font-style: normal; font-size: 12px;
+    color: var(--text3); font-family: 'JetBrains Mono', monospace;
+  }
+  #demo .demo-iframe {
+    display: block; width: 100%; height: 660px; border: 0; background: var(--bg);
+  }
+  #demo .demo-cta {
+    display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 30px;
+  }
+  @media (max-width: 768px) {
+    #demo .demo-iframe { height: 520px; }
+  }
 </style>
 </head>
 <body>
@@ -628,6 +688,7 @@
       <span>Capital Board</span>
     </a>
     <div class="nav-links">
+      <a href="#demo">Démo</a>
       <a href="#features">Fonctionnalités</a>
       <a href="#compare">Comparatif</a>
       <a href="#security">Sécurité</a>
@@ -646,6 +707,7 @@
     </div>
   </div>
   <div class="nav-mobile" id="nav-mobile">
+    <a href="#demo">Démo</a>
     <a href="#features">Fonctionnalités</a>
     <a href="#compare">Comparatif</a>
     <a href="#security">Sécurité</a>
@@ -721,6 +783,24 @@
       <div class="stat-lbl">L'app ne se connecte <span class="hl">jamais</span> à votre banque. Pas d'agrégation type Bridge/Powens. Vous saisissez vos transactions vous-même (ou CSV) : <span class="hl">aucun risque de fuite d'identifiants</span>, aucune dépendance à un tiers bancaire.</div>
     </div>
 
+  </div>
+</section>
+
+<section id="demo">
+  <div class="wrap">
+    <div class="section-head">
+      <div class="section-eyebrow">Démo interactive</div>
+      <h2>Essayez, sans créer de compte</h2>
+      <p>Un portefeuille PEA d'exemple chargé en lecture seule. Naviguez, ouvrez les graphiques, explorez les dividendes et le récap IA — c'est l'application réelle.</p>
+    </div>
+    <div class="demo-frame reveal">
+      <div class="demo-bar"><i></i><i></i><i></i><em>capitalboard.fr — démo</em></div>
+      <iframe class="demo-iframe" src="app.html?demo=1" loading="lazy" title="Démo interactive Capital Board" referrerpolicy="no-referrer"></iframe>
+    </div>
+    <div class="demo-cta">
+      <a href="app.html?demo=1" class="btn btn-primary btn-lg" target="_blank" rel="noopener">Ouvrir la démo en plein écran →</a>
+      <a href="app.html?signup=1" class="btn btn-ghost btn-lg" data-auth="out">Créer mon compte</a>
+    </div>
   </div>
 </section>
 
@@ -1076,7 +1156,7 @@
     if (forceMotion) document.documentElement.classList.add('force-motion');
     const reduce = !forceMotion && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
     const targets = document.querySelectorAll(
-      '.section-head, .feature, .compare-wrap, .security-item, .faq-item, .guide-card, .about-card, .discord-card, .cta-card'
+      '.section-head, .feature, .compare-wrap, .security-item, .faq-item, .guide-card, .about-card, .discord-card, .cta-card, .demo-frame'
     );
     if (reduce || !('IntersectionObserver' in window)) {
       targets.forEach(el => el.classList.add('in'));
