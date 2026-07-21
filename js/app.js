@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721o';
+const APP_VERSION = '20260721p';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -237,7 +237,7 @@ _splashWatchdog = setTimeout(() => {
   if (window.IS_DEMO) {
     startApp({
       uid: 'demo-user',
-      email: 'demo@capitalboard.app',
+      email: 'demo@capitalboard.fr',
       displayName: 'Démo',
       providerData: [{ providerId: 'password' }],
       metadata: { creationTime: new Date().toISOString(), lastSignInTime: new Date().toISOString() },
@@ -2335,6 +2335,14 @@ async function _loadProfileUsername(uid) {
     input.disabled = locked;
     if (btn) { btn.disabled = locked; btn.style.opacity = locked ? '0.5' : '1'; btn.style.cursor = locked ? 'not-allowed' : 'pointer'; }
   };
+  if (window.IS_DEMO) {
+    input.value = 'demo.capitalboard';
+    input.dataset.current = 'demo.capitalboard';
+    status.textContent = 'Nom d\'utilisateur (démo).';
+    status.style.color = 'var(--text3)';
+    lock(true);
+    return;
+  }
   try {
     const snap = await getFirestoreDoc(firestoreDoc(db, 'roles', uid));
     const d = snap.exists() ? snap.data() : {};
