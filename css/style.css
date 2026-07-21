@@ -2493,6 +2493,16 @@ body.sb-collapsed .main { margin-left: 58px; }
 /* Mode démo : cache le login dès le chargement (avant Firebase) */
 html.demo-mode #login-screen { display: none !important; }
 
+/* Démo : tableau portefeuille complet et défilable horizontalement (on voit
+   toutes les colonnes plutôt que l'accordéon mobile qui en masque). */
+html.demo-mode #page-portfolio .table-container { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
+html.demo-mode #page-portfolio table { min-width: max-content; }
+html.demo-mode #page-portfolio .hide-mobile { display: table-cell !important; }
+html.demo-mode #page-portfolio .ticker-sym { display: inline !important; }
+html.demo-mode #page-portfolio .btn-voir-plus,
+html.demo-mode #page-portfolio .mobile-detail-row,
+html.demo-mode #page-portfolio .show-mobile-inline { display: none !important; }
+
 /* Support chat */
 .chat-wrap { display: flex; flex-direction: column; height: calc(100vh - 220px); min-height: 480px; background: var(--s1); border: 1px solid var(--border2); border-radius: 14px; overflow: hidden; }
 .chat-admin-layout { display: grid; grid-template-columns: 280px 1fr; height: 100%; }

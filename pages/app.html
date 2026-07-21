@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260721p">
+<link rel="stylesheet" href="css/style.css?v=20260721q">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -1799,7 +1799,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260721p"></script>
+<script src="js/app.js?v=20260721q"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
@@ -2073,9 +2073,12 @@
     });
   }
 
-  // N'affiche pas : sur desktop ou dans l'app déjà installée. Réapparaît à
-  // chaque chargement (pas de suppression persistante).
-  if (isStandalone || !isMobile) return;
+  // N'affiche pas : sur desktop, dans l'app déjà installée, ni en mode démo.
+  // Réapparaît à chaque chargement (pas de suppression persistante).
+  var isDemo = /[?&]demo=1/.test(location.search)
+    || document.documentElement.classList.contains('demo-mode')
+    || window.IS_DEMO === true;
+  if (isStandalone || !isMobile || isDemo) return;
   setTimeout(function () {
     if (window.matchMedia('(display-mode: standalone)').matches) return;
     show();
