@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721q';
+const APP_VERSION = '20260721r';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3374,14 +3374,41 @@ function renderPortfolio() {
 function deleteRow(i) {
   const data = getPortfolio(currentUser);
   const row = data[i];
+  if (!row) return;
+
+  // Suppression définitive (pas d'annulation possible) : on confirme d'abord.
+  const label     = row.name || row.ticker;
+  const stillHeld = data.some((r, j) => j !== i && r.ticker === row.ticker);
+  const txCount   = stillHeld ? 0 : getTransactions(currentUser).filter(tx => tx.ticker === row.ticker).length;
+
+  let body = label + ' — ' + row.qty + ' × ' + fmt(row.buyPrice) + ' (PRU)';
+  if (txCount) {
+    body += '\nSes ' + txCount + ' transaction' + (txCount > 1 ? 's' : '') + ' seront également supprimée' + (txCount > 1 ? 's' : '') + '.';
+  }
+  body += '\nCette action est irréversible.';
+
+  showConfirmModal({
+    icon:        '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
+    title:       'Supprimer cette ligne ?',
+    body,
+    okLabel:     'Supprimer',
+    cancelLabel: 'Annuler',
+    danger:      true,
+    onConfirm:   () => _doDeleteRow(row),
+  });
+}
+
+function _doDeleteRow(row) {
+  const data = getPortfolio(currentUser);
+  // Ré-résolution de l'index : la liste a pu être re-rendue pendant la confirmation.
+  const i = data.indexOf(row);
+  if (i === -1) return;
   data.splice(i, 1);
-  if (row) {
-    // If no other line with same ticker remains, purge all its transactions
-    const stillHeld = data.some(r => r.ticker === row.ticker);
-    if (!stillHeld) {
-      const txs = getTransactions(currentUser);
-      saveTransactions(currentUser, txs.filter(tx => tx.ticker !== row.ticker));
-    }
+  // If no other line with same ticker remains, purge all its transactions
+  const stillHeld = data.some(r => r.ticker === row.ticker);
+  if (!stillHeld) {
+    const txs = getTransactions(currentUser);
+    saveTransactions(currentUser, txs.filter(tx => tx.ticker !== row.ticker));
   }
   savePortfolio(currentUser, data);
   renderPortfolio();
