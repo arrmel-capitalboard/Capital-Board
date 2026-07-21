@@ -74,7 +74,10 @@ function parseNewsFeed(xml, source) {
     if (!/^https:\/\//i.test(img)) img = '';
     let summary = newsClean(rawDesc);
     if (summary.length > 200) summary = summary.slice(0, 197).trimEnd() + '…';
-    out.push({ title, link, source, ts: Date.parse(newsTag(b, 'pubDate') || '') || 0, img, summary });
+    // dc:creator porte l'auteur réel : sur Instagram, une republication ou une
+    // collaboration apparaît dans le flux d'un compte sans être de lui.
+    const creator = newsClean(newsTag(b, 'dc:creator'));
+    out.push({ title, link, source, creator, ts: Date.parse(newsTag(b, 'pubDate') || '') || 0, img, summary });
   }
   return out;
 }
@@ -149,7 +152,12 @@ async function buildFavoris(env) {
       const xml = await r.text();
       // À défaut de libellé configuré, on prend le <title> du flux.
       const label = f.label || newsClean(newsTag(xml.replace(/<item[\s\S]*$/i, ''), 'title')) || 'Instagram';
-      return parseNewsFeed(xml, label);
+      // On attribue chaque publication à son auteur réel plutôt qu'au compte
+      // dont vient le flux, sinon une republication est créditée au mauvais compte.
+      return parseNewsFeed(xml, label).map(i => {
+        const handle = (i.creator || '').replace(/^@/, '').trim();
+        return /^[a-zA-Z0-9._]{1,40}$/.test(handle) ? { ...i, source: '@' + handle } : i;
+      });
     } catch {
       return [];
     }
