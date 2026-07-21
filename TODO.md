@@ -215,6 +215,44 @@ Effort élevé — c'est une feature produit à part entière, pas une intégrat
 
 ---
 
+## 8. Contenus favoris — filtrer par type (posts / reels)
+
+**État** — La page « Contenus favoris » existe (menu *Outils*, carrousel par compte,
+`GET /favoris` sur le Worker). Elle affiche **tout** ce que publient les comptes suivis,
+sans distinction entre publications photo et reels.
+
+**À faire** — Pouvoir choisir ce qui remonte : uniquement les posts, uniquement les
+reels, ou les deux.
+
+**Pourquoi ce n'est pas déjà fait** — la passerelle RSS.app n'expose pas le type.
+Constaté sur le flux réel le 2026-07-21 : zéro occurrence de `reel`, `video` ou `mp4`
+dans le XML, les 25 médias sont tous déclarés `medium="image"`, et **toutes** les URLs
+sont en `/p/`, jamais `/reel/`. Un reel arrive avec sa vignette de couverture,
+indiscernable d'une photo.
+
+**Pistes à explorer, par ordre de fiabilité :**
+
+1. **Graph API `business_discovery`** — expose `media_type` (`IMAGE`, `VIDEO`,
+   `CAROUSEL_ALBUM`) ; les reels sortent en `VIDEO`. Filtrage propre, à la source.
+   Coût : compte Instagram Business Capital Board, app Meta, jeton longue durée à
+   renouveler, et les comptes ciblés doivent être Business/Creator — à vérifier compte
+   par compte, un compte personnel reste invisible.
+2. **Autre passerelle** (FetchRSS, Apify) — certaines conservent l'URL `/reel/` ou un
+   média vidéo là où RSS.app aplatit tout. Test rapide : créer un flux, regarder le XML.
+   Si le type apparaît, le filtre côté Worker tient en une ligne dans `parseNewsFeed`.
+
+**Écarté d'avance** — aller chercher la page du post pour lire son `og:type` :
+Instagram bloque les requêtes venant d'un datacenter, déjà constaté en sondant les
+profils publics (le HTML ne contient plus la grille, `edge_owner_to_timeline_media`
+a disparu).
+
+**Note liée** — le flux d'un compte contient aussi ses republications et
+collaborations : le flux `zonebourse` porte 20 posts de zonebourse, 4 de
+`laurent.cosmos.finance` et 1 de `parlonsfinance`. Le champ `dc:creator` donne l'auteur
+réel et permet de créditer correctement chaque publication.
+
+---
+
 ## Ordre suggéré
 
 1. ~~**Mot de passe oublié** (2)~~ — FAIT : lien envoyé par le Worker via Resend
