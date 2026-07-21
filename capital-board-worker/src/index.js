@@ -1,5 +1,5 @@
 // Capital Board — Cloudflare Worker
-// Endpoints : POST /verify-pin | POST /send-otp | GET /yahoo
+// Endpoints : POST /verify-pin | POST /send-otp | GET /yahoo | GET /news
 
 const CORS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -11,6 +11,96 @@ const YAHOO_HOSTS = new Set([
   'query1.finance.yahoo.com',
   'query2.finance.yahoo.com',
 ]);
+
+// ── Actualités marchés (RSS) ──────────────────────────────────────────────
+// Flux fixes, agrégés côté serveur : pas de clé d'API, pas de quota, et le
+// client ne parle jamais aux éditeurs. Liste volontairement centrée marchés —
+// les rubriques « économie » généralistes noient la bourse sous du hors-sujet.
+// Testés le 2026-07-21 ; Les Échos / Boursorama / ABC Bourse / Zonebourse
+// répondent 403 ou 404 aux robots, inutile de les réessayer.
+const NEWS_FEEDS = [
+  { url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EFCHI&region=FR&lang=fr-FR',     source: 'Yahoo Finance' },
+  { url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5EGSPC&region=FR&lang=fr-FR',     source: 'Yahoo Finance' },
+  { url: 'https://feeds.finance.yahoo.com/rss/2.0/headline?s=%5ESTOXX50E&region=FR&lang=fr-FR', source: 'Yahoo Finance' },
+  { url: 'https://www.latribune.fr/rss/rubriques/bourse.html',                                  source: 'La Tribune' },
+];
+
+const NEWS_TTL   = 900;   // KV : 15 min
+const NEWS_MAX   = 30;    // items renvoyés
+// Publicités glissées dans les flux Yahoo (InvestingPro & co).
+const NEWS_SPAM  = /investingpro|% de r[ée]duction|code promo|offre sp[ée]ciale|profitez de|abonnez-vous|parrainage/i;
+
+const NEWS_ENTITIES = {
+  amp: '&', lt: '<', gt: '>', quot: '"', apos: "'", nbsp: ' ',
+  laquo: '«', raquo: '»', rsquo: '’', lsquo: '‘', hellip: '…',
+};
+
+function newsDecode(s) {
+  return String(s || '')
+    .replace(/&#(\d+);/g, (_, n) => String.fromCodePoint(+n))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) => String.fromCodePoint(parseInt(n, 16)))
+    .replace(/&([a-z]+);/gi, (m, name) => NEWS_ENTITIES[name.toLowerCase()] ?? m);
+}
+
+function newsClean(s) {
+  return newsDecode(String(s || '').replace(/<[^>]*>/g, ' ')).replace(/\s+/g, ' ').trim();
+}
+
+function newsTag(block, name) {
+  const m = block.match(new RegExp('<' + name + '(?:\\s[^>]*)?>([\\s\\S]*?)<\\/' + name + '>', 'i'));
+  if (!m) return '';
+  return m[1].replace(/^\s*<!\[CDATA\[([\s\S]*?)\]\]>\s*$/, '$1').trim();
+}
+
+function newsAttr(block, name, at) {
+  const m = block.match(new RegExp('<' + name + '[^>]*\\b' + at + '="([^"]+)"', 'i'));
+  return m ? newsDecode(m[1]) : '';
+}
+
+function parseNewsFeed(xml, source) {
+  const out = [];
+  for (const b of xml.match(/<item(?:\s[^>]*)?>[\s\S]*?<\/item>/gi) || []) {
+    const title = newsClean(newsTag(b, 'title'));
+    const link  = newsClean(newsTag(b, 'link'));
+    if (!title || !link || NEWS_SPAM.test(title)) continue;
+    let img = newsAttr(b, 'enclosure', 'url') || newsAttr(b, 'media:content', 'url') || newsAttr(b, 'media:thumbnail', 'url');
+    if (!/^https:\/\//i.test(img)) img = '';
+    let summary = newsClean(newsTag(b, 'description'));
+    if (summary.length > 200) summary = summary.slice(0, 197).trimEnd() + '…';
+    out.push({ title, link, source, ts: Date.parse(newsTag(b, 'pubDate') || '') || 0, img, summary });
+  }
+  return out;
+}
+
+async function buildNews() {
+  const lists = await Promise.all(NEWS_FEEDS.map(async f => {
+    try {
+      const r = await fetch(f.url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+          'Accept': 'application/rss+xml, application/xml, text/xml',
+        },
+        signal: AbortSignal.timeout(7000),
+      });
+      return r.ok ? parseNewsFeed(await r.text(), f.source) : [];
+    } catch {
+      return [];   // un flux mort ne doit pas casser la page
+    }
+  }));
+
+  const seen = new Set();
+  const items = lists.flat()
+    .filter(i => {
+      const k = i.title.toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim().slice(0, 70);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    })
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, NEWS_MAX);
+
+  return { items, updatedAt: Date.now() };
+}
 
 // ── Service account → access token ────────────────────────────────────────
 
@@ -852,6 +942,38 @@ export default {
         return new Response(JSON.stringify({ updatedAt: Date.now(), items }), {
           headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders },
         });
+      }
+
+      // ── GET /news ───────────────────────────────────────────────────────
+      // Actualités marchés agrégées depuis des flux RSS fixes. Cache KV 15 min
+      // partagé par tous les utilisateurs (contenu identique pour tout le monde),
+      // plus une copie sans TTL servie en secours si tous les flux tombent.
+      if (url.pathname === '/news' && request.method === 'GET') {
+        const hit = await env.EARNINGS.get('news:v1');
+        if (hit !== null) {
+          return new Response(hit, {
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300', ...corsHeaders },
+          });
+        }
+
+        const data = await buildNews();
+        if (data.items.length) {
+          const body = JSON.stringify(data);
+          await env.EARNINGS.put('news:v1', body, { expirationTtl: NEWS_TTL });
+          await env.EARNINGS.put('news:last', body);
+          return new Response(body, {
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=300', ...corsHeaders },
+          });
+        }
+
+        // Tous les flux HS : on ressert la dernière collecte valide plutôt qu'une page vide.
+        const stale = await env.EARNINGS.get('news:last');
+        if (stale !== null) {
+          const parsed = JSON.parse(stale);
+          parsed.stale = true;
+          return json(parsed);
+        }
+        return json({ items: [], updatedAt: Date.now(), error: 'flux indisponibles' }, 503);
       }
 
       // ── GET /yahoo?url=... ──────────────────────────────────────────────

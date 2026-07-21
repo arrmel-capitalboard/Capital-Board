@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721r';
+const APP_VERSION = '20260721s';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2973,7 +2973,7 @@ window.setAvatarHue = async function(deg) {
 };
 
 // ─── Feature flags (config/app.features) ───
-const FLAGGABLE = ['watchlist','dividendes','performance','benchmark','projections','earnings','recap','alertes'];
+const FLAGGABLE = ['watchlist','dividendes','performance','benchmark','projections','earnings','recap','alertes','actualites'];
 let _featureFlags = {};
 function _isFeatureOn(key) { return _featureFlags[key] !== false; }
 function applyFeatureFlags(features) {
@@ -2994,7 +2994,7 @@ function applyFeatureFlags(features) {
 const SECTION_LABELS = {
   portfolio: 'Portefeuille', activite: 'Activité', dividendes: 'Dividendes', watchlist: 'Watchlist',
   performance: 'Performance', benchmark: 'Benchmark', projections: 'Projections', earnings: 'Calendrier résultats',
-  recap: 'Récap du jour', alertes: 'Alertes prix', notifications: 'Notifications', support: 'Support',
+  recap: 'Récap du jour', actualites: 'Actualités', alertes: 'Alertes prix', notifications: 'Notifications', support: 'Support',
   admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord',
   paypal: 'Faire un don',
 };
@@ -3003,7 +3003,7 @@ const ADMIN_ONLY_KEYS = ['admin']; // rendus uniquement pour l'admin
 const DEFAULT_NAV = [
   { title: 'Mon PEA',        items: ['portfolio', 'activite', 'dividendes', 'watchlist'] },
   { title: 'Analyse',        items: ['performance', 'benchmark', 'projections', 'earnings'] },
-  { title: 'Outils',         items: ['recap', 'alertes', 'notifications', 'support'] },
+  { title: 'Outils',         items: ['actualites', 'recap', 'alertes', 'notifications', 'support'] },
   { title: 'Administration', items: ['admin'] },
   { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord'] },
   { title: 'Nous soutenir',  items: ['paypal'] },
@@ -3143,6 +3143,7 @@ function showPage(id) {
   if (id === 'activite')    renderActivite();
   if (id === 'graphiques')  initCharts();
   if (id === 'recap')       renderRecapPage();
+  if (id === 'actualites')  renderActualites();
   if (id === 'alertes')     renderAlertsList();
   if (id === 'support')     renderSupportPage();
   if (id === 'earnings')    renderEarningsCalendar();
@@ -3179,6 +3180,7 @@ function showPageMobile(id) {
   if (id === 'activite')    renderActivite();
   if (id === 'graphiques')  initCharts();
   if (id === 'recap')       renderRecapPage();
+  if (id === 'actualites')  renderActualites();
   if (id === 'alertes')     renderAlertsList();
   if (id === 'support')     renderSupportPage();
   if (id === 'earnings')    renderEarningsCalendar();
@@ -12304,6 +12306,83 @@ function _paintWeeklyRecap() {
 // Génère un récap immédiatement à partir du portefeuille courant et le
 // stocke dans Firestore. Aperçu local : pas d'analyse IA, pas de push
 // (la push s'envoie uniquement côté serveur via GitHub Actions).
+// ─── ACTUALITÉS MARCHÉS ──────────────────────────────────────────────────
+// Flux RSS agrégés et dédoublonnés par le Worker (GET /news), qui les garde
+// 15 min en KV. Ici on ajoute un cache mémoire de 10 min : la page se consulte
+// par à-coups et le contenu est le même pour tout le monde.
+const NEWS_MEM_TTL = 10 * 60 * 1000;
+let _newsCache   = null;   // { items, updatedAt, stale, fetchedAt }
+let _newsLoading = false;
+
+function _newsCard(n) {
+  const dt   = n.ts ? new Date(n.ts) : null;
+  const when = dt ? _relTime(dt) : '';
+  const full = dt ? dt.toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' }) : '';
+  // Titres et résumés viennent d'éditeurs tiers : échappement obligatoire.
+  const href = /^https:\/\//i.test(n.link) ? n.link.replace(/"/g, '%22') : '#';
+  const img  = /^https:\/\//i.test(n.img || '') ? n.img.replace(/"/g, '%22') : '';
+  return '<a class="news-card" href="' + href + '" target="_blank" rel="noopener noreferrer">'
+    + (img ? '<img class="news-thumb" src="' + img + '" alt="" loading="lazy" onerror="this.remove()">' : '')
+    + '<div class="news-body">'
+    +   '<div class="news-meta"><span class="news-source">' + _escapeHtmlChat(n.source) + '</span>'
+    +     (when ? '<span class="news-date" title="' + _escapeHtmlChat(full) + '">' + _escapeHtmlChat(when) + '</span>' : '')
+    +   '</div>'
+    +   '<div class="news-title">' + _escapeHtmlChat(n.title) + '</div>'
+    +   (n.summary ? '<div class="news-summary">' + _escapeHtmlChat(n.summary) + '</div>' : '')
+    + '</div></a>';
+}
+
+function _paintNews() {
+  const list = document.getElementById('news-list');
+  const sub  = document.getElementById('news-updated');
+  if (!list || !_newsCache) return;
+
+  if (!_newsCache.items.length) {
+    list.innerHTML = '<div class="news-empty">Aucune actualité disponible pour le moment.</div>';
+    if (sub) sub.textContent = '';
+    return;
+  }
+
+  list.innerHTML = _newsCache.items.map(_newsCard).join('');
+  if (sub) {
+    sub.textContent = 'Mis à jour ' + _relTime(new Date(_newsCache.updatedAt))
+      + (_newsCache.stale ? ' — flux momentanément indisponibles, dernière collecte affichée' : '');
+  }
+}
+
+async function renderActualites(force) {
+  const list = document.getElementById('news-list');
+  if (!list) return;
+
+  if (!force && _newsCache && Date.now() - _newsCache.fetchedAt < NEWS_MEM_TTL) { _paintNews(); return; }
+  if (_newsLoading) return;
+  _newsLoading = true;
+
+  if (!_newsCache) {
+    list.innerHTML = ('<div class="news-card news-skel"><div class="news-body">'
+      + '<div class="skel-line" style="width:30%"></div><div class="skel-line" style="width:85%"></div>'
+      + '<div class="skel-line" style="width:60%"></div></div></div>').repeat(4);
+  }
+
+  try {
+    const r = await fetch(WORKER_URL + '/news', { signal: AbortSignal.timeout(12000) });
+    const d = await r.json();
+    if (!r.ok && !(d.items || []).length) throw new Error(d.error || ('HTTP ' + r.status));
+    _newsCache = { items: d.items || [], updatedAt: d.updatedAt || Date.now(), stale: !!d.stale, fetchedAt: Date.now() };
+    _paintNews();
+  } catch (e) {
+    console.warn('[news]', e && e.message);
+    if (!_newsCache) {
+      list.innerHTML = '<div class="news-empty">Actualités indisponibles pour l\'instant.'
+        + '<br><button class="btn-add" style="margin-top:12px;font-size:12px;padding:7px 14px" onclick="renderActualites(true)">Réessayer</button></div>';
+    }
+  } finally {
+    _newsLoading = false;
+  }
+}
+
+window.renderActualites = renderActualites;
+
 window.generateRecapNow = async function() {
   const btn = document.getElementById('btn-generate-recap');
   const pf  = getPortfolio(currentUser);
