@@ -10,6 +10,12 @@ ALLOWED_ORIGIN = "https://capitalboard.fr"
 FIREBASE_PROJECT_ID = "capitalboard"
 FIREBASE_WEB_API_KEY = "AIzaSyBnHkOTwFoJNMvYOgG7Ne-AFKgE3GBRiNU"
 ADMIN_UID = "A6nZQ8PcxdURytSesA17xK81I9T2"
+# Contenus favoris (GET /favoris) : flux RSS des comptes suivis, au format
+# « Libellé|url », séparés par des virgules. Instagram n'ayant plus d'API pour
+# les comptes tiers (Basic Display fermée le 04/12/2024), les flux viennent
+# d'une passerelle externe type RSS.app / FetchRSS. Vide = section affichée
+# comme « à configurer », sans erreur.
+FAVORIS_FEEDS = ""
 
 # Cache earnings : 1 clé par symbole (earn:SYM, TTL 24h) + creds Yahoo (crumb).
 # Source = Yahoo calendarEvents (global, pas de clé API). Finnhub abandonné (US-only).

@@ -63,9 +63,16 @@ function parseNewsFeed(xml, source) {
     const title = newsClean(newsTag(b, 'title'));
     const link  = newsClean(newsTag(b, 'link'));
     if (!title || !link || NEWS_SPAM.test(title)) continue;
+    const rawDesc = newsTag(b, 'description') + newsTag(b, 'content:encoded');
     let img = newsAttr(b, 'enclosure', 'url') || newsAttr(b, 'media:content', 'url') || newsAttr(b, 'media:thumbnail', 'url');
+    // Les passerelles Instagram → RSS mettent la vignette dans le HTML de la
+    // description plutôt que dans une balise dédiée.
+    if (!img) {
+      const m = rawDesc.match(/<img[^>]+src="([^"]+)"/i);
+      if (m) img = newsDecode(m[1]);
+    }
     if (!/^https:\/\//i.test(img)) img = '';
-    let summary = newsClean(newsTag(b, 'description'));
+    let summary = newsClean(rawDesc);
     if (summary.length > 200) summary = summary.slice(0, 197).trimEnd() + '…';
     out.push({ title, link, source, ts: Date.parse(newsTag(b, 'pubDate') || '') || 0, img, summary });
   }
@@ -98,6 +105,61 @@ async function buildNews() {
     })
     .sort((a, b) => b.ts - a.ts)
     .slice(0, NEWS_MAX);
+
+  return { items, updatedAt: Date.now() };
+}
+
+// ── Contenus favoris (comptes suivis) ─────────────────────────────────────
+// Instagram n'expose plus les posts d'un compte tiers : l'API Basic Display est
+// fermée depuis le 04/12/2024 et le HTML public ne contient plus la grille. On
+// consomme donc des flux RSS produits par une passerelle externe (RSS.app,
+// FetchRSS…), configurés dans FAVORIS_FEEDS au format « Libellé|url », séparés
+// par des virgules. Vide = section annoncée comme non configurée, pas d'erreur.
+const FAV_TTL = 1800;   // KV : 30 min (ces comptes publient bien moins souvent)
+const FAV_MAX = 24;
+
+function parseFavFeeds(raw) {
+  return String(raw || '')
+    .split(',')
+    .map(s => s.trim())
+    .filter(Boolean)
+    .map(entry => {
+      const i = entry.indexOf('|');
+      return i === -1
+        ? { label: '', url: entry }
+        : { label: entry.slice(0, i).trim(), url: entry.slice(i + 1).trim() };
+    })
+    .filter(f => /^https:\/\//i.test(f.url));
+}
+
+async function buildFavoris(env) {
+  const feeds = parseFavFeeds(env.FAVORIS_FEEDS);
+  if (!feeds.length) return { items: [], updatedAt: Date.now(), unconfigured: true };
+
+  const lists = await Promise.all(feeds.map(async f => {
+    try {
+      const r = await fetch(f.url, {
+        headers: {
+          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+          'Accept': 'application/rss+xml, application/xml, text/xml',
+        },
+        signal: AbortSignal.timeout(7000),
+      });
+      if (!r.ok) return [];
+      const xml = await r.text();
+      // À défaut de libellé configuré, on prend le <title> du flux.
+      const label = f.label || newsClean(newsTag(xml.replace(/<item[\s\S]*$/i, ''), 'title')) || 'Instagram';
+      return parseNewsFeed(xml, label);
+    } catch {
+      return [];
+    }
+  }));
+
+  const seen = new Set();
+  const items = lists.flat()
+    .filter(i => { if (seen.has(i.link)) return false; seen.add(i.link); return true; })
+    .sort((a, b) => b.ts - a.ts)
+    .slice(0, FAV_MAX);
 
   return { items, updatedAt: Date.now() };
 }
@@ -968,6 +1030,37 @@ export default {
 
         // Tous les flux HS : on ressert la dernière collecte valide plutôt qu'une page vide.
         const stale = await env.EARNINGS.get('news:last');
+        if (stale !== null) {
+          const parsed = JSON.parse(stale);
+          parsed.stale = true;
+          return json(parsed);
+        }
+        return json({ items: [], updatedAt: Date.now(), error: 'flux indisponibles' }, 503);
+      }
+
+      // ── GET /favoris ────────────────────────────────────────────────────
+      // Derniers contenus des comptes suivis, via passerelle RSS externe.
+      // Même stratégie de cache que /news : KV 30 min + copie de secours.
+      if (url.pathname === '/favoris' && request.method === 'GET') {
+        const hit = await env.EARNINGS.get('fav:v1');
+        if (hit !== null) {
+          return new Response(hit, {
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=600', ...corsHeaders },
+          });
+        }
+
+        const data = await buildFavoris(env);
+        if (data.unconfigured) return json(data);   // rien à mettre en cache
+        if (data.items.length) {
+          const body = JSON.stringify(data);
+          await env.EARNINGS.put('fav:v1', body, { expirationTtl: FAV_TTL });
+          await env.EARNINGS.put('fav:last', body);
+          return new Response(body, {
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=600', ...corsHeaders },
+          });
+        }
+
+        const stale = await env.EARNINGS.get('fav:last');
         if (stale !== null) {
           const parsed = JSON.parse(stale);
           parsed.stale = true;

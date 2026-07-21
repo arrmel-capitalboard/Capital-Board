@@ -387,6 +387,9 @@
       <div class="mobile-drawer-item" onclick="showPageMobile('actualites');closeMobileDrawer()" data-mob="actualites">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b8dee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg></span>Actualités
       </div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('favoris');closeMobileDrawer()" data-mob="favoris">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 17.27 5.18 3.13-1.37-5.89L20.5 10.6l-6.02-.52L12 4.5 9.52 10.08 3.5 10.6l4.69 3.91-1.37 5.89z"/></svg></span>Contenus favoris
+      </div>
       <div class="mobile-drawer-item" onclick="showPageMobile('recap');closeMobileDrawer()" data-mob="recap">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>Récap du jour
       </div>
@@ -483,6 +486,9 @@
       <div class="nav-section-label" style="margin-top:14px">Outils</div>
       <div class="nav-item" onclick="showPage('actualites')">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b8dee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 22h16a2 2 0 0 0 2-2V4a2 2 0 0 0-2-2H8a2 2 0 0 0-2 2v16a2 2 0 0 1-2 2Zm0 0a2 2 0 0 1-2-2v-9c0-1.1.9-2 2-2h2"/><path d="M18 14h-8"/><path d="M15 18h-5"/><path d="M10 6h8v4h-8V6Z"/></svg></span> Actualités
+      </div>
+      <div class="nav-item" onclick="showPage('favoris')">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 17.27 5.18 3.13-1.37-5.89L20.5 10.6l-6.02-.52L12 4.5 9.52 10.08 3.5 10.6l4.69 3.91-1.37 5.89z"/></svg></span> Contenus favoris
       </div>
       <div class="nav-item" onclick="showPage('recap')">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span> Récap du jour
@@ -1307,6 +1313,18 @@
       <div id="news-list" class="news-list"></div>
     </div>
 
+    <!-- ═══ CONTENUS FAVORIS ═══════════════════════════ -->
+    <div class="page" id="page-favoris">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Contenus favoris</div>
+          <div class="page-subtitle">Les dernières publications des comptes suivis · <span id="fav-updated"></span></div>
+        </div>
+        <button class="btn-add" onclick="renderFavoris(true)" style="font-size:12px;padding:7px 14px">Actualiser</button>
+      </div>
+      <div id="fav-list" class="news-list"></div>
+    </div>
+
     <div class="page" id="page-alertes">
       <div class="page-header">
         <div>
@@ -1817,7 +1835,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260721t"></script>
+<script src="js/app.js?v=20260721u"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
