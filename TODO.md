@@ -73,27 +73,40 @@ Section « Nom d'utilisateur » dans le profil → route Worker `/change-usernam
 
 ---
 
-## 4. Coin actualité
+## 4. Coin actualité — FAIT
 
-**État** — Rien n'existe.
+Page « Actualités » sous *Outils*, alimentée par `GET /news` sur le Worker.
 
-**À faire** — Une section actualités financières dans l'app.
+**Choix retenus** — flux RSS (pas d'API payante, pas de clé), généraliste marchés
+(pas de filtrage par ticker : un petit portefeuille donnerait une page vide),
+entrée de menu dédiée.
 
-**À décider :**
-- Source : flux RSS, API news (payante au-delà d'un quota), ou rédaction manuelle
-  depuis le panel admin ?
-- Généraliste, ou filtré sur les tickers du portefeuille de l'utilisateur ?
-- Où : nouvelle entrée de menu, ou bloc sur la page Portefeuille ?
-- Le cache passe par le Worker (`capital-board-worker/`) pour éviter d'exposer une
-  clé d'API côté client et de flinguer le quota.
+- **Flux** (`NEWS_FEEDS`, worker `src/index.js`) : Yahoo Finance FR sur `^FCHI`,
+  `^GSPC` et `^STOXX50E`, plus la rubrique Bourse de La Tribune (seule à fournir
+  des images via `<enclosure>`).
+- **Écartés** — Les Échos, Boursorama, ABC Bourse, Zonebourse, Boursier : 403/404
+  aux robots (testé le 2026-07-21). Le Figaro / Challenges « économie » : noient
+  la bourse sous du hors-sujet. Café de la Bourse : contenu affilié.
+- **Cache** — KV `EARNINGS`, clé `news:v1` (TTL 15 min), partagé par tous puisque
+  le contenu est identique. Copie `news:last` sans TTL : si tous les flux tombent,
+  on ressert la dernière collecte (`stale: true`) au lieu d'une page vide. Cache
+  mémoire de 10 min côté client par-dessus.
+- **Sécurité** — parsing regex sans DOM, titres et résumés tiers échappés au
+  rendu, seuls les liens et images en `https://` sont affichés, filtre anti-pub
+  (`NEWS_SPAM`) pour les encarts InvestingPro glissés dans les flux Yahoo.
+- Section `FLAGGABLE` : désactivable depuis le panel admin comme les autres.
 
-Le plus flou des six — à cadrer avant de coder quoi que ce soit.
+**Reste possible** — un bloc compact sur la page Portefeuille renvoyant vers la
+page, et un filtrage optionnel par ticker détenu.
 
 ---
 
 ## 5. Captures d'écran sur la landing page
 
-**État** — `pages/index.html` n'a pas de visuel de l'app.
+**État** — la landing a désormais un visuel : la section `#demo` (`pages/index.html`)
+embarque une iframe `app.html?demo=1`, donc l'app réelle en interactif. Les captures
+restent utiles en complément — l'iframe demande de cliquer pour voir Performance ou
+Dividendes, et pèse lourd sur mobile.
 
 **À faire** — Screenshots de l'interface réelle sur la landing.
 
