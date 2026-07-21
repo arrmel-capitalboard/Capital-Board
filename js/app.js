@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721x';
+const APP_VERSION = '20260721y';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -12356,12 +12356,53 @@ const FEED_PAGES = {
     error: 'Actualités indisponibles pour l\'instant.',
   },
   favoris: {
-    path: '/favoris', list: 'fav-list', sub: 'fav-updated', fn: 'renderFavoris', proxyImg: true,
+    path: '/favoris', list: 'fav-list', sub: 'fav-updated', fn: 'renderFavoris',
+    proxyImg: true, layout: 'carousel',
     empty: 'Aucun contenu pour le moment.',
     error: 'Contenus indisponibles pour l\'instant.',
     unconfigured: 'Les comptes suivis ne sont pas encore configurés.',
   },
 };
+
+// Rendu « carrousel par compte » : une rangée défilante par source, les comptes
+// classés du plus récemment actif au plus ancien. Sépare visuellement les
+// sources, ce qu'une liste unique ne fait pas.
+function _feedCarousel(items, proxyImg) {
+  const parCompte = new Map();
+  items.forEach(i => {
+    if (!parCompte.has(i.source)) parCompte.set(i.source, []);
+    parCompte.get(i.source).push(i);
+  });
+
+  const blocs = [...parCompte.entries()]
+    .sort((a, b) => (b[1][0].ts || 0) - (a[1][0].ts || 0));
+
+  return blocs.map(([compte, posts]) => {
+    // Le libellé configuré est du type « @zonebourse » : on en tire le profil.
+    const handle  = compte.replace(/^@/, '').replace(/[^a-zA-Z0-9._]/g, '');
+    const lienCpt = handle
+      ? '<a class="fav-car-all" href="https://www.instagram.com/' + handle + '/" target="_blank" rel="noopener noreferrer">Voir le compte →</a>'
+      : '';
+
+    const cartes = posts.map(p => {
+      const dt   = p.ts ? new Date(p.ts) : null;
+      const href = /^https:\/\//i.test(p.link) ? p.link.replace(/"/g, '%22') : '#';
+      let img = /^https:\/\//i.test(p.img || '') ? p.img : '';
+      if (img) img = proxyImg ? WORKER_URL + '/fav-img?url=' + encodeURIComponent(img) : img.replace(/"/g, '%22');
+      return '<a class="fav-car-card" href="' + href + '" target="_blank" rel="noopener noreferrer">'
+        + (img ? '<img src="' + img + '" alt="" loading="lazy" onerror="this.remove()">' : '')
+        + '<div class="fav-car-body">'
+        +   '<div class="fav-car-title">' + _escapeHtmlChat(p.title) + '</div>'
+        +   (dt ? '<span class="news-date">' + _escapeHtmlChat(_relTime(dt)) + '</span>' : '')
+        + '</div></a>';
+    }).join('');
+
+    return '<div class="fav-car-block">'
+      + '<div class="fav-car-head"><span class="news-source">' + _escapeHtmlChat(compte) + '</span>' + lienCpt + '</div>'
+      + '<div class="fav-car-row">' + cartes + '</div>'
+      + '</div>';
+  }).join('');
+}
 
 function _paintFeed(key) {
   const cfg   = FEED_PAGES[key];
@@ -12377,7 +12418,9 @@ function _paintFeed(key) {
     return;
   }
 
-  list.innerHTML = cache.items.map(i => _newsCard(i, !!cfg.proxyImg)).join('');
+  list.innerHTML = cfg.layout === 'carousel'
+    ? _feedCarousel(cache.items, !!cfg.proxyImg)
+    : cache.items.map(i => _newsCard(i, !!cfg.proxyImg)).join('');
   if (sub) {
     sub.textContent = '· Mis à jour ' + _relTime(new Date(cache.updatedAt))
       + (cache.stale ? ' — flux momentanément indisponibles, dernière collecte affichée' : '');
