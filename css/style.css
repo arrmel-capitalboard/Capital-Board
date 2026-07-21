@@ -1869,6 +1869,8 @@ tr.drag-over td { border-top: 2px solid var(--accent) !important; }
 .sidebar.collapsed .nav-item.active::before { left: 0; }
 .sidebar.collapsed .sidebar-logo { justify-content: center; padding: 18px 0 16px; }
 .sidebar.collapsed .sidebar-logo-icon { margin: 0 auto; }
+/* Masque le wrapper (vide) du titre, sinon il décale l'icône hors centre */
+.sidebar.collapsed .sidebar-logo > div:not(.sidebar-logo-icon) { display: none; }
 .sidebar.collapsed .user-card { justify-content: center; padding: 8px; }
 .sidebar.collapsed .btn-logout { padding: 6px; }
 /* Bas de sidebar replié : le groupe secondaire (présentation, légal, masquer
