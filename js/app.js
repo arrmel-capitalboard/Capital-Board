@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721za';
+const APP_VERSION = '20260721zb';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -12429,15 +12429,10 @@ function _favCarSync(row) {
 function _favCarDrag(row) {
   let actif = false, departX = 0, departScroll = 0, amplitude = 0;
 
-  row.addEventListener('pointerdown', e => {
-    if (e.pointerType !== 'mouse' || e.button !== 0) return;
-    actif = true; amplitude = 0;
-    departX = e.clientX; departScroll = row.scrollLeft;
-    row.classList.add('grabbing');
-    try { row.setPointerCapture(e.pointerId); } catch (_) {}
-  });
-
-  row.addEventListener('pointermove', e => {
+  // Surtout pas de setPointerCapture ici : la capture redirige le pointerup ET
+  // le click vers la rangée, et la carte survolée ne s'ouvre plus jamais.
+  // Suivre le pointeur sur window donne le même confort sans casser le clic.
+  const bouge = e => {
     if (!actif) return;
     const dx = e.clientX - departX;
     amplitude = Math.max(amplitude, Math.abs(dx));
@@ -12446,18 +12441,28 @@ function _favCarDrag(row) {
       row.scrollLeft = departScroll - dx;
       e.preventDefault();
     }
-  });
+  };
 
-  const fin = e => {
+  const fin = () => {
     if (!actif) return;
     actif = false;
     row.classList.remove('grabbing');
-    if (e && e.pointerId != null) { try { row.releasePointerCapture(e.pointerId); } catch (_) {} }
+    window.removeEventListener('pointermove', bouge);
+    window.removeEventListener('pointerup', fin);
+    window.removeEventListener('pointercancel', fin);
     // Le snap ne se réapplique qu'après le geste, sinon il ramène la rangée.
     setTimeout(() => row.classList.remove('dragging'), 60);
   };
-  row.addEventListener('pointerup', fin);
-  row.addEventListener('pointercancel', fin);
+
+  row.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    actif = true; amplitude = 0;
+    departX = e.clientX; departScroll = row.scrollLeft;
+    row.classList.add('grabbing');
+    window.addEventListener('pointermove', bouge);
+    window.addEventListener('pointerup', fin);
+    window.addEventListener('pointercancel', fin);
+  });
 
   // Sans ça, relâcher après un glissement ouvre la publication survolée.
   row.addEventListener('click', e => {
