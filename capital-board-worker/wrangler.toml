@@ -15,7 +15,7 @@ ADMIN_UID = "A6nZQ8PcxdURytSesA17xK81I9T2"
 # les comptes tiers (Basic Display fermée le 04/12/2024), les flux viennent
 # d'une passerelle externe type RSS.app / FetchRSS. Vide = section affichée
 # comme « à configurer », sans erreur.
-FAVORIS_FEEDS = ""
+FAVORIS_FEEDS = "@seqo.oia|https://rss.app/feeds/WRHlbmtITze7U9hu.xml,@zonebourse|https://rss.app/feeds/7CxlNiJbxOUNhXlN.xml"
 
 # Cache earnings : 1 clé par symbole (earn:SYM, TTL 24h) + creds Yahoo (crumb).
 # Source = Yahoo calendarEvents (global, pas de clé API). Finnhub abandonné (US-only).
