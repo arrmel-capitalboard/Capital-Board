@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721y';
+const APP_VERSION = '20260721z';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -12399,10 +12399,48 @@ function _feedCarousel(items, proxyImg) {
 
     return '<div class="fav-car-block">'
       + '<div class="fav-car-head"><span class="news-source">' + _escapeHtmlChat(compte) + '</span>' + lienCpt + '</div>'
-      + '<div class="fav-car-row">' + cartes + '</div>'
-      + '</div>';
+      + '<div class="fav-car-wrap">'
+      +   '<button type="button" class="fav-car-nav prev" onclick="favCarScroll(this,-1)" aria-label="Publications précédentes">'
+      +     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>'
+      +   '</button>'
+      +   '<div class="fav-car-row">' + cartes + '</div>'
+      +   '<button type="button" class="fav-car-nav next" onclick="favCarScroll(this,1)" aria-label="Publications suivantes">'
+      +     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="9 18 15 12 9 6"/></svg>'
+      +   '</button>'
+      + '</div></div>';
   }).join('');
 }
+
+// Un bouton est masqué dès qu'on touche l'extrémité correspondante : garder
+// une flèche cliquable qui ne fait rien est plus déroutant que pas de flèche.
+function _favCarSync(row) {
+  const wrap = row.closest('.fav-car-wrap');
+  if (!wrap) return;
+  const max  = row.scrollWidth - row.clientWidth;
+  const prev = wrap.querySelector('.fav-car-nav.prev');
+  const next = wrap.querySelector('.fav-car-nav.next');
+  if (prev) prev.classList.toggle('off', row.scrollLeft <= 4);
+  if (next) next.classList.toggle('off', row.scrollLeft >= max - 4);
+}
+
+function _favCarInit(container) {
+  container.querySelectorAll('.fav-car-row').forEach(row => {
+    row.addEventListener('scroll', () => _favCarSync(row), { passive: true });
+    _favCarSync(row);
+  });
+}
+
+window.favCarScroll = function(btn, dir) {
+  const wrap = btn.closest('.fav-car-wrap');
+  const row  = wrap && wrap.querySelector('.fav-car-row');
+  if (!row) return;
+  const card = row.querySelector('.fav-car-card');
+  // Un « écran » de cartes moins une, pour garder un repère visuel au défilement.
+  const unit = card ? card.offsetWidth + 12 : 220;
+  const step = Math.max(unit, (Math.max(1, Math.floor(row.clientWidth / unit) - 1)) * unit);
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  row.scrollBy({ left: dir * step, behavior: reduce ? 'auto' : 'smooth' });
+};
 
 function _paintFeed(key) {
   const cfg   = FEED_PAGES[key];
@@ -12421,6 +12459,7 @@ function _paintFeed(key) {
   list.innerHTML = cfg.layout === 'carousel'
     ? _feedCarousel(cache.items, !!cfg.proxyImg)
     : cache.items.map(i => _newsCard(i, !!cfg.proxyImg)).join('');
+  if (cfg.layout === 'carousel') _favCarInit(list);
   if (sub) {
     sub.textContent = '· Mis à jour ' + _relTime(new Date(cache.updatedAt))
       + (cache.stale ? ' — flux momentanément indisponibles, dernière collecte affichée' : '');

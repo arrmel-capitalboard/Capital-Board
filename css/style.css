@@ -2837,14 +2837,30 @@ body.has-demo-banner { padding-top: 40px; }
 .fav-car-all { font-size: 12px; color: var(--text2); text-decoration: none; white-space: nowrap; }
 .fav-car-all:hover { color: var(--accent); }
 
+.fav-car-wrap { position: relative; }
+
 .fav-car-row {
-  display: flex; gap: 12px; overflow-x: auto; padding-bottom: 8px;
+  display: flex; gap: 12px; overflow-x: auto; padding-bottom: 2px;
   scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
+  /* Défilement piloté par les flèches : la barre native ferait doublon. */
+  scrollbar-width: none; -ms-overflow-style: none;
 }
-.fav-car-row::-webkit-scrollbar { height: 6px; }
-.fav-car-row::-webkit-scrollbar-track { background: transparent; }
-.fav-car-row::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 3px; }
-.fav-car-row::-webkit-scrollbar-thumb:hover { background: var(--border2); }
+.fav-car-row::-webkit-scrollbar { display: none; }
+
+.fav-car-nav {
+  position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
+  width: 34px; height: 34px; border-radius: 50%;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--s1); border: 1px solid var(--border2); color: var(--text);
+  cursor: pointer; padding: 0;
+  box-shadow: 0 6px 18px rgba(0,0,0,0.45);
+  transition: background 0.15s, color 0.15s, opacity 0.15s;
+}
+.fav-car-nav:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.fav-car-nav.prev { left: -14px; }
+.fav-car-nav.next { right: -14px; }
+/* Extrémité atteinte : la flèche disparaît au lieu de rester inerte. */
+.fav-car-nav.off { opacity: 0; pointer-events: none; }
 
 .fav-car-card {
   flex: 0 0 210px; scroll-snap-align: start;
@@ -2876,6 +2892,9 @@ body.has-demo-banner { padding-top: 40px; }
   /* Le défilement horizontal doit dépasser les marges de la page, sinon la
      rangée semble s'arrêter au bord et on ne devine pas qu'elle continue. */
   .fav-car-row { margin: 0 -16px; padding: 0 16px 8px; }
+  /* Sur écran tactile le glissement au doigt est naturel : les flèches
+     mangeraient de la largeur de carte pour rien. */
+  .fav-car-nav { display: none; }
 }
 
 @media (max-width: 380px) {
