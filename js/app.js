@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721s';
+const APP_VERSION = '20260721t';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3096,21 +3096,27 @@ function _renderNavInto(container, nodes, layout, labelCls, spaced) {
     if (ADMIN_ONLY_KEYS.includes(key) && !isAdmin()) return false;
     return true;
   };
+  // Récupération des orphelins : entrées connues absentes de la config
+  // sauvegardée (ex. « Actualités » ajoutée après la dernière personnalisation
+  // admin). Réinjectées dans la catégorie DEFAULT_NAV de même titre quand elle
+  // est déjà affichée — sinon on obtenait un second bloc « Outils » en bas du
+  // menu, sous les réseaux sociaux.
+  const placed = new Set();
+  layout.forEach(cat => (cat.items || []).forEach(key => placed.add(key)));
+  const merged = layout.map(cat => ({ title: cat.title, items: [...(cat.items || [])] }));
+  DEFAULT_NAV.forEach(cat => {
+    const missing = (cat.items || []).filter(key => !placed.has(key));
+    if (!missing.length) return;
+    const target = merged.find(c => (c.title || '') === (cat.title || ''));
+    if (target) target.items.push(...missing);
+    else merged.push({ title: cat.title, items: missing });
+  });
+
   container.innerHTML = '';
-  layout.forEach(cat => {
+  merged.forEach(cat => {
     const visible = (cat.items || []).filter(usable);
     if (!visible.length) return; // catégorie vide → pas de titre
     addSection(cat.title, visible);
-  });
-  // Récupération des orphelins : entrées connues absentes de la config
-  // sauvegardée (ex. catégorie « Réseaux » ajoutée après la dernière
-  // personnalisation admin, ou entrée Admin omise). Regroupées sous leur
-  // catégorie DEFAULT_NAV pour ne jamais disparaître du menu.
-  const placed = new Set();
-  layout.forEach(cat => (cat.items || []).forEach(key => placed.add(key)));
-  DEFAULT_NAV.forEach(cat => {
-    const missing = (cat.items || []).filter(key => !placed.has(key) && usable(key));
-    if (missing.length) addSection(cat.title, missing);
   });
 }
 
