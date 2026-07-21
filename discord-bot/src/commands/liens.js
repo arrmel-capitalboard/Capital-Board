@@ -16,7 +16,7 @@ module.exports = {
     .setDMPermission(false),
 
   async execute(interaction) {
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+    await interaction.deferReply();
 
     const embed = new EmbedBuilder()
       .setColor(config.brandColor)
