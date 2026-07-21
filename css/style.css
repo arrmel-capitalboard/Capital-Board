@@ -1867,8 +1867,8 @@ tr.drag-over td { border-top: 2px solid var(--accent) !important; }
 .sidebar.collapsed .nav-item { justify-content: center; padding: 10px 0; gap: 0; font-size: 0; }
 .sidebar.collapsed .nav-icon { font-size: 17px; width: auto; }
 .sidebar.collapsed .nav-item.active::before { left: 0; }
-.sidebar.collapsed .sidebar-logo { justify-content: center; padding: 18px 8px; }
-.sidebar.collapsed .sidebar-logo-icon { margin: 0; }
+.sidebar.collapsed .sidebar-logo { justify-content: center; padding: 18px 0 16px; }
+.sidebar.collapsed .sidebar-logo-icon { margin: 0 auto; }
 .sidebar.collapsed .user-card { justify-content: center; padding: 8px; }
 .sidebar.collapsed .btn-logout { padding: 6px; }
 /* Bas de sidebar replié : le groupe secondaire (présentation, légal, masquer
@@ -1923,7 +1923,7 @@ tr.drag-over td { border-top: 2px solid var(--accent) !important; }
 .sidebar.collapsed .sidebar-logo { order: -1; }
 .sidebar.collapsed .sidebar-toggle {
   position: static; order: 0;
-  top: auto; right: auto; margin: 2px auto 10px;
+  top: auto; right: auto; margin: 16px auto 12px;
 }
 .main { transition: margin-left 0.4s cubic-bezier(0.34, 1.56, 0.64, 1); }
 body.sb-collapsed .main { margin-left: 58px; }
