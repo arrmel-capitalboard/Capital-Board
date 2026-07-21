@@ -97,36 +97,22 @@
   }
   a { color: inherit; text-decoration: none; }
 
-  /* Fond animé — aurores dérivantes derrière tout le contenu */
-  body::before, body::after {
-    content: ''; position: fixed; z-index: 0; pointer-events: none;
-    inset: -25%; will-change: transform;
+  /* Fond animé — bokeh montant (bulles lumineuses) derrière tout le contenu */
+  .bg-bokeh {
+    position: fixed; inset: 0; z-index: 0; pointer-events: none; overflow: hidden;
+    background: radial-gradient(circle at 50% 120%, rgba(20,24,58,0.55), transparent 65%);
   }
-  body::before {
-    background:
-      radial-gradient(38% 38% at 22% 20%, rgba(124,109,245,0.22), transparent 62%),
-      radial-gradient(34% 34% at 82% 32%, rgba(91,141,238,0.16), transparent 62%);
-    filter: blur(46px);
-    animation: aurora-a 26s ease-in-out infinite alternate;
+  .bg-bokeh i {
+    position: absolute; bottom: -70px; border-radius: 50%; filter: blur(1px);
+    background: radial-gradient(circle, rgba(124,109,245,0.85), transparent 70%);
+    animation: bokeh-rise linear infinite; will-change: transform, opacity;
   }
-  body::after {
-    background:
-      radial-gradient(40% 40% at 68% 82%, rgba(0,224,158,0.10), transparent 62%),
-      radial-gradient(30% 30% at 12% 78%, rgba(124,109,245,0.12), transparent 62%);
-    filter: blur(54px);
-    animation: aurora-b 34s ease-in-out infinite alternate;
+  @keyframes bokeh-rise {
+    0%   { transform: translateY(0);       opacity: 0; }
+    12%  { opacity: 1; }
+    100% { transform: translateY(-110vh);  opacity: 0; }
   }
-  @keyframes aurora-a {
-    0%   { transform: translate(0,0) scale(1) rotate(0deg); }
-    100% { transform: translate(4%,-3%) scale(1.12) rotate(6deg); }
-  }
-  @keyframes aurora-b {
-    0%   { transform: translate(0,0) scale(1.05) rotate(0deg); }
-    100% { transform: translate(-4%,3%) scale(1) rotate(-8deg); }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    body::before, body::after { animation: none; }
-  }
+  @media (prefers-reduced-motion: reduce) { .bg-bokeh i { display: none; } }
 
   /* ═══ NAV ═══ */
   nav {
@@ -679,6 +665,7 @@
 </style>
 </head>
 <body>
+<div class="bg-bokeh" id="bg-bokeh" aria-hidden="true"></div>
 
 
 <nav id="topnav">
@@ -1181,5 +1168,23 @@
 </script>
 
 
+<script>
+  // Fond bokeh : bulles lumineuses montantes (violet/bleu), désactivé si reduced-motion.
+  (function(){
+    var box = document.getElementById('bg-bokeh');
+    if (!box || matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+    var colors = ['rgba(124,109,245,0.85)','rgba(124,109,245,0.85)','rgba(91,141,238,0.8)','rgba(0,224,158,0.6)'];
+    for (var i = 0; i < 22; i++) {
+      var b = document.createElement('i');
+      var s = 8 + Math.random() * 34;
+      b.style.width = b.style.height = s + 'px';
+      b.style.left = (Math.random() * 100) + '%';
+      b.style.animationDuration = (11 + Math.random() * 12) + 's';
+      b.style.animationDelay = (-Math.random() * 20) + 's';
+      b.style.background = 'radial-gradient(circle, ' + colors[i % colors.length] + ', transparent 70%)';
+      box.appendChild(b);
+    }
+  })();
+</script>
 </body>
 </html>
