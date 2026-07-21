@@ -7,6 +7,8 @@ const E = require('../lib/emojis');
 const TIKTOK    = 'https://www.tiktok.com/@capitalboard';
 const INSTAGRAM = 'https://www.instagram.com/capitalboard';
 const YOUTUBE   = 'https://www.youtube.com/@capitalboard';
+const PAYPAL    = 'https://www.paypal.com/paypalme/capitalboard';
+const GITHUB    = 'https://github.com/arrmel-capitalboard/Capital-Board';
 const LIENS_GIF = 'https://raw.githubusercontent.com/arrmel-capitalboard/Capital-Board/main/discord-bot/assets/liens.gif';
 
 module.exports = {
@@ -26,17 +28,23 @@ module.exports = {
         { name: 'TikTok',    value: `[capitalboard](${TIKTOK})`,    inline: true },
         { name: 'Instagram', value: `[capitalboard](${INSTAGRAM})`, inline: true },
         { name: 'YouTube',   value: `[capitalboard](${YOUTUBE})`,   inline: true },
+        { name: 'GitHub',    value: `[Capital-Board](${GITHUB})`,   inline: true },
+        { name: 'Nous soutenir', value: `[PayPal](${PAYPAL})`,      inline: true },
       )
       .setImage(LIENS_GIF)
       .setFooter({ text: 'CapitalBoard - https://capitalboard.fr' });
 
-    const row = new ActionRowBuilder().addComponents(
+    const row1 = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setLabel('Site web').setStyle(ButtonStyle.Link).setURL('https://capitalboard.fr'),
       new ButtonBuilder().setLabel('TikTok').setStyle(ButtonStyle.Link).setURL(TIKTOK),
       new ButtonBuilder().setLabel('Instagram').setStyle(ButtonStyle.Link).setURL(INSTAGRAM),
       new ButtonBuilder().setLabel('YouTube').setStyle(ButtonStyle.Link).setURL(YOUTUBE),
     );
+    const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setLabel('GitHub').setStyle(ButtonStyle.Link).setURL(GITHUB),
+      new ButtonBuilder().setLabel('Nous soutenir (PayPal)').setStyle(ButtonStyle.Link).setURL(PAYPAL),
+    );
 
-    await interaction.editReply({ embeds: [embed], components: [row] });
+    await interaction.editReply({ embeds: [embed], components: [row1, row2] });
   },
 };
