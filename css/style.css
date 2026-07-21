@@ -2819,3 +2819,10 @@ body.has-demo-banner { padding-top: 40px; }
 @media (max-width: 380px) {
   .news-thumb { display: none; }            /* écrans étroits : titre pleine largeur */
 }
+
+/* Carte sans résumé (légende Instagram déjà affichée en titre) : le titre
+   récupère la place libérée plutôt que de laisser un vide sous la vignette. */
+.news-card-nosum .news-title { -webkit-line-clamp: 3; }
+@media (max-width: 768px) {
+  .news-card-nosum .news-title { -webkit-line-clamp: 4; }
+}

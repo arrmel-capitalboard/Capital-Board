@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721w';
+const APP_VERSION = '20260721x';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -12331,14 +12331,19 @@ function _newsCard(n, proxyImg) {
   // Les vignettes Meta refusent le hotlink (CORP) : elles transitent par le Worker.
   let img = /^https:\/\//i.test(n.img || '') ? n.img : '';
   if (img) img = (proxyImg ? WORKER_URL + '/fav-img?url=' + encodeURIComponent(img) : img.replace(/"/g, '%22'));
-  return '<a class="news-card" href="' + href + '" target="_blank" rel="noopener noreferrer">'
+  // Les passerelles Instagram recopient la légende dans le titre ET dans la
+  // description : sans ça, chaque carte affiche deux fois le même texte.
+  const norm    = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 60);
+  const summary = norm(n.summary) && norm(n.summary) !== norm(n.title) ? n.summary : '';
+
+  return '<a class="news-card' + (summary ? '' : ' news-card-nosum') + '" href="' + href + '" target="_blank" rel="noopener noreferrer">'
     + (img ? '<img class="news-thumb" src="' + img + '" alt="" loading="lazy" onerror="this.remove()">' : '')
     + '<div class="news-body">'
     +   '<div class="news-meta"><span class="news-source">' + _escapeHtmlChat(n.source) + '</span>'
     +     (when ? '<span class="news-date" title="' + _escapeHtmlChat(full) + '">' + _escapeHtmlChat(when) + '</span>' : '')
     +   '</div>'
     +   '<div class="news-title">' + _escapeHtmlChat(n.title) + '</div>'
-    +   (n.summary ? '<div class="news-summary">' + _escapeHtmlChat(n.summary) + '</div>' : '')
+    +   (summary ? '<div class="news-summary">' + _escapeHtmlChat(summary) + '</div>' : '')
     + '</div></a>';
 }
 
