@@ -2847,6 +2847,13 @@ body.has-demo-banner { padding-top: 40px; }
 }
 .fav-car-row::-webkit-scrollbar { display: none; }
 
+/* Glisser à la souris */
+.fav-car-row { cursor: grab; }
+.fav-car-row.grabbing { cursor: grabbing; }
+/* Pendant le geste, l'aimant du scroll-snap ramènerait la rangée en arrière. */
+.fav-car-row.dragging { scroll-snap-type: none; scroll-behavior: auto; }
+.fav-car-card, .fav-car-card img { user-select: none; -webkit-user-select: none; -webkit-user-drag: none; }
+
 .fav-car-nav {
   position: absolute; top: 50%; transform: translateY(-50%); z-index: 2;
   width: 34px; height: 34px; border-radius: 50%;

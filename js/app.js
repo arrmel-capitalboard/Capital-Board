@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721z';
+const APP_VERSION = '20260721za';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -12423,9 +12423,55 @@ function _favCarSync(row) {
   if (next) next.classList.toggle('off', row.scrollLeft >= max - 4);
 }
 
+// Glisser-déposer à la souris, en complément des flèches. Réservé au pointeur
+// souris : sur écran tactile le défilement natif fait déjà le travail, et le
+// court-circuiter dégraderait l'inertie du système.
+function _favCarDrag(row) {
+  let actif = false, departX = 0, departScroll = 0, amplitude = 0;
+
+  row.addEventListener('pointerdown', e => {
+    if (e.pointerType !== 'mouse' || e.button !== 0) return;
+    actif = true; amplitude = 0;
+    departX = e.clientX; departScroll = row.scrollLeft;
+    row.classList.add('grabbing');
+    try { row.setPointerCapture(e.pointerId); } catch (_) {}
+  });
+
+  row.addEventListener('pointermove', e => {
+    if (!actif) return;
+    const dx = e.clientX - departX;
+    amplitude = Math.max(amplitude, Math.abs(dx));
+    if (Math.abs(dx) > 3) {
+      row.classList.add('dragging');   // neutralise scroll-snap pendant le geste
+      row.scrollLeft = departScroll - dx;
+      e.preventDefault();
+    }
+  });
+
+  const fin = e => {
+    if (!actif) return;
+    actif = false;
+    row.classList.remove('grabbing');
+    if (e && e.pointerId != null) { try { row.releasePointerCapture(e.pointerId); } catch (_) {} }
+    // Le snap ne se réapplique qu'après le geste, sinon il ramène la rangée.
+    setTimeout(() => row.classList.remove('dragging'), 60);
+  };
+  row.addEventListener('pointerup', fin);
+  row.addEventListener('pointercancel', fin);
+
+  // Sans ça, relâcher après un glissement ouvre la publication survolée.
+  row.addEventListener('click', e => {
+    if (amplitude > 5) { e.preventDefault(); e.stopPropagation(); }
+  }, true);
+
+  // Empêche le drag natif de l'image (fantôme translucide au curseur).
+  row.addEventListener('dragstart', e => e.preventDefault());
+}
+
 function _favCarInit(container) {
   container.querySelectorAll('.fav-car-row').forEach(row => {
     row.addEventListener('scroll', () => _favCarSync(row), { passive: true });
+    _favCarDrag(row);
     _favCarSync(row);
   });
 }
