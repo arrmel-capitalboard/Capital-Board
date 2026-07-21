@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721k';
+const APP_VERSION = '20260721l';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6937,7 +6937,6 @@ function toggleSidebar() {
   const btn = document.getElementById('sidebar-toggle');
   sb.classList.toggle('collapsed');
   document.body.classList.toggle('sb-collapsed');
-  btn.textContent = sb.classList.contains('collapsed') ? '▶' : '◀';
   // Ferme le popover « ⋯ » quand on déplie/replie la sidebar
   const ex = document.getElementById('sidebar-extra'); if (ex) ex.classList.remove('open');
   try { localStorage.setItem('pea_sb_collapsed', sb.classList.contains('collapsed') ? '1' : '0'); } catch(e) {}
@@ -6965,7 +6964,7 @@ document.addEventListener('click', (e) => {
     if (localStorage.getItem('pea_sb_collapsed') === '1') {
       setTimeout(() => {
         const sb = document.getElementById('sidebar');
-        if (sb) { sb.classList.add('collapsed'); document.body.classList.add('sb-collapsed'); document.getElementById('sidebar-toggle').textContent = '▶'; }
+        if (sb) { sb.classList.add('collapsed'); document.body.classList.add('sb-collapsed'); }
       }, 0);
     }
   } catch(e) {}
