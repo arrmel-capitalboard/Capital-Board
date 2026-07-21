@@ -9,6 +9,7 @@ const linkcleaner = require('./lib/linkcleaner');
 const rolesync = require('./lib/rolesync');
 const newsqueue = require('./lib/newsqueue');
 const newsweekly = require('./lib/newsweekly');
+const suggestions = require('./lib/suggestions');
 const restartmonitor = require('./lib/restartmonitor');
 const tickets = require('./lib/tickets');
 const ticketstats = require('./lib/ticketstats');
@@ -162,6 +163,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isModalSubmit()) {
       if (newsqueue.isNewsModal(interaction.customId)) { await newsqueue.handleImageModal(interaction); return; }
       if (newsqueue.isNewsTextModal(interaction.customId)) { await newsqueue.handleTextModal(interaction); return; }
+      if (suggestions.isSuggestionModal(interaction.customId)) { await suggestions.handleModal(interaction); return; }
       if (interaction.customId === 'ticket_modal') {
         const reason = interaction.fields.getTextInputValue('ticket_reason');
         await tickets.openTicket(interaction, reason);
@@ -186,6 +188,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (newsqueue.isNewsButton(interaction.customId)) { await newsqueue.handleButton(interaction); return; }
+      if (suggestions.isSuggestionButton(interaction.customId)) { await suggestions.handleButton(interaction); return; }
 
       if (interaction.customId.startsWith('role_')) {
         const roleId = interaction.customId.slice(5);
