@@ -7,6 +7,7 @@ const E = require('../lib/emojis');
 const TIKTOK    = 'https://www.tiktok.com/@capitalboard';
 const INSTAGRAM = 'https://www.instagram.com/capitalboard';
 const YOUTUBE   = 'https://www.youtube.com/@capitalboard';
+const LIENS_GIF = 'https://raw.githubusercontent.com/arrmel-capitalboard/Capital-Board/main/discord-bot/assets/liens.gif';
 
 module.exports = {
   data: new SlashCommandBuilder()
@@ -26,6 +27,7 @@ module.exports = {
         { name: 'Instagram', value: `[capitalboard](${INSTAGRAM})`, inline: true },
         { name: 'YouTube',   value: `[capitalboard](${YOUTUBE})`,   inline: true },
       )
+      .setImage(LIENS_GIF)
       .setFooter({ text: 'CapitalBoard - https://capitalboard.fr' });
 
     const row = new ActionRowBuilder().addComponents(

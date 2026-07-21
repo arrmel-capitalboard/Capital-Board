@@ -34,7 +34,7 @@ module.exports = {
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
     const embed = new EmbedBuilder()
-      .setColor(config.brandColor)
+      .setColor(0x00e09e)
       .setTitle(`${E.ARROW}  Règlement du serveur`)
       .setDescription("En acceptant le règlement, vous obtenez accès au serveur Capital Board.")
       .addFields(REGLEMENT)
