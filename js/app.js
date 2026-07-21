@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721v';
+const APP_VERSION = '20260721w';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -12322,13 +12322,15 @@ const NEWS_MEM_TTL = 10 * 60 * 1000;
 const _newsCache   = {};   // clé de page → { items, updatedAt, stale, fetchedAt }
 const _newsLoading = {};
 
-function _newsCard(n) {
+function _newsCard(n, proxyImg) {
   const dt   = n.ts ? new Date(n.ts) : null;
   const when = dt ? _relTime(dt) : '';
   const full = dt ? dt.toLocaleString('fr-FR', { dateStyle: 'full', timeStyle: 'short' }) : '';
   // Titres et résumés viennent d'éditeurs tiers : échappement obligatoire.
   const href = /^https:\/\//i.test(n.link) ? n.link.replace(/"/g, '%22') : '#';
-  const img  = /^https:\/\//i.test(n.img || '') ? n.img.replace(/"/g, '%22') : '';
+  // Les vignettes Meta refusent le hotlink (CORP) : elles transitent par le Worker.
+  let img = /^https:\/\//i.test(n.img || '') ? n.img : '';
+  if (img) img = (proxyImg ? WORKER_URL + '/fav-img?url=' + encodeURIComponent(img) : img.replace(/"/g, '%22'));
   return '<a class="news-card" href="' + href + '" target="_blank" rel="noopener noreferrer">'
     + (img ? '<img class="news-thumb" src="' + img + '" alt="" loading="lazy" onerror="this.remove()">' : '')
     + '<div class="news-body">'
@@ -12349,7 +12351,7 @@ const FEED_PAGES = {
     error: 'Actualités indisponibles pour l\'instant.',
   },
   favoris: {
-    path: '/favoris', list: 'fav-list', sub: 'fav-updated', fn: 'renderFavoris',
+    path: '/favoris', list: 'fav-list', sub: 'fav-updated', fn: 'renderFavoris', proxyImg: true,
     empty: 'Aucun contenu pour le moment.',
     error: 'Contenus indisponibles pour l\'instant.',
     unconfigured: 'Les comptes suivis ne sont pas encore configurés.',
@@ -12370,7 +12372,7 @@ function _paintFeed(key) {
     return;
   }
 
-  list.innerHTML = cache.items.map(_newsCard).join('');
+  list.innerHTML = cache.items.map(i => _newsCard(i, !!cfg.proxyImg)).join('');
   if (sub) {
     sub.textContent = '· Mis à jour ' + _relTime(new Date(cache.updatedAt))
       + (cache.stale ? ' — flux momentanément indisponibles, dernière collecte affichée' : '');

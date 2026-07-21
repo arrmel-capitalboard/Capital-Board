@@ -1069,6 +1069,39 @@ export default {
         return json({ items: [], updatedAt: Date.now(), error: 'flux indisponibles' }, 503);
       }
 
+      // ── GET /fav-img?url=... ────────────────────────────────────────────
+      // Le CDN Meta renvoie Cross-Origin-Resource-Policy sur les vignettes :
+      // un <img> pointant dessus depuis capitalboard.fr est bloqué par le
+      // navigateur (ERR_BLOCKED_BY_RESPONSE.NotSameOrigin). On les relaie donc,
+      // ce qui les rend same-origin côté client. Hôtes whitelistés pour ne pas
+      // offrir un proxy d'images ouvert.
+      if (url.pathname === '/fav-img' && request.method === 'GET') {
+        const target = url.searchParams.get('url');
+        if (!target) return json({ error: 'url manquant' }, 400);
+        let t;
+        try { t = new URL(target); } catch { return json({ error: 'url invalide' }, 400); }
+        const okHost = t.protocol === 'https:'
+          && /(^|\.)(cdninstagram\.com|fbcdn\.net|rss\.app)$/i.test(t.hostname);
+        if (!okHost) return json({ error: 'hôte non autorisé' }, 403);
+
+        try {
+          const r = await fetch(t.toString(), {
+            headers: { 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 Chrome/120.0 Safari/537.36' },
+            signal: AbortSignal.timeout(8000),
+            cf: { cacheTtl: 3600, cacheEverything: true },
+          });
+          const ct = r.headers.get('Content-Type') || '';
+          if (!r.ok || !ct.startsWith('image')) return json({ error: 'image indisponible' }, 404);
+          return new Response(r.body, {
+            status: 200,
+            // Les URL Meta sont signées et expirent : 1 h de cache, pas plus.
+            headers: { 'Content-Type': ct, 'Cache-Control': 'public, max-age=3600', ...corsHeaders },
+          });
+        } catch {
+          return json({ error: 'image indisponible' }, 504);
+        }
+      }
+
       // ── GET /yahoo?url=... ──────────────────────────────────────────────
       // Proxy Yahoo Finance côté serveur (pas de CORS, pas de crumb).
       // Remplace les proxies CORS gratuits morts (corsproxy.io / cors.eu.org).
