@@ -9,6 +9,7 @@ const linkcleaner = require('./lib/linkcleaner');
 const rolesync = require('./lib/rolesync');
 const newsqueue = require('./lib/newsqueue');
 const newsweekly = require('./lib/newsweekly');
+const leaderboard = require('./lib/leaderboard');
 const suggestions = require('./lib/suggestions');
 const restartmonitor = require('./lib/restartmonitor');
 const tickets = require('./lib/tickets');
@@ -43,6 +44,7 @@ client.once(Events.ClientReady, (c) => {
   rolesync.start(c);
   newsqueue.startWatch(c);
   newsweekly.start(c);
+  leaderboard.start(c);
   ticketstats.start(c);
   restartmonitor.handleOnReady(c).catch(() => {});
 });

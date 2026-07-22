@@ -4,6 +4,7 @@ const { SlashCommandBuilder, EmbedBuilder, MessageFlags } = require('discord.js'
 const firebase = require('../firebase');
 const links = require('../lib/links');
 const { fetchPrice } = require('../lib/prices');
+const leaderboard = require('../lib/leaderboard');
 const config = require('../config');
 const E = require('../lib/emojis');
 
@@ -73,6 +74,12 @@ module.exports = {
       .addFields({
         name: 'Total',
         value: `Valeur : **${fmt(totalValue, cur)}** · Investi : ${fmt(totalCost, cur)} · P/L : ${totalSign}${fmt(totalPl, cur)} (${totalPlPct.toFixed(2)} %)`,
+      })
+      // Identifiant anonyme du classement : sans lui, impossible de se
+      // reconnaître dans le salon leaderboard.
+      .addFields({
+        name: 'Classement communauté',
+        value: `Vous y figurez sous **${leaderboard.alias(uid)}**.`,
       })
       .setFooter({ text: 'CapitalBoard - https://capitalboard.fr' })
       .setTimestamp();
