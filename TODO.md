@@ -33,26 +33,6 @@ rôle aujourd'hui, à généraliser le jour où le statut existe.
 
 ---
 
-## 2. Mot de passe oublié — FAIT
-
-Lien « Mot de passe oublié ? » sur l'écran de connexion → vue `forgot-view` →
-`POST /forgot-password` sur le Worker.
-
-- L'envoi ne passe **plus** par `sendPasswordResetEmail` (client Firebase). Le
-  Worker génère le lien via l'endpoint admin `accounts:sendOobCode`
-  (`returnOobLink`), extrait le `oobCode` et reconstruit un lien vers
-  `auth-action.html` (contrôle total du domaine, contourne la config console).
-- Email FR brandé envoyé via **Resend** depuis `noreply@capitalboard.fr` (fini
-  l'expéditeur `firebaseapp.com` en anglais qui tombait en spam).
-- Réponse toujours générique (anti-énumération : `EMAIL_NOT_FOUND` avalé),
-  Turnstile requis, throttle 60 s côté client, message pour comptes Google-only.
-- La moitié aval (`auth-action.html` : `verifyPasswordResetCode` +
-  `confirmPasswordReset`) existait déjà.
-
-**Reporté (hors code)** — avatar expéditeur sur Gmail = BIMI + VMC payant
-(~1000 $/an), abandonné. BIMI gratuit possible plus tard pour les autres clients.
-
----
 
 ## 3. Changement de nom d'utilisateur + délai — FAIT
 
@@ -215,41 +195,81 @@ Effort élevé — c'est une feature produit à part entière, pas une intégrat
 
 ---
 
-## 8. Contenus favoris — filtrer par type (posts / reels)
+## 8. Contenus favoris — suivre plus de 2 comptes (bloqué, en attente Meta)
 
 **État** — La page « Contenus favoris » existe (menu *Outils*, carrousel par compte,
-`GET /favoris` sur le Worker). Elle affiche **tout** ce que publient les comptes suivis,
-sans distinction entre publications photo et reels.
+`GET /favoris` sur le Worker). Elle affiche tout ce que publient les comptes suivis,
+posts **et** reels : c'est voulu, voir « filtre par type » plus bas.
 
-**À faire** — Pouvoir choisir ce qui remonte : uniquement les posts, uniquement les
-reels, ou les deux.
+**Le vrai blocage — le quota RSS.app.** Le compte est en essai ; le palier gratuit
+est de **2 flux, 5 posts par flux**. Impossible de suivre plus de 2 comptes, et les
+2 flux actuels maigriront tout seuls à la fin de l'essai. Tarifs relevés le
+2026-07-22 : RSS.app Basic 8,32 $/mois (15 flux, 25 posts, refresh 60 min),
+FetchRSS gratuit 5 flux mais refresh 24 h, FetchRSS Basic 4,95 $/mois (25 flux, 3 h).
+**Contrainte posée : ne rien payer.**
 
-**Pourquoi ce n'est pas déjà fait** — la passerelle RSS.app n'expose pas le type.
-Constaté sur le flux réel le 2026-07-21 : zéro occurrence de `reel`, `video` ou `mp4`
-dans le XML, les 25 médias sont tous déclarés `medium="image"`, et **toutes** les URLs
-sont en `/p/`, jamais `/reel/`. Un reel arrive avec sa vignette de couverture,
-indiscernable d'une photo.
+**Piste retenue — Graph API `business_discovery`.** Seule option gratuite sans quota
+sur le nombre de comptes. Vérifié sur la doc officielle le 2026-07-22 : endpoint
+toujours actif en v25.0, aucun avis de dépréciation au changelog (les « mort en 2027 »
+viennent de blogs tiers). Il expose aussi `media_type`, donc il réglerait le tri
+posts/reels au passage.
 
-**Pistes à explorer, par ordre de fiabilité :**
+- Prérequis côté nous : compte Instagram pro (Créateur suffit) + Page Facebook liée,
+  app Meta type Business, produit Connexion Facebook, permissions `instagram_basic`,
+  `pages_show_list`, `pages_read_engagement`, `instagram_manage_insights`.
+- Jeton : celui de l'Explorer meurt en 1 h → échange `grant_type=fb_exchange_token`
+  (60 j) → puis `me/accounts` avec ce jeton long donne un **jeton de Page qui n'expire
+  pas**. C'est celui à stocker en `wrangler secret`, pas de renouvellement à coder.
+- Limite irréductible : **les comptes ciblés doivent être pro**. Un compte perso ou
+  age-gated ne sort rien. Se vérifie en une requête par handle dès que le jeton existe.
+- Architecture prévue : `buildFavoris` fusionne deux sources — Graph API pour les
+  comptes pro (illimité), et les 2 slots RSS.app gratuits gardés en exception pour
+  les comptes non-pro.
 
-1. **Graph API `business_discovery`** — expose `media_type` (`IMAGE`, `VIDEO`,
-   `CAROUSEL_ALBUM`) ; les reels sortent en `VIDEO`. Filtrage propre, à la source.
-   Coût : compte Instagram Business Capital Board, app Meta, jeton longue durée à
-   renouveler, et les comptes ciblés doivent être Business/Creator — à vérifier compte
-   par compte, un compte personnel reste invisible.
-2. **Autre passerelle** (FetchRSS, Apify) — certaines conservent l'URL `/reel/` ou un
-   média vidéo là où RSS.app aplatit tout. Test rapide : créer un flux, regarder le XML.
-   Si le type apparaît, le filtre côté Worker tient en une ligne dans `parseNewsFeed`.
+**BLOQUÉ le 2026-07-22** — le compte Facebook, créé le jour même pour l'occasion, a
+été désactivé par Meta dans la foulée de la création de l'app dev (schéma classique :
+compte neuf + app développeur = signal de faux compte). Appel déposé, décision en
+attente, une pièce d'identité sera probablement demandée. Rien à coder tant que ce
+n'est pas rétabli. **Ne pas créer de second compte Facebook** : détection de
+contournement = bannissement définitif, et la piste Graph API meurt pour de bon.
+Quand le compte revient, le laisser vivre quelques jours avant de recréer l'app.
 
-**Écarté d'avance** — aller chercher la page du post pour lire son `og:type` :
-Instagram bloque les requêtes venant d'un datacenter, déjà constaté en sondant les
-profils publics (le HTML ne contient plus la grille, `edge_owner_to_timeline_media`
-a disparu).
+**Repli à tester en attendant** — FetchRSS, indépendant de Meta : 5 flux gratuits,
+soit 7 comptes en cumulant avec RSS.app, sans rien payer. Inconnue : Instagram n'est
+plus listé dans leurs sources sur la page tarifs. Test = créer un flux sur
+`instagram.com/zonebourse/` et regarder le XML. Aucun code à changer : `parseFavFeeds`
+accepte n'importe quelle URL RSS en https, il suffit d'ajouter des entrées
+`Libellé|url` à `FAVORIS_FEEDS` dans `wrangler.toml`.
+
+**Écarté — héberger un scraper (RSS-Bridge, RSSHub) sur la VM GCP.** Instagram sans
+compte connecté est mort : testé le 2026-07-22 depuis une IP résidentielle, la page
+d'un post comme `/embed/captioned/` renvoient ~602 Ko de coquille vide. Il faudrait un
+cookie de session d'un compte jetable, à renouveler à la main, avec risque de ban.
+
+### Filtre par type (posts / reels) — abandonné
+
+Codé puis annulé le 2026-07-22 (commits `22e2c3c` puis `9dc3310`) : décision produit,
+les reels sont voulus dans la page. La méthode est conservée ici si le besoin revient.
+
+La passerelle n'expose aucun type : vérifié les 2026-07-21 et 2026-07-22, zéro
+occurrence de `reel`, `video` ou `mp4`, les 39 médias tous en `medium="image"`, toutes
+les URLs en `/p/` jamais `/reel/`. Seul signal exploitable : **le format de la
+vignette**. Instagram plafonne une publication de fil à 4:5 (ratio 1,33) alors qu'une
+couverture de reel est en 9:16 (1,78), et l'en-tête JPEG suffit à le lire — 1 Ko de
+`Range: bytes=0-1023`. Relevé réel : 13 posts, 14 reels, ratio maxi d'un post 1,33
+contre 1,77 mini pour un reel, aucun recouvrement, seuil à 1,6.
+
+Deux effets de bord constatés : les items dont l'URL signée a expiré ne sont plus
+mesurables et sortaient de la liste (12 vieux items zonebourse de nov. 2025), et il
+faut un garde-fou si le CDN cesse de répondre, sinon la page se vide.
 
 **Note liée** — le flux d'un compte contient aussi ses republications et
 collaborations : le flux `zonebourse` porte 20 posts de zonebourse, 4 de
 `laurent.cosmos.finance` et 1 de `parlonsfinance`. Le champ `dc:creator` donne l'auteur
-réel et permet de créditer correctement chaque publication.
+réel, et `buildFavoris` s'en sert pour recréditer chaque publication
+(`capital-board-worker/src/index.js:157`). Effet de bord favorable : le rendu groupe
+par auteur, donc ces comptes apparaissent comme des rangées à part — 4 comptes
+affichés pour 2 flux payés.
 
 ---
 
