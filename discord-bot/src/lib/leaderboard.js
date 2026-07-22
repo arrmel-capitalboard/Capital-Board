@@ -29,7 +29,7 @@ const CHANNEL = '1529424510640455781';
 const META = 'botState/leaderboard';
 const REFRESH_INTERVAL = 6 * 60 * 60 * 1000;   // 6 h : les cours bougent, pas les classements
 const TOP = 10;
-const MIN_PARTICIPANTS = 5;   // seuil d'anonymat, voir en-tête
+const MIN_PARTICIPANTS = 1;   // seuil d'anonymat, voir en-tête (abaissé : classement voulu visible dès le lancement)
 
 const fmtEur = (n) =>
   new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', maximumFractionDigits: 0 }).format(n);
@@ -158,7 +158,7 @@ function board(rows, format) {
 }
 
 const HOWTO =
-  'Créez votre portefeuille sur [capitalboard.fr](https://capitalboard.fr), puis tapez `/link` ici : ' +
+  'Créez votre portefeuille sur [capitalboard.fr](https://capitalboard.fr), puis tapez `/link` dans ce salon : ' +
   'le bot vous donne un code à valider sur le site. Une fois lié, vous entrez automatiquement ' +
   'dans le classement — sous un identifiant anonyme, jamais sous votre pseudo. `/unlink` vous en retire.';
 
