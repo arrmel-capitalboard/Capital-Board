@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260721zb';
+const APP_VERSION = '20260722a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -9207,7 +9207,8 @@ function computeBilanAnnuel() {
       years[y].ventes += t.qty * t.price;
       if (t.realizedPnl != null) years[y].realizedPnl += t.realizedPnl;
     }
-    if (t.type === 'dividend') years[y].dividendes += t.qty * t.price;
+    // Les rompus d'attribution gratuite sont du cash encaissé au même titre.
+    if (t.type === 'dividend' || t.type === 'distribution') years[y].dividendes += t.qty * t.price;
   });
 
   const sortedYears = Object.keys(years).map(Number).sort();
@@ -9854,6 +9855,10 @@ function initDividendes() {
 
   const divTxs   = txs.filter(t => t.type === 'dividend');
   const divRecus = divTxs.reduce((s, t) => s + t.qty * t.price, 0);
+  // Rompus d'attribution gratuite : encaissés comme un dividende, donc comptés
+  // ici, mais gardés sous leur propre libellé — ce n'est pas un dividende.
+  const distribTxs   = txs.filter(t => t.type === 'distribution');
+  const distribRecus = distribTxs.reduce((s, t) => s + t.qty * t.price, 0);
 
   // Afficher un état de chargement
   const tbody = document.getElementById('div-tbody');
@@ -9945,8 +9950,8 @@ function initDividendes() {
 
     // Mettre à jour KPIs dynamiques
     const totalHolding   = rows.reduce((s, x) => s + x.duringHolding.length, 0);
-    const totalRecuAuto  = rows.reduce((s, x) => s + x.totalRecu, 0);
-    const totalVersionts = rows.reduce((s, x) => s + x.allReceived.length, 0);
+    const totalRecuAuto  = rows.reduce((s, x) => s + x.totalRecu, 0) + distribRecus;
+    const totalVersionts = rows.reduce((s, x) => s + x.allReceived.length, 0) + distribTxs.length;
     const nextRows = rows.filter(x => x.nextEstim !== '—').sort((a, b) => a.nextEstim.localeCompare(b.nextEstim));
     const kpiRecus   = document.getElementById('div-kpi-recus');
     const kpiHolding = document.getElementById('div-kpi-holding');
@@ -10039,6 +10044,9 @@ function initDividendes() {
     divTxs.forEach(t => {
       allEntries.push({ date: t.date||'', ticker: t.ticker, name: t.name||t.ticker, amount: t.qty*t.price, perShare: t.price, label: '', source: 'reçu', duringHolding: true });
     });
+    distribTxs.forEach(t => {
+      allEntries.push({ date: t.date||'', ticker: t.ticker, name: t.name||t.ticker, amount: t.qty*t.price, perShare: null, label: t.label || 'Attribution d\'actions gratuites', source: 'attribution', duringHolding: true });
+    });
     rows.forEach(({r, history, buyDate, allReceived}) => {
       const today = new Date().toISOString().slice(0,10);
       const buyTxsFallback = txs.filter(t => t.type==='buy' && t.ticker===r.ticker);
@@ -10090,10 +10098,12 @@ function renderDivHistory(histEl) {
       : '<span style="background:var(--s3);color:var(--text3);font-size:10px;padding:1px 7px;border-radius:4px">Avant achat</span>';
     const statutBadge = e.source==='annoncé'
       ? `<span style="background:rgba(245,183,49,0.12);color:var(--gold);font-size:10px;padding:1px 7px;border-radius:4px"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="vertical-align:middle;margin-right:4px;margin-top:-1px"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>Versement annoncé le ${ds}</span>`
-      : e.source==='reçu' || e.source==='reçu-auto'
+      : e.source==='reçu' || e.source==='reçu-auto' || e.source==='attribution'
       ? '<span style="background:rgba(0,224,158,0.15);color:var(--positive);font-size:10px;padding:1px 7px;border-radius:4px">✓ Reçu</span>'
       : '';
-    const srcBadge = e.source==='reçu'
+    const srcBadge = e.source==='attribution'
+      ? '<span style="background:rgba(124,109,245,0.14);color:#a99bff;font-size:10px;padding:1px 7px;border-radius:4px;border:1px solid rgba(124,109,245,0.3);white-space:nowrap">🎁 ATTRIBUTION</span>'
+      : e.source==='reçu'
       ? '<span style="background:rgba(124,109,245,0.15);color:#a89cf7;font-size:10px;padding:1px 7px;border-radius:4px;display:inline-flex;align-items:center;gap:3px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#a89cf7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Manuel</span>'
       : e.source==='annoncé'
       ? '<span style="background:var(--s2);color:var(--text3);font-size:10px;padding:1px 7px;border-radius:4px;display:inline-flex;align-items:center;gap:3px"><img src="https://www.boursorama.com/favicon.ico" width="11" height="11" style="border-radius:2px;vertical-align:middle">Boursorama</span>'
@@ -10104,7 +10114,7 @@ function renderDivHistory(histEl) {
         <div><span style="font-size:12px">${e.name||e.ticker}</span>
         ${e.label?`<div style="font-size:10px;color:var(--text3)">${e.label}</div>`:''}</div></div></td>
       <td data-label="Montant total" class="mono" style="font-weight:600;color:var(--gold)">${e.amount.toFixed(2)} €</td>
-      <td data-label="Par action" class="mono" style="font-size:11px;color:var(--text3)">${e.perShare.toFixed(3)} €/action</td>
+      <td data-label="Par action" class="mono" style="font-size:11px;color:var(--text3)">${e.perShare == null ? '—' : e.perShare.toFixed(3) + ' €/action'}</td>
       <td data-label="Période">${periodBadge}</td>
       <td data-label="Statut">${statutBadge}</td>
       <td data-label="Source">${srcBadge}</td>

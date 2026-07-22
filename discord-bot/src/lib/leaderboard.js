@@ -23,9 +23,10 @@ const crypto = require('node:crypto');
 const { EmbedBuilder } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
 const { fetchPrice } = require('./prices');
-const config = require('../config');
 
 const CHANNEL = '1529424510640455781';
+const IMAGE = 'https://raw.githubusercontent.com/arrmel-capitalboard/Capital-Board/main/discord-bot/assets/leaderboard.gif';
+const RED = 0xdc2626;
 const META = 'botState/leaderboard';
 const REFRESH_INTERVAL = 6 * 60 * 60 * 1000;   // 6 h : les cours bougent, pas les classements
 const TOP = 10;
@@ -43,6 +44,9 @@ const rank = (i) => RANKS[i] || `\`${String(i + 1).padStart(2, ' ')}.\``;
 function alias(uid) {
   return `Membre #${crypto.createHash('sha256').update(uid).digest('hex').slice(0, 4)}`;
 }
+
+const fmtDate = (ts) =>
+  new Intl.DateTimeFormat('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }).format(ts);
 
 /** Durée écoulée depuis un timestamp, en années et mois (« 3 ans 2 mois »). */
 function since(ts) {
@@ -91,7 +95,9 @@ function summarize(uid, portfolio, transactions, quotes) {
   let dividends = 0;
   let firstTs = Infinity;
   for (const t of transactions) {
-    if (t.type === 'dividend') {
+    // « distribution » = rompus d'une attribution gratuite : du cash encaissé,
+    // compté avec les dividendes ici comme dans l'app et /dividendes.
+    if (t.type === 'dividend' || t.type === 'distribution') {
       dividends += (Number(t.qty) || 0) * (Number(t.price) || 0);
     }
     if (t.type === 'buy') {
@@ -164,8 +170,9 @@ const HOWTO =
 
 function buildEmbed(rows) {
   const embed = new EmbedBuilder()
-    .setColor(config.brandColor)
+    .setColor(RED)
     .setTitle('🏆 Classement de la communauté')
+    .setImage(IMAGE)
     .setFooter({ text: 'CapitalBoard - https://capitalboard.fr' })
     .setTimestamp();
 
@@ -199,7 +206,7 @@ function buildEmbed(rows) {
       },
       {
         name: '⏳ Ancienneté — premier investissement',
-        value: board(old, (r) => `**${since(r.firstTs)}**`),
+        value: board(old, (r) => `**${since(r.firstTs)}** · depuis le ${fmtDate(r.firstTs)}`),
       },
       { name: '🔗 Comment y figurer', value: HOWTO },
     );

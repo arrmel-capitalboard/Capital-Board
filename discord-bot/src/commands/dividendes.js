@@ -30,7 +30,11 @@ module.exports = {
 
     const year = interaction.options.getInteger('annee') ?? new Date().getFullYear();
     const tx = await links.getUserItems(uid, 'transactions');
-    const divs = tx.filter((t) => t.type === 'dividend' && String(t.date).slice(0, 4) === String(year));
+    // Les rompus d'attribution gratuite (type distribution) sont du cash encaissé :
+    // comptés dans le total, mais sous leur propre libellé, ce n'est pas un dividende.
+    const divs = tx.filter(
+      (t) => (t.type === 'dividend' || t.type === 'distribution') && String(t.date).slice(0, 4) === String(year),
+    );
 
     if (divs.length === 0) {
       await interaction.editReply(`Aucun dividende enregistré pour ${year}.`);
@@ -43,7 +47,9 @@ module.exports = {
     for (const d of divs) {
       const amount = (Number(d.qty) || 0) * (Number(d.price) || 0);
       total += amount;
-      const key = `${d.name || d.ticker} (${d.ticker})`;
+      const key = d.type === 'distribution'
+        ? `🎁 ${d.name || d.ticker} — attribution d'actions gratuites`
+        : `${d.name || d.ticker} (${d.ticker})`;
       byTicker.set(key, (byTicker.get(key) || 0) + amount);
     }
 
