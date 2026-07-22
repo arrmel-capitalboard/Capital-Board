@@ -215,36 +215,44 @@ Effort élevé — c'est une feature produit à part entière, pas une intégrat
 
 ---
 
-## 8. Contenus favoris — filtrer par type (posts / reels)
+## 8. Contenus favoris — posts seulement, sans les reels — FAIT
 
-**État** — La page « Contenus favoris » existe (menu *Outils*, carrousel par compte,
-`GET /favoris` sur le Worker). Elle affiche **tout** ce que publient les comptes suivis,
-sans distinction entre publications photo et reels.
+La page « Contenus favoris » (menu *Outils*, `GET /favoris`) n'affiche plus que les
+publications photo. Filtrage côté Worker, pas de réglage utilisateur : les reels ne
+sont jamais servis.
 
-**À faire** — Pouvoir choisir ce qui remonte : uniquement les posts, uniquement les
-reels, ou les deux.
+**Comment, faute de type dans le flux** — mesure du format de la vignette dans
+`buildFavoris` (`capital-board-worker/src/index.js`). Instagram plafonne une
+publication de fil à 4:5 (ratio 1,33) alors qu'une couverture de reel est en 9:16
+(1,78) : le trou est franc, seuil posé à 1,6. `jpegRatio()` lit les dimensions dans
+l'en-tête JPEG, dont **1 Ko suffit** (`Range: bytes=0-1023`), une sous-requête par
+item plafonnée à 36.
 
-**Pourquoi ce n'est pas déjà fait** — la passerelle RSS.app n'expose pas le type.
-Constaté sur le flux réel le 2026-07-21 : zéro occurrence de `reel`, `video` ou `mp4`
-dans le XML, les 25 médias sont tous déclarés `medium="image"`, et **toutes** les URLs
-sont en `/p/`, jamais `/reel/`. Un reel arrive avec sa vignette de couverture,
-indiscernable d'une photo.
+Relevé sur les flux réels le 2026-07-22 : 13 posts, 14 reels, ratio maxi d'un post
+1,33 contre 1,77 mini pour un reel — aucun recouvrement.
 
-**Pistes à explorer, par ordre de fiabilité :**
+**Garde-fou** — si moins de la moitié des vignettes est mesurable (CDN qui refuse),
+le filtre se désactive et la liste complète est servie : mieux vaut laisser passer
+des reels qu'afficher une page vide. Le champ `filtered` de la réponse dit lequel
+des deux régimes s'applique.
 
-1. **Graph API `business_discovery`** — expose `media_type` (`IMAGE`, `VIDEO`,
-   `CAROUSEL_ALBUM`) ; les reels sortent en `VIDEO`. Filtrage propre, à la source.
-   Coût : compte Instagram Business Capital Board, app Meta, jeton longue durée à
-   renouveler, et les comptes ciblés doivent être Business/Creator — à vérifier compte
-   par compte, un compte personnel reste invisible.
-2. **Autre passerelle** (FetchRSS, Apify) — certaines conservent l'URL `/reel/` ou un
-   média vidéo là où RSS.app aplatit tout. Test rapide : créer un flux, regarder le XML.
-   Si le type apparaît, le filtre côté Worker tient en une ligne dans `parseNewsFeed`.
+**Effet de bord assumé** — un item dont l'URL signée a expiré n'est plus mesurable
+et sort de la liste (12 vieux items zonebourse de nov. 2025). Ils affichaient déjà
+une image cassée.
 
-**Écarté d'avance** — aller chercher la page du post pour lire son `og:type` :
-Instagram bloque les requêtes venant d'un datacenter, déjà constaté en sondant les
-profils publics (le HTML ne contient plus la grille, `edge_owner_to_timeline_media`
-a disparu).
+**Pourquoi pas mieux** — la passerelle RSS.app n'expose aucun type : vérifié les
+2026-07-21 et 2026-07-22, zéro occurrence de `reel`, `video` ou `mp4` dans le XML,
+les 39 médias tous déclarés `medium="image"`, **toutes** les URLs en `/p/`, jamais
+`/reel/`. Et Instagram ne donne pas de vérité terrain côté serveur : la page du post
+comme `/embed/captioned/` renvoient une coquille vide de ~602 Ko depuis un
+datacenter (testé le 2026-07-22), donc pas de `og:type` à lire.
+
+**Solution propre si le ratio lâche un jour** — Graph API `business_discovery`,
+qui expose `media_type` (`IMAGE`, `VIDEO`, `CAROUSEL_ALBUM`). Coût : compte Instagram
+Business Capital Board, app Meta, jeton longue durée à renouveler, et les comptes
+ciblés doivent être Business/Creator — un compte personnel reste invisible.
+Autre piste plus légère : tester une autre passerelle (FetchRSS, Apify), certaines
+conservent l'URL `/reel/`.
 
 **Note liée** — le flux d'un compte contient aussi ses republications et
 collaborations : le flux `zonebourse` porte 20 posts de zonebourse, 4 de
@@ -269,5 +277,7 @@ réel et permet de créditer correctement chaque publication.
    rende l'agrégat réellement anonyme.
 10. **Coin actualité** (4) — gros chantier, seul à impliquer un coût récurrent
     potentiel (API). À cadrer avant de s'engager.
-11. ~~**Feature Idées — bloc `ideas` à retirer**~~ — sans objet : aucun bloc `ideas`
+11. ~~**Contenus favoris — posts seulement** (8)~~ — FAIT : filtre par format de
+    vignette dans le Worker, voir §8.
+12. ~~**Feature Idées — bloc `ideas` à retirer**~~ — sans objet : aucun bloc `ideas`
     dans les règles Firestore actuelles. La feature Idées reste à faire si voulue.

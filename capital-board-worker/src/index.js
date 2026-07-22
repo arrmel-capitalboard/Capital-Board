@@ -121,6 +121,50 @@ async function buildNews() {
 const FAV_TTL = 1800;   // KV : 30 min (ces comptes publient bien moins souvent)
 const FAV_MAX = 24;
 
+// On ne garde que les publications photo, pas les reels. La passerelle ne donne
+// aucun type : vérifié sur les flux réels le 2026-07-22, les 39 items sortent en
+// medium="image", tous en /p/ (jamais /reel/), et un reel arrive avec sa vignette
+// de couverture. Seul signal restant : le format de cette vignette. Instagram
+// plafonne une publication de fil à 4:5 (1080x1350, soit 1,33) alors qu'une
+// couverture de reel est en 9:16 (1080x1920, 640x1136, 720x1280… soit 1,78) —
+// le trou entre les deux est franc. On lit donc l'en-tête JPEG de la vignette,
+// dont le premier kilo-octet suffit à porter les dimensions.
+const FAV_REEL_RATIO = 1.6;   // hauteur/largeur au-delà = reel
+const FAV_PROBE_MAX  = 36;    // plafond de sous-requêtes (limite Workers : 50)
+
+// Dimensions d'un JPEG depuis son en-tête : on saute de marqueur en marqueur
+// jusqu'au SOF (0xC0-0xCF, hors 0xC4/0xC8/0xCC qui ne décrivent pas la trame).
+function jpegRatio(buf) {
+  const d = new DataView(buf);
+  if (d.byteLength < 4 || d.getUint16(0) !== 0xFFD8) return 0;
+  let i = 2;
+  while (i + 9 < d.byteLength) {
+    if (d.getUint8(i) !== 0xFF) { i++; continue; }
+    const m = d.getUint8(i + 1);
+    if (m >= 0xC0 && m <= 0xCF && m !== 0xC4 && m !== 0xC8 && m !== 0xCC) {
+      const h = d.getUint16(i + 5), w = d.getUint16(i + 7);
+      return w ? h / w : 0;
+    }
+    if (m === 0xD8 || m === 0x01 || (m >= 0xD0 && m <= 0xD7)) { i += 2; continue; }
+    i += 2 + d.getUint16(i + 2);
+  }
+  return 0;   // en-tête tronqué ou format inattendu : indéterminé
+}
+
+// 0 = indéterminé (URL signée expirée, CDN qui refuse, autre format).
+async function favImageRatio(url) {
+  try {
+    const r = await fetch(url, {
+      headers: { Range: 'bytes=0-1023' },
+      signal: AbortSignal.timeout(5000),
+    });
+    if (!r.ok) return 0;
+    return jpegRatio(await r.arrayBuffer());
+  } catch {
+    return 0;
+  }
+}
+
 function parseFavFeeds(raw) {
   return String(raw || '')
     .split(',')
@@ -164,12 +208,20 @@ async function buildFavoris(env) {
   }));
 
   const seen = new Set();
-  const items = lists.flat()
+  const pool = lists.flat()
     .filter(i => { if (seen.has(i.link)) return false; seen.add(i.link); return true; })
     .sort((a, b) => b.ts - a.ts)
+    .slice(0, FAV_PROBE_MAX);
+
+  const ratios = await Promise.all(pool.map(i => i.img ? favImageRatio(i.img) : Promise.resolve(0)));
+  // Si le CDN cesse de répondre, tout devient indéterminé : on sert alors la
+  // liste complète plutôt qu'une page vide, quitte à laisser passer des reels.
+  const filtering = ratios.filter(Boolean).length >= pool.length / 2;
+  const items = pool
+    .filter((_, n) => !filtering || (ratios[n] && ratios[n] < FAV_REEL_RATIO))
     .slice(0, FAV_MAX);
 
-  return { items, updatedAt: Date.now() };
+  return { items, updatedAt: Date.now(), filtered: filtering };
 }
 
 // ── Service account → access token ────────────────────────────────────────

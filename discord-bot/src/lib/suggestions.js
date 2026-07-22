@@ -210,13 +210,17 @@ async function finalizeDecision(interaction) {
   // Verrouille le message de validation.
   try {
     if (msg && msg.embeds[0]) {
+      const att = msg.attachments.first();
       const updated = EmbedBuilder.from(msg.embeds[0])
         .setColor(approved ? GREEN : RED)
         .addFields({
           name: approved ? '✅ Accepté' : '❌ Refusé',
           value: `par <@${interaction.user.id}>` + (note ? `\n> ${note.replace(/\n/g, '\n> ')}` : ''),
         });
-      await msg.edit({ embeds: [updated], components: [] });
+      // Re-référence la pièce jointe par attachment:// pour éviter qu'elle
+      // s'affiche À LA FOIS dans l'embed et comme pièce jointe séparée.
+      if (att) updated.setImage(`attachment://${att.name}`);
+      await msg.edit({ embeds: [updated], components: [], attachments: att ? [att] : [] });
     }
   } catch (e) {
     console.error('[suggestions] edit review:', e.message);
