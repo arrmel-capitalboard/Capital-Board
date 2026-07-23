@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260723i';
+const APP_VERSION = '20260723j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -13370,7 +13370,10 @@ async function renderAdminUsers() {
     const users = {};
     const get = uid => (users[uid] = users[uid] || { uid });
     rolesSnap.forEach(d => { const u = get(d.id), r = d.data(); u.role = r.role || 'user'; u.firstName = r.firstName; u.lastName = r.lastName; u.username = r.username; });
-    presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.online = p.online; u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; });
+    // Online fiable : basé sur la fraîcheur de lastSeen (< 70s = ~2× le
+    // heartbeat de 30s), PAS sur le booléen p.online qui reste figé à true si
+    // l'onglet meurt sans déclencher beforeunload (fréquent sur mobile/PWA).
+    presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; u.online = !!(u.lastSeen && (Date.now() - u.lastSeen.getTime()) < 70000); });
     threadsSnap.forEach(d => { const u = get(d.id), t = d.data(); u.name = t.userName; u.email = t.userEmail; });
 
     // Ne garder que les comptes réellement présents dans Firebase Auth : masque
@@ -13722,6 +13725,22 @@ async function adminBroadcastPush() {
     const r = await _adminAuthPost('/admin/broadcast-push', { title, body });
     st.textContent = r && r.ok ? ('Envoyé : ' + r.sent + '/' + r.total + (r.failed ? ' (échecs ' + r.failed + ')' : '')) : ((r && r.error) || 'Erreur.');
     if (r && r.ok) _audit('broadcast_push', title);
+  } catch (e) { st.textContent = 'Échec (worker injoignable ?).'; }
+}
+
+// Test push : envoie une notification PWA à UN SEUL email (vérif push système).
+async function adminTestPush() {
+  if (!isAdmin()) return;
+  const email = (document.getElementById('bc-push-test-email').value || '').trim();
+  const title = (document.getElementById('bc-push-title').value || '').trim();
+  const body = (document.getElementById('bc-push-body').value || '').trim();
+  const st = document.getElementById('bc-push-status');
+  if (!email) { st.textContent = 'Email de test requis.'; return; }
+  st.textContent = 'Envoi du test…';
+  try {
+    const r = await _adminAuthPost('/admin/test-push', { email, title, body });
+    if (r && r.ok) { st.textContent = 'Test envoyé à ' + (r.email || email) + ' ✅'; _audit('test_push', email); }
+    else { st.textContent = (r && r.error) || 'Erreur.'; }
   } catch (e) { st.textContent = 'Échec (worker injoignable ?).'; }
 }
 // Liens utiles (footer email diffusion). [label, url, fichier icône].

@@ -880,6 +880,31 @@ export default {
         return json({ ok: true, sent, failed, total: tokens.length });
       }
 
+      // ── POST /admin/test-push ───────────────────────────────────────────
+      // Envoie une push FCM (PWA) à UN SEUL utilisateur, ciblé par email.
+      // Sert à vérifier que la diffusion arrive bien en notification système.
+      if (url.pathname === '/admin/test-push' && request.method === 'POST') {
+        const { idToken, email, title, body } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        if (!user || user.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        const target = (email || '').trim().toLowerCase();
+        if (!target) return json({ error: 'email requis' }, 400);
+
+        // email → uid via Firebase Auth
+        const authUsers = await listAuthUsers(env);
+        const match = authUsers.find(u => (u.email || '').toLowerCase() === target);
+        if (!match) return json({ error: 'aucun compte avec cet email' }, 404);
+
+        // uid → fcmToken (doc roles/<uid>)
+        const doc = await firestoreGet(`roles/${match.localId}`, env);
+        const token = fsStr(doc, 'fcmToken');
+        if (!token) return json({ error: 'cet utilisateur n\'est pas abonné au push (pas de token)' }, 404);
+
+        const ok = await sendFcm(token, title || 'Test push Capital Board',
+          body || 'Ceci est une notification push PWA de test. ✅', env);
+        return json({ ok, sent: ok ? 1 : 0, uid: match.localId, email: match.email });
+      }
+
       // ── POST /admin/broadcast-email ─────────────────────────────────────
       if (url.pathname === '/admin/broadcast-email' && request.method === 'POST') {
         const { idToken, subject, html, testEmail } = await request.json();
