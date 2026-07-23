@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260723a">
+<link rel="stylesheet" href="css/style.css?v=20260723b">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -1835,7 +1835,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260723a"></script>
+<script src="js/app.js?v=20260723b"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
@@ -2136,6 +2136,7 @@
       <strong>Assistant Capital Board</strong>
       <span>Aide sur l'app et le PEA</span>
     </div>
+    <button class="cb-chat-end" id="cb-chat-end">Terminer</button>
     <button class="cb-chat-close" id="cb-chat-close" aria-label="Fermer">&times;</button>
   </div>
   <div class="cb-chat-body" id="cb-chat-body"></div>
@@ -2159,6 +2160,7 @@
   var input = document.getElementById('cb-chat-input');
   var send  = document.getElementById('cb-chat-send');
   var close = document.getElementById('cb-chat-close');
+  var endBtn = document.getElementById('cb-chat-end');
   if (!fab || !panel) return;
 
   var history = [];          // [{role, content}] pour le contexte
@@ -2205,6 +2207,29 @@
     panel.setAttribute('aria-hidden', 'true');
   }
 
+  function resetChat() {
+    history = [];
+    greeted = false;
+    body.innerHTML = '';
+    input.value = '';
+    input.disabled = false;
+    endBtn.disabled = false;
+    autosize();
+  }
+
+  function endChat() {
+    if (busy) return;
+    hideTyping();
+    input.disabled = true;
+    endBtn.disabled = true;
+    send.disabled = true;
+    addMsg('Merci de votre visite ! Je ferme cette discussion. À bientôt sur Capital Board. 👋', 'bot');
+    setTimeout(function () {
+      closePanel();
+      setTimeout(resetChat, 300);   // reset après l'animation de fermeture
+    }, 1900);
+  }
+
   function autosize() {
     input.style.height = 'auto';
     input.style.height = Math.min(input.scrollHeight, 96) + 'px';
@@ -2249,6 +2274,7 @@
 
   fab.addEventListener('click', openPanel);
   close.addEventListener('click', closePanel);
+  endBtn.addEventListener('click', endChat);
   send.addEventListener('click', submit);
   input.addEventListener('input', autosize);
   input.addEventListener('keydown', function (e) {

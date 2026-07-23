@@ -2960,6 +2960,13 @@ body.has-demo-banner { padding-top: 40px; }
 .cb-chat-head-txt { flex: 1; min-width: 0; }
 .cb-chat-head-txt strong { display: block; font-size: 14px; font-weight: 800; color: var(--text); }
 .cb-chat-head-txt span { font-size: 12px; color: var(--text2); }
+.cb-chat-end {
+  background: none; border: 1px solid var(--border2); color: var(--text2);
+  font-size: 12px; font-weight: 600; cursor: pointer;
+  padding: 5px 10px; border-radius: 8px; white-space: nowrap;
+  transition: color .15s, border-color .15s;
+}
+.cb-chat-end:hover { color: var(--negative); border-color: rgba(255,77,106,.35); }
 .cb-chat-close {
   background: none; border: none; color: var(--text2);
   font-size: 22px; line-height: 1; cursor: pointer; padding: 4px;
