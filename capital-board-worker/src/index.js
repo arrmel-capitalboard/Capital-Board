@@ -1194,6 +1194,11 @@ export default {
             'Accept': 'application/json',
           },
           signal: AbortSignal.timeout(8000),
+          // Cache PARTAGÉ à l'edge Cloudflare : une URL ticker identique n'est
+          // fetchée chez Yahoo qu'une fois toutes les 30s, quel que soit le
+          // nombre d'utilisateurs. Découple la charge Yahoo du nombre d'users
+          // → tient à 10K users simultanés sans faire tomber Yahoo.
+          cf: { cacheEverything: true, cacheTtl: 30 },
         });
         const body = await yres.text();
         // Cache CDN Cloudflare 30s pour les requêtes identiques (cours/courbe).
