@@ -17,6 +17,7 @@ const ROOT = join(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Fichiers inclus dans la KB. { path, label } — le label titre la section.
 const SOURCES = [
+  { path: 'data/app-help.md',                    label: 'Guide d\'utilisation de l\'application (comment faire)' },
   { path: 'pages/index.html',                    label: 'Présentation Capital Board (page d\'accueil)' },
   { path: 'guides/analyser-son-pea.html',        label: 'Guide : Analyser son PEA' },
   { path: 'guides/pea-vs-cto.html',              label: 'Guide : PEA vs CTO' },
