@@ -10,6 +10,11 @@ firebase.initializeApp({
   appId: "1:719745213666:web:02a3276a6348df7fed6abb"
 });
 
+// Active immédiatement le nouveau service worker (sinon l'ancien continue de
+// tourner et lit l'ancien format de payload → notif sans message).
+self.addEventListener('install', () => self.skipWaiting());
+self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
+
 const messaging = firebase.messaging();
 
 // Messages DATA-ONLY (le Worker n'envoie plus de champ `notification` pour
