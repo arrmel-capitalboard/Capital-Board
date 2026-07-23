@@ -1,5 +1,29 @@
 // Capital Board — Cloudflare Worker
-// Endpoints : POST /verify-pin | POST /send-otp | GET /yahoo | GET /news
+// Endpoints : POST /verify-pin | POST /send-otp | GET /yahoo | GET /news | POST /chat
+
+import { KB } from './kb.js';
+
+// ── Chatbot d'aide (POST /chat) ───────────────────────────────────────────
+// Moteur : Cloudflare Workers AI (Llama, gratuit sous quota). Répond à partir
+// de la base de connaissance KB (contenu public du site, généré par
+// scripts/build-kb.mjs). Ne donne PAS de conseil financier personnalisé.
+const CHAT_MODEL     = '@cf/meta/llama-3.1-8b-instruct';
+const CHAT_MAX_CHARS = 1000;  // longueur max d'une question
+const CHAT_RL_MAX    = 15;    // requêtes max par IP et par fenêtre
+const CHAT_RL_WINDOW = 60;    // fenêtre rate-limit (s)
+
+const CHAT_SYSTEM = `Tu es l'assistant d'aide de Capital Board, une application web française de suivi de portefeuille PEA.
+
+RÈGLES STRICTES :
+- Réponds UNIQUEMENT à partir des informations de la BASE DE CONNAISSANCE ci-dessous.
+- Si l'information ne s'y trouve pas, dis-le clairement : « Je n'ai pas cette information, contactez le support. » N'invente jamais.
+- Vouvoie toujours l'utilisateur (vous, votre).
+- Réponds en français, de façon concise et claire.
+- Tu NE donnes JAMAIS de conseil en investissement personnalisé (quel titre acheter/vendre, allocation perso). Pour ces questions, rappelle : « Je fournis des informations éducatives, pas un conseil personnalisé. »
+- Reste sur le sujet Capital Board, le PEA et l'investissement en bourse. Refuse poliment le hors-sujet.
+
+BASE DE CONNAISSANCE :
+${KB}`;
 
 const CORS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
@@ -737,6 +761,49 @@ export default {
       new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
     try {
+      // ── POST /chat ──────────────────────────────────────────────────────
+      // Chatbot d'aide basé sur la KB (contenu public du site) via Workers AI.
+      if (url.pathname === '/chat' && request.method === 'POST') {
+        // Rate-limit léger par IP (protège le quota Workers AI).
+        const ip = request.headers.get('CF-Connecting-IP') || 'anon';
+        const rlKey = `chat:rl:${ip}`;
+        const count = parseInt((await env.EARNINGS.get(rlKey)) || '0', 10);
+        if (count >= CHAT_RL_MAX) {
+          return json({ error: 'Trop de requêtes, réessayez dans une minute.' }, 429);
+        }
+        await env.EARNINGS.put(rlKey, String(count + 1), { expirationTtl: CHAT_RL_WINDOW });
+
+        let body;
+        try { body = await request.json(); } catch { return json({ error: 'JSON invalide' }, 400); }
+
+        const message = String(body?.message || '').trim();
+        if (!message) return json({ error: 'Question vide' }, 400);
+        if (message.length > CHAT_MAX_CHARS) {
+          return json({ error: `Question trop longue (max ${CHAT_MAX_CHARS} caractères).` }, 400);
+        }
+
+        // Historique optionnel (derniers échanges), borné pour limiter les tokens.
+        const history = Array.isArray(body?.history) ? body.history.slice(-6) : [];
+        const cleanHistory = history
+          .filter((m) => m && (m.role === 'user' || m.role === 'assistant') && typeof m.content === 'string')
+          .map((m) => ({ role: m.role, content: String(m.content).slice(0, CHAT_MAX_CHARS) }));
+
+        const messages = [
+          { role: 'system', content: CHAT_SYSTEM },
+          ...cleanHistory,
+          { role: 'user', content: message },
+        ];
+
+        try {
+          const out = await env.AI.run(CHAT_MODEL, { messages, max_tokens: 512 });
+          const reply = String(out?.response || '').trim();
+          if (!reply) return json({ error: 'Réponse vide du modèle' }, 502);
+          return json({ reply });
+        } catch (e) {
+          return json({ error: 'Assistant indisponible', detail: e.message }, 502);
+        }
+      }
+
       // ── POST /verify-pin ────────────────────────────────────────────────
       if (url.pathname === '/verify-pin' && request.method === 'POST') {
         const { idToken, pin } = await request.json();

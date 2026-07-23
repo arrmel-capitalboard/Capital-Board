@@ -23,6 +23,12 @@ FAVORIS_FEEDS = "@seqo.oia|https://rss.app/feeds/WRHlbmtITze7U9hu.xml,@zonebours
 binding = "EARNINGS"
 id = "994d84c5a364477e869b4fb12605a57d"
 
+# Workers AI : chatbot d'aide (POST /chat). Modèle Llama gratuit sous quota.
+# Base de connaissance = capital-board-worker/src/kb.js (généré par
+# scripts/build-kb.mjs à partir du contenu public du site).
+[ai]
+binding = "AI"
+
 # Cron : vérifie toutes les 5 min les diffusions email programmées (scheduled()).
 [triggers]
 crons = ["*/5 * * * *"]
