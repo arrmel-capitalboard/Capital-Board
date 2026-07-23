@@ -2908,24 +2908,25 @@ body.has-demo-banner { padding-top: 40px; }
   .fav-car-card { flex-basis: 150px; }
 }
 
-/* ── Chatbot d'aide (bulle flottante) ───────────────────────────────────── */
-#cb-chat-fab {
+/* ── Chatbot d'aide (déclencheur dans le header) ─────────────────────────── */
+/* Desktop (>768px) : pilule « Aide » fixe en haut à droite (pas de barre
+   header sur desktop, on simule une action de header). */
+.cb-chat-hdr {
   position: fixed;
-  right: 22px;
-  bottom: calc(22px + env(safe-area-inset-bottom));
+  top: 16px; right: 22px;
   z-index: 99990;
-  width: 56px; height: 56px;
-  border: none; border-radius: 50%;
-  background: var(--accent);
-  color: #fff; cursor: pointer;
-  display: flex; align-items: center; justify-content: center;
-  box-shadow: 0 12px 30px -8px rgba(124,109,245,.55);
-  transition: transform .2s cubic-bezier(.2,.8,.2,1), box-shadow .2s;
+  display: flex; align-items: center; gap: 7px;
+  padding: 8px 14px 8px 11px;
+  border: 1px solid var(--border2); border-radius: 11px;
+  background: var(--s2); color: var(--text);
+  cursor: pointer; font-family: var(--sans); font-size: 13px; font-weight: 600;
+  box-shadow: 0 6px 18px -8px rgba(0,0,0,.5);
+  transition: background .15s, border-color .15s, color .15s;
 }
-#cb-chat-fab:hover { transform: translateY(-2px) scale(1.04); }
-#cb-chat-fab:active { transform: scale(.96); }
-#cb-chat-fab svg { width: 26px; height: 26px; }
-#cb-chat-fab.cb-open { transform: scale(.9); opacity: 0; pointer-events: none; }
+.cb-chat-hdr:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
+.cb-chat-hdr svg { width: 17px; height: 17px; }
+/* Sur mobile, le déclencheur vit dans .mobile-header-actions → on masque la pilule. */
+@media (max-width: 768px) { .cb-chat-hdr { display: none; } }
 
 #cb-chat-panel {
   position: fixed;
@@ -3012,7 +3013,6 @@ body.has-demo-banner { padding-top: 40px; }
 
 /* Mobile : panneau plein écran */
 @media (max-width: 600px) {
-  #cb-chat-fab { right: 16px; bottom: calc(16px + env(safe-area-inset-bottom)); }
   #cb-chat-panel {
     right: 0; left: 0; bottom: 0; top: 0;
     width: 100%; max-width: 100%;
