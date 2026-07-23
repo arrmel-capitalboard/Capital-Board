@@ -1212,6 +1212,50 @@ export default {
         });
       }
 
+      // ── GET /quotes?symbols=SYM1,SYM2,... ───────────────────────────────
+      // Cours de plusieurs tickers en UNE requête (au lieu d'une par ligne côté
+      // client). Chaque ticker est fetché chez Yahoo avec le cache edge partagé
+      // 30s (cf. /yahoo) → charge Yahoo indépendante du nombre d'utilisateurs.
+      // Tient à des milliers d'users simultanés.
+      if (url.pathname === '/quotes' && request.method === 'GET') {
+        const rawSyms = (url.searchParams.get('symbols') || '').trim();
+        if (!rawSyms) return json({ quotes: {}, updatedAt: Date.now() });
+        // Dédup + borne (évite l'abus : max 60 tickers par appel).
+        const symbols = [...new Set(rawSyms.split(',').map((s) => s.trim()).filter(Boolean))].slice(0, 60);
+
+        const quotes = {};
+        await Promise.all(symbols.map(async (sym) => {
+          try {
+            const yurl = 'https://query1.finance.yahoo.com/v8/finance/chart/'
+              + encodeURIComponent(sym) + '?interval=1d&range=1d';
+            const r = await fetch(yurl, {
+              headers: {
+                'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0 Safari/537.36',
+                'Accept': 'application/json',
+              },
+              signal: AbortSignal.timeout(6000),
+              cf: { cacheEverything: true, cacheTtl: 30 },   // cache edge partagé 30s
+            });
+            const d = JSON.parse(await r.text());
+            const res = d.chart && d.chart.result && d.chart.result[0];
+            const m = res && res.meta;
+            if (m && m.regularMarketPrice != null) {
+              const prev = m.chartPreviousClose || m.previousClose || m.regularMarketPrice;
+              quotes[sym] = {
+                price: m.regularMarketPrice,
+                prevClose: prev,
+                changePct: prev ? ((m.regularMarketPrice - prev) / prev * 100) : 0,
+                currency: m.currency || null,
+              };
+            }
+          } catch (_) { /* ticker HS : simplement absent de la réponse */ }
+        }));
+
+        return new Response(JSON.stringify({ quotes, updatedAt: Date.now() }), {
+          headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=30', ...corsHeaders },
+        });
+      }
+
       // ── GET /earnings-detail?symbol=... ─────────────────────────────────
       // Historique (4 trimestres) + prochaine date pour un titre. Cache KV 24h.
       if (url.pathname === '/earnings-detail' && request.method === 'GET') {

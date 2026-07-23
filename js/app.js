@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260723f';
+const APP_VERSION = '20260723g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -7664,33 +7664,75 @@ function toggleAutoRefresh() {
   }
 }
 
+let _refreshingPrices = false;
 async function refreshPrices() {
-  if (!currentUser) return;
+  // Garde anti-ré-entrée : si un refresh précédent traîne (réseau lent),
+  // on ne lance pas un 2e par-dessus → pas d'empilement de requêtes.
+  if (!currentUser || _refreshingPrices) return;
   const data = getPortfolio(currentUser);
   if (!data.length) return;
-  let changed = false;
-  await Promise.all(data.map(async (row) => {
+  _refreshingPrices = true;
+  try {
+    // Regroupe les lignes par ticker Yahoo (plusieurs lignes peuvent partager
+    // un même ticker) → 1 seul prix à récupérer par ticker unique.
+    const tickerRows = {};
+    data.forEach((row) => {
+      const yt = resolveToYahooTicker(row.ticker);
+      (tickerRows[yt] = tickerRows[yt] || []).push(row);
+    });
+    const symbols = Object.keys(tickerRows);
+    let changed = false;
+
+    // Lever 2 : UNE requête batch au Worker pour tout le portefeuille
+    // (au lieu d'une requête par ligne). Le Worker mutualise via le cache edge.
+    let quotes = null;
     try {
-      const yahooTicker = resolveToYahooTicker(row.ticker);
-      const url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(yahooTicker) + '?interval=1d&range=1d';
-      const raw = await fetchWithFallback(url);
-      const d = JSON.parse(raw);
-      const res = d.chart && d.chart.result && d.chart.result[0];
-      if (res && res.meta && res.meta.regularMarketPrice) {
-        row.currentPrice = res.meta.regularMarketPrice;
-        const prev = res.meta.chartPreviousClose || res.meta.previousClose || row.currentPrice;
-        row.changePct = prev ? ((row.currentPrice - prev) / prev * 100) : 0;
+      const res = await fetch(WORKER_URL + '/quotes?symbols=' + encodeURIComponent(symbols.join(',')),
+        { signal: AbortSignal.timeout(9000) });
+      if (res.ok) { const j = await res.json(); quotes = j && j.quotes; }
+    } catch (_) {}
+
+    if (quotes && Object.keys(quotes).length) {
+      symbols.forEach((yt) => {
+        const q = quotes[yt];
+        if (!q || q.price == null) return;
+        tickerRows[yt].forEach((row) => {
+          row.currentPrice = q.price;
+          row.changePct = q.prevClose ? ((q.price - q.prevClose) / q.prevClose * 100) : 0;
+        });
         changed = true;
-      }
-    } catch(e) {}
-  }));
-  if (changed) {
-    savePortfolio(currentUser, data);
-    renderPortfolio();
-    setTimeout(pulseBadges, 200);
+      });
+    } else {
+      // Repli : ancienne méthode ligne par ligne (proxies) si le batch échoue.
+      await Promise.all(symbols.map(async (yt) => {
+        try {
+          const url = 'https://query1.finance.yahoo.com/v8/finance/chart/' + encodeURIComponent(yt) + '?interval=1d&range=1d';
+          const raw = await fetchWithFallback(url);
+          const d = JSON.parse(raw);
+          const res = d.chart && d.chart.result && d.chart.result[0];
+          if (res && res.meta && res.meta.regularMarketPrice) {
+            const price = res.meta.regularMarketPrice;
+            const prev = res.meta.chartPreviousClose || res.meta.previousClose || price;
+            tickerRows[yt].forEach((row) => {
+              row.currentPrice = price;
+              row.changePct = prev ? ((price - prev) / prev * 100) : 0;
+            });
+            changed = true;
+          }
+        } catch (_) {}
+      }));
+    }
+
+    if (changed) {
+      savePortfolio(currentUser, data);
+      renderPortfolio();
+      setTimeout(pulseBadges, 200);
   }
-  // Scan attributions gratuites / OST (rompus) — 1×/session, prix maintenant à jour.
-  try { scanCorporateActions(); } catch(_) {}
+    // Scan attributions gratuites / OST (rompus) — 1×/session, prix maintenant à jour.
+    try { scanCorporateActions(); } catch(_) {}
+  } finally {
+    _refreshingPrices = false;
+  }
 }
 
 // ═══════════════════════════════════════════════════
