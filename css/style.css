@@ -2908,13 +2908,21 @@ body.has-demo-banner { padding-top: 40px; }
   .fav-car-card { flex-basis: 150px; }
 }
 
-/* ── Chatbot d'aide (déclencheur dans le header) ─────────────────────────── */
-/* Desktop (>768px) : pilule « Aide » fixe en haut à droite (pas de barre
-   header sur desktop, on simule une action de header). */
-.cb-chat-hdr {
+/* ── Barre haut-droite : espace utilisateur + assistant (desktop) ────────── */
+/* Desktop (>768px) : l'app n'a pas de barre header native → on fixe en haut à
+   droite l'espace utilisateur (user-card) + le déclencheur de l'assistant. */
+.app-topright {
   position: fixed;
   top: 16px; right: 22px;
   z-index: 99990;
+  display: flex; align-items: center; gap: 10px;
+}
+.app-topright .user-name { max-width: 150px; }
+/* Sur mobile (≤768px), l'espace utilisateur et l'assistant vivent dans
+   .mobile-header → on masque toute la barre haut-droite. */
+@media (max-width: 768px) { .app-topright { display: none; } }
+
+.cb-chat-hdr {
   display: flex; align-items: center; gap: 7px;
   padding: 8px 14px 8px 11px;
   border: 1px solid var(--border2); border-radius: 11px;
@@ -2925,8 +2933,6 @@ body.has-demo-banner { padding-top: 40px; }
 }
 .cb-chat-hdr:hover { background: var(--accent); border-color: var(--accent); color: #fff; }
 .cb-chat-hdr svg { width: 17px; height: 17px; }
-/* Sur mobile, le déclencheur vit dans .mobile-header-actions → on masque la pilule. */
-@media (max-width: 768px) { .cb-chat-hdr { display: none; } }
 
 #cb-chat-panel {
   position: fixed;
