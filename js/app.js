@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260723j';
+const APP_VERSION = '20260723k';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -13355,6 +13355,16 @@ function _relTime(d) {
   if (s < 86400) return 'il y a ' + Math.floor(s / 3600) + ' h';
   return 'il y a ' + Math.floor(s / 86400) + ' j';
 }
+
+// Version ultra-compacte pour la liste admin : « 3min », « 22H », « 7J ».
+function _relTimeShort(d) {
+  if (!d) return '';
+  const s = Math.floor((Date.now() - d.getTime()) / 1000);
+  if (s < 60) return 'now';
+  if (s < 3600) return Math.floor(s / 60) + 'min';
+  if (s < 86400) return Math.floor(s / 3600) + 'H';
+  return Math.floor(s / 86400) + 'J';
+}
 async function renderAdminUsers() {
   if (!isAdmin()) return;
   const box = document.getElementById('admin-users');
@@ -13405,7 +13415,9 @@ async function renderAdminUsers() {
       return '<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)">' +
         dot +
         '<div style="flex:1;min-width:0">' +
-          '<div style="font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:7px">' + label + ' ' + roleBadge + '</div>' +
+          '<div style="font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:7px">' + label +
+            (u.lastSeen ? '<span title="Dernière connexion" style="font-size:10px;font-weight:600;color:var(--text2);font-family:var(--mono);padding:1px 6px;background:rgba(255,255,255,.05);border-radius:5px">' + _relTimeShort(u.lastSeen) + '</span>' : '') +
+            roleBadge + '</div>' +
           '<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + sub + '</div>' +
         '</div>' +
         '<div style="display:flex;gap:6px;flex-shrink:0">' + resetBtn + delBtn + '</div>' +
@@ -13713,32 +13725,39 @@ async function adminCheckHealth(silent) {
     if (auto) auto.textContent = '· mis à jour à ' + new Date().toLocaleTimeString('fr-FR');
   } catch (e) { box.textContent = 'Worker injoignable.'; }
 }
-async function adminBroadcastPush() {
+function adminBroadcastPush() {
   if (!isAdmin()) return;
-  const title = (document.getElementById('bc-push-title').value || '').trim();
   const body = (document.getElementById('bc-push-body').value || '').trim();
   const st = document.getElementById('bc-push-status');
-  if (!title || !body) { st.textContent = 'Titre et message requis.'; return; }
-  if (!confirm('Envoyer cette notification push à TOUS les utilisateurs ?')) return;
-  st.textContent = 'Envoi…';
-  try {
-    const r = await _adminAuthPost('/admin/broadcast-push', { title, body });
-    st.textContent = r && r.ok ? ('Envoyé : ' + r.sent + '/' + r.total + (r.failed ? ' (échecs ' + r.failed + ')' : '')) : ((r && r.error) || 'Erreur.');
-    if (r && r.ok) _audit('broadcast_push', title);
-  } catch (e) { st.textContent = 'Échec (worker injoignable ?).'; }
+  if (!body) { st.textContent = 'Message requis.'; return; }
+  showConfirmModal({
+    icon: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>',
+    title: 'Diffusion push',
+    body: 'Envoyer cette notification push à TOUS les utilisateurs abonnés ?',
+    okLabel: 'Envoyer',
+    danger: true,
+    onConfirm: async () => {
+      st.textContent = 'Envoi…';
+      try {
+        // Titre fixe (l'admin ne saisit que le message) : nom de l'app.
+        const r = await _adminAuthPost('/admin/broadcast-push', { title: 'Capital Board', body });
+        st.textContent = r && r.ok ? ('Envoyé : ' + r.sent + '/' + r.total + (r.failed ? ' (échecs ' + r.failed + ')' : '')) : ((r && r.error) || 'Erreur.');
+        if (r && r.ok) _audit('broadcast_push', body.slice(0, 40));
+      } catch (e) { st.textContent = 'Échec (worker injoignable ?).'; }
+    },
+  });
 }
 
 // Test push : envoie une notification PWA à UN SEUL email (vérif push système).
 async function adminTestPush() {
   if (!isAdmin()) return;
   const email = (document.getElementById('bc-push-test-email').value || '').trim();
-  const title = (document.getElementById('bc-push-title').value || '').trim();
   const body = (document.getElementById('bc-push-body').value || '').trim();
   const st = document.getElementById('bc-push-status');
   if (!email) { st.textContent = 'Email de test requis.'; return; }
   st.textContent = 'Envoi du test…';
   try {
-    const r = await _adminAuthPost('/admin/test-push', { email, title, body });
+    const r = await _adminAuthPost('/admin/test-push', { email, title: 'Capital Board', body });
     if (r && r.ok) { st.textContent = 'Test envoyé à ' + (r.email || email) + ' ✅'; _audit('test_push', email); }
     else { st.textContent = (r && r.error) || 'Erreur.'; }
   } catch (e) { st.textContent = 'Échec (worker injoignable ?).'; }
