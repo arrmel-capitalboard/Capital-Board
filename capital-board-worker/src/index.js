@@ -7,7 +7,7 @@ import { KB } from './kb.js';
 // Moteur : Cloudflare Workers AI (Llama, gratuit sous quota). Répond à partir
 // de la base de connaissance KB (contenu public du site, généré par
 // scripts/build-kb.mjs). Ne donne PAS de conseil financier personnalisé.
-const CHAT_MODEL     = '@cf/meta/llama-3.1-8b-instruct';
+const CHAT_MODEL     = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const CHAT_MAX_CHARS = 1000;  // longueur max d'une question
 const CHAT_RL_MAX    = 15;    // requêtes max par IP et par fenêtre
 const CHAT_RL_WINDOW = 60;    // fenêtre rate-limit (s)
