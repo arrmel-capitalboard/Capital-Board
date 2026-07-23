@@ -64,11 +64,12 @@ let fbApp, fbAuth, db,
 
 let fbStorage = null, fbStorageRef, fbStorageUploadBytes, fbStorageGetDownloadURL;
 let fcmMessaging = null, getFCMToken, onFCMMessage;
+let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toasts en double)
 // VAPID key : Firebase Console → Project Settings → Cloud Messaging → Web Push certificates → Generate key pair
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260723m';
+const APP_VERSION = '20260723n';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -12055,13 +12056,19 @@ async function initPush(uid) {
     const swReg = await navigator.serviceWorker.register('firebase-messaging-sw.js');
     const token = await getFCMToken(fcmMessaging, { vapidKey: VAPID_KEY, serviceWorkerRegistration: swReg });
     if (token) setFirestoreDoc(firestoreDoc(db, 'roles', uid), { fcmToken: token }, { merge: true }).catch(() => {});
-    onFCMMessage(fcmMessaging, payload => {
-      const { title, body } = payload.data || payload.notification || {};
-      _logNotifHistory(payload.data?.type || 'push', title || 'Capital Board', body || '');
-      _showChatToast({ icon: IC.bell, title: title || 'Capital Board', msg: body || '' });
-      renderNotificationsPage();
-      if (payload.data?.type === 'daily_recap') _refreshRecap();
-    });
+    // Garde : initPush peut être appelé plusieurs fois (auth, activation notifs…).
+    // Sans ce flag, onFCMMessage empile un listener à chaque appel → toast en
+    // double/triple quand l'app est au premier plan.
+    if (!_fcmMsgHandlerSet) {
+      _fcmMsgHandlerSet = true;
+      onFCMMessage(fcmMessaging, payload => {
+        const { title, body } = payload.data || payload.notification || {};
+        _logNotifHistory(payload.data?.type || 'push', title || 'Capital Board', body || '');
+        _showChatToast({ icon: IC.bell, title: title || 'Capital Board', msg: body || '' });
+        renderNotificationsPage();
+        if (payload.data?.type === 'daily_recap') _refreshRecap();
+      });
+    }
   } catch(e) { console.warn('FCM init:', e.message); }
 }
 
