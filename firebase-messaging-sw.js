@@ -12,15 +12,19 @@ firebase.initializeApp({
 
 const messaging = firebase.messaging();
 
+// Messages DATA-ONLY (le Worker n'envoie plus de champ `notification` pour
+// éviter le double affichage). On lit donc le contenu dans payload.data.
 messaging.onBackgroundMessage(payload => {
-  const title = payload.notification?.title || 'Capital Board';
-  const body  = payload.notification?.body  || '';
+  const d = payload.data || {};
+  const title = d.title || payload.notification?.title || 'Capital Board';
+  const body  = d.body  || payload.notification?.body  || '';
   self.registration.showNotification(title, {
     body,
     icon:  './assets/logo.png',
     badge: './assets/logo.png',
-    tag:   payload.data?.type || 'capitalboard',
-    data:  payload.data || {}
+    tag:   d.type || 'capitalboard',   // même tag → remplace au lieu d'empiler
+    renotify: true,
+    data:  d
   });
 });
 

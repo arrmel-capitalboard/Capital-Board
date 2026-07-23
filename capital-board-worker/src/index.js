@@ -401,12 +401,22 @@ async function firestoreList(collection, env) {
 }
 
 // Envoie une notif FCM (HTTP v1) à un token.
+// IMPORTANT : message DATA-ONLY (pas de champ `notification`). Sur le web, un
+// payload `notification` est auto-affiché par le navigateur ET re-affiché par
+// le service worker (onBackgroundMessage) → notification en double/quadruple.
+// En data-only, seul le service worker affiche → exactement une notification.
 async function sendFcm(fcmToken, title, body, env) {
   const at = await getAccessToken(env);
   const res = await fetch(`https://fcm.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/messages:send`, {
     method: 'POST',
     headers: { Authorization: `Bearer ${at}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message: { token: fcmToken, notification: { title, body } } }),
+    body: JSON.stringify({
+      message: {
+        token: fcmToken,
+        data: { title: String(title || ''), body: String(body || ''), type: 'broadcast' },
+        webpush: { headers: { Urgency: 'high' } },
+      },
+    }),
   });
   return res.ok;
 }
