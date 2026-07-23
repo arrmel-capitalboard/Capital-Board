@@ -68,7 +68,7 @@ let fcmMessaging = null, getFCMToken, onFCMMessage;
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260723h';
+const APP_VERSION = '20260723i';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -13197,10 +13197,9 @@ async function renderAdminPage() {
   if (vs) vs.innerHTML = 'Version actuelle : <span class="mono">' + APP_VERSION + '</span>' +
     (cfg.minVersion ? ' · minimum forcé : <span class="mono">' + cfg.minVersion + '</span>' : '');
 
-  // Stats + liste utilisateurs + journal d'audit
+  // Stats + liste utilisateurs
   renderAdminStats();
   renderAdminUsers();
-  renderAuditLog();
   adminLoadScheduled();
   _startHealthAuto();
 }
