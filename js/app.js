@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260723q';
+const APP_VERSION = '20260725a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -12447,8 +12447,13 @@ function _feedCarousel(items, proxyImg) {
       const href = /^https:\/\//i.test(p.link) ? p.link.replace(/"/g, '%22') : '#';
       let img = /^https:\/\//i.test(p.img || '') ? p.img : '';
       if (img) img = proxyImg ? WORKER_URL + '/fav-img?url=' + encodeURIComponent(img) : img.replace(/"/g, '%22');
+      // La vignette est posée deux fois : en fond (floutée par le CSS) pour
+      // combler le cadre, et par-dessus en entier. Même URL donc même
+      // téléchargement, le navigateur ne la charge qu'une fois.
       return '<a class="fav-car-card" href="' + href + '" target="_blank" rel="noopener noreferrer">'
-        + (img ? '<img src="' + img + '" alt="" loading="lazy" onerror="this.remove()">' : '')
+        + (img ? '<div class="fav-car-media" style="background-image:url(&quot;' + img + '&quot;)">'
+               +   '<img src="' + img + '" alt="" loading="lazy" onerror="this.parentNode.remove()">'
+               + '</div>' : '')
         + '<div class="fav-car-body">'
         +   '<div class="fav-car-title">' + _escapeHtmlChat(p.title) + '</div>'
         +   (dt ? '<span class="news-date">' + _escapeHtmlChat(_relTime(dt)) + '</span>' : '')
