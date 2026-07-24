@@ -17,6 +17,14 @@ ADMIN_UID = "A6nZQ8PcxdURytSesA17xK81I9T2"
 # comme « à configurer », sans erreur.
 FAVORIS_FEEDS = "@seqo.oia|https://rss.app/feeds/WRHlbmtITze7U9hu.xml,@zonebourse|https://rss.app/feeds/7CxlNiJbxOUNhXlN.xml"
 
+# Deuxième source des favoris : Graph API `business_discovery`, sans limite de
+# nombre de comptes (les passerelles RSS gratuites plafonnent à 2 flux). Liste
+# de handles Instagram séparés par des virgules, le @ est optionnel. Les comptes
+# visés doivent être **professionnels** (Créateur ou Business) : un compte perso
+# ne renvoie rien et reste à couvrir par un flux RSS ci-dessus.
+# Nécessite les secrets IG_USER_ID et IG_GRAPH_TOKEN ; sans eux la liste est ignorée.
+FAVORIS_IG_HANDLES = ""
+
 # Cache earnings : 1 clé par symbole (earn:SYM, TTL 24h) + creds Yahoo (crumb).
 # Source = Yahoo calendarEvents (global, pas de clé API). Finnhub abandonné (US-only).
 [[kv_namespaces]]
@@ -36,3 +44,6 @@ crons = ["*/5 * * * *"]
 # Secrets à injecter via : wrangler secret put <NOM>
 #   FIREBASE_SERVICE_ACCOUNT   → JSON complet du service account Firebase
 #   RESEND_API_KEY             → clé API Resend
+#   IG_USER_ID                 → id du compte Instagram pro lié à notre Page Facebook
+#   IG_GRAPH_TOKEN             → jeton de Page Facebook (n'expire pas), scopes
+#                                instagram_basic + pages_show_list + pages_read_engagement

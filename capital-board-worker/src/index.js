@@ -143,7 +143,8 @@ async function buildNews() {
 // FetchRSS…), configurés dans FAVORIS_FEEDS au format « Libellé|url », séparés
 // par des virgules. Vide = section annoncée comme non configurée, pas d'erreur.
 const FAV_TTL = 1800;   // KV : 30 min (ces comptes publient bien moins souvent)
-const FAV_MAX = 24;
+const FAV_MAX = 120;    // plafond global de la page
+const FAV_PER_ACCOUNT = 12;   // plafond par compte : un compte bavard n'écrase pas les autres
 
 function parseFavFeeds(raw) {
   return String(raw || '')
@@ -159,9 +160,80 @@ function parseFavFeeds(raw) {
     .filter(f => /^https:\/\//i.test(f.url));
 }
 
+// Deuxième source : Graph API `business_discovery`. Les passerelles RSS
+// gratuites plafonnent à 2 flux ; cet endpoint lit les publications de
+// n'importe quel compte Instagram **professionnel** sans limite de nombre de
+// comptes. Prérequis : IG_USER_ID (notre compte pro, lié à une Page Facebook)
+// et IG_GRAPH_TOKEN (jeton de Page, qui n'expire pas) — tous deux en secrets.
+// Un compte visé qui reste perso ou age-gated ne renvoie rien : l'erreur est
+// isolée par compte pour ne pas vider la page.
+const IG_GRAPH_VERSION = 'v25.0';
+
+function parseFavHandles(raw) {
+  return String(raw || '')
+    .split(',')
+    .map(s => s.trim().replace(/^@/, ''))
+    .filter(h => /^[a-zA-Z0-9._]{1,40}$/.test(h));
+}
+
+function hasIgGraph(env) {
+  return Boolean(env.IG_USER_ID && env.IG_GRAPH_TOKEN && parseFavHandles(env.FAVORIS_IG_HANDLES).length);
+}
+
+// Le même post arrive parfois par les deux sources : on déduplique sur le code
+// du permalink, les query params des passerelles rendant l'URL brute inutilisable.
+function favKey(link) {
+  const m = String(link || '').match(/instagram\.com\/(?:p|reel|tv)\/([A-Za-z0-9_-]+)/i);
+  return m ? m[1] : String(link || '');
+}
+
+async function fetchIgAccount(env, handle) {
+  const fields =
+    `business_discovery.username(${handle})` +
+    `{username,media.limit(${FAV_PER_ACCOUNT})` +
+    `{caption,media_type,media_url,thumbnail_url,permalink,timestamp,children{media_url,thumbnail_url}}}`;
+  const url = `https://graph.facebook.com/${IG_GRAPH_VERSION}/${encodeURIComponent(env.IG_USER_ID)}`
+    + `?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(env.IG_GRAPH_TOKEN)}`;
+
+  const r = await fetch(url, { signal: AbortSignal.timeout(7000) });
+  const data = await r.json().catch(() => null);
+  const bd = data && data.business_discovery;
+  if (!r.ok || !bd) return [];   // compte non pro, handle inconnu, ou jeton mort
+
+  const source = '@' + (bd.username || handle);
+  return ((bd.media && bd.media.data) || []).map(m => {
+    const caption = String(m.caption || '').replace(/\s+/g, ' ').trim();
+    // Un carrousel n'a pas de media_url : la vignette vient du premier enfant.
+    const child = (m.children && m.children.data && m.children.data[0]) || null;
+    let img = m.media_type === 'VIDEO'
+      ? (m.thumbnail_url || '')
+      : (m.media_url || (child && (child.media_url || child.thumbnail_url)) || '');
+    if (!/^https:\/\//i.test(img)) img = '';
+    return {
+      title:   caption ? (caption.length > 90 ? caption.slice(0, 87).trimEnd() + '…' : caption) : source,
+      link:    m.permalink || '',
+      source,
+      creator: source,
+      ts:      Date.parse(m.timestamp || '') || 0,
+      img,
+      summary: caption.length > 200 ? caption.slice(0, 197).trimEnd() + '…' : caption,
+    };
+  }).filter(i => i.link);
+}
+
+async function buildFavorisGraph(env) {
+  if (!hasIgGraph(env)) return [];
+  const lists = await Promise.all(
+    parseFavHandles(env.FAVORIS_IG_HANDLES).map(h => fetchIgAccount(env, h).catch(() => []))
+  );
+  return lists.flat();
+}
+
 async function buildFavoris(env) {
   const feeds = parseFavFeeds(env.FAVORIS_FEEDS);
-  if (!feeds.length) return { items: [], updatedAt: Date.now(), unconfigured: true };
+  if (!feeds.length && !hasIgGraph(env)) return { items: [], updatedAt: Date.now(), unconfigured: true };
+
+  const graphP = buildFavorisGraph(env);   // lancé en parallèle des flux RSS
 
   const lists = await Promise.all(feeds.map(async f => {
     try {
@@ -187,10 +259,21 @@ async function buildFavoris(env) {
     }
   }));
 
+  // Graph d'abord : ses métadonnées sont propres (auteur, date, type de média),
+  // donc c'est sa version qui gagne en cas de doublon avec un flux RSS.
+  const graph = await graphP;
+
   const seen = new Set();
-  const items = lists.flat()
-    .filter(i => { if (seen.has(i.link)) return false; seen.add(i.link); return true; })
+  const perAccount = new Map();
+  const items = [...graph, ...lists.flat()]
+    .filter(i => { const k = favKey(i.link); if (seen.has(k)) return false; seen.add(k); return true; })
     .sort((a, b) => b.ts - a.ts)
+    .filter(i => {
+      const n = perAccount.get(i.source) || 0;
+      if (n >= FAV_PER_ACCOUNT) return false;   // sinon un compte bavard mange la page
+      perAccount.set(i.source, n + 1);
+      return true;
+    })
     .slice(0, FAV_MAX);
 
   return { items, updatedAt: Date.now() };
