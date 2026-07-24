@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260725a';
+const APP_VERSION = '20260725b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -12442,6 +12442,13 @@ function _feedCarousel(items, proxyImg) {
       ? '<a class="fav-car-all" href="https://www.instagram.com/' + handle + '/" target="_blank" rel="noopener noreferrer">Voir le compte →</a>'
       : '';
 
+    // Photo de profil : portée par les items, absente des sources sans Graph API.
+    let ava = (posts.find(p => /^https:\/\//i.test(p.avatar || '')) || {}).avatar || '';
+    if (ava) ava = proxyImg ? WORKER_URL + '/fav-img?url=' + encodeURIComponent(ava) : ava.replace(/"/g, '%22');
+    const avaImg = ava
+      ? '<img class="fav-car-avatar" src="' + ava + '" alt="" loading="lazy" onerror="this.remove()">'
+      : '';
+
     const cartes = posts.map(p => {
       const dt   = p.ts ? new Date(p.ts) : null;
       const href = /^https:\/\//i.test(p.link) ? p.link.replace(/"/g, '%22') : '#';
@@ -12461,7 +12468,11 @@ function _feedCarousel(items, proxyImg) {
     }).join('');
 
     return '<div class="fav-car-block">'
-      + '<div class="fav-car-head"><span class="news-source">' + _escapeHtmlChat(compte) + '</span>' + lienCpt + '</div>'
+      + '<div class="fav-car-head">'
+      +   '<span class="fav-car-account">' + avaImg
+      +     '<span class="news-source">' + _escapeHtmlChat(compte) + '</span>'
+      +   '</span>' + lienCpt
+      + '</div>'
       + '<div class="fav-car-wrap">'
       +   '<button type="button" class="fav-car-nav prev" onclick="favCarScroll(this,-1)" aria-label="Publications précédentes">'
       +     '<svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"/></svg>'

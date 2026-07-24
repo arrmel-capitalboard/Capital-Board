@@ -2837,6 +2837,13 @@ body.has-demo-banner { padding-top: 40px; }
 .fav-car-all { font-size: 12px; color: var(--text2); text-decoration: none; white-space: nowrap; }
 .fav-car-all:hover { color: var(--accent); }
 
+.fav-car-account { display: flex; align-items: center; gap: 8px; min-width: 0; }
+.fav-car-avatar {
+  width: 26px; height: 26px; flex: 0 0 auto;
+  border-radius: 50%; object-fit: cover;
+  background: var(--s3); border: 1px solid var(--border2);
+}
+
 .fav-car-wrap { position: relative; }
 
 .fav-car-row {
@@ -2908,6 +2915,8 @@ body.has-demo-banner { padding-top: 40px; }
 
 @media (max-width: 768px) {
   .fav-car-block { margin-bottom: 20px; }
+  .fav-car-avatar { width: 22px; height: 22px; }
+  .fav-car-account { gap: 7px; }
   .fav-car-card { flex-basis: 168px; border-radius: 11px; }
   .fav-car-body { padding: 9px 10px 11px; }
   .fav-car-title { font-size: 12px; }
@@ -2921,6 +2930,15 @@ body.has-demo-banner { padding-top: 40px; }
 
 @media (max-width: 380px) {
   .fav-car-card { flex-basis: 150px; }
+}
+
+/* Mention de non-affiliation, en pied de la page Contenus favoris. */
+.fav-note {
+  margin: 26px 0 0; padding-top: 16px; border-top: 1px solid var(--border);
+  font-size: 11.5px; line-height: 1.65; color: var(--text2); max-width: 760px;
+}
+@media (max-width: 768px) {
+  .fav-note { margin-top: 20px; padding-top: 14px; font-size: 11px; }
 }
 
 /* ── Barre haut-droite : espace utilisateur + assistant (desktop) ────────── */

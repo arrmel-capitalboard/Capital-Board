@@ -191,7 +191,7 @@ function favKey(link) {
 async function fetchIgAccount(env, handle) {
   const fields =
     `business_discovery.username(${handle})` +
-    `{username,media.limit(${FAV_PER_ACCOUNT})` +
+    `{username,profile_picture_url,media.limit(${FAV_PER_ACCOUNT})` +
     `{caption,media_type,media_url,thumbnail_url,permalink,timestamp,children{media_url,thumbnail_url}}}`;
   const url = `https://graph.facebook.com/${IG_GRAPH_VERSION}/${encodeURIComponent(env.IG_USER_ID)}`
     + `?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(env.IG_GRAPH_TOKEN)}`;
@@ -202,6 +202,9 @@ async function fetchIgAccount(env, handle) {
   if (!r.ok || !bd) return [];   // compte non pro, handle inconnu, ou jeton mort
 
   const source = '@' + (bd.username || handle);
+  // Photo de profil : portée par chaque item plutôt que par une structure à
+  // part, pour que le rendu groupé par compte n'ait rien de plus à croiser.
+  const avatar = /^https:\/\//i.test(bd.profile_picture_url || '') ? bd.profile_picture_url : '';
   return ((bd.media && bd.media.data) || []).map(m => {
     const caption = String(m.caption || '').replace(/\s+/g, ' ').trim();
     // Un carrousel n'a pas de media_url : la vignette vient du premier enfant.
@@ -214,6 +217,7 @@ async function fetchIgAccount(env, handle) {
       title:   caption ? (caption.length > 90 ? caption.slice(0, 87).trimEnd() + '…' : caption) : source,
       link:    m.permalink || '',
       source,
+      avatar,
       creator: source,
       ts:      Date.parse(m.timestamp || '') || 0,
       img,
