@@ -1232,13 +1232,15 @@ export default {
       }
 
       // ── GET /favoris ────────────────────────────────────────────────────
-      // Derniers contenus des comptes suivis, via passerelle RSS externe.
-      // Même stratégie de cache que /news : KV 30 min + copie de secours.
+      // Derniers contenus des comptes suivis (Graph API + passerelle RSS).
+      // Même stratégie de cache que /news : KV 30 min + copie de secours. Le
+      // cache navigateur reste court : c'est le KV qui protège de la charge, et
+      // 10 min ici retardaient d'autant tout changement de FAVORIS_IG_HANDLES.
       if (url.pathname === '/favoris' && request.method === 'GET') {
         const hit = await env.EARNINGS.get('fav:v1');
         if (hit !== null) {
           return new Response(hit, {
-            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=600', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60', ...corsHeaders },
           });
         }
 
@@ -1249,7 +1251,7 @@ export default {
           await env.EARNINGS.put('fav:v1', body, { expirationTtl: FAV_TTL });
           await env.EARNINGS.put('fav:last', body);
           return new Response(body, {
-            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=600', ...corsHeaders },
+            headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60', ...corsHeaders },
           });
         }
 
