@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260723p';
+const APP_VERSION = '20260723q';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2993,7 +2993,7 @@ const SECTION_LABELS = {
   portfolio: 'Portefeuille', activite: 'Activité', dividendes: 'Dividendes', watchlist: 'Watchlist',
   performance: 'Performance', benchmark: 'Benchmark', projections: 'Projections', earnings: 'Calendrier résultats',
   recap: 'Récap du jour', actualites: 'Actualités', favoris: 'Contenus favoris', alertes: 'Alertes prix', notifications: 'Notifications', support: 'Support',
-  admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord',
+  admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord', facebook: 'Facebook',
   paypal: 'Faire un don',
 };
 const ALL_SECTIONS = Object.keys(SECTION_LABELS);
@@ -3003,7 +3003,7 @@ const DEFAULT_NAV = [
   { title: 'Analyse',        items: ['performance', 'benchmark', 'projections', 'earnings'] },
   { title: 'Outils',         items: ['actualites', 'favoris', 'recap', 'alertes', 'notifications', 'support'] },
   { title: 'Administration', items: ['admin'] },
-  { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord'] },
+  { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord', 'facebook'] },
   { title: 'Nous soutenir',  items: ['paypal'] },
 ];
 let _navNodes = null;   // cache des noeuds .nav-item par clé (sidebar desktop)
@@ -3013,12 +3013,13 @@ let _navDraft = null;   // brouillon d'édition admin
 // ─── Liens externes éditables par l'admin (config/app.social) ───
 // Entrées de menu ouvrant un lien (réseaux sociaux + don), URL modifiable
 // depuis l'éditeur d'organisation du menu.
-const SOCIAL_KEYS = ['instagram', 'tiktok', 'youtube', 'discord', 'paypal'];
+const SOCIAL_KEYS = ['instagram', 'tiktok', 'youtube', 'discord', 'facebook', 'paypal'];
 const DEFAULT_SOCIAL = {
   instagram: 'https://www.instagram.com/capitalboard',
   tiktok:    'https://www.tiktok.com/@capitalboard',
   youtube:   'https://www.youtube.com/@capitalboard',
   discord:   'https://discord.gg/ZN9459TCTQ',
+  facebook:  'https://www.facebook.com/profile.php?id=61592307454394',
   paypal:    'https://www.paypal.com/paypalme/capitalboard',
 };
 let _socialLinks = { ...DEFAULT_SOCIAL };
@@ -3119,7 +3120,11 @@ function _renderNavInto(container, nodes, layout, labelCls, spaced) {
 }
 
 function applyNavLayout(nav) {
-  const layout = (Array.isArray(nav) && nav.length) ? nav : DEFAULT_NAV;
+  // _mergeNavOrphans : si une config est sauvegardée en base (édition admin),
+  // elle peut précéder l'ajout de nouvelles entrées (ex : Facebook). On y
+  // rajoute donc les clés DEFAULT_NAV manquantes pour qu'elles apparaissent
+  // live sans devoir ré-enregistrer le menu côté admin.
+  const layout = (Array.isArray(nav) && nav.length) ? _mergeNavOrphans(nav) : DEFAULT_NAV;
   const container = document.getElementById('nav-dynamic');
   if (container) {
     _cacheNavNodes();
