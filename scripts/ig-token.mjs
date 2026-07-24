@@ -41,14 +41,27 @@ try {
   });
 
   // 2. Un jeton de Page dérivé d'un jeton utilisateur long n'expire pas.
-  const accounts = await graph('me/accounts', {
-    fields: 'name,id,access_token',
-    access_token: long.access_token,
-  });
-  const pages = accounts.data || [];
+  // Avec Facebook Login for Business, /me/accounts revient parfois vide alors
+  // que la Page est bien autorisée : on interroge alors la Page par son id
+  // (FB_PAGE_ID, lisible sur l'écran d'autorisation).
+  let pages = [];
+  if (process.env.FB_PAGE_ID) {
+    const page = await graph(process.env.FB_PAGE_ID, {
+      fields: 'name,id,access_token',
+      access_token: long.access_token,
+    });
+    pages = [page];
+  } else {
+    const accounts = await graph('me/accounts', {
+      fields: 'name,id,access_token',
+      access_token: long.access_token,
+    });
+    pages = accounts.data || [];
+  }
+
   if (!pages.length) {
-    console.error('Aucune Page renvoyée. Le compte doit être admin d\'une Page, '
-      + 'et la Page doit avoir été cochée à l\'écran d\'autorisation.');
+    console.error('Aucune Page renvoyée par /me/accounts. Relancer avec l\'id de la Page :'
+      + '\n  $env:FB_PAGE_ID="..."');
     process.exit(1);
   }
 
