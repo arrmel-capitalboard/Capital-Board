@@ -248,12 +248,12 @@ async function buildFavoris(env) {
       const xml = await r.text();
       // À défaut de libellé configuré, on prend le <title> du flux.
       const label = f.label || newsClean(newsTag(xml.replace(/<item[\s\S]*$/i, ''), 'title')) || 'Instagram';
-      // On attribue chaque publication à son auteur réel plutôt qu'au compte
-      // dont vient le flux, sinon une republication est créditée au mauvais compte.
-      return parseNewsFeed(xml, label).map(i => {
-        const handle = (i.creator || '').replace(/^@/, '').trim();
-        return /^[a-zA-Z0-9._]{1,40}$/.test(handle) ? { ...i, source: '@' + handle } : i;
-      });
+      // Chaque publication reste créditée au compte suivi, même quand dc:creator
+      // désigne un partenaire : recréditer à l'auteur réel créait des rangées
+      // parasites de 2 ou 3 items pour des comptes qu'on n'a pas choisi de suivre.
+      // Un compte mérite sa rangée en entrant dans FAVORIS_IG_HANDLES, pas par
+      // une collaboration.
+      return parseNewsFeed(xml, label);
     } catch {
       return [];
     }
