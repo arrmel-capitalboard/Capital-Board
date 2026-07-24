@@ -143,7 +143,8 @@ async function buildNews() {
 // FetchRSS…), configurés dans FAVORIS_FEEDS au format « Libellé|url », séparés
 // par des virgules. Vide = section annoncée comme non configurée, pas d'erreur.
 const FAV_TTL = 1800;   // KV : 30 min (ces comptes publient bien moins souvent)
-const FAV_MAX = 120;    // plafond global de la page
+const FAV_MAX = 240;    // plafond global : doit rester > comptes suivis × FAV_PER_ACCOUNT,
+                        // sinon les comptes les moins actifs disparaissent de la page
 const FAV_PER_ACCOUNT = 12;   // plafond par compte : un compte bavard n'écrase pas les autres
 
 function parseFavFeeds(raw) {

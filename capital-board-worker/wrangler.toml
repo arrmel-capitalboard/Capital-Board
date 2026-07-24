@@ -24,7 +24,7 @@ FAVORIS_FEEDS = ""
 # visés doivent être **professionnels** (Créateur ou Business) : un compte perso
 # ne renvoie rien et reste à couvrir par un flux RSS ci-dessus.
 # Nécessite les secrets IG_USER_ID et IG_GRAPH_TOKEN ; sans eux la liste est ignorée.
-FAVORIS_IG_HANDLES = "zonebourse,seqo.oia,laurent.cosmos.finance"
+FAVORIS_IG_HANDLES = "zonebourse,seqo.oia,laurent.cosmos.finance,aktionnaire,matthiasbaccino,rachelfinance,hasheur,parlonsfinance,finary,pea.fr,mounir_laggoune,jeanbenoit_gambet,analystecurieux,adamfinances,jaxxed_finance"
 
 # Cache earnings : 1 clé par symbole (earn:SYM, TTL 24h) + creds Yahoo (crumb).
 # Source = Yahoo calendarEvents (global, pas de clé API). Finnhub abandonné (US-only).
