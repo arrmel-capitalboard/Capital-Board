@@ -195,51 +195,47 @@ Effort élevé — c'est une feature produit à part entière, pas une intégrat
 
 ---
 
-## 8. Contenus favoris — suivre plus de 2 comptes (bloqué, en attente Meta)
+## 8. Contenus favoris — quota levé le 2026-07-25 (Graph API en place)
 
-**État** — La page « Contenus favoris » existe (menu *Outils*, carrousel par compte,
-`GET /favoris` sur le Worker). Elle affiche tout ce que publient les comptes suivis,
-posts **et** reels : c'est voulu, voir « filtre par type » plus bas.
+**État** — La page « Contenus favoris » (menu *Outils*, carrousel par compte,
+`GET /favoris`) lit désormais Instagram par la **Graph API `business_discovery`**,
+gratuite et **sans limite de nombre de comptes**. Elle affiche posts **et** reels :
+c'est voulu, voir « filtre par type » plus bas.
 
-**Le vrai blocage — le quota RSS.app.** Le compte est en essai ; le palier gratuit
-est de **2 flux, 5 posts par flux**. Impossible de suivre plus de 2 comptes, et les
-2 flux actuels maigriront tout seuls à la fin de l'essai. Tarifs relevés le
-2026-07-22 : RSS.app Basic 8,32 $/mois (15 flux, 25 posts, refresh 60 min),
-FetchRSS gratuit 5 flux mais refresh 24 h, FetchRSS Basic 4,95 $/mois (25 flux, 3 h).
-**Contrainte posée : ne rien payer.**
+**Reste à faire — choisir les comptes à suivre.** `FAVORIS_IG_HANDLES` dans
+`wrangler.toml` ne contient encore que les deux comptes historiques
+(`zonebourse`, `seqo.oia`). Ajouter un compte = ajouter son handle à la liste,
+après l'avoir validé avec `node scripts/check-ig-handles.mjs <handle>`.
+**Les comptes visés doivent être professionnels** : un compte perso ou age-gated
+renvoie une liste vide, et reste à couvrir par un flux RSS.
 
-**Piste retenue — Graph API `business_discovery`.** Seule option gratuite sans quota
-sur le nombre de comptes. Vérifié sur la doc officielle le 2026-07-22 : endpoint
-toujours actif en v25.0, aucun avis de dépréciation au changelog (les « mort en 2027 »
-viennent de blogs tiers). Il expose aussi `media_type`, donc il réglerait le tri
-posts/reels au passage.
+**Sort de RSS.app** — les 2 flux de `FAVORIS_FEEDS` sont maintenant redondants avec
+la Graph API (dédup sur le code du permalink, Graph prioritaire). Ils ne servent plus
+qu'à deux choses : couvrir un éventuel compte non pro, et faire remonter les
+republications sous leur auteur réel via `dc:creator`. À supprimer sans regret quand
+l'essai RSS.app expirera. Rappel des tarifs relevés le 2026-07-22, pour mémoire :
+RSS.app Basic 8,32 $/mois, FetchRSS gratuit 5 flux mais refresh 24 h. **Rien n'a été
+payé.**
 
-- Prérequis côté nous : compte Instagram pro (Créateur suffit) + Page Facebook liée,
-  app Meta type Business, produit Connexion Facebook, permissions `instagram_basic`,
-  `pages_show_list`, `pages_read_engagement`, `instagram_manage_insights`.
-- Jeton : celui de l'Explorer meurt en 1 h → échange `grant_type=fb_exchange_token`
-  (60 j) → puis `me/accounts` avec ce jeton long donne un **jeton de Page qui n'expire
-  pas**. C'est celui à stocker en `wrangler secret`, pas de renouvellement à coder.
-- Limite irréductible : **les comptes ciblés doivent être pro**. Un compte perso ou
-  age-gated ne sort rien. Se vérifie en une requête par handle dès que le jeton existe.
-- Architecture prévue : `buildFavoris` fusionne deux sources — Graph API pour les
-  comptes pro (illimité), et les 2 slots RSS.app gratuits gardés en exception pour
-  les comptes non-pro.
+### Configuration Meta (faite le 2026-07-25, à ne pas refaire)
 
-**BLOQUÉ le 2026-07-22** — le compte Facebook, créé le jour même pour l'occasion, a
-été désactivé par Meta dans la foulée de la création de l'app dev (schéma classique :
-compte neuf + app développeur = signal de faux compte). Appel déposé, décision en
-attente, une pièce d'identité sera probablement demandée. Rien à coder tant que ce
-n'est pas rétabli. **Ne pas créer de second compte Facebook** : détection de
-contournement = bannissement définitif, et la piste Graph API meurt pour de bon.
-Quand le compte revient, le laisser vivre quelques jours avant de recréer l'app.
-
-**Repli à tester en attendant** — FetchRSS, indépendant de Meta : 5 flux gratuits,
-soit 7 comptes en cumulant avec RSS.app, sans rien payer. Inconnue : Instagram n'est
-plus listé dans leurs sources sur la page tarifs. Test = créer un flux sur
-`instagram.com/zonebourse/` et regarder le XML. Aucun code à changer : `parseFavFeeds`
-accepte n'importe quelle URL RSS en https, il suffit d'ajouter des entrées
-`Libellé|url` à `FAVORIS_FEEDS` dans `wrangler.toml`.
+- App Meta « Capital Board », id `1051953543940846`, en mode **Développement** — la
+  publication et le statut Fournisseur de technologies sont inutiles : `business_discovery`
+  ne demande d'accès qu'à *notre* compte, les comptes tiers sont lus au travers.
+- Cas d'utilisation « Gérer les messages et les contenus sur Instagram », permissions
+  `instagram_basic`, `pages_show_list`, `pages_read_engagement` **et surtout
+  `instagram_manage_insights`** : sans cette dernière, `business_discovery` répond
+  `(#10) Application does not have permission for this action`. C'est le piège.
+- Page Facebook « CapitalBoard » (`1272106095977234`) liée au compte pro `@capitalboard`
+  (`IG_USER_ID = 17841443425190755`).
+- Secrets Worker : `IG_USER_ID`, `IG_GRAPH_TOKEN`. Le second est un **jeton de Page,
+  qui n'expire pas** — aucun renouvellement à coder. `scripts/ig-token.mjs` le
+  refabrique si besoin (échange 60 j → jeton de Page). Passer `FB_PAGE_ID` : avec
+  Facebook Login for Business, `/me/accounts` revient vide alors que la Page est bien
+  autorisée.
+- Le cache KV `fav:v1` tient 30 min : purger avec
+  `wrangler kv key delete --namespace-id 994d84c5a364477e869b4fb12605a57d "fav:v1" --remote`
+  pour voir un changement de config tout de suite.
 
 **Écarté — héberger un scraper (RSS-Bridge, RSSHub) sur la VM GCP.** Instagram sans
 compte connecté est mort : testé le 2026-07-22 depuis une IP résidentielle, la page
