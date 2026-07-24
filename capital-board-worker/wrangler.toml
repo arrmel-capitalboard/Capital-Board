@@ -10,12 +10,13 @@ ALLOWED_ORIGIN = "https://capitalboard.fr"
 FIREBASE_PROJECT_ID = "capitalboard"
 FIREBASE_WEB_API_KEY = "AIzaSyBnHkOTwFoJNMvYOgG7Ne-AFKgE3GBRiNU"
 ADMIN_UID = "A6nZQ8PcxdURytSesA17xK81I9T2"
-# Contenus favoris (GET /favoris) : flux RSS des comptes suivis, au format
-# « Libellé|url », séparés par des virgules. Instagram n'ayant plus d'API pour
-# les comptes tiers (Basic Display fermée le 04/12/2024), les flux viennent
-# d'une passerelle externe type RSS.app / FetchRSS. Vide = section affichée
-# comme « à configurer », sans erreur.
-FAVORIS_FEEDS = "@seqo.oia|https://rss.app/feeds/WRHlbmtITze7U9hu.xml,@zonebourse|https://rss.app/feeds/7CxlNiJbxOUNhXlN.xml"
+# Contenus favoris (GET /favoris) : source RSS de secours, au format
+# « Libellé|url », séparés par des virgules. Elle servait de source principale
+# tant qu'Instagram n'était lisible que par une passerelle externe (RSS.app,
+# FetchRSS). Vidée le 2026-07-25 : la Graph API ci-dessous couvre les mêmes
+# comptes, sans plafond de 2 flux et sans essai qui expire. À ne réutiliser que
+# pour un compte qui refuserait de passer en professionnel.
+FAVORIS_FEEDS = ""
 
 # Deuxième source des favoris : Graph API `business_discovery`, sans limite de
 # nombre de comptes (les passerelles RSS gratuites plafonnent à 2 flux). Liste
