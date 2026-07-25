@@ -193,6 +193,26 @@ pas relancée maintenant, retirer le bloc des règles ; si elle l'est, ajouter u
 
 Effort élevé — c'est une feature produit à part entière, pas une intégration.
 
+### 7.6 Présence Discord du bot
+
+Le bot n'affiche aucun statut : il apparaît simplement « en ligne ». Lui donner une
+présence (`client.user.setPresence`, discord.js v14) qui serve de vitrine passive et
+de preuve de vie — un bot muet est indistinguable d'un bot planté.
+
+**À décider :**
+- Statique (`Regarde capitalboard.fr`) ou tournante (nombre de comptes liés, nombre
+  de portefeuilles suivis, un cours du jour) ? La tournante demande une source de
+  données rafraîchie, la statique est immédiate.
+- Type d'activité : `Watching` / `Playing` / `Listening` / `Custom`.
+
+**Points d'attention :**
+- La présence se perd à chaque reconnexion gateway : la reposer sur `ready`, pas
+  seulement au démarrage.
+- Discord ne fait remonter une mise à jour de présence que toutes les ~15 s ; ne pas
+  boucler plus vite si la présence devient dynamique.
+
+Effort faible pour la version statique.
+
 ---
 
 ## 8. Contenus favoris — quota levé le 2026-07-25 (Graph API en place)
@@ -202,20 +222,19 @@ Effort élevé — c'est une feature produit à part entière, pas une intégrat
 gratuite et **sans limite de nombre de comptes**. Elle affiche posts **et** reels :
 c'est voulu, voir « filtre par type » plus bas.
 
-**Reste à faire — choisir les comptes à suivre.** `FAVORIS_IG_HANDLES` dans
-`wrangler.toml` ne contient encore que les deux comptes historiques
-(`zonebourse`, `seqo.oia`). Ajouter un compte = ajouter son handle à la liste,
-après l'avoir validé avec `node scripts/check-ig-handles.mjs <handle>`.
-**Les comptes visés doivent être professionnels** : un compte perso ou age-gated
-renvoie une liste vide, et reste à couvrir par un flux RSS.
+**Comptes suivis — FAIT.** `FAVORIS_IG_HANDLES` porte 9 comptes (`zonebourse`,
+`seqo.oia`, `laurent.cosmos.finance`, `aktionnaire`, `matthiasbaccino`,
+`parlonsfinance`, `pea.fr`, `jeanbenoit_gambet`, `analystecurieux`). Ajouter un
+compte = ajouter son handle à la liste, après l'avoir validé avec
+`node scripts/check-ig-handles.mjs <handle>`. **Les comptes visés doivent être
+professionnels** : un compte perso ou age-gated renvoie une liste vide, et reste à
+couvrir par un flux RSS.
 
-**Sort de RSS.app** — les 2 flux de `FAVORIS_FEEDS` sont maintenant redondants avec
-la Graph API (dédup sur le code du permalink, Graph prioritaire). Ils ne servent plus
-qu'à deux choses : couvrir un éventuel compte non pro, et faire remonter les
-republications sous leur auteur réel via `dc:creator`. À supprimer sans regret quand
-l'essai RSS.app expirera. Rappel des tarifs relevés le 2026-07-22, pour mémoire :
-RSS.app Basic 8,32 $/mois, FetchRSS gratuit 5 flux mais refresh 24 h. **Rien n'a été
-payé.**
+**Sortie de RSS.app — FAIT.** `FAVORIS_FEEDS` a été vidé le 2026-07-25, la Graph API
+couvre les mêmes comptes sans plafond de 2 flux ni essai qui expire. Rappel des tarifs
+relevés le 2026-07-22, pour mémoire : RSS.app Basic 8,32 $/mois, FetchRSS gratuit
+5 flux mais refresh 24 h. **Rien n'a été payé.** Conséquence à garder en tête : la
+Graph API est désormais **source unique**, il n'y a plus de repli si elle tombe.
 
 ### Configuration Meta (faite le 2026-07-25, à ne pas refaire)
 
@@ -228,12 +247,25 @@ payé.**
   `(#10) Application does not have permission for this action`. C'est le piège.
 - Page Facebook « CapitalBoard » (`1272106095977234`) liée au compte pro `@capitalboard`
   (`IG_USER_ID = 17841443425190755`).
-- Secrets Worker : `IG_USER_ID`, `IG_GRAPH_TOKEN`. Le second est un **jeton de Page,
-  qui n'expire pas** — aucun renouvellement à coder. `scripts/ig-token.mjs` le
-  refabrique si besoin (échange 60 j → jeton de Page). Passer `FB_PAGE_ID` : avec
-  Facebook Login for Business, `/me/accounts` revient vide alors que la Page est bien
-  autorisée.
-- Le cache KV `fav:v1` tient 30 min : purger avec
+- Secrets Worker : `IG_USER_ID`, `IG_GRAPH_TOKEN`. Le second **doit** être un jeton de
+  Page (`type: PAGE`, `expires_at: 0` au [Token Debugger](https://developers.facebook.com/tools/debug/accesstoken/)).
+  `scripts/ig-token.mjs` le refabrique (échange 60 j → jeton de Page). Passer
+  `FB_PAGE_ID` : avec Facebook Login for Business, `/me/accounts` revient **vide** alors
+  que la Page est bien autorisée — interroger `/{FB_PAGE_ID}?fields=access_token`
+  directement, le `granular_scopes` du token donne l'id de la Page.
+- **Panne du 2026-07-25 (22 h de `stale`)** : le secret contenait en fait un jeton
+  *utilisateur* 60 j, pas un jeton de Page. Il est mort le 24-07 à 18:00 PDT →
+  `OAuthException 190 / subcode 463` sur les 9 comptes, et comme `FAVORIS_FEEDS` venait
+  d'être vidé, plus aucune source. Remplacé par un vrai jeton de Page. **Vérifier au
+  Debugger après chaque régénération** : `Type: User` = mauvais jeton, ça repètera dans
+  60 jours.
+- Réserve : même un jeton de Page porte un `data_access_expires_at` (90 j, ici
+  2026-10-24). En pratique l'accès aux données de sa propre Page survit, mais si la
+  panne revient à cette date, c'est la piste.
+- Le cache KV `fav:v1` tient 15 min et le cron (`scheduled()`, toutes les 5 min)
+  le réchauffe en fond via `refreshFavoris()` dès qu'il reste moins d'un tour :
+  aucun visiteur ne déclenche plus d'appel Meta. Purger avec
+  purger avec
   `wrangler kv key delete --namespace-id 994d84c5a364477e869b4fb12605a57d "fav:v1" --remote`
   pour voir un changement de config tout de suite.
 

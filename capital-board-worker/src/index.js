@@ -142,7 +142,10 @@ async function buildNews() {
 // consomme donc des flux RSS produits par une passerelle externe (RSS.app,
 // FetchRSS…), configurés dans FAVORIS_FEEDS au format « Libellé|url », séparés
 // par des virgules. Vide = section annoncée comme non configurée, pas d'erreur.
-const FAV_TTL = 1800;   // KV : 30 min (ces comptes publient bien moins souvent)
+// KV : 15 min. Tenable seulement parce que le cron réchauffe le cache en fond
+// (cf. scheduled()) : sans lui, ce TTL ferait payer les 9 appels Meta à un
+// visiteur deux fois plus souvent.
+const FAV_TTL = 900;
 const FAV_MAX = 240;    // plafond global : doit rester > comptes suivis × FAV_PER_ACCOUNT,
                         // sinon les comptes les moins actifs disparaissent de la page
 const FAV_PER_ACCOUNT = 12;   // plafond par compte : un compte bavard n'écrase pas les autres
@@ -238,6 +241,19 @@ async function buildFavorisGraph(env) {
     parseFavHandles(env.FAVORIS_IG_HANDLES).map(h => fetchIgAccount(env, h).catch(() => []))
   );
   return lists.flat();
+}
+
+// Reconstruit les favoris et réécrit le KV. Partagé par la route et le cron :
+// une seule définition de « ce qui est mis en cache », sinon les deux chemins
+// finissent par diverger. `body` est null quand il n'y a rien à cacher (section
+// non configurée, ou collecte vide → l'appelant décide du repli).
+async function refreshFavoris(env) {
+  const data = await buildFavoris(env);
+  if (data.unconfigured || !data.items.length) return { data, body: null };
+  const body = JSON.stringify(data);
+  await env.EARNINGS.put('fav:v1', body, { expirationTtl: FAV_TTL });
+  await env.EARNINGS.put('fav:last', body);
+  return { data, body };
 }
 
 async function buildFavoris(env) {
@@ -1255,12 +1271,10 @@ export default {
           });
         }
 
-        const data = await buildFavoris(env);
+        // Chemin lent : normalement inatteignable, le cron garde `fav:v1` chaud.
+        const { data, body } = await refreshFavoris(env);
         if (data.unconfigured) return json(data);   // rien à mettre en cache
-        if (data.items.length) {
-          const body = JSON.stringify(data);
-          await env.EARNINGS.put('fav:v1', body, { expirationTtl: FAV_TTL });
-          await env.EARNINGS.put('fav:last', body);
+        if (body) {
           return new Response(body, {
             headers: { 'Content-Type': 'application/json', 'Cache-Control': 'public, max-age=60', ...corsHeaders },
           });
@@ -1473,8 +1487,25 @@ export default {
     }
   },
 
-  // Cron : envoie les diffusions email programmées arrivées à échéance.
+  // Cron : diffusions email programmées + entretien du cache des favoris.
   async scheduled(event, env, ctx) {
+    // Réchauffage des favoris. Bloc séparé du courrier : une panne Firestore ne
+    // doit pas laisser le cache refroidir, ni l'inverse.
+    ctx.waitUntil((async () => {
+      try {
+        // `list` donne la date d'expiration sans relire les 150 ko de valeur.
+        const [k] = (await env.EARNINGS.list({ prefix: 'fav:v1' })).keys;
+        // On rafraîchit dès qu'il reste moins d'un tour de cron : attendre
+        // l'expiration réelle laisserait le KV froid jusqu'à 5 min, et le
+        // visiteur qui tombe dans ce trou paie les 9 appels Meta (~2 s) — et
+        // hérite de `stale` si Meta est en panne pile à cet instant.
+        if (!k || (k.expiration && k.expiration < Date.now() / 1000 + 360)) {
+          const { body } = await refreshFavoris(env);
+          if (!body) console.error('cron favoris: collecte vide, cache conservé');
+        }
+      } catch (e) { console.error('cron favoris: ' + e.message); }
+    })());
+
     ctx.waitUntil((async () => {
       let docs;
       try { docs = await firestoreList('scheduledEmails', env); }
