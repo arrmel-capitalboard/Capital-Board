@@ -199,7 +199,13 @@ async function fetchIgAccount(env, handle) {
   const r = await fetch(url, { signal: AbortSignal.timeout(7000) });
   const data = await r.json().catch(() => null);
   const bd = data && data.business_discovery;
-  if (!r.ok || !bd) return [];   // compte non pro, handle inconnu, ou jeton mort
+  if (!r.ok || !bd) {
+    // Compte non pro, handle inconnu, ou jeton mort. On trace le message de Meta :
+    // sans lui, une panne globale (jeton révoqué, version d'API retirée) est
+    // indiscernable d'un compte repassé en perso, et la page part en `stale`.
+    console.error('[fav] business_discovery KO', handle, r.status, JSON.stringify(data && data.error || null));
+    return [];
+  }
 
   const source = '@' + (bd.username || handle);
   // Photo de profil : portée par chaque item plutôt que par une structure à
