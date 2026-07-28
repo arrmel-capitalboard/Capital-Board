@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728h';
+const APP_VERSION = '20260728i';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -8405,12 +8405,10 @@ async function fetchDividendYield(ticker) {
 //  ANIMATION DES PRIX AU REFRESH (tableau « Mes titres »)
 //  renderPortfolio() reconstruit tout le <tbody> : on relève donc les
 //  valeurs AVANT le re-render, et on n'anime après coup que les lignes
-//  dont un chiffre a réellement bougé.
-//  Deux effets combinés :
-//   - le prix actuel et la valeur défilent de l'ancien vers le nouveau ;
-//   - un trait balaie chaque cellule modifiée (vert en hausse, rouge en baisse).
+//  dont un chiffre a réellement bougé : le prix actuel et la valeur
+//  défilent de l'ancien vers le nouveau.
 // ═══════════════════════════════════════════════════
-const PX_COUNT_MS = 700;   // durée du comptage
+const PX_COUNT_MS = 1500;   // durée du comptage
 
 function _pxReduceMotion() {
   return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
@@ -8453,16 +8451,6 @@ function _pxCountTo(el, from, to) {
   })(t0);
 }
 
-function _pxSweep(cell, up) {
-  if (!cell) return;
-  // Retrait + reflow : sans ça, deux refresh rapprochés ne rejouent pas l'animation.
-  cell.classList.remove('px-sweep', 'px-up', 'px-down');
-  void cell.offsetWidth;
-  cell.classList.add('px-sweep', up ? 'px-up' : 'px-down');
-  cell.addEventListener('animationend',
-    () => cell.classList.remove('px-sweep', 'px-up', 'px-down'), { once: true });
-}
-
 function _pxAnimate(before) {
   if (!before || !before.size || _pxReduceMotion()) return;
 
@@ -8482,20 +8470,11 @@ function _pxAnimate(before) {
     const dVal = Math.abs(now.val - old.val);
     if (dPx < 0.005 && dVal < 0.005) return;
 
-    // Sens donné par le prix ; à prix égal (qté modifiée), par la valeur.
-    const up = dPx >= 0.005 ? now.px > old.px : now.val >= old.val;
-
-    // Seules les deux colonnes chiffrées sont animées : souligner aussi le
-    // badge +/- value et la perf. jour faisait quatre traits d'un coup.
+    // Seules les deux colonnes chiffrées bougent : le prix actuel et la valeur.
     const cPx = tr.querySelector('.c-px');
-    if (cPx && dPx >= 0.005 && isFinite(old.px)) { _pxCountTo(cPx, old.px, now.px); _pxSweep(cPx, up); }
+    if (cPx && dPx >= 0.005 && isFinite(old.px)) _pxCountTo(cPx, old.px, now.px);
     const cVal = tr.querySelector('.c-val');
-    if (cVal && dVal >= 0.005 && isFinite(old.val)) {
-      _pxCountTo(cVal, old.val, now.val);
-      // Sur le montant lui-même, pas sur la cellule : celle-ci porte aussi
-      // la perf. totale en dessous, le trait passerait sous les deux lignes.
-      _pxSweep(cVal, up);
-    }
+    if (cVal && dVal >= 0.005 && isFinite(old.val)) _pxCountTo(cVal, old.val, now.val);
   });
 }
 
@@ -8509,12 +8488,11 @@ window.previewRefreshAnim = function() {
   document.querySelectorAll('#portfolio-tbody tr[data-tk]').forEach(tr => {
     const px = +tr.dataset.px, val = +tr.dataset.val;
     const drift = (Math.random() - 0.5) * 0.03;   // ±1,5 %
-    const up = drift >= 0;
 
     const cPx = tr.querySelector('.c-px');
-    if (cPx && isFinite(px))  { _pxCountTo(cPx, px * (1 - drift), px);  _pxSweep(cPx, up); }
+    if (cPx && isFinite(px)) _pxCountTo(cPx, px * (1 - drift), px);
     const cVal = tr.querySelector('.c-val');
-    if (cVal && isFinite(val)) { _pxCountTo(cVal, val * (1 - drift), val); _pxSweep(cVal, up); }
+    if (cVal && isFinite(val)) _pxCountTo(cVal, val * (1 - drift), val);
   });
 };
 
