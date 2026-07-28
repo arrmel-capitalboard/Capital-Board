@@ -637,7 +637,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
 /* ═══════════════════════════════════════════════════
    MAIN CONTENT
    ═══════════════════════════════════════════════════ */
-.main { margin-left: 230px; min-height: 100vh; padding: 28px 32px; }
+/* padding-top réservé pour .app-topright, fixée en haut à droite : elle
+   descend à 66px (top 16 + user-card 50) et recouvrait sinon les actions du
+   page-header, alignées à droite elles aussi — bouton « Saisir un dividende »,
+   actions de Notifications. Le mobile a son propre padding (72px) plus bas,
+   pour .mobile-header. */
+.main { margin-left: 230px; min-height: 100vh; padding: 78px 32px 28px; }
 .page { display: none; }
 .page.active { display: block; animation: pg-slide 0.4s cubic-bezier(0.16, 1, 0.3, 1); }
 @keyframes pg-slide {
