@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728p';
+const APP_VERSION = '20260728q';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3213,6 +3213,30 @@ function fmt(n) {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 }
 
+// Cartes de synthèse (valorisation totale, +/- value latente, solde espèces,
+// évaluation des titres) : même défilement que le tableau, de l'ancienne valeur
+// vers la nouvelle. La valeur brute est mémorisée sur l'élément — le texte
+// affiché est formaté et parfois signé, donc impossible à relire tel quel.
+// `value === null` remet le tiret des portefeuilles vides.
+const _pxFmtSigned = (v) => (v >= 0 ? '+' : '') + fmt(v);
+
+function _statSet(el, value, format) {
+  if (!el) return;
+  format = format || fmt;
+  if (value === null || !isFinite(value)) {
+    el.textContent = '— €';
+    delete el.dataset.stat;
+    return;
+  }
+  const prev = el.dataset.stat !== undefined ? +el.dataset.stat : NaN;
+  el.dataset.stat = value;
+  if (!isFinite(prev) || prev === value || _pxReduceMotion()) {
+    el.textContent = format(value);
+    return;
+  }
+  _pxCount(el, prev, value, format);
+}
+
 function renderPortfolio() {
   const data = getPortfolio(currentUser);
   const tbody = document.getElementById('portfolio-tbody');
@@ -3324,10 +3348,10 @@ function renderPortfolio() {
   const totalPnl = totalVal - totalInvested;
   const totalPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
 
-  document.getElementById('stat-total').textContent = data.length ? fmt(totalVal) : '— €';
+  _statSet(document.getElementById('stat-total'), data.length ? totalVal : null);
   document.getElementById('stat-invested').textContent = data.length ? fmt(totalInvested) : '— €';
   const pnlEl = document.getElementById('stat-pnl');
-  pnlEl.textContent = data.length ? (totalPnl >= 0 ? '+' : '') + fmt(totalPnl) : '— €';
+  _statSet(pnlEl, data.length ? totalPnl : null, _pxFmtSigned);
   pnlEl.style.color = totalPnl >= 0 ? 'var(--positive)' : 'var(--negative)';
   const pnlPctEl = document.getElementById('stat-pnl-pct');
   pnlPctEl.textContent = data.length && totalInvested > 0 ? (totalPnl >= 0 ? '+' : '') + (totalPnl / totalInvested * 100).toFixed(2) + '%' : '—';
@@ -3363,13 +3387,12 @@ function renderPortfolio() {
   });
   const cash = totalVersements - totalAchats + totalVentes + totalDividendes + totalDistributions;
   const cashEl = document.getElementById('stat-cash');
-  cashEl.textContent = fmt(cash);
+  _statSet(cashEl, cash);
   cashEl.style.color = cash >= 0 ? 'var(--positive)' : 'var(--negative)';
 
   // Héro — Valorisation totale (titres + espèces)
   const networth = totalVal + cash;
-  const nwEl = document.getElementById('stat-networth');
-  if (nwEl) nwEl.textContent = data.length ? fmt(networth) : '— €';
+  _statSet(document.getElementById('stat-networth'), data.length ? networth : null);
   const nwPct = document.getElementById('stat-networth-pct');
   if (nwPct) {
     nwPct.textContent = data.length ? (totalPnl >= 0 ? '↗ +' : '↘ ') + totalPct.toFixed(2) + ' %' : '—';
@@ -8629,7 +8652,10 @@ renderPortfolio = function() {
   filterTable();
   // Trigger animations
   setTimeout(() => {
-    animateStatCards();
+    // animateStatCards() compte depuis zéro : c'est une animation d'entrée.
+    // Sur un rafraîchissement, _statSet() a déjà lancé le défilement de
+    // l'ancienne vers la nouvelle valeur — la relancer repartirait de zéro.
+    if (_pfRevealArmed) animateStatCards();
     initTiltCards();
   }, 60);
   setTimeout(initStatCardsScroll, 300);
