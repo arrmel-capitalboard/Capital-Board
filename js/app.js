@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728o';
+const APP_VERSION = '20260728p';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6724,10 +6724,14 @@ const PF_REVEAL_DOT_CAP  = 12;   // au-delà, plus de décalage (longs historiqu
 // période) et jamais sur le rafraîchissement automatique des cours, qui
 // reconstruit tableau et courbe toutes les 30 s.
 //
-// Le drapeau n'est PAS consommé par l'animation : au chargement,
-// renderPortfolio() est appelée plusieurs fois (données Firestore, puis taux
-// de change, puis premier refresh), et le consommer laissait le dernier rendu
-// — le seul visible — sans animation. C'est refreshPrices() qui le baisse.
+// Le drapeau n'est baissé qu'une fois l'animation jouée EN ENTIER (fin du rAF
+// dans pfRunReveal). Au chargement, renderPortfolio() est appelée plusieurs
+// fois — données Firestore, taux de change, premier refresh des cours à
+// t+500 ms — et renderPortfolioChart() est asynchrone : baisser le drapeau sur
+// un autre critère (premier appel, ou début du refresh) le faisait tomber
+// avant que la courbe soit prête, et le seul rendu visible s'affichait sans
+// animation. Là, un re-rendu pendant le chargement relance le tracé au lieu de
+// le supprimer, et une fois terminé plus rien ne bouge.
 let _pfRevealArmed = true;
 
 function _pfEaseInOutQuad(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; }
@@ -6808,6 +6812,9 @@ function pfRunReveal(chart, markerSets) {
     });
     chart.draw();
     if (e < end) { requestAnimationFrame(frame); return; }
+    // Jouée en entier : on désarme. Tant qu'elle ne l'a pas été, un re-rendu
+    // pendant le chargement la relance plutôt que de la faire sauter.
+    _pfRevealArmed = false;
     // Fin : on rend la main à Chart.js (hover, resize, tooltips).
     dots.forEach(d => { d.pt.options.radius = d.r; });
     chart.$pfReveal = null;
@@ -7874,9 +7881,6 @@ async function refreshPrices() {
 
     if (changed) {
       savePortfolio(currentUser, data);
-      // Rendu automatique : ni retraçage de la courbe ni halo sur les badges,
-      // seuls les chiffres qui bougent défilent.
-      _pfRevealArmed = false;
       renderPortfolio();
   }
     // Scan attributions gratuites / OST (rompus) — 1×/session, prix maintenant à jour.
