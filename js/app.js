@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260729a';
+const APP_VERSION = '20260729b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2086,6 +2086,9 @@ window.doLoginGoogle = async function() {
 
 // ─── LOGOUT ───────────────────────────────────────────
 window.doLogout = async function() {
+  // Avant signOut : sinon les listeners Firestore encore actifs perdent
+  // l'identité et remontent « Missing or insufficient permissions ».
+  try { _detachUserListeners(); } catch(_) {}
   await signOut(fbAuth);
 };
 
@@ -2258,6 +2261,9 @@ async function startApp(user) {
 
 function stopApp() {
   _hideSplash();
+  // Filet : les autres sorties de session (veLogout, pinLockLogout, session
+  // expirée) appellent signOut sans passer par doLogout, mais toutes finissent ici.
+  try { _detachUserListeners(); } catch(_) {}
   if (window.IS_DEMO) {
     // En démo, rediriger vers signup au lieu d'afficher login (l'écran de login est masqué)
     location.href = 'app.html?signup=1';
@@ -2865,11 +2871,7 @@ window.delVerifyOtp = async function() {
     // Cleanup OTP doc
     try { await deleteFirestoreDoc(ref); } catch(_) {}
     // Unsubscribe tous les listeners Firestore avant suppression (évite snapshot permission-denied)
-    try { if (_supportUnsub) { _supportUnsub(); _supportUnsub = null; } } catch(_) {}
-    try { if (_supportThreadsUnsub) { _supportThreadsUnsub(); _supportThreadsUnsub = null; } } catch(_) {}
-    try { if (_supportPresenceUnsub) { _supportPresenceUnsub(); _supportPresenceUnsub = null; } } catch(_) {}
-    try { if (_supportThreadDocUnsub) { _supportThreadDocUnsub(); _supportThreadDocUnsub = null; } } catch(_) {}
-    try { if (_presenceHeartbeat) { clearInterval(_presenceHeartbeat); _presenceHeartbeat = null; } } catch(_) {}
+    try { _detachUserListeners(); } catch(_) {}
 
     // 1) Suppression compte Auth EN PREMIER (test reauth récente)
     //    Si fail, données utilisateur restent intactes.
@@ -13404,7 +13406,21 @@ let _presenceHeartbeat = null;
 let _typingTimer = null;
 let _typingClearTimer = null;
 let _supportThreadDocUnsub = null;
+let _supportBadgeUnsub = null;
 const ADMIN_DISPLAY_NAME = "Armel";
+
+// Détache tout ce qui écoute Firestore au nom de l'utilisateur courant.
+// À appeler avant toute perte d'identité (déconnexion, suppression de compte) :
+// un onSnapshot laissé actif après signOut se voit refuser la lecture et
+// remonte « Missing or insufficient permissions » dans la console.
+function _detachUserListeners() {
+  try { if (_supportUnsub) { _supportUnsub(); _supportUnsub = null; } } catch(_) {}
+  try { if (_supportThreadsUnsub) { _supportThreadsUnsub(); _supportThreadsUnsub = null; } } catch(_) {}
+  try { if (_supportPresenceUnsub) { _supportPresenceUnsub(); _supportPresenceUnsub = null; } } catch(_) {}
+  try { if (_supportThreadDocUnsub) { _supportThreadDocUnsub(); _supportThreadDocUnsub = null; } } catch(_) {}
+  try { if (_supportBadgeUnsub) { _supportBadgeUnsub(); _supportBadgeUnsub = null; } } catch(_) {}
+  try { if (_presenceHeartbeat) { clearInterval(_presenceHeartbeat); _presenceHeartbeat = null; } } catch(_) {}
+}
 
 // Sons chat via Web Audio API (pas de fichier externe).
 let _audioCtx = null;
@@ -15140,15 +15156,17 @@ async function _markThreadReadByAdmin(uid) {
 // Badge non-lu sur item nav Support
 function _initSupportBadge() {
   if (window.IS_DEMO || !db || !currentUser) return;
+  // Un seul listener à la fois : startApp peut rappeler cette fonction.
+  if (_supportBadgeUnsub) { try { _supportBadgeUnsub(); } catch(_) {} _supportBadgeUnsub = null; }
   if (isAdmin()) {
-    onSnapshot(firestoreCollection(db, "supportThreads"), snap => {
+    _supportBadgeUnsub = onSnapshot(firestoreCollection(db, "supportThreads"), snap => {
       let total = 0;
       snap.forEach(d => total += (d.data().unreadAdmin || 0));
       const b = document.getElementById("support-badge");
       if (b) { b.textContent = total; b.style.display = total > 0 ? "inline-block" : "none"; }
     });
   } else {
-    onSnapshot(firestoreDoc(db, "supportThreads", currentUser), snap => {
+    _supportBadgeUnsub = onSnapshot(firestoreDoc(db, "supportThreads", currentUser), snap => {
       const n = snap.exists() ? (snap.data().unreadUser || 0) : 0;
       const b = document.getElementById("support-badge");
       if (b) { b.textContent = n; b.style.display = n > 0 ? "inline-block" : "none"; }
