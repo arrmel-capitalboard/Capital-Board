@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728r';
+const APP_VERSION = '20260729a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2161,11 +2161,26 @@ function _startVersionCheck() {
 // ─── Chrono perf dashboard (F12) ──────────────────────────────────────────
 // Mesure le temps d'apparition chiffres + courbe depuis le déverrouillage.
 // Chaque clé n'est loguée qu'une fois par cycle startApp.
+//
+// Silencieux par défaut : ces mesures servent au diagnostic, pas aux
+// utilisateurs. Flag localStorage 'cb_debug'=='1' pour les rallumer.
+// Console : toggleDebug()  puis recharger.
+function _debugOn() {
+  try { return localStorage.getItem('cb_debug') === '1'; } catch(_) { return false; }
+}
+window.toggleDebug = function() {
+  let on = false;
+  try { on = _debugOn(); localStorage.setItem('cb_debug', on ? '0' : '1'); } catch(_) {}
+  console.log('[debug] logs perf : ' + (!on));
+  location.reload();
+};
+
 function _perfMark(key, extra) {
   if (!window._perfT0) return;
   window._perfMarks = window._perfMarks || {};
   if (window._perfMarks[key]) return;
   window._perfMarks[key] = true;
+  if (!_debugOn()) return;
   const ms = Math.round(performance.now() - window._perfT0);
   console.log('%c[perf] ' + key + (extra ? ' ' + extra : '') + ' : ' + ms + ' ms',
     'color:#7c6df5;font-weight:bold');
@@ -6918,7 +6933,7 @@ async function renderPortfolioChart() {
       if (loader) loader.classList.add('show');
       const _bt = performance.now();
       dataset = await buildPortfolioHistory(data, graphStart, now);
-      console.log('%c[perf] buildPortfolioHistory (Yahoo) : '
+      if (_debugOn()) console.log('%c[perf] buildPortfolioHistory (Yahoo) : '
         + Math.round(performance.now() - _bt) + ' ms', 'color:#f5b731');
       // On ne cache que si tous les tickers ont été récupérés : évite de figer
       // une courbe fausse (valeurs trop basses) quand un proxy/le Worker hoquette.
