@@ -85,12 +85,20 @@ await checkAppCheck()
 vérifier avec `APP_VERSION`. `_appCheck === undefined` signifie que l'initialisation a
 échoué au chargement — chercher une ligne `[appcheck]` dans la console.
 
-État au 2026-07-29 : l'app est enregistrée dans App Check avec le fournisseur reCAPTCHA
-(étapes 1 à 3 faites), `capitalboard.fr` est dans les domaines de la clé. Reste à
-vérifier qu'un jeton est bien délivré, puis l'étape 5.
+État au 2026-07-29 : étapes 1 à 4 faites. `checkAppCheck()` renvoie
+`{ ok: true, longueur: 944 }` sur capitalboard.fr — le jeton est délivré,
+`appCheck/throttled` a disparu. Reste l'étape 5.
 
 **5. Appliquer** — seulement une fois l'étape 4 concluante, et pas un jour de lancement :
 passer `Cloud Firestore` puis `Authentication` en « Appliqué ».
+
+Ne pas appliquer le jour même de l'étape 4 : les visiteurs qui tournent encore sur une
+version en cache antérieure au 2026-07-29 n'envoient pas de jeton et seraient bloqués.
+Attendre que l'onglet **APIs** de la console App Check montre des requêtes vérifiées et
+plus de requêtes « non vérifiées » ni « clients obsolètes » sur 24 h glissantes.
+Appliquer `Cloud Firestore` d'abord, vérifier que l'app fonctionne, puis `Authentication`
+— jamais les deux d'un coup, sinon on ne sait pas lequel a cassé quoi.
+Retour arrière : repasser en « Non appliqué », effet immédiat.
 
 **Point de vigilance backend — levé le 2026-07-29.** Vérifié : tous les accès Firestore
 hors navigateur passent par un compte de service, qui contourne App Check et les règles.
