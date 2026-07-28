@@ -1941,6 +1941,10 @@ tr.drag-over td { border-top: 2px solid var(--accent) !important; }
 .sm-account-item:hover { background: rgba(255,255,255,0.05); color: var(--text); }
 .sm-account-item.danger:hover { color: var(--negative); }
 .sm-account-item svg { flex-shrink: 0; }
+/* Refresh en cours : visible le temps que le popover se referme. */
+.sm-account-item.spinning { color: var(--accent); }
+.sm-account-item.spinning svg { animation: btn-refresh-spin 0.9s linear infinite; }
+.sm-account-item:disabled { cursor: default; }
 /* En réduit, le user-card disparaît du rail : tout est dans le popover ⋯ */
 .sidebar.collapsed .user-card { display: none; }
 .sidebar-toggle {

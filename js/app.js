@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728d';
+const APP_VERSION = '20260728e';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -8735,10 +8735,19 @@ function applyDivYield(value, divYield, daysHeld) {
 //  REFRESH — vide tous les caches et relance le preload
 //  Appelé par le bouton ↻ dans la sidebar.
 // ─────────────────────────────────────────────────────────────────
+let _refreshBusy = false;
+
 async function refreshAll() {
+  if (_refreshBusy) return;   // déjà en cours
+  _refreshBusy = true;
+
   const btn = document.getElementById('btn-refresh-data');
-  if (btn && btn.classList.contains('spinning')) return; // déjà en cours
   if (btn) { btn.classList.add('spinning'); btn.disabled = true; }
+  // Le bouton vit dans le popover ⋯, que le clic referme aussitôt : sans le
+  // toast, l'utilisateur n'aurait aucun retour pendant les quelques secondes
+  // de fetch.
+  _showChatToast({ icon: IC.clock, title: 'Actualisation…',
+                   msg: 'Récupération des cours en cours.', duration: 60000 });
 
   try {
     // Vider tous les caches connus
@@ -8761,7 +8770,14 @@ async function refreshAll() {
       if (id === 'portfolio')    { try { renderPortfolio(); }  catch(e){} }
     }
     checkPriceAlerts();
+    _showChatToast({ icon: IC.checkCirc, title: 'Données à jour',
+                     msg: 'Cours et graphiques actualisés.', duration: 3000 });
+  } catch (e) {
+    console.warn('[refreshAll]', e);
+    _showChatToast({ icon: IC.warning, title: 'Actualisation impossible',
+                     msg: 'Réessayez dans un instant.', duration: 5000 });
   } finally {
+    _refreshBusy = false;
     if (btn) { btn.classList.remove('spinning'); btn.disabled = false; }
   }
 }
