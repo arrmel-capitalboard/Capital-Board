@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728a';
+const APP_VERSION = '20260728b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6690,9 +6690,9 @@ function _curveCacheTTL() {
 //  animation (`animation: false`) et on pilote nous-mêmes le rendu
 //  pour enchaîner les deux phases.
 // ═══════════════════════════════════════════════════
-const PF_REVEAL_LINE_MS  = 800;  // durée du tracé
-const PF_REVEAL_DOT_MS   = 320;  // pop d'un marqueur
-const PF_REVEAL_DOT_STEP = 40;   // décalage entre deux marqueurs
+const PF_REVEAL_LINE_MS  = 2000; // durée du tracé
+const PF_REVEAL_DOT_MS   = 700;  // pop d'un marqueur
+const PF_REVEAL_DOT_STEP = 150;  // décalage entre deux marqueurs
 const PF_REVEAL_DOT_CAP  = 12;   // au-delà, plus de décalage (longs historiques)
 
 function _pfEaseInOutQuad(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; }
