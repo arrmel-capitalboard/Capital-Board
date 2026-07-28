@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728f';
+const APP_VERSION = '20260728g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -8797,6 +8797,13 @@ async function refreshAll() {
       if (id === 'watchlist')    { try { renderWatchlist(); }  catch(e){} }
       if (id === 'portfolio')    { try { renderPortfolio(); }  catch(e){} }
     }
+
+    // Les cours du portefeuille ne passent pas par preloadAll() : c'est
+    // refreshPrices() qui met à jour currentPrice/changePct, et qui rappelle
+    // renderPortfolio() lui-même quand quelque chose a bougé. On le lance en
+    // dernier pour qu'aucun rendu ultérieur n'écrase l'animation des prix.
+    try { await refreshPrices(); } catch (e) { console.warn('[refreshAll] prix', e); }
+
     checkPriceAlerts();
     _showChatToast({ icon: IC.checkCirc, title: 'Données à jour',
                      msg: 'Cours et graphiques actualisés.', duration: 3000 });
