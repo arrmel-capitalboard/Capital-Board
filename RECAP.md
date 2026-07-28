@@ -186,6 +186,52 @@ Fonctionnent dans descriptions/valeurs de fields. PAS dans titres/noms de fields
 - [x] Landing `#about` : layout 2 colonnes, glow border purple, avatar ring, badges pills (Open source / 100% gratuit / Donnees en Europe / Zero publicite)
 - [x] Highlights `.hl` purple bold sur termes cles dans tout le contenu landing (hero, stats, features, about)
 
+## Session 29/07/2026 — App Check applique (TODO 7.7 termine)
+
+`Cloud Firestore` et `Authentication` sont en **ENFORCED**. Toute requete sans jeton
+App Check valide est rejetee. Teste en production : lecture portefeuille, ecriture,
+deconnexion, reconnexion.
+
+Cle reCAPTCHA v3 : `6LcrZwstAAAAAIOKXUFbgxO49SUoVmoQycZf3Ekq` (dans `js/app.js`,
+`pages/index.html`, `pages/auth-action.html`).
+
+**Regle** : toute nouvelle page qui appelle Auth, Firestore ou Storage doit initialiser
+App Check avant le premier appel, sinon elle est rejetee. Copier le bloc de
+`pages/auth-action.html` (import dynamique + `catch`).
+
+**Backends non concernes** — tous en compte de service, ce qui contourne App Check :
+bot Discord (`firebase-admin`), Worker Cloudflare (JWT → OAuth → REST), scripts
+GitHub Actions (`firebase-admin`). `firebase-messaging-sw.js` ne fait que recevoir FCM.
+
+**Diagnostic** : `await checkAppCheck()` dans la console de l'app → `{ ok: true, ... }`.
+
+**Piloter l'enforcement sans la console Firebase** — API `firebaseappcheck`, avec la cle
+service account. Services : `firestore.googleapis.com`, `identitytoolkit.googleapis.com`.
+
+```
+GET   https://firebaseappcheck.googleapis.com/v1/projects/capitalboard/services
+PATCH https://firebaseappcheck.googleapis.com/v1/projects/capitalboard/services/<id>?updateMask=enforcementMode
+      body: {"enforcementMode":"ENFORCED"}   // ou UNENFORCED pour revenir en arriere
+```
+
+Retour arriere : effet immediat, aucun deploiement necessaire.
+
+### Aussi corrige ce jour
+
+- Listeners Firestore detaches a la deconnexion (`_detachUserListeners`) — les
+  `onSnapshot` survivants provoquaient `permission-denied` apres signOut. Le badge
+  support ne gardait aucune reference d unsubscribe.
+- Logs `[perf]` coupes en production, derriere le flag localStorage `cb_debug`
+  (`toggleDebug()` en console pour rallumer).
+
+### Bruit console a ignorer (Firefox)
+
+`Cambria Math` rejetee, `WebGL warning: getInternalformatParameter`, `WebGL context was
+lost`, `Erreur d analyse ... normal:1:6`, `401` sur `challenges.cloudflare.com/.../pat/` :
+tout vient de **Turnstile** (fingerprinting anti-bot, et Firefox ne gere pas les Private
+Access Tokens). Le projet ne declare aucun `@font-face`. `style.css:76` est un faux
+positif deja couvert par `@supports`. Rien a corriger.
+
 ## A faire prochaine session
 
 - [ ] Nouveaux guides SEO (investir ETF, dividendes PEA, fiscalite PEA)
