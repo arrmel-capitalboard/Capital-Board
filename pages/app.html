@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260729c">
+<link rel="stylesheet" href="css/style.css?v=20260729d">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -1161,6 +1161,18 @@
           <div class="page-subtitle">Les idées de la communauté, validées par l'équipe puis soumises au vote</div>
         </div>
       </div>
+
+      <div class="idea-actions">
+        <button class="btn-primary idea-cta" onclick="openIdeaForm()" aria-label="Proposer une idée">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+          Proposer une idée
+        </button>
+        <button class="btn-secondary idea-cta" onclick="openMyIdeas()" aria-label="Voir mes propositions">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/></svg>
+          Mes propositions <span class="idea-pill" id="idea-mine-count" style="display:none">0</span>
+        </button>
+      </div>
+
       <div id="idees-content"></div>
     </div>
 
@@ -1436,6 +1448,46 @@
 </div>
 
 <!-- ═══ MODAL PROFIL ════════════════════════════════ -->
+<!-- Modal : proposer une idée. Au niveau racine comme les autres modales :
+     un ancêtre porteur d'un transform casserait le position:fixed. -->
+<div class="modal-overlay" id="idea-form-overlay" onclick="if(event.target===this)closeIdeaForm()">
+  <div class="modal idea-modal" role="dialog" aria-modal="true" aria-labelledby="idea-form-title">
+    <div class="modal-title" id="idea-form-title">Proposer une idée</div>
+    <div class="modal-sub">Votre proposition est relue par l'équipe avant d'apparaître sur le mur.</div>
+
+    <label class="idea-label" for="idea-title">Titre</label>
+    <input id="idea-title" class="idea-input" maxlength="120" placeholder="En une phrase">
+
+    <label class="idea-label" for="idea-body">Description</label>
+    <textarea id="idea-body" class="idea-input idea-textarea" maxlength="2000" rows="5"
+      placeholder="Le raisonnement, ce qui vous a convaincu…"></textarea>
+    <div class="idea-counter"><span id="idea-body-count">0</span> / 2000</div>
+
+    <div class="idea-msg" id="idea-form-msg" role="alert"></div>
+
+    <div class="idea-disclaimer">Les idées publiées ici sont les opinions de leurs auteurs, membres de la
+      communauté. Elles ne constituent ni un conseil en investissement, ni une recommandation d'achat ou de
+      vente. Vous restez seul responsable de vos décisions.</div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeIdeaForm()">Annuler</button>
+      <button class="btn-primary" id="idea-submit-btn" onclick="submitIdea()">Envoyer</button>
+    </div>
+  </div>
+</div>
+
+<!-- Modal : mes propositions -->
+<div class="modal-overlay" id="idea-mine-overlay" onclick="if(event.target===this)closeMyIdeas()">
+  <div class="modal idea-modal" role="dialog" aria-modal="true" aria-labelledby="idea-mine-title">
+    <div class="modal-title" id="idea-mine-title">Mes propositions</div>
+    <div class="modal-sub">Le suivi de ce que vous avez soumis.</div>
+    <div id="idea-mine-body"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="closeMyIdeas()">Fermer</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="profil-modal-overlay" onclick="if(event.target===this)closeProfilModal()" style="z-index:1100">
   <div class="modal" style="width:440px;max-height:85vh;overflow-y:auto">
 
@@ -1859,7 +1911,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260729c"></script>
+<script src="js/app.js?v=20260729d"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

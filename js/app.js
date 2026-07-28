@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260729c';
+const APP_VERSION = '20260729d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -15253,121 +15253,207 @@ function _ideaDate(i) {
 async function renderIdeasPage() {
   const el = document.getElementById('idees-content');
   if (!el || !db || !currentUser) return;
-  el.innerHTML = '<div class="idea-empty">Chargement…</div>';
+  el.innerHTML = _ideaSkeletonHtml();
   try {
     await Promise.all([_loadIdeas(), _loadMyIdeaVotes()]);
   } catch (e) {
-    el.innerHTML = '<div class="idea-empty">Chargement impossible : ' + _escapeHtmlChat(e.message) + '</div>';
+    el.innerHTML = '<div class="idea-blank">Chargement impossible : ' + _escapeHtmlChat(e.message) + '</div>';
     return;
   }
-  el.innerHTML = _ideaFormHtml() + _ideaPendingHtml() + _ideaMineHtml() + _ideaWallHtml();
+  el.innerHTML = _ideaPendingHtml() + _ideaWallHtml();
   _updateIdeasBadge();
+  _updateMyIdeasCount();
+  const body = document.getElementById('idea-mine-body');
+  if (body && document.getElementById('idea-mine-overlay').classList.contains('open')) {
+    body.innerHTML = _ideaMineHtml();
+  }
 }
 
-function _ideaFormHtml() {
-  return '' +
-    '<div class="section-card idea-form">' +
-      '<div class="section-title">Proposer une idée</div>' +
-      '<div class="idea-hint">Votre proposition est relue par l\'équipe avant d\'apparaître sur le mur.</div>' +
-      '<input id="idea-title" maxlength="' + IDEA_MAX_TITLE + '" placeholder="Titre de l\'idée" class="idea-input">' +
-      '<textarea id="idea-body" maxlength="' + IDEA_MAX_BODY + '" rows="4" placeholder="Expliquez votre idée : le raisonnement, ce qui vous a convaincu…" class="idea-input idea-textarea"></textarea>' +
-      '<div class="idea-form-foot">' +
-        '<span id="idea-form-msg" class="idea-msg"></span>' +
-        '<button class="pf-btn" onclick="submitIdea()">Proposer l\'idée</button>' +
-      '</div>' +
-      '<div class="idea-disclaimer">Les idées publiées ici sont les opinions de leurs auteurs, membres de la communauté. ' +
-        'Elles ne constituent ni un conseil en investissement, ni une recommandation d\'achat ou de vente. ' +
-        'Vous restez seul responsable de vos décisions.</div>' +
-    '</div>';
+// Silhouettes pendant le chargement plutôt qu'un spinner : la hauteur des
+// cartes est déjà réservée, le mur ne saute pas quand les données arrivent.
+function _ideaSkeletonHtml() {
+  const one = '<div class="idea-bubble-row idea-sk">' +
+      '<div class="idea-avatar idea-sk-box"></div>' +
+      '<div class="idea-bubble"><div class="idea-sk-line w40"></div>' +
+      '<div class="idea-sk-line w80"></div><div class="idea-sk-line w60"></div></div></div>';
+  return '<div class="idea-wall">' + one + one + '</div>';
+}
+
+// Teinte dérivée du pseudo : deux auteurs différents n'ont pas la même
+// pastille, sans lecture Firestore supplémentaire.
+function _ideaHue(name) {
+  const s = String(name || 'membre');
+  let h = 0;
+  for (let i = 0; i < s.length; i++) h = (h * 31 + s.charCodeAt(i)) % 360;
+  return h;
+}
+
+function _ideaAvatar(name) {
+  const n = String(name || 'membre');
+  const hue = _ideaHue(n);
+  return '<div class="idea-avatar" aria-hidden="true" style="' +
+    'background:hsl(' + hue + ',42%,22%);color:hsl(' + hue + ',70%,72%)">' +
+    _escapeHtmlChat(n.charAt(0).toUpperCase()) + '</div>';
+}
+
+const _ICON_UP = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg>';
+const _ICON_DOWN = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>';
+
+window.openIdeaForm = function() {
+  const o = document.getElementById('idea-form-overlay');
+  if (!o) return;
+  document.getElementById('idea-form-msg').textContent = '';
+  o.classList.add('open');
+  setTimeout(() => { const t = document.getElementById('idea-title'); if (t) t.focus(); }, 60);
+};
+window.closeIdeaForm = function() {
+  const o = document.getElementById('idea-form-overlay');
+  if (o) o.classList.remove('open');
+};
+window.openMyIdeas = function() {
+  const o = document.getElementById('idea-mine-overlay');
+  if (!o) return;
+  document.getElementById('idea-mine-body').innerHTML = _ideaMineHtml();
+  o.classList.add('open');
+};
+window.closeMyIdeas = function() {
+  const o = document.getElementById('idea-mine-overlay');
+  if (o) o.classList.remove('open');
+};
+
+// Échap ferme la modale ouverte : une modale sans échappatoire clavier est
+// un piège pour la navigation au clavier.
+document.addEventListener('keydown', e => {
+  if (e.key !== 'Escape') return;
+  const f = document.getElementById('idea-form-overlay');
+  const m = document.getElementById('idea-mine-overlay');
+  if (f && f.classList.contains('open')) window.closeIdeaForm();
+  if (m && m.classList.contains('open')) window.closeMyIdeas();
+});
+
+document.addEventListener('input', e => {
+  if (!e.target || e.target.id !== 'idea-body') return;
+  const c = document.getElementById('idea-body-count');
+  if (c) c.textContent = e.target.value.length;
+});
+
+function _updateMyIdeasCount() {
+  const el = document.getElementById('idea-mine-count');
+  if (!el) return;
+  const n = _ideasMine.length;
+  el.textContent = n;
+  el.style.display = n > 0 ? 'inline-block' : 'none';
 }
 
 function _ideaPendingHtml() {
-  if (!isAdmin()) return '';
-  if (!_ideasPending.length) {
-    return '<div class="section-card"><div class="section-title">File de modération</div>' +
-      '<div class="idea-empty">Aucune idée en attente.</div></div>';
-  }
+  if (!isAdmin() || !_ideasPending.length) return '';
   const rows = _ideasPending.map(i => '' +
     '<div class="idea-mod" id="idea-mod-' + i.id + '">' +
       '<div class="idea-mod-head">' +
-        '<div class="idea-title">' + _escapeHtmlChat(i.title) + '</div>' +
-        '<div class="idea-meta">par ' + _escapeHtmlChat(i.authorName || 'membre') + ' · ' + _ideaDate(i) + '</div>' +
+        _ideaAvatar(i.authorName) +
+        '<div>' +
+          '<div class="idea-title">' + _escapeHtmlChat(i.title) + '</div>' +
+          '<div class="idea-meta">' + _escapeHtmlChat(i.authorName || 'membre') + ' · ' + _ideaDate(i) + '</div>' +
+        '</div>' +
       '</div>' +
       '<div class="idea-body">' + _escapeHtmlChat(i.body) + '</div>' +
+      '<input class="idea-input idea-reason" id="idea-reason-' + i.id + '" ' +
+        'placeholder="Motif du refus (optionnel, envoyé à l\'auteur)">' +
       '<div class="idea-mod-actions">' +
-        '<input class="idea-input idea-reason" id="idea-reason-' + i.id + '" placeholder="Motif du refus (optionnel, envoyé à l\'auteur)">' +
-        '<button class="pf-btn" onclick="adminPublishIdea(\'' + i.id + '\')">Publier</button>' +
-        '<button class="pf-btn ghost idea-btn-danger" onclick="adminRejectIdea(\'' + i.id + '\')">Refuser</button>' +
+        '<button class="btn-primary" onclick="adminPublishIdea(\'' + i.id + '\')">Publier</button>' +
+        '<button class="btn-secondary idea-btn-danger" onclick="adminRejectIdea(\'' + i.id + '\')">Refuser</button>' +
       '</div>' +
-      '<div class="idea-msg" id="idea-mod-msg-' + i.id + '"></div>' +
+      '<div class="idea-msg" id="idea-mod-msg-' + i.id + '" role="alert"></div>' +
     '</div>').join('');
-  return '<div class="section-card"><div class="section-title">File de modération ' +
-    '<span class="idea-count">' + _ideasPending.length + '</span></div>' + rows + '</div>';
+  return '<div class="idea-mod-panel">' +
+    '<div class="idea-mod-title">' +
+      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>' +
+      'File de modération<span class="idea-count">' + _ideasPending.length + '</span>' +
+    '</div>' + rows + '</div>';
 }
 
 function _ideaMineHtml() {
-  if (!_ideasMine.length) return '';
+  if (!_ideasMine.length) {
+    return '<div class="idea-blank">Vous n\'avez encore rien proposé.</div>';
+  }
   const label = { pending: 'En attente', published: 'Publiée', rejected: 'Refusée' };
-  const rows = _ideasMine.map(i => '' +
+  return _ideasMine.map(i => '' +
     '<div class="idea-mine-row">' +
-      '<div>' +
-        '<div class="idea-title">' + _escapeHtmlChat(i.title) + '</div>' +
-        '<div class="idea-meta">' + _ideaDate(i) +
-          (i.status === 'rejected' && i.rejectReason
-            ? ' · motif : ' + _escapeHtmlChat(i.rejectReason) : '') +
-        '</div>' +
+      '<div class="idea-mine-left">' +
+        '<div class="idea-mine-title">' + _escapeHtmlChat(i.title) + '</div>' +
+        '<div class="idea-meta">' + _ideaDate(i) + '</div>' +
+        (i.status === 'rejected' && i.rejectReason
+          ? '<div class="idea-reason-box">Motif : ' + _escapeHtmlChat(i.rejectReason) + '</div>' : '') +
       '</div>' +
       '<div class="idea-mine-right">' +
         '<span class="idea-status idea-status-' + i.status + '">' + (label[i.status] || i.status) + '</span>' +
         (i.status === 'pending'
-          ? '<button class="pf-btn ghost idea-btn-small" onclick="deleteMyIdea(\'' + i.id + '\')">Retirer</button>' : '') +
+          ? '<button class="idea-link-danger" onclick="deleteMyIdea(\'' + i.id + '\')">Retirer</button>' : '') +
       '</div>' +
     '</div>').join('');
-  return '<div class="section-card"><div class="section-title">Mes propositions</div>' + rows + '</div>';
 }
 
 function _ideaWallHtml() {
   if (!_ideasPublished.length) {
-    return '<div class="section-card"><div class="section-title">Le mur</div>' +
-      '<div class="idea-empty">Aucune idée publiée pour le moment. Proposez la première.</div></div>';
+    return '<div class="idea-blank idea-blank-big">' +
+      '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>' +
+      '<div class="idea-blank-title">Le mur est vide</div>' +
+      '<div>Aucune idée publiée pour le moment. Proposez la première.</div>' +
+      '<button class="btn-primary idea-cta" onclick="openIdeaForm()">Proposer une idée</button>' +
+    '</div>';
   }
-  const cards = _ideasPublished.map(i => {
-    const mine = _ideaVotes[i.id] || 0;
+  const cards = _ideasPublished.map((i, n) => {
+    const mine  = _ideaVotes[i.id] || 0;
+    const score = (i.up || 0) - (i.down || 0);
+    const author = i.authorName || 'membre';
     return '' +
-    '<div class="idea-card" id="idea-card-' + i.id + '">' +
-      '<div class="idea-vote">' +
-        '<button class="idea-vote-btn' + (mine === 1 ? ' voted-up' : '') + '" title="Je soutiens" ' +
-          'onclick="voteIdea(\'' + i.id + '\',1)">▲</button>' +
-        '<span class="idea-score" id="idea-score-' + i.id + '">' + ((i.up || 0) - (i.down || 0)) + '</span>' +
-        '<button class="idea-vote-btn' + (mine === -1 ? ' voted-down' : '') + '" title="Je ne suis pas convaincu" ' +
-          'onclick="voteIdea(\'' + i.id + '\',-1)">▼</button>' +
-      '</div>' +
-      '<div class="idea-main">' +
+    '<div class="idea-bubble-row" id="idea-card-' + i.id + '" style="--i:' + Math.min(n, 12) + '">' +
+      _ideaAvatar(author) +
+      '<div class="idea-bubble">' +
+        '<div class="idea-bubble-head">' +
+          '<span class="idea-author">' + _escapeHtmlChat(author) + '</span>' +
+          '<span class="idea-dot">·</span>' +
+          '<span class="idea-date">' + _ideaDate(i) + '</span>' +
+          (score > 0 ? '<span class="idea-score-chip up">+' + score + '</span>'
+           : score < 0 ? '<span class="idea-score-chip down">' + score + '</span>'
+           : '<span class="idea-score-chip">0</span>') +
+        '</div>' +
         '<div class="idea-title">' + _escapeHtmlChat(i.title) + '</div>' +
-        '<div class="idea-meta">par ' + _escapeHtmlChat(i.authorName || 'membre') + ' · ' + _ideaDate(i) +
-          ' · <span class="idea-up">' + (i.up || 0) + ' pour</span>' +
-          ' · <span class="idea-down">' + (i.down || 0) + ' contre</span></div>' +
         '<div class="idea-body">' + _escapeHtmlChat(i.body) + '</div>' +
-        (isAdmin() ? '<div class="idea-mod-actions"><button class="pf-btn ghost idea-btn-small idea-btn-danger" ' +
-          'onclick="adminUnpublishIdea(\'' + i.id + '\')">Retirer du mur</button></div>' : '') +
+        '<div class="idea-bubble-foot">' +
+          '<button class="idea-vote-btn' + (mine === 1 ? ' voted-up' : '') + '" ' +
+            'aria-pressed="' + (mine === 1) + '" aria-label="Je soutiens cette idée" ' +
+            'onclick="voteIdea(\'' + i.id + '\',1)">' + _ICON_UP +
+            '<span>' + (i.up || 0) + '</span></button>' +
+          '<button class="idea-vote-btn' + (mine === -1 ? ' voted-down' : '') + '" ' +
+            'aria-pressed="' + (mine === -1) + '" aria-label="Je ne suis pas convaincu" ' +
+            'onclick="voteIdea(\'' + i.id + '\',-1)">' + _ICON_DOWN +
+            '<span>' + (i.down || 0) + '</span></button>' +
+          (isAdmin() ? '<button class="idea-link-danger idea-foot-right" ' +
+            'onclick="adminUnpublishIdea(\'' + i.id + '\')">Retirer du mur</button>' : '') +
+        '</div>' +
       '</div>' +
     '</div>';
   }).join('');
-  return '<div class="section-card"><div class="section-title">Le mur</div>' +
-    '<div class="idea-wall">' + cards + '</div></div>';
+  return '<div class="idea-wall">' + cards + '</div>';
 }
 
 window.submitIdea = async function() {
   const tEl = document.getElementById('idea-title');
   const bEl = document.getElementById('idea-body');
   const msg = document.getElementById('idea-form-msg');
+  const btn = document.getElementById('idea-submit-btn');
   const title = (tEl.value || '').trim();
   const body  = (bEl.value || '').trim();
-  if (!title || !body) { msg.textContent = 'Titre et description sont requis.'; return; }
+  msg.className = 'idea-msg';
+  if (!title || !body) { msg.classList.add('err'); msg.textContent = 'Titre et description sont requis.'; return; }
   if (title.length > IDEA_MAX_TITLE || body.length > IDEA_MAX_BODY) {
-    msg.textContent = 'Texte trop long.'; return;
+    msg.classList.add('err'); msg.textContent = 'Texte trop long.'; return;
   }
-  msg.textContent = 'Envoi…';
+  // Le bouton se verrouille le temps de l'envoi : sans ça, un double clic crée
+  // deux propositions identiques.
+  if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; }
+  msg.textContent = '';
   try {
     let authorName = '';
     try {
@@ -15383,10 +15469,15 @@ window.submitIdea = async function() {
       up: 0, down: 0, score: 0,
     });
     tEl.value = ''; bEl.value = '';
-    msg.textContent = '✓ Proposition envoyée, en attente de validation.';
+    const c = document.getElementById('idea-body-count'); if (c) c.textContent = '0';
+    window.closeIdeaForm();
     await renderIdeasPage();
+    window.openMyIdeas();   // l'auteur voit tout de suite sa proposition « En attente »
   } catch (e) {
+    msg.classList.add('err');
     msg.textContent = 'Échec : ' + e.message;
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Envoyer'; }
   }
 };
 
@@ -15421,6 +15512,8 @@ window.deleteMyIdea = async function(ideaId) {
   try {
     await deleteFirestoreDoc(firestoreDoc(db, 'ideas', ideaId));
     await renderIdeasPage();
+    const body = document.getElementById('idea-mine-body');
+    if (body) body.innerHTML = _ideaMineHtml();
   } catch (e) { console.warn('[idees] retrait refusé:', e.message); }
 };
 

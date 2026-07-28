@@ -3095,108 +3095,241 @@ body.has-demo-banner { padding-top: 40px; }
    propositions, puis le mur trié par score. Tout passe par les variables de
    thème : le rendu suit automatiquement le mode clair. */
 
-.idea-hint { font-size: 12px; color: var(--text2); margin-bottom: 12px; }
+/* ── Barre d'actions ─────────────────────────────────────────────────────
+   Une seule action primaire (proposer) ; consulter ses propositions reste
+   secondaire, d'où le contraste entre les deux boutons. */
+.idea-actions { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 20px; }
+.idea-cta {
+  flex: 0 0 auto; width: auto;
+  display: inline-flex; align-items: center; justify-content: center; gap: 7px;
+  min-height: 44px; padding: 0 18px;   /* 44px : cible tactile minimale */
+}
+.idea-pill {
+  background: rgba(255,255,255,0.14); color: inherit;
+  font-size: 10.5px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
+  font-variant-numeric: tabular-nums;
+}
 
+/* ── Champs ──────────────────────────────────────────────────────────── */
+.idea-label {
+  display: block; font-size: 11px; font-weight: 600; color: var(--text2);
+  margin-bottom: 6px; letter-spacing: .01em;
+}
 .idea-input {
   width: 100%; box-sizing: border-box;
-  background: var(--s1); color: var(--text);
-  border: 1px solid var(--border2); border-radius: 9px;
-  padding: 10px 12px; font-size: 13px; font-family: inherit;
-  margin-bottom: 10px;
+  background: var(--s2); color: var(--text);
+  border: 1px solid var(--border2); border-radius: 10px;
+  padding: 11px 13px; font-size: 13px; font-family: inherit;
+  margin-bottom: 14px; transition: border-color .18s ease, box-shadow .18s ease;
 }
-.idea-input:focus { outline: none; border-color: var(--accent); }
+.idea-input:focus {
+  outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px rgba(124,109,245,0.16);
+}
 .idea-input::placeholder { color: var(--text3); }
-.idea-textarea { resize: vertical; min-height: 84px; line-height: 1.5; }
+.idea-textarea { resize: vertical; min-height: 104px; line-height: 1.6; margin-bottom: 4px; }
+.idea-counter {
+  font-size: 10.5px; color: var(--text3); text-align: right; margin-bottom: 12px;
+  font-variant-numeric: tabular-nums;
+}
 
-.idea-form-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
-.idea-msg { font-size: 12px; color: var(--text2); flex: 1; }
+.idea-msg { font-size: 12px; color: var(--text2); min-height: 16px; }
+.idea-msg.err { color: var(--negative); }
 
 .idea-disclaimer {
-  margin-top: 14px; padding-top: 12px;
-  border-top: 1px solid var(--border);
-  font-size: 11px; line-height: 1.6; color: var(--text3);
+  margin-top: 14px; padding: 11px 13px;
+  background: var(--s2); border-radius: 9px;
+  border-left: 2px solid var(--border3);
+  font-size: 10.5px; line-height: 1.65; color: var(--text3);
 }
 
-.idea-empty { font-size: 13px; color: var(--text2); padding: 8px 0; }
+.idea-modal { width: 520px; max-width: calc(100vw - 32px); max-height: 88vh; overflow-y: auto; }
 
+/* ── États vides ─────────────────────────────────────────────────────── */
+.idea-blank { font-size: 13px; color: var(--text2); padding: 10px 0; }
+.idea-blank-big {
+  display: flex; flex-direction: column; align-items: center; gap: 8px;
+  text-align: center; padding: 46px 20px; color: var(--text3);
+  border: 1px dashed var(--border2); border-radius: 16px;
+}
+.idea-blank-title { font-size: 15px; font-weight: 700; color: var(--text); }
+.idea-blank-big .idea-cta { margin-top: 10px; }
+
+/* ── Avatar ──────────────────────────────────────────────────────────── */
+.idea-avatar {
+  width: 36px; height: 36px; flex-shrink: 0;
+  border-radius: 50%; display: flex; align-items: center; justify-content: center;
+  font-size: 14px; font-weight: 700; user-select: none;
+}
+
+/* ── File de modération ──────────────────────────────────────────────── */
+.idea-mod-panel {
+  border: 1px solid rgba(255,77,106,0.22); border-radius: 16px;
+  background: rgba(255,77,106,0.03); padding: 16px; margin-bottom: 22px;
+}
+.idea-mod-title {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 12px; font-weight: 700; color: var(--negative);
+  text-transform: uppercase; letter-spacing: .04em; margin-bottom: 14px;
+}
 .idea-count {
-  display: inline-block; margin-left: 6px;
   background: var(--negative); color: #fff;
   font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
 }
-
-/* File de modération */
 .idea-mod {
-  border: 1px solid var(--border2); border-radius: 11px;
-  padding: 14px; margin-bottom: 12px; background: var(--s1);
+  border: 1px solid var(--border2); border-radius: 12px;
+  padding: 15px; margin-bottom: 10px; background: var(--s1);
 }
-.idea-mod-head { margin-bottom: 8px; }
-.idea-mod-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
-.idea-reason { flex: 1; min-width: 200px; margin-bottom: 0; }
-.idea-btn-small { font-size: 11px; padding: 6px 12px; }
-.idea-btn-danger { border-color: rgba(255,77,106,0.35); color: var(--negative); }
+.idea-mod:last-child { margin-bottom: 0; }
+.idea-mod-head { display: flex; align-items: center; gap: 11px; margin-bottom: 10px; }
+.idea-mod-actions { display: flex; gap: 9px; }
+.idea-mod-actions .btn-primary, .idea-mod-actions .btn-secondary { min-height: 40px; }
+.idea-reason { margin-bottom: 11px; }
+.idea-btn-danger { border-color: rgba(255,77,106,0.32) !important; color: var(--negative) !important; }
+.idea-btn-danger:hover { border-color: var(--negative) !important; }
 
-/* Mes propositions */
-.idea-mine-row {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 11px 0; border-bottom: 1px solid var(--border);
+/* ── Bulles ──────────────────────────────────────────────────────────────
+   Le coin haut-gauche reste net et pointe vers l'avatar : c'est ce qui
+   fait lire la carte comme une prise de parole plutôt qu'un bloc de data. */
+.idea-wall { display: flex; flex-direction: column; gap: 14px; }
+
+.idea-bubble-row { display: flex; gap: 11px; align-items: flex-start; }
+
+.idea-bubble {
+  flex: 1; min-width: 0; position: relative;
+  background: var(--s2);
+  border: 1px solid var(--border2);
+  border-radius: 4px 16px 16px 16px;
+  padding: 13px 15px 9px;
+  transition: border-color .18s ease, transform .18s ease;
 }
-.idea-mine-row:last-child { border-bottom: none; }
-.idea-mine-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
-.idea-status { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
-.idea-status-pending   { background: rgba(245,183,49,0.12); color: var(--gold); }
-.idea-status-published { background: rgba(0,224,158,0.10); color: var(--positive); }
-.idea-status-rejected  { background: rgba(255,77,106,0.10); color: var(--negative); }
+.idea-bubble:hover { border-color: var(--border3); }
 
-/* Le mur */
-.idea-wall { display: flex; flex-direction: column; gap: 12px; }
-.idea-card {
-  display: flex; gap: 14px;
-  border: 1px solid var(--border2); border-radius: 11px;
-  padding: 14px; background: var(--s1);
-  transition: border-color .15s ease;
+/* Pointe de la bulle, alignée sur le haut de l'avatar. */
+.idea-bubble::before {
+  content: ''; position: absolute; left: -6px; top: 11px;
+  width: 10px; height: 10px;
+  background: var(--s2);
+  border-left: 1px solid var(--border2); border-bottom: 1px solid var(--border2);
+  transform: rotate(45deg); border-radius: 0 0 0 3px;
 }
-.idea-card:hover { border-color: var(--border3); }
 
-.idea-vote { display: flex; flex-direction: column; align-items: center; gap: 2px; flex-shrink: 0; width: 40px; }
-.idea-vote-btn {
-  background: none; border: none; cursor: pointer;
-  color: var(--text3); font-size: 15px; line-height: 1;
-  padding: 4px 8px; border-radius: 7px;
-  transition: color .15s ease, background .15s ease;
+.idea-bubble-head { display: flex; align-items: center; gap: 6px; margin-bottom: 5px; flex-wrap: wrap; }
+.idea-author { font-size: 12px; font-weight: 700; color: var(--text); }
+.idea-dot    { color: var(--text3); font-size: 11px; }
+.idea-date   { font-size: 11px; color: var(--text3); }
+
+.idea-score-chip {
+  margin-left: auto; font-size: 11px; font-weight: 700;
+  padding: 2px 9px; border-radius: 20px;
+  background: var(--s4); color: var(--text2);
+  font-variant-numeric: tabular-nums;
 }
-.idea-vote-btn:hover { background: var(--s3); color: var(--text2); }
-.idea-vote-btn.voted-up   { color: var(--positive); }
-.idea-vote-btn.voted-down { color: var(--negative); }
-.idea-score { font-size: 14px; font-weight: 700; color: var(--text); }
+.idea-score-chip.up   { background: rgba(0,224,158,0.11); color: var(--positive); }
+.idea-score-chip.down { background: rgba(255,77,106,0.11); color: var(--negative); }
 
-.idea-main { flex: 1; min-width: 0; }
-.idea-title { font-size: 14px; font-weight: 700; color: var(--text); line-height: 1.35; }
-.idea-meta  { font-size: 11px; color: var(--text3); margin-top: 3px; }
-.idea-up    { color: var(--positive); }
-.idea-down  { color: var(--negative); }
+.idea-title { font-size: 14.5px; font-weight: 700; color: var(--text); line-height: 1.35; }
+.idea-meta  { font-size: 11px; color: var(--text3); margin-top: 2px; }
 .idea-body  {
-  font-size: 13px; color: var(--text2); line-height: 1.6; margin-top: 8px;
+  font-size: 13px; color: var(--text2); line-height: 1.65; margin-top: 7px;
   white-space: pre-wrap; overflow-wrap: anywhere;
 }
 
+.idea-bubble-foot {
+  display: flex; align-items: center; gap: 6px;
+  margin-top: 11px; padding-top: 9px; border-top: 1px solid var(--border);
+}
+
+/* Le compteur est dans le bouton : la cible tactile couvre le chiffre. */
+.idea-vote-btn {
+  display: inline-flex; align-items: center; gap: 6px;
+  background: none; border: 1px solid transparent; cursor: pointer;
+  color: var(--text3); font-size: 12px; font-weight: 600; font-family: inherit;
+  padding: 7px 11px; border-radius: 9px; min-height: 36px;
+  font-variant-numeric: tabular-nums;
+  transition: color .16s ease, background .16s ease, border-color .16s ease;
+}
+.idea-vote-btn svg { width: 14px; height: 14px; }
+.idea-vote-btn:hover { background: var(--s4); color: var(--text2); }
+.idea-vote-btn:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.idea-vote-btn.voted-up {
+  color: var(--positive); background: rgba(0,224,158,0.09); border-color: rgba(0,224,158,0.26);
+}
+.idea-vote-btn.voted-down {
+  color: var(--negative); background: rgba(255,77,106,0.09); border-color: rgba(255,77,106,0.26);
+}
+.idea-foot-right { margin-left: auto; }
+
+.idea-link-danger {
+  background: none; border: none; cursor: pointer; font-family: inherit;
+  color: var(--text3); font-size: 11px; padding: 7px 9px; border-radius: 7px;
+  transition: color .16s ease, background .16s ease;
+}
+.idea-link-danger:hover { color: var(--negative); background: rgba(255,77,106,0.08); }
+
+/* ── Mes propositions ────────────────────────────────────────────────── */
+.idea-mine-row {
+  display: flex; align-items: flex-start; justify-content: space-between; gap: 12px;
+  padding: 13px 0; border-bottom: 1px solid var(--border);
+}
+.idea-mine-row:first-child { padding-top: 0; }
+.idea-mine-row:last-child { border-bottom: none; padding-bottom: 0; }
+.idea-mine-left { min-width: 0; }
+.idea-mine-title { font-size: 13px; font-weight: 600; color: var(--text); line-height: 1.4; }
+.idea-mine-right { display: flex; align-items: center; gap: 6px; flex-shrink: 0; }
+.idea-status {
+  font-size: 10.5px; font-weight: 700; padding: 4px 10px;
+  border-radius: 20px; white-space: nowrap;
+}
+.idea-status-pending   { background: rgba(245,183,49,0.13); color: var(--gold); }
+.idea-status-published { background: rgba(0,224,158,0.11); color: var(--positive); }
+.idea-status-rejected  { background: rgba(255,77,106,0.11); color: var(--negative); }
+.idea-reason-box {
+  margin-top: 7px; padding: 8px 11px;
+  background: rgba(255,77,106,0.06); border-left: 2px solid rgba(255,77,106,0.4);
+  border-radius: 0 7px 7px 0; font-size: 11.5px; line-height: 1.55; color: var(--text2);
+}
+
+/* ── Silhouettes de chargement ───────────────────────────────────────── */
+.idea-sk-box, .idea-sk-line {
+  background: linear-gradient(90deg, var(--s2) 25%, var(--s3) 50%, var(--s2) 75%);
+  background-size: 200% 100%;
+  animation: idea-shimmer 1.3s ease-in-out infinite;
+}
+.idea-sk-line { height: 10px; border-radius: 5px; margin-bottom: 9px; }
+.idea-sk-line.w40 { width: 40%; } .idea-sk-line.w60 { width: 60%; } .idea-sk-line.w80 { width: 80%; }
+.idea-sk .idea-bubble::before { display: none; }
+@keyframes idea-shimmer { from { background-position: 200% 0; } to { background-position: -200% 0; } }
+
+/* Entrée décalée : les bulles arrivent de bas en haut, ~40ms d'écart. */
+.idea-bubble-row:not(.idea-sk) { animation: idea-rise .34s cubic-bezier(0.16,1,0.3,1) backwards; animation-delay: calc(var(--i, 0) * 40ms); }
+@keyframes idea-rise { from { opacity: 0; transform: translateY(10px); } to { opacity: 1; transform: none; } }
+
+@media (prefers-reduced-motion: reduce) {
+  html:not(.force-motion) .idea-bubble-row:not(.idea-sk) { animation: none; }
+  html:not(.force-motion) .idea-sk-box,
+  html:not(.force-motion) .idea-sk-line { animation: none; }
+}
+
 @media (max-width: 640px) {
-  .idea-form-foot { justify-content: stretch; }
-  .idea-form-foot .pf-btn { width: 100%; }
-  .idea-msg { flex: 1 0 100%; margin-bottom: 8px; }
+  /* Les deux actions passent pleine largeur : côte à côte, les libellés
+     se tronquent sur les petits écrans. */
+  .idea-actions { flex-direction: column; }
+  .idea-cta { width: 100%; }
 
-  /* Les actions de modération s'empilent : le champ motif prend toute la
-     largeur, sinon il se réduit à quelques caractères. */
-  .idea-mod-actions { flex-direction: column; align-items: stretch; }
-  .idea-reason { min-width: 0; }
-  .idea-mod-actions .pf-btn { width: 100%; }
+  .idea-modal { width: 100%; max-width: none; border-radius: 16px; padding: 20px; }
+  .modal-overlay .idea-modal { max-height: 92vh; }
 
-  .idea-mine-row { flex-direction: column; align-items: flex-start; gap: 8px; }
-  .idea-mine-right { width: 100%; justify-content: space-between; }
+  .idea-mod-panel { padding: 13px; border-radius: 13px; }
+  .idea-mod-actions { flex-direction: column; }
 
-  .idea-card { gap: 10px; padding: 12px; }
-  .idea-vote { width: 34px; }
-  .idea-vote-btn { padding: 6px; }
+  .idea-avatar { width: 30px; height: 30px; font-size: 12.5px; }
+  .idea-bubble-row { gap: 9px; }
+  .idea-bubble { padding: 12px 13px 8px; border-radius: 4px 14px 14px 14px; }
   .idea-title { font-size: 13.5px; }
   .idea-body { font-size: 12.5px; }
+  .idea-score-chip { margin-left: auto; }
+
+  .idea-mine-row { flex-direction: column; gap: 8px; }
+  .idea-mine-right { width: 100%; justify-content: space-between; }
 }
