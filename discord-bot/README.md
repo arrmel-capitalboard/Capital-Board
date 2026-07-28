@@ -30,12 +30,32 @@ Bot Discord du projet [Capital Board](https://capitalboard.fr). Slash commands s
 |----------|-------------|
 | `/presentation` | Embed de présentation Capital Board |
 | `/announce <titre> <description> [image] [ping]` | Annonce dans le salon dédié, réaction ✅ auto |
-| `/embed-ticket` | Embed d'ouverture de ticket dans le salon courant |
-| `/embed-role` | Embed sélection de rôles dans `#choix-des-roles` |
-| `/embed-reglement` | Règlement du serveur avec bouton d'acceptation |
-| `/embed-qui-sommes-nous` | Page "Qui sommes-nous" |
 | `/embed-nouveautes <version> <titre> <contenu> [image]` | Changelog Capital Board |
+| `/embed <description> [titre] [couleur] [salon]` | Embed libre ponctuel |
 | `/liens` | Tous les liens Capital Board (site, TikTok, Instagram, YouTube) |
+
+### Embeds permanents (sans slash command)
+
+Les embeds structurels du serveur (règlement, rôles, ticket, suggestions,
+qui-sommes-nous) ne changent quasiment jamais : ils n'ont plus de commande
+Discord. Contenu **et** salon de destination vivent dans `src/lib/embeds.js`,
+et la publication se fait depuis le poste de dev.
+
+```bash
+npm run embed -- --list          # liste les embeds et leur salon
+npm run embed -- reglement       # publie dans son salon
+npm run embed -- --dry reglement # construit sans envoyer
+```
+
+| Clé | Salon de destination |
+|-----|----------------------|
+| `reglement` | `#📜・règlement` |
+| `qui-sommes-nous` | `#ℹ️・qui-sommes-nous` |
+| `ticket` | `#🎫・support-ticket` |
+| `suggestion` | `#💡・suggestions` |
+| `role` | `#📢・roles` |
+
+Chaque publication envoie un **nouveau** message : supprimer l'ancien à la main.
 
 ### Tickets
 

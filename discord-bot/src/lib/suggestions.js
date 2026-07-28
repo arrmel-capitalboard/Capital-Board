@@ -3,7 +3,8 @@
 // Suggestions communautaires.
 //
 // Flux :
-//  1) /embed-suggestion poste un embed + bouton dans le salon suggestions.
+//  1) `npm run embed -- suggestion` poste un embed + bouton dans le salon
+//     suggestions (salon défini dans lib/embeds.js).
 //  2) L'utilisateur clique « Proposer une suggestion » → modal (texte + liens
 //     + captures optionnelles).
 //  3) À l'envoi : la suggestion arrive dans le salon de validation avec boutons
@@ -15,12 +16,11 @@
 // et le texte de la suggestion est relu depuis l'embed de validation.
 
 const {
-  SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
   ModalBuilder, LabelBuilder, TextInputBuilder, TextInputStyle, FileUploadBuilder,
   AttachmentBuilder, MessageFlags,
 } = require('discord.js');
 
-const SUGGESTION_CHANNEL = '1512909101942833202';
 const REVIEW_CHANNEL     = '1528920650570535132';
 const FONDATEUR_ROLE     = '1512905140108001391';
 const BRAND              = 0x7c6df5;
@@ -41,7 +41,7 @@ function imageExt(att) {
   return 'jpg';
 }
 
-// ── Embed d'accueil (posté par /embed-suggestion) ──────────────────────────
+// ── Embed d'accueil (publié via lib/embeds.js) ─────────────────────────────
 function panelPayload() {
   const embed = new EmbedBuilder()
     .setColor(BRAND)
@@ -232,26 +232,9 @@ async function finalizeDecision(interaction) {
   });
 }
 
-// ── Commande /embed-suggestion ──────────────────────────────────────────────
-const command = {
-  data: new SlashCommandBuilder()
-    .setName('embed-suggestion')
-    .setDescription("Envoie l'embed de suggestions dans le salon dédié.")
-    .setDMPermission(false),
-  async execute(interaction) {
-    if (!interaction.member.roles.cache.has(FONDATEUR_ROLE)) {
-      await interaction.reply({ content: 'Commande réservée au rôle fondateur.', flags: MessageFlags.Ephemeral });
-      return;
-    }
-    await interaction.deferReply({ flags: MessageFlags.Ephemeral });
-    const ch = await interaction.client.channels.fetch(SUGGESTION_CHANNEL);
-    await ch.send(panelPayload());
-    await interaction.editReply(`Embed suggestions envoyé dans <#${SUGGESTION_CHANNEL}>.`);
-  },
-};
-
 module.exports = {
-  command,
+  // Le panneau est publié par `npm run embed -- suggestion` (voir lib/embeds.js).
+  panelPayload,
   handleButton,
   handleModal,
   isSuggestionButton: (id) => id.startsWith('sugg:'),
