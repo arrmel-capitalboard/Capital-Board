@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728k';
+const APP_VERSION = '20260728l';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -5496,6 +5496,7 @@ function setPortfolioPeriod(p) {
   document.querySelectorAll('[data-pp]').forEach(b => {
     b.classList.toggle('active', b.dataset.pp === p);
   });
+  _pfRevealArmed = true;   // courbe entièrement différente : on la retrace
   renderPortfolioChart();
 }
 
@@ -6708,6 +6709,12 @@ const PF_REVEAL_DOT_MS   = 700;  // pop d'un marqueur
 const PF_REVEAL_DOT_STEP = 150;  // décalage entre deux marqueurs
 const PF_REVEAL_DOT_CAP  = 12;   // au-delà, plus de décalage (longs historiques)
 
+// L'animation d'entrée est réservée aux (ré)affichages voulus : premier rendu
+// de la page et changement de période. renderPortfolio() reconstruit la courbe
+// à chaque rafraîchissement automatique (toutes les 30 s) : la rejouer là
+// donnerait un retraçage permanent.
+let _pfRevealArmed = true;
+
 function _pfEaseInOutQuad(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; }
 function _pfEaseOutBack(t)   { const c1 = 1.70158, c3 = c1 + 1;
                                return 1 + c3*Math.pow(t-1, 3) + c1*Math.pow(t-1, 2); }
@@ -6747,6 +6754,10 @@ const pfRevealPlugin = {
 function pfRunReveal(chart, markerSets) {
   const st = chart.$pfReveal;
   if (!st) return;
+
+  // Rafraîchissement automatique : la courbe s'affiche telle quelle.
+  if (!_pfRevealArmed) { chart.$pfReveal = null; chart.draw(); return; }
+  _pfRevealArmed = false;
 
   // Rayon cible de chaque pastille, mélangées et triées par date.
   const dots = [];
@@ -7850,7 +7861,8 @@ async function refreshPrices() {
     if (changed) {
       savePortfolio(currentUser, data);
       renderPortfolio();
-      setTimeout(pulseBadges, 200);
+      // Pas de pulseBadges() ici : le halo autour des badges +/- value est
+      // une animation d'entrée, elle ne doit pas revenir toutes les 30 s.
   }
     // Scan attributions gratuites / OST (rompus) — 1×/session, prix maintenant à jour.
     try { scanCorporateActions(); } catch(_) {}
@@ -8518,6 +8530,7 @@ function _pxAnimate(before) {
 // pour converger vers la valeur réelle déjà affichée — rien de faux ne reste
 // à l'écran. Bouton « Aperçu anim », visible avec ?anim=1 dans l'URL.
 window.previewRefreshAnim = function() {
+  _pfRevealArmed = true;   // sinon la courbe se contenterait de réapparaître
   try { renderPortfolioChart(); } catch (e) { console.warn('[previewRefreshAnim]', e); }
 
   document.querySelectorAll('#portfolio-tbody tr[data-tk]').forEach(tr => {
@@ -8553,11 +8566,15 @@ else _initAnimPreviewBtn();
 // ═══════════════════════════════════════════════════
 // PATCH: renderPortfolio with stagger + drag handles
 // ═══════════════════════════════════════════════════
+let _badgePulseDone = false;
+
 const _origRenderPortfolio = renderPortfolio;
 renderPortfolio = function() {
   const _pxBefore = _pxSnapshot();   // avant que le <tbody> soit vidé
   _origRenderPortfolio();
   _pxAnimate(_pxBefore);
+  // Halo autour des badges +/- value : une seule fois, à l'arrivée sur la page.
+  if (!_badgePulseDone) { _badgePulseDone = true; setTimeout(pulseBadges, 200); }
   // Le stagger n'a de sens que si le tableau change de composition (ajout,
   // suppression, réordonnancement). Sur un simple refresh de prix, faire
   // reglisser les lignes brouille le comptage des chiffres.
