@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260725b';
+const APP_VERSION = '20260728a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6681,6 +6681,103 @@ function _curveCacheTTL() {
   return marketOpen ? 5 * 60 * 1000 : 12 * 60 * 60 * 1000;
 }
 
+// ═══════════════════════════════════════════════════
+//  ANIMATION D'ENTRÉE DE LA COURBE PORTEFEUILLE
+//  1) la ligne (+ son dégradé) se trace de gauche à droite
+//  2) une fois le tracé fini, les marqueurs achat/vente apparaissent
+//     en cascade chronologique
+//  Chart.js ne sait animer que point par point : on coupe donc son
+//  animation (`animation: false`) et on pilote nous-mêmes le rendu
+//  pour enchaîner les deux phases.
+// ═══════════════════════════════════════════════════
+const PF_REVEAL_LINE_MS  = 800;  // durée du tracé
+const PF_REVEAL_DOT_MS   = 320;  // pop d'un marqueur
+const PF_REVEAL_DOT_STEP = 40;   // décalage entre deux marqueurs
+const PF_REVEAL_DOT_CAP  = 12;   // au-delà, plus de décalage (longs historiques)
+
+function _pfEaseInOutQuad(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; }
+function _pfEaseOutBack(t)   { const c1 = 1.70158, c3 = c1 + 1;
+                               return 1 + c3*Math.pow(t-1, 3) + c1*Math.pow(t-1, 2); }
+
+// Masque la partie non encore tracée de la courbe et retient les marqueurs
+// tant que la phase 1 n'est pas lancée.
+const pfRevealPlugin = {
+  id: 'pfReveal',
+  beforeInit(chart) {
+    // Posé avant le tout premier paint, sinon la courbe complète clignote.
+    chart.$pfReveal = { line: 0, dotsStarted: false, clipped: false };
+  },
+  beforeDatasetDraw(chart, args) {
+    const st = chart.$pfReveal;
+    if (!st) return;
+    if (args.index !== 0) return st.dotsStarted ? undefined : false;
+    if (st.line >= 1) return;
+    const { ctx, chartArea } = chart;
+    if (!chartArea) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(chartArea.left, chartArea.top,
+             (chartArea.right - chartArea.left) * st.line,
+             chartArea.bottom - chartArea.top);
+    ctx.clip();
+    st.clipped = true;
+  },
+  afterDatasetDraw(chart, args) {
+    const st = chart.$pfReveal;
+    if (!st || args.index !== 0 || !st.clipped) return;
+    chart.ctx.restore();
+    st.clipped = false;
+  },
+};
+
+// markerSets : index des datasets contenant les pastilles (achats, ventes).
+function pfRunReveal(chart, markerSets) {
+  const st = chart.$pfReveal;
+  if (!st) return;
+
+  // Rayon cible de chaque pastille, mélangées et triées par date.
+  const dots = [];
+  markerSets.forEach(di => {
+    const meta = chart.getDatasetMeta(di);
+    if (!meta) return;
+    meta.data.forEach((pt, i) => {
+      if (!pt.options.radius) return;   // pas de transaction à cet index
+      dots.push({ pt, r: pt.options.radius, i });
+    });
+  });
+  dots.sort((a, b) => a.i - b.i);
+
+  const reduce = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (reduce) { chart.$pfReveal = null; chart.draw(); return; }
+
+  dots.forEach(d => { d.pt.options.radius = 0; });
+  st.dotsStarted = true;
+
+  const end = dots.length
+    ? PF_REVEAL_LINE_MS + Math.min(dots.length - 1, PF_REVEAL_DOT_CAP) * PF_REVEAL_DOT_STEP + PF_REVEAL_DOT_MS
+    : PF_REVEAL_LINE_MS;
+  const t0 = performance.now();
+
+  function frame(now) {
+    // Chart détruit ou re-rendu entre deux frames : on abandonne.
+    if (chart.$pfReveal !== st || !chart.ctx) return;
+    const e = now - t0;
+    st.line = _pfEaseInOutQuad(Math.min(e / PF_REVEAL_LINE_MS, 1));
+    dots.forEach((d, k) => {
+      const start = PF_REVEAL_LINE_MS + Math.min(k, PF_REVEAL_DOT_CAP) * PF_REVEAL_DOT_STEP;
+      const t = Math.min(Math.max((e - start) / PF_REVEAL_DOT_MS, 0), 1);
+      d.pt.options.radius = d.r * _pfEaseOutBack(t);
+    });
+    chart.draw();
+    if (e < end) { requestAnimationFrame(frame); return; }
+    // Fin : on rend la main à Chart.js (hover, resize, tooltips).
+    dots.forEach(d => { d.pt.options.radius = d.r; });
+    chart.$pfReveal = null;
+    chart.draw();
+  }
+  requestAnimationFrame(frame);
+}
+
 async function renderPortfolioChart() {
   const data = getPortfolio(currentUser);
   const card = document.getElementById('portfolio-chart-card');
@@ -6940,7 +7037,8 @@ async function renderPortfolioChart() {
       options: {
         responsive: true,
         maintainAspectRatio: false,
-        animation: { duration: 1200, easing: "easeOutQuart" },
+        // Le tracé + la cascade des pastilles sont gérés par pfRunReveal.
+        animation: false,
         interaction: { mode: 'index', intersect: false },
         plugins: {
           legend: { display: false },
@@ -6953,8 +7051,12 @@ async function renderPortfolioChart() {
           x: { display: false },
           y: { display: false, beginAtZero: false }
         }
-      }
+      },
+      plugins: [pfRevealPlugin]
     });
+
+    // Datasets 1 et 2 = pastilles Achats / Ventes.
+    pfRunReveal(chartPortfolio, [1, 2]);
 
     _perfMark('courbe affichée', _fromCache ? '(cache)' : '(Yahoo)');
 
