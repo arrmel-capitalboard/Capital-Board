@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728j';
+const APP_VERSION = '20260728k';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -7808,8 +7808,11 @@ async function refreshPrices() {
     // (au lieu d'une requête par ligne). Le Worker mutualise via le cache edge.
     let quotes = null;
     try {
+      // no-store : le Worker répond avec Cache-Control max-age=30, donc sans ça
+      // le navigateur ressert sa copie et un refresh manuel peut ne déclencher
+      // aucun aller-retour. Le cache edge du Worker (30 s) protège Yahoo.
       const res = await fetch(WORKER_URL + '/quotes?symbols=' + encodeURIComponent(symbols.join(',')),
-        { signal: AbortSignal.timeout(9000) });
+        { signal: AbortSignal.timeout(9000), cache: 'no-store' });
       if (res.ok) { const j = await res.json(); quotes = j && j.quotes; }
     } catch (_) {}
 
