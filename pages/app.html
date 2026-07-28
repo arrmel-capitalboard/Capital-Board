@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260728e">
+<link rel="stylesheet" href="css/style.css?v=20260728f">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -648,6 +648,9 @@
         <div class="table-header">
           <span class="table-title">Mes titres</span>
           <div style="display:flex;gap:6px;align-items:center">
+            <button class="btn-add btn-refresh-inline" id="btn-refresh-titres" onclick="refreshAll()" title="Actualiser les cours">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M23 4v6h-6"/><path d="M20.49 15a9 9 0 1 1-2.12-9.36L23 10"/></svg><span class="lbl">Actualiser</span></button>
+            <button class="btn-add btn-anim-preview" id="btn-anim-preview" onclick="previewRefreshAnim()" title="Rejoue les animations sans toucher aux données" style="display:none">▶ Aperçu anim</button>
             <button class="btn-add" onclick="document.getElementById('csv-import-input').click()" style="background:rgba(245,183,49,0.08);border-color:rgba(245,183,49,0.2);color:var(--gold)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Importer CSV</button>
             <input type="file" id="csv-import-input" accept=".csv" style="display:none" onchange="importCSV(event)">
             <button class="btn-add" onclick="openModal()">＋ Ajouter une ligne</button>
@@ -1839,7 +1842,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260728e"></script>
+<script src="js/app.js?v=20260728f"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

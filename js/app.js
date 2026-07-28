@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728e';
+const APP_VERSION = '20260728f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -8499,6 +8499,33 @@ function _pxAnimate(before) {
   });
 }
 
+// Rejoue les deux animations sans refetch ni écriture : le graphique est
+// reconstruit depuis le cache, et les compteurs partent d'une valeur fictive
+// pour converger vers la valeur réelle déjà affichée — rien de faux ne reste
+// à l'écran. Bouton « Aperçu anim », visible avec ?anim=1 dans l'URL.
+window.previewRefreshAnim = function() {
+  try { renderPortfolioChart(); } catch (e) { console.warn('[previewRefreshAnim]', e); }
+
+  document.querySelectorAll('#portfolio-tbody tr[data-tk]').forEach(tr => {
+    const px = +tr.dataset.px, val = +tr.dataset.val;
+    const drift = (Math.random() - 0.5) * 0.03;   // ±1,5 %
+    const up = drift >= 0;
+
+    const cPx = tr.querySelector('.c-px');
+    if (cPx && isFinite(px))  { _pxCountTo(cPx, px * (1 - drift), px);  _pxSweep(cPx, up); }
+    const cVal = tr.querySelector('.c-val');
+    if (cVal && isFinite(val)) { _pxCountTo(cVal, val * (1 - drift), val); _pxSweep(cVal, up); }
+  });
+};
+
+function _initAnimPreviewBtn() {
+  if (!/[?&]anim=1(&|$)/.test(location.search)) return;
+  const b = document.getElementById('btn-anim-preview');
+  if (b) b.style.display = 'inline-flex';
+}
+if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', _initAnimPreviewBtn);
+else _initAnimPreviewBtn();
+
 // ═══════════════════════════════════════════════════
 // PATCH: renderPortfolio with stagger + drag handles
 // ═══════════════════════════════════════════════════
@@ -8741,8 +8768,9 @@ async function refreshAll() {
   if (_refreshBusy) return;   // déjà en cours
   _refreshBusy = true;
 
-  const btn = document.getElementById('btn-refresh-data');
-  if (btn) { btn.classList.add('spinning'); btn.disabled = true; }
+  // Deux points d'entrée : le popover ⋯ et le bouton de l'entête « Mes titres ».
+  const btns = document.querySelectorAll('#btn-refresh-data, #btn-refresh-titres');
+  btns.forEach(b => { b.classList.add('spinning'); b.disabled = true; });
   // Le bouton vit dans le popover ⋯, que le clic referme aussitôt : sans le
   // toast, l'utilisateur n'aurait aucun retour pendant les quelques secondes
   // de fetch.
@@ -8778,7 +8806,7 @@ async function refreshAll() {
                      msg: 'Réessayez dans un instant.', duration: 5000 });
   } finally {
     _refreshBusy = false;
-    if (btn) { btn.classList.remove('spinning'); btn.disabled = false; }
+    btns.forEach(b => { b.classList.remove('spinning'); b.disabled = false; });
   }
 }
 

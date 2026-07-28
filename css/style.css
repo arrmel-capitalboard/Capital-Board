@@ -1945,6 +1945,18 @@ tr.drag-over td { border-top: 2px solid var(--accent) !important; }
 .sm-account-item.spinning { color: var(--accent); }
 .sm-account-item.spinning svg { animation: btn-refresh-spin 0.9s linear infinite; }
 .sm-account-item:disabled { cursor: default; }
+/* Même état pour le bouton « Actualiser » de l'entête « Mes titres ». */
+.btn-add.spinning { color: var(--accent); border-color: rgba(124,109,245,0.28); }
+.btn-add.spinning svg { animation: btn-refresh-spin 0.9s linear infinite; }
+.btn-add:disabled { opacity: 0.6; cursor: default; }
+.btn-refresh-inline { display: inline-flex; align-items: center; gap: 6px; }
+.btn-anim-preview { align-items: center; gap: 6px; }
+/* Trois boutons dans l'entête : sur petit écran, « Actualiser » garde l'icône seule. */
+@media (max-width: 640px) {
+  .table-header { flex-wrap: wrap; gap: 8px; }
+  .btn-refresh-inline { padding: 8px 11px; }
+  .btn-refresh-inline .lbl { display: none; }
+}
 /* En réduit, le user-card disparaît du rail : tout est dans le popover ⋯ */
 .sidebar.collapsed .user-card { display: none; }
 .sidebar-toggle {
