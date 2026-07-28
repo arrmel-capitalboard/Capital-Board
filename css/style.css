@@ -66,10 +66,18 @@
 html { scroll-behavior: smooth; }
 body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
 
-::-webkit-scrollbar { width: 5px; }
-::-webkit-scrollbar-track { background: transparent; }
-::-webkit-scrollbar-thumb { background: var(--muted2); border-radius: 3px; }
-::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+/* Barres de défilement. Les règles -webkit- sont isolées dans @supports :
+   Firefox ne connaît pas ::-webkit-scrollbar et signalait « sélecteur
+   invalide » sur les variantes :hover. Son équivalent standard suit. */
+@supports selector(::-webkit-scrollbar) {
+  ::-webkit-scrollbar { width: 5px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--muted2); border-radius: 3px; }
+  ::-webkit-scrollbar-thumb:hover { background: var(--text3); }
+}
+@supports (scrollbar-color: auto) {
+  html { scrollbar-width: thin; scrollbar-color: var(--muted2) transparent; }
+}
 
 ::selection { background: rgba(124,109,245,0.3); color: #fff; }
 
@@ -250,10 +258,12 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   overflow-y: auto; overscroll-behavior: contain;
   scrollbar-width: thin; scrollbar-color: var(--s3) transparent;
 }
-.sidebar-nav::-webkit-scrollbar { width: 6px; }
-.sidebar-nav::-webkit-scrollbar-track { background: transparent; }
-.sidebar-nav::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 3px; }
-.sidebar-nav::-webkit-scrollbar-thumb:hover { background: var(--border2); }
+@supports selector(::-webkit-scrollbar) {
+  .sidebar-nav::-webkit-scrollbar { width: 6px; }
+  .sidebar-nav::-webkit-scrollbar-track { background: transparent; }
+  .sidebar-nav::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 3px; }
+  .sidebar-nav::-webkit-scrollbar-thumb:hover { background: var(--border2); }
+}
 .nav-section-label {
   font-size: 9px; font-weight: 600; color: var(--text3);
   text-transform: uppercase; letter-spacing: 2.5px;
@@ -2533,10 +2543,12 @@ html.demo-mode #page-portfolio .show-mobile-inline { display: none !important; }
   background:
     radial-gradient(circle at 15% 0%, rgba(124,109,245,0.05), transparent 45%),
     radial-gradient(circle at 85% 100%, rgba(91,141,238,0.04), transparent 45%); }
-.chat-messages::-webkit-scrollbar { width: 8px; }
-.chat-messages::-webkit-scrollbar-track { background: transparent; }
-.chat-messages::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
-.chat-messages::-webkit-scrollbar-thumb:hover { background: var(--border2); background-clip: padding-box; }
+@supports selector(::-webkit-scrollbar) {
+  .chat-messages::-webkit-scrollbar { width: 8px; }
+  .chat-messages::-webkit-scrollbar-track { background: transparent; }
+  .chat-messages::-webkit-scrollbar-thumb { background: var(--s3); border-radius: 8px; border: 2px solid transparent; background-clip: padding-box; }
+  .chat-messages::-webkit-scrollbar-thumb:hover { background: var(--border2); background-clip: padding-box; }
+}
 .chat-row { display: flex; gap: 10px; align-items: flex-end; max-width: 85%; }
 .chat-row.left { align-self: flex-start; }
 .chat-row.right { align-self: flex-end; flex-direction: row; }
