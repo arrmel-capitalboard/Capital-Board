@@ -60,7 +60,8 @@ let fbApp, fbAuth, db,
     updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser,
     getFirestoreDoc, getDocFromServer, setFirestoreDoc, firestoreDoc, firestoreCollection, deleteFirestoreDoc, getDocs,
     addFirestoreDoc, onSnapshot, firestoreQuery, firestoreWhere, firestoreOrderBy, serverTimestamp,
-    firestoreArrayUnion, firestoreArrayRemove, firestoreOr, firestoreDeleteField;
+    firestoreArrayUnion, firestoreArrayRemove, firestoreOr, firestoreDeleteField,
+    firestoreWriteBatch, firestoreUpdateDoc;
 
 let fbStorage = null, fbStorageRef, fbStorageUploadBytes, fbStorageGetDownloadURL;
 let fcmMessaging = null, getFCMToken, onFCMMessage;
@@ -69,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260729b';
+const APP_VERSION = '20260729c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -185,6 +186,11 @@ _splashWatchdog = setTimeout(() => {
   firestoreArrayRemove = firestore.arrayRemove;
   firestoreOr          = firestore.or;
   firestoreDeleteField = firestore.deleteField;
+  // Le vote écrit le doc de vote et les compteurs de l'idée ensemble : les
+  // règles Firestore valident le delta via getAfter, donc les deux écritures
+  // doivent partir dans le même batch atomique.
+  firestoreWriteBatch  = firestore.writeBatch;
+  firestoreUpdateDoc   = firestore.updateDoc;
 
   fbApp  = initializeApp(firebaseConfig);
 
@@ -3002,7 +3008,7 @@ window.setAvatarHue = async function(deg) {
 };
 
 // ─── Feature flags (config/app.features) ───
-const FLAGGABLE = ['watchlist','dividendes','performance','benchmark','projections','earnings','recap','alertes','actualites','favoris'];
+const FLAGGABLE = ['watchlist','dividendes','performance','benchmark','projections','earnings','recap','alertes','actualites','favoris','idees'];
 let _featureFlags = {};
 function _isFeatureOn(key) { return _featureFlags[key] !== false; }
 function applyFeatureFlags(features) {
@@ -3023,7 +3029,7 @@ function applyFeatureFlags(features) {
 const SECTION_LABELS = {
   portfolio: 'Portefeuille', activite: 'Activité', dividendes: 'Dividendes', watchlist: 'Watchlist',
   performance: 'Performance', benchmark: 'Benchmark', projections: 'Projections', earnings: 'Calendrier résultats',
-  recap: 'Récap du jour', actualites: 'Actualités', favoris: 'Contenus favoris', alertes: 'Alertes prix', notifications: 'Notifications', support: 'Support',
+  recap: 'Récap du jour', actualites: 'Actualités', favoris: 'Contenus favoris', alertes: 'Alertes prix', notifications: 'Notifications', idees: 'Idées', support: 'Support',
   admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord', facebook: 'Facebook',
   paypal: 'Faire un don',
 };
@@ -3032,7 +3038,7 @@ const ADMIN_ONLY_KEYS = ['admin']; // rendus uniquement pour l'admin
 const DEFAULT_NAV = [
   { title: 'Mon PEA',        items: ['portfolio', 'activite', 'dividendes', 'watchlist'] },
   { title: 'Analyse',        items: ['performance', 'benchmark', 'projections', 'earnings'] },
-  { title: 'Outils',         items: ['actualites', 'favoris', 'recap', 'alertes', 'notifications', 'support'] },
+  { title: 'Outils',         items: ['actualites', 'favoris', 'recap', 'alertes', 'notifications', 'idees', 'support'] },
   { title: 'Administration', items: ['admin'] },
   { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord', 'facebook'] },
   { title: 'Nous soutenir',  items: ['paypal'] },
@@ -3187,6 +3193,7 @@ function showPage(id) {
   if (id === 'favoris')     renderFavoris();
   if (id === 'alertes')     renderAlertsList();
   if (id === 'support')     renderSupportPage();
+  if (id === 'idees')       renderIdeasPage();
   if (id === 'earnings')    renderEarningsCalendar();
   if (id === 'admin')       renderAdminPage();
 }
@@ -3225,6 +3232,7 @@ function showPageMobile(id) {
   if (id === 'favoris')     renderFavoris();
   if (id === 'alertes')     renderAlertsList();
   if (id === 'support')     renderSupportPage();
+  if (id === 'idees')       renderIdeasPage();
   if (id === 'earnings')    renderEarningsCalendar();
   if (id === 'admin')       renderAdminPage();
 }
@@ -15175,6 +15183,310 @@ function _initSupportBadge() {
 }
 window.renderSupportPage = renderSupportPage;
 window._initSupportBadge = _initSupportBadge;
+
+// ═══════════════════════════════════════════════════
+// MUR À IDÉES
+// ═══════════════════════════════════════════════════
+// Un membre propose, l'admin publie ou refuse, la communauté vote.
+//
+// Le vote vit dans users/{uid}/ideaVotes/{ideaId} : privé par les règles
+// existantes sur users, et chargeable en une seule requête pour colorer tout
+// le mur d'un coup au lieu d'une lecture par idée.
+//
+// up/down/score sont dénormalisés sur l'idée — sans ça, trier par score
+// obligerait à lire tous les votes de toutes les idées. Les règles Firestore
+// n'acceptent le nouveau compteur que si le doc de vote de l'appelant change
+// en cohérence dans le même batch (getAfter), donc personne ne peut gonfler
+// un score sans voter.
+
+const IDEA_MAX_TITLE = 120;
+const IDEA_MAX_BODY  = 2000;
+
+let _ideasPublished = [];
+let _ideasMine      = [];
+let _ideasPending   = [];   // file de modération, admin seulement
+let _ideaVotes      = {};   // ideaId → 1 | -1
+
+async function _loadMyIdeaVotes() {
+  _ideaVotes = {};
+  if (!currentUser) return;
+  const snap = await getDocs(firestoreCollection(db, 'users', currentUser, 'ideaVotes'));
+  snap.forEach(d => { _ideaVotes[d.id] = d.data().v; });
+}
+
+// Tri par score fait côté client : « where status + orderBy score » exigerait
+// un index composite à créer à la main dans la console Firebase.
+async function _loadIdeas() {
+  const pub = await getDocs(firestoreQuery(
+    firestoreCollection(db, 'ideas'), firestoreWhere('status', '==', 'published')));
+  _ideasPublished = [];
+  pub.forEach(d => _ideasPublished.push({ id: d.id, ...d.data() }));
+  _ideasPublished.sort((a, b) => (b.score || 0) - (a.score || 0)
+    || _ideaTime(b) - _ideaTime(a));
+
+  const mine = await getDocs(firestoreQuery(
+    firestoreCollection(db, 'ideas'), firestoreWhere('authorUid', '==', currentUser)));
+  _ideasMine = [];
+  mine.forEach(d => _ideasMine.push({ id: d.id, ...d.data() }));
+  _ideasMine.sort((a, b) => _ideaTime(b) - _ideaTime(a));
+
+  _ideasPending = [];
+  if (isAdmin()) {
+    const pend = await getDocs(firestoreQuery(
+      firestoreCollection(db, 'ideas'), firestoreWhere('status', '==', 'pending')));
+    pend.forEach(d => _ideasPending.push({ id: d.id, ...d.data() }));
+    _ideasPending.sort((a, b) => _ideaTime(a) - _ideaTime(b));
+  }
+}
+
+function _ideaTime(i) {
+  const c = i && i.createdAt;
+  if (!c) return 0;
+  return c.seconds ? c.seconds * 1000 : (c.toMillis ? c.toMillis() : 0);
+}
+
+function _ideaDate(i) {
+  const t = _ideaTime(i);
+  return t ? new Date(t).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric' }) : '';
+}
+
+async function renderIdeasPage() {
+  const el = document.getElementById('idees-content');
+  if (!el || !db || !currentUser) return;
+  el.innerHTML = '<div class="idea-empty">Chargement…</div>';
+  try {
+    await Promise.all([_loadIdeas(), _loadMyIdeaVotes()]);
+  } catch (e) {
+    el.innerHTML = '<div class="idea-empty">Chargement impossible : ' + _escapeHtmlChat(e.message) + '</div>';
+    return;
+  }
+  el.innerHTML = _ideaFormHtml() + _ideaPendingHtml() + _ideaMineHtml() + _ideaWallHtml();
+  _updateIdeasBadge();
+}
+
+function _ideaFormHtml() {
+  return '' +
+    '<div class="section-card idea-form">' +
+      '<div class="section-title">Proposer une idée</div>' +
+      '<div class="idea-hint">Votre proposition est relue par l\'équipe avant d\'apparaître sur le mur.</div>' +
+      '<input id="idea-title" maxlength="' + IDEA_MAX_TITLE + '" placeholder="Titre de l\'idée" class="idea-input">' +
+      '<textarea id="idea-body" maxlength="' + IDEA_MAX_BODY + '" rows="4" placeholder="Expliquez votre idée : le raisonnement, ce qui vous a convaincu…" class="idea-input idea-textarea"></textarea>' +
+      '<div class="idea-form-foot">' +
+        '<span id="idea-form-msg" class="idea-msg"></span>' +
+        '<button class="pf-btn" onclick="submitIdea()">Proposer l\'idée</button>' +
+      '</div>' +
+      '<div class="idea-disclaimer">Les idées publiées ici sont les opinions de leurs auteurs, membres de la communauté. ' +
+        'Elles ne constituent ni un conseil en investissement, ni une recommandation d\'achat ou de vente. ' +
+        'Vous restez seul responsable de vos décisions.</div>' +
+    '</div>';
+}
+
+function _ideaPendingHtml() {
+  if (!isAdmin()) return '';
+  if (!_ideasPending.length) {
+    return '<div class="section-card"><div class="section-title">File de modération</div>' +
+      '<div class="idea-empty">Aucune idée en attente.</div></div>';
+  }
+  const rows = _ideasPending.map(i => '' +
+    '<div class="idea-mod" id="idea-mod-' + i.id + '">' +
+      '<div class="idea-mod-head">' +
+        '<div class="idea-title">' + _escapeHtmlChat(i.title) + '</div>' +
+        '<div class="idea-meta">par ' + _escapeHtmlChat(i.authorName || 'membre') + ' · ' + _ideaDate(i) + '</div>' +
+      '</div>' +
+      '<div class="idea-body">' + _escapeHtmlChat(i.body) + '</div>' +
+      '<div class="idea-mod-actions">' +
+        '<input class="idea-input idea-reason" id="idea-reason-' + i.id + '" placeholder="Motif du refus (optionnel, envoyé à l\'auteur)">' +
+        '<button class="pf-btn" onclick="adminPublishIdea(\'' + i.id + '\')">Publier</button>' +
+        '<button class="pf-btn ghost idea-btn-danger" onclick="adminRejectIdea(\'' + i.id + '\')">Refuser</button>' +
+      '</div>' +
+      '<div class="idea-msg" id="idea-mod-msg-' + i.id + '"></div>' +
+    '</div>').join('');
+  return '<div class="section-card"><div class="section-title">File de modération ' +
+    '<span class="idea-count">' + _ideasPending.length + '</span></div>' + rows + '</div>';
+}
+
+function _ideaMineHtml() {
+  if (!_ideasMine.length) return '';
+  const label = { pending: 'En attente', published: 'Publiée', rejected: 'Refusée' };
+  const rows = _ideasMine.map(i => '' +
+    '<div class="idea-mine-row">' +
+      '<div>' +
+        '<div class="idea-title">' + _escapeHtmlChat(i.title) + '</div>' +
+        '<div class="idea-meta">' + _ideaDate(i) +
+          (i.status === 'rejected' && i.rejectReason
+            ? ' · motif : ' + _escapeHtmlChat(i.rejectReason) : '') +
+        '</div>' +
+      '</div>' +
+      '<div class="idea-mine-right">' +
+        '<span class="idea-status idea-status-' + i.status + '">' + (label[i.status] || i.status) + '</span>' +
+        (i.status === 'pending'
+          ? '<button class="pf-btn ghost idea-btn-small" onclick="deleteMyIdea(\'' + i.id + '\')">Retirer</button>' : '') +
+      '</div>' +
+    '</div>').join('');
+  return '<div class="section-card"><div class="section-title">Mes propositions</div>' + rows + '</div>';
+}
+
+function _ideaWallHtml() {
+  if (!_ideasPublished.length) {
+    return '<div class="section-card"><div class="section-title">Le mur</div>' +
+      '<div class="idea-empty">Aucune idée publiée pour le moment. Proposez la première.</div></div>';
+  }
+  const cards = _ideasPublished.map(i => {
+    const mine = _ideaVotes[i.id] || 0;
+    return '' +
+    '<div class="idea-card" id="idea-card-' + i.id + '">' +
+      '<div class="idea-vote">' +
+        '<button class="idea-vote-btn' + (mine === 1 ? ' voted-up' : '') + '" title="Je soutiens" ' +
+          'onclick="voteIdea(\'' + i.id + '\',1)">▲</button>' +
+        '<span class="idea-score" id="idea-score-' + i.id + '">' + ((i.up || 0) - (i.down || 0)) + '</span>' +
+        '<button class="idea-vote-btn' + (mine === -1 ? ' voted-down' : '') + '" title="Je ne suis pas convaincu" ' +
+          'onclick="voteIdea(\'' + i.id + '\',-1)">▼</button>' +
+      '</div>' +
+      '<div class="idea-main">' +
+        '<div class="idea-title">' + _escapeHtmlChat(i.title) + '</div>' +
+        '<div class="idea-meta">par ' + _escapeHtmlChat(i.authorName || 'membre') + ' · ' + _ideaDate(i) +
+          ' · <span class="idea-up">' + (i.up || 0) + ' pour</span>' +
+          ' · <span class="idea-down">' + (i.down || 0) + ' contre</span></div>' +
+        '<div class="idea-body">' + _escapeHtmlChat(i.body) + '</div>' +
+        (isAdmin() ? '<div class="idea-mod-actions"><button class="pf-btn ghost idea-btn-small idea-btn-danger" ' +
+          'onclick="adminUnpublishIdea(\'' + i.id + '\')">Retirer du mur</button></div>' : '') +
+      '</div>' +
+    '</div>';
+  }).join('');
+  return '<div class="section-card"><div class="section-title">Le mur</div>' +
+    '<div class="idea-wall">' + cards + '</div></div>';
+}
+
+window.submitIdea = async function() {
+  const tEl = document.getElementById('idea-title');
+  const bEl = document.getElementById('idea-body');
+  const msg = document.getElementById('idea-form-msg');
+  const title = (tEl.value || '').trim();
+  const body  = (bEl.value || '').trim();
+  if (!title || !body) { msg.textContent = 'Titre et description sont requis.'; return; }
+  if (title.length > IDEA_MAX_TITLE || body.length > IDEA_MAX_BODY) {
+    msg.textContent = 'Texte trop long.'; return;
+  }
+  msg.textContent = 'Envoi…';
+  try {
+    let authorName = '';
+    try {
+      const r = await getFirestoreDoc(firestoreDoc(db, 'roles', currentUser));
+      if (r.exists()) authorName = r.data().username || '';
+    } catch (_) {}
+    await addFirestoreDoc(firestoreCollection(db, 'ideas'), {
+      title, body,
+      authorUid: currentUser,
+      authorName: authorName || 'membre',
+      status: 'pending',
+      createdAt: serverTimestamp(),
+      up: 0, down: 0, score: 0,
+    });
+    tEl.value = ''; bEl.value = '';
+    msg.textContent = '✓ Proposition envoyée, en attente de validation.';
+    await renderIdeasPage();
+  } catch (e) {
+    msg.textContent = 'Échec : ' + e.message;
+  }
+};
+
+// Recliquer sur le même sens retire le vote. Les compteurs envoyés sont
+// calculés depuis la valeur locale : si elle est périmée (quelqu'un a voté
+// entre-temps), la règle rejette l'écriture — on relit et on retente une fois.
+window.voteIdea = async function(ideaId, v, _retried) {
+  if (!currentUser) return;
+  const idea = _ideasPublished.find(i => i.id === ideaId);
+  if (!idea) return;
+  const cur  = _ideaVotes[ideaId] || 0;
+  const next = (cur === v) ? 0 : v;
+  const up   = (idea.up   || 0) + ((next === 1  ? 1 : 0) - (cur === 1  ? 1 : 0));
+  const down = (idea.down || 0) + ((next === -1 ? 1 : 0) - (cur === -1 ? 1 : 0));
+  try {
+    const batch = firestoreWriteBatch(db);
+    const voteRef = firestoreDoc(db, 'users', currentUser, 'ideaVotes', ideaId);
+    if (next === 0) batch.delete(voteRef);
+    else            batch.set(voteRef, { v: next });
+    batch.update(firestoreDoc(db, 'ideas', ideaId), { up, down, score: up - down });
+    await batch.commit();
+    idea.up = up; idea.down = down; idea.score = up - down;
+    if (next === 0) delete _ideaVotes[ideaId]; else _ideaVotes[ideaId] = next;
+    await renderIdeasPage();
+  } catch (e) {
+    if (!_retried) { await renderIdeasPage(); return window.voteIdea(ideaId, v, true); }
+    console.warn('[idees] vote refusé:', e.message);
+  }
+};
+
+window.deleteMyIdea = async function(ideaId) {
+  try {
+    await deleteFirestoreDoc(firestoreDoc(db, 'ideas', ideaId));
+    await renderIdeasPage();
+  } catch (e) { console.warn('[idees] retrait refusé:', e.message); }
+};
+
+window.adminPublishIdea = async function(ideaId) {
+  const msg = document.getElementById('idea-mod-msg-' + ideaId);
+  try {
+    await firestoreUpdateDoc(firestoreDoc(db, 'ideas', ideaId), {
+      status: 'published', moderatedAt: serverTimestamp(),
+    });
+    await renderIdeasPage();
+  } catch (e) { if (msg) msg.textContent = 'Échec : ' + e.message; }
+};
+
+window.adminUnpublishIdea = async function(ideaId) {
+  try {
+    await firestoreUpdateDoc(firestoreDoc(db, 'ideas', ideaId), {
+      status: 'rejected', moderatedAt: serverTimestamp(),
+    });
+    await renderIdeasPage();
+  } catch (e) { console.warn('[idees] retrait refusé:', e.message); }
+};
+
+// Le refus prévient l'auteur par mail. L'échec d'envoi ne doit pas annuler la
+// modération : le statut est déjà écrit, on se contente de le signaler.
+window.adminRejectIdea = async function(ideaId) {
+  const msg = document.getElementById('idea-mod-msg-' + ideaId);
+  const rEl = document.getElementById('idea-reason-' + ideaId);
+  const reason = rEl ? (rEl.value || '').trim() : '';
+  const idea = _ideasPending.find(i => i.id === ideaId);
+  if (msg) msg.textContent = 'Refus en cours…';
+  try {
+    await firestoreUpdateDoc(firestoreDoc(db, 'ideas', ideaId), {
+      status: 'rejected', rejectReason: reason, moderatedAt: serverTimestamp(),
+    });
+  } catch (e) {
+    if (msg) msg.textContent = 'Échec : ' + e.message;
+    return;
+  }
+  try {
+    const idToken = await fbAuth.currentUser.getIdToken();
+    const res = await fetch(WORKER_URL + '/admin/idea-rejected', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        idToken, uid: idea ? idea.authorUid : null,
+        title: idea ? idea.title : '', reason,
+      }),
+    });
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+  } catch (e) {
+    console.warn('[idees] mail de refus non envoyé:', e.message);
+    if (msg) msg.textContent = 'Idée refusée, mais l\'email n\'a pas pu être envoyé.';
+  }
+  await renderIdeasPage();
+};
+
+// Badge admin : nombre d'idées en attente de validation.
+function _updateIdeasBadge() {
+  const b = document.getElementById('idees-badge');
+  if (!b) return;
+  const n = isAdmin() ? _ideasPending.length : 0;
+  b.textContent = n;
+  b.style.display = n > 0 ? 'inline-block' : 'none';
+}
+
+window.renderIdeasPage = renderIdeasPage;
 
 // Version-lock strict : vérifie dès l'accès/refresh (avant même le login)
 try { _checkVersion(); } catch(_) {}

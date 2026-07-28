@@ -232,6 +232,61 @@ tout vient de **Turnstile** (fingerprinting anti-bot, et Firefox ne gere pas les
 Access Tokens). Le projet ne declare aucun `@font-face`. `style.css:76` est un faux
 positif deja couvert par `@supports`. Rien a corriger.
 
+## Session 29/07/2026 — Mur a idees (TODO 7.5 livre)
+
+Onglet **Idees** (`showPage('idees')`, page `#page-idees`, rendu `renderIdeasPage`).
+Un membre propose → l admin publie ou refuse → la communaute vote pour ou contre.
+Tri par score decroissant, pour et contre affiches separement.
+
+### Modele de donnees
+
+| Chemin | Contenu |
+|--------|---------|
+| `ideas/{id}` | title, body, authorUid, authorName, status, createdAt, up, down, score, rejectReason |
+| `users/{uid}/ideaVotes/{ideaId}` | `{ v: 1 \| -1 }` — prive, couvert par la regle `users` |
+
+`status` : `pending` → `published` ou `rejected`.
+
+**Pourquoi le vote est chez l utilisateur** : une seule requete charge tous ses votes
+pour colorer le mur, au lieu d une lecture par idee.
+
+**Pourquoi up/down/score sont denormalises** : trier par score sans lire tous les votes.
+Les regles n acceptent le nouveau compteur que si le doc de vote de l appelant change
+en coherence dans le meme batch (`getAfter`) — personne ne peut gonfler un score sans
+voter. C est pourquoi le client utilise `writeBatch` : les deux ecritures doivent etre
+atomiques, sinon la regle refuse.
+
+Si un vote concurrent rend le compteur local perime, la regle rejette : le client
+recharge et retente une fois (`voteIdea(..., _retried)`).
+
+### Tri fait cote client
+
+`where(status) + orderBy(score)` demanderait un index composite a creer a la main.
+Les idees publiees sont donc chargees puis triees en JS. A revoir si le volume grossit.
+
+### Refus → email
+
+Le client ecrit le statut, puis appelle `POST /admin/idea-rejected` sur le Worker
+(`idToken`, `uid`, `title`, `reason`). Le Worker verifie `ADMIN_UID`, resout l email via
+`accounts:lookup` et envoie par **Resend**. L echec d envoi n annule pas le refus.
+Motif optionnel, saisi dans la file de moderation.
+
+### Deploiement des regles Firestore
+
+**Aucun workflow ne deploie `firestore.rules`** et le firebase CLI n est pas installe.
+Deploiement fait via l API `firebaserules` avec la cle service account : creation d un
+ruleset (Google valide la syntaxe, un fichier invalide ne peut pas passer) puis PATCH de
+la release `cloud.firestore`. Toujours comparer au ruleset en prod avant, sinon on
+ecrase une divergence.
+
+Ruleset precedent (rollback) : `d3f14c64-dde4-4866-8014-312a23794933`.
+Ruleset publie le 29/07 : `3d4ffd28-3547-4bda-b3bf-143f01692350`.
+
+### Note
+
+Le TODO affirmait qu un bloc `ideas` restait dans les regles avec un trou de securite.
+C etait obsolete : le bloc avait deja ete retire. Les regles ont ete ecrites de zero.
+
 ## A faire prochaine session
 
 - [ ] Nouveaux guides SEO (investir ETF, dividendes PEA, fiscalite PEA)

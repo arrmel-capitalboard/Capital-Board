@@ -3089,3 +3089,114 @@ body.has-demo-banner { padding-top: 40px; }
   }
   #cb-chat-panel.cb-open { transform: translateY(0) scale(1); }
 }
+
+/* ─── MUR À IDÉES ─────────────────────────────────────────────────────────
+   Formulaire de proposition, file de modération (admin), suivi de ses propres
+   propositions, puis le mur trié par score. Tout passe par les variables de
+   thème : le rendu suit automatiquement le mode clair. */
+
+.idea-hint { font-size: 12px; color: var(--text2); margin-bottom: 12px; }
+
+.idea-input {
+  width: 100%; box-sizing: border-box;
+  background: var(--s1); color: var(--text);
+  border: 1px solid var(--border2); border-radius: 9px;
+  padding: 10px 12px; font-size: 13px; font-family: inherit;
+  margin-bottom: 10px;
+}
+.idea-input:focus { outline: none; border-color: var(--accent); }
+.idea-input::placeholder { color: var(--text3); }
+.idea-textarea { resize: vertical; min-height: 84px; line-height: 1.5; }
+
+.idea-form-foot { display: flex; align-items: center; justify-content: flex-end; gap: 12px; flex-wrap: wrap; }
+.idea-msg { font-size: 12px; color: var(--text2); flex: 1; }
+
+.idea-disclaimer {
+  margin-top: 14px; padding-top: 12px;
+  border-top: 1px solid var(--border);
+  font-size: 11px; line-height: 1.6; color: var(--text3);
+}
+
+.idea-empty { font-size: 13px; color: var(--text2); padding: 8px 0; }
+
+.idea-count {
+  display: inline-block; margin-left: 6px;
+  background: var(--negative); color: #fff;
+  font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
+}
+
+/* File de modération */
+.idea-mod {
+  border: 1px solid var(--border2); border-radius: 11px;
+  padding: 14px; margin-bottom: 12px; background: var(--s1);
+}
+.idea-mod-head { margin-bottom: 8px; }
+.idea-mod-actions { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-top: 10px; }
+.idea-reason { flex: 1; min-width: 200px; margin-bottom: 0; }
+.idea-btn-small { font-size: 11px; padding: 6px 12px; }
+.idea-btn-danger { border-color: rgba(255,77,106,0.35); color: var(--negative); }
+
+/* Mes propositions */
+.idea-mine-row {
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  padding: 11px 0; border-bottom: 1px solid var(--border);
+}
+.idea-mine-row:last-child { border-bottom: none; }
+.idea-mine-right { display: flex; align-items: center; gap: 8px; flex-shrink: 0; }
+.idea-status { font-size: 10.5px; font-weight: 700; padding: 3px 9px; border-radius: 20px; white-space: nowrap; }
+.idea-status-pending   { background: rgba(245,183,49,0.12); color: var(--gold); }
+.idea-status-published { background: rgba(0,224,158,0.10); color: var(--positive); }
+.idea-status-rejected  { background: rgba(255,77,106,0.10); color: var(--negative); }
+
+/* Le mur */
+.idea-wall { display: flex; flex-direction: column; gap: 12px; }
+.idea-card {
+  display: flex; gap: 14px;
+  border: 1px solid var(--border2); border-radius: 11px;
+  padding: 14px; background: var(--s1);
+  transition: border-color .15s ease;
+}
+.idea-card:hover { border-color: var(--border3); }
+
+.idea-vote { display: flex; flex-direction: column; align-items: center; gap: 2px; flex-shrink: 0; width: 40px; }
+.idea-vote-btn {
+  background: none; border: none; cursor: pointer;
+  color: var(--text3); font-size: 15px; line-height: 1;
+  padding: 4px 8px; border-radius: 7px;
+  transition: color .15s ease, background .15s ease;
+}
+.idea-vote-btn:hover { background: var(--s3); color: var(--text2); }
+.idea-vote-btn.voted-up   { color: var(--positive); }
+.idea-vote-btn.voted-down { color: var(--negative); }
+.idea-score { font-size: 14px; font-weight: 700; color: var(--text); }
+
+.idea-main { flex: 1; min-width: 0; }
+.idea-title { font-size: 14px; font-weight: 700; color: var(--text); line-height: 1.35; }
+.idea-meta  { font-size: 11px; color: var(--text3); margin-top: 3px; }
+.idea-up    { color: var(--positive); }
+.idea-down  { color: var(--negative); }
+.idea-body  {
+  font-size: 13px; color: var(--text2); line-height: 1.6; margin-top: 8px;
+  white-space: pre-wrap; overflow-wrap: anywhere;
+}
+
+@media (max-width: 640px) {
+  .idea-form-foot { justify-content: stretch; }
+  .idea-form-foot .pf-btn { width: 100%; }
+  .idea-msg { flex: 1 0 100%; margin-bottom: 8px; }
+
+  /* Les actions de modération s'empilent : le champ motif prend toute la
+     largeur, sinon il se réduit à quelques caractères. */
+  .idea-mod-actions { flex-direction: column; align-items: stretch; }
+  .idea-reason { min-width: 0; }
+  .idea-mod-actions .pf-btn { width: 100%; }
+
+  .idea-mine-row { flex-direction: column; align-items: flex-start; gap: 8px; }
+  .idea-mine-right { width: 100%; justify-content: space-between; }
+
+  .idea-card { gap: 10px; padding: 12px; }
+  .idea-vote { width: 34px; }
+  .idea-vote-btn { padding: 6px; }
+  .idea-title { font-size: 13.5px; }
+  .idea-body { font-size: 12.5px; }
+}

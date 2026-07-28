@@ -681,6 +681,49 @@ async function generateResetLink(email, env) {
   return `${base}/auth-action.html?mode=resetPassword&oobCode=${encodeURIComponent(oobCode)}`;
 }
 
+// Email d'un compte Auth depuis son uid (accounts:lookup, API admin).
+async function getAuthEmail(localId, env) {
+  const at = await getAccessToken(env);
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:lookup`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${at}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ localId: [localId] }),
+    }
+  );
+  if (!res.ok) throw new Error(`accounts:lookup ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const u = (data.users || [])[0];
+  return u && u.email ? u.email : '';
+}
+
+function emailIdeaRejected(title, reason) {
+  const motif = reason
+    ? `<p><strong>Motif :</strong> ${escapeHtml(reason)}</p>`
+    : `<p>Aucun motif particulier n'a été précisé.</p>`;
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${CSS_BASE}
+  .quote{background:#f4f5f9;border-left:3px solid #7c6df5;padding:12px 16px;border-radius:6px;margin:16px 0}
+  </style></head><body>
+<div class="card">
+  <div class="logo">Capital Board</div>
+  <h2>Votre idée n'a pas été retenue</h2>
+  <p>Bonjour,</p>
+  <p>Votre proposition n'a pas été publiée sur le mur à idées :</p>
+  <div class="quote">${escapeHtml(title)}</div>
+  ${motif}
+  <p>Vous pouvez la retravailler et en proposer une nouvelle version quand vous le souhaitez.</p>
+  <div class="footer">Capital Board · Ne pas répondre à cet email.</div>
+</div></body></html>`;
+}
+
+// Le titre et le motif viennent de saisies libres et atterrissent dans du HTML.
+function escapeHtml(s) {
+  return String(s || '')
+    .replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;').replace(/'/g, '&#39;');
+}
+
 // ── Nom d'affichage (Firebase Auth, via Admin) ──────────────────────────────
 async function setAuthDisplayName(uid, displayName, env) {
   const token = await getAccessToken(env);
@@ -985,6 +1028,24 @@ export default {
           return json({ error: msg }, 400);
         }
         return json({ ok: true, tempPassword });
+      }
+
+      // ── POST /admin/idea-rejected ───────────────────────────────────────
+      // Prévient l'auteur qu'une idée n'a pas été retenue. Le refus lui-même
+      // est déjà écrit dans Firestore par le client (règles admin) : cet
+      // endpoint ne fait qu'envoyer le mail, il n'est pas autorité sur le statut.
+      if (url.pathname === '/admin/idea-rejected' && request.method === 'POST') {
+        const { idToken, uid, title, reason } = await request.json();
+        const admin = await verifyIdToken(idToken, env);
+        if (!admin || admin.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        if (!uid) return json({ error: 'uid requis' }, 400);
+        try {
+          const to = await getAuthEmail(uid, env);
+          if (!to) return json({ ok: false, error: 'Aucune adresse pour ce compte' }, 404);
+          await sendEmail(to, 'Votre idée n\'a pas été retenue — Capital Board',
+            emailIdeaRejected(title || '', reason || ''), env);
+          return json({ ok: true });
+        } catch (e) { return json({ ok: false, error: e.message }, 500); }
       }
 
       // ── POST /admin/broadcast-push ──────────────────────────────────────

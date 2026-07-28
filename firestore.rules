@@ -67,5 +67,70 @@ service cloud.firestore {
       allow write: if _isVerified() && (_isSelf(userId) || _isAdmin());
     }
 
+    // ── Mur à idées ────────────────────────────────────────────────────────
+    // Un membre propose (status 'pending'), un admin publie ou refuse, tout le
+    // monde vote sur les idées publiées.
+    //
+    // Le vote lui-même est stocké dans users/{uid}/ideaVotes/{ideaId} (privé,
+    // couvert par la règle users plus haut). Les compteurs up/down/score sont
+    // dénormalisés sur l'idée pour permettre le tri par score sans lire tous
+    // les votes ; ils ne sont acceptés que si le doc de vote de l'appelant
+    // change de façon cohérente dans la même transaction — d'où getAfter.
+    // Sans ce contrôle, n'importe qui pourrait incrémenter le score en boucle.
+
+    function _myVote(ideaId) {
+      return exists(/databases/$(database)/documents/users/$(request.auth.uid)/ideaVotes/$(ideaId))
+        ? get(/databases/$(database)/documents/users/$(request.auth.uid)/ideaVotes/$(ideaId)).data.v : 0;
+    }
+    function _myVoteAfter(ideaId) {
+      return existsAfter(/databases/$(database)/documents/users/$(request.auth.uid)/ideaVotes/$(ideaId))
+        ? getAfter(/databases/$(database)/documents/users/$(request.auth.uid)/ideaVotes/$(ideaId)).data.v : 0;
+    }
+
+    match /ideas/{ideaId} {
+      // Les idées publiées sont lisibles par tout compte connecté. Une idée en
+      // attente ou refusée n'est visible que de son auteur et de l'admin : les
+      // requêtes client doivent donc filtrer sur status ou authorUid.
+      allow read: if request.auth != null
+        && (resource.data.status == 'published'
+            || _isSelf(resource.data.authorUid)
+            || _isAdmin());
+
+      allow create: if _isVerified()
+        && request.resource.data.keys().hasOnly(
+             ['title','body','authorUid','authorName','status','createdAt','up','down','score'])
+        && _isSelf(request.resource.data.authorUid)
+        && request.resource.data.status == 'pending'
+        && request.resource.data.up == 0
+        && request.resource.data.down == 0
+        && request.resource.data.score == 0
+        && request.resource.data.title is string
+        && request.resource.data.title.size() > 0
+        && request.resource.data.title.size() <= 120
+        && request.resource.data.body is string
+        && request.resource.data.body.size() > 0
+        && request.resource.data.body.size() <= 2000;
+
+      // Modération : seul l'admin change le statut ou pose un motif de refus.
+      allow update: if _isAdmin()
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status','rejectReason','moderatedAt']);
+
+      // Vote : uniquement les compteurs, uniquement sur une idée publiée, et
+      // seulement du delta que justifie le changement du propre vote de l'appelant.
+      allow update: if _isVerified()
+        && resource.data.status == 'published'
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['up','down','score'])
+        && request.resource.data.up == resource.data.up
+             + ((_myVoteAfter(ideaId) == 1 ? 1 : 0) - (_myVote(ideaId) == 1 ? 1 : 0))
+        && request.resource.data.down == resource.data.down
+             + ((_myVoteAfter(ideaId) == -1 ? 1 : 0) - (_myVote(ideaId) == -1 ? 1 : 0))
+        && request.resource.data.score == request.resource.data.up - request.resource.data.down;
+
+      // L'auteur peut retirer sa proposition tant qu'elle n'est pas publiée.
+      allow delete: if _isAdmin()
+        || (_isVerified() && _isSelf(resource.data.authorUid) && resource.data.status == 'pending');
+    }
+
   }
 }
