@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728l';
+const APP_VERSION = '20260728m';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -422,7 +422,17 @@ async function saveUserSettings(uid, settings) {
 }
 
 // Lecture synchrone depuis le cache
-function getPortfolio(user)    { return _localCache[(user||currentUser) + '_portfolio']    || []; }
+// Une seule entrée nulle dans le portefeuille fait planter renderPortfolio()
+// (row.qty) ET refreshPrices() (row.ticker) — les deux tournant sous try/catch,
+// l'échec est silencieux : plus de mise à jour des cours ni d'animation. On
+// écarte donc les lignes invalides à la lecture, en gardant le tableau
+// d'origine tant qu'il est sain (son identité sert aux appelants qui le mutent).
+function getPortfolio(user) {
+  const raw = _localCache[(user||currentUser) + '_portfolio'];
+  if (!Array.isArray(raw)) return [];
+  const ok = (r) => r && typeof r === 'object';
+  return raw.every(ok) ? raw : raw.filter(ok);
+}
 function getTransactions(user) { return _localCache[(user||currentUser) + '_transactions'] || []; }
 function getVersements(user)   { return _localCache[(user||currentUser) + '_versements']   || []; }
 function getWatchlist(user)    { return _localCache[(user||currentUser) + '_watchlist']    || []; }
@@ -8833,10 +8843,14 @@ async function refreshAll() {
     const activePage = document.querySelector('.page.active');
     if (activePage) {
       const id = activePage.id.replace('page-', '');
-      if (id === 'benchmark')    { try { initBenchmark(); }    catch(e){} }
-      if (id === 'performance')  { try { initPerformance(); }  catch(e){} }
-      if (id === 'watchlist')    { try { renderWatchlist(); }  catch(e){} }
-      if (id === 'portfolio')    { try { renderPortfolio(); }  catch(e){} }
+      // Ces catch étaient muets : une donnée corrompue cassait le rendu sans
+      // qu'aucune trace n'apparaisse. On avale toujours (le refresh doit finir),
+      // mais on laisse une trace exploitable.
+      const _warn = (what, e) => console.warn('[refreshAll] ' + what, e);
+      if (id === 'benchmark')    { try { initBenchmark(); }    catch(e){ _warn('benchmark', e); } }
+      if (id === 'performance')  { try { initPerformance(); }  catch(e){ _warn('performance', e); } }
+      if (id === 'watchlist')    { try { renderWatchlist(); }  catch(e){ _warn('watchlist', e); } }
+      if (id === 'portfolio')    { try { renderPortfolio(); }  catch(e){ _warn('portfolio', e); } }
     }
 
     // Les cours du portefeuille ne passent pas par preloadAll() : c'est
