@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728i';
+const APP_VERSION = '20260728j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3229,12 +3229,14 @@ function renderPortfolio() {
 
       const chg = row.changePct || 0;
       const dayVal = row.qty * row.currentPrice * chg / 100;
+      const dayPctTxt = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
+      const dayEurTxt = `${chg >= 0 ? '+' : ''}${dayVal.toFixed(2)} €`;
       const perfJourHtml = chg !== 0
         ? `<span class="perf-jour-cell ${chg >= 0 ? 'perf-pos' : 'perf-neg'}"
-              data-pct="${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%"
-              data-eur="${chg >= 0 ? '+' : ''}${dayVal.toFixed(2)} €"
+              data-pct="${dayPctTxt}"
+              data-eur="${dayEurTxt}"
               onclick="togglePerfJourMode()"
-              style="cursor:pointer">${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%</span>`
+              style="cursor:pointer">${_perfJourMode === 'eur' ? dayEurTxt : dayPctTxt}</span>`
         : `<span style="color:var(--text3);font-size:11px">—</span>`;
 
       const tr = document.createElement('tr');
@@ -3244,7 +3246,9 @@ function renderPortfolio() {
       tr.dataset.px  = row.currentPrice;
       tr.dataset.val = val;
       tr.dataset.pnl = pnl;
+      tr.dataset.pct = pct;
       tr.dataset.chg = chg;
+      tr.dataset.day = dayVal;
       tr.innerHTML = `
         <td>
           <div class="ticker-cell">
@@ -3264,11 +3268,13 @@ function renderPortfolio() {
                data-pct="${isPos ? '+' : ''}${pct.toFixed(2)}%"
                data-eur="${isPos ? '+' : ''}${fmt(Math.abs(pnl))}"
                onclick="togglePerfTotalMode()"
-               style="cursor:pointer">${isPos ? '+' : ''}${pct.toFixed(2)}%</div>
+               style="cursor:pointer">${_perfTotalMode === 'eur'
+                 ? `${isPos ? '+' : ''}${fmt(Math.abs(pnl))}`
+                 : `${isPos ? '+' : ''}${pct.toFixed(2)}%`}</div>
         </td>
         <td class="hide-mobile c-plus">
           <span class="${isPos ? 'badge-pos' : 'badge-neg'}">
-            ${isPos ? '▲' : '▼'} ${fmt(Math.abs(pnl))} (${isPos ? '+' : ''}${pct.toFixed(2)}%)
+            ${isPos ? '▲' : '▼'} <span class="bd-eur">${fmt(Math.abs(pnl))}</span> (<span class="bd-pct">${isPos ? '+' : ''}${pct.toFixed(2)}%</span>)
           </span>
         </td>
         <td class="c-day">${perfJourHtml}</td>
@@ -8423,7 +8429,9 @@ function _pxSnapshot() {
       px:  +tr.dataset.px,
       val: +tr.dataset.val,
       pnl: +tr.dataset.pnl,
+      pct: +tr.dataset.pct,
       chg: +tr.dataset.chg,
+      day: +tr.dataset.day,
     });
   });
   return m;
@@ -8439,15 +8447,22 @@ function _pxSameComposition(before) {
   return now.length === was.length && now.every((tk, i) => tk === was[i]);
 }
 
-// Fait défiler le nombre de `from` à `to` (easeOutCubic), formaté par `fmt`.
-function _pxCountTo(el, from, to) {
+// Formats des colonnes animées, calqués sur ceux du rendu.
+const _pxFmtPct    = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
+const _pxFmtEurSgn = (v) => (v >= 0 ? '+' : '') + fmt(Math.abs(v));
+const _pxFmtDayEur = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + ' €';
+
+// Fait défiler le nombre de `from` à `to` (easeOutCubic).
+function _pxCount(el, from, to, format) {
+  if (!el || !isFinite(from) || !isFinite(to) || from === to) return;
+  format = format || fmt;
   const t0 = performance.now();
   (function step(now) {
     const t = Math.min((now - t0) / PX_COUNT_MS, 1);
     const e = 1 - Math.pow(1 - t, 3);
-    el.textContent = fmt(from + (to - from) * e);
+    el.textContent = format(from + (to - from) * e);
     if (t < 1) requestAnimationFrame(step);
-    else el.textContent = fmt(to);   // valeur exacte en fin de course
+    else el.textContent = format(to);   // valeur exacte en fin de course
   })(t0);
 }
 
@@ -8462,7 +8477,9 @@ function _pxAnimate(before) {
       px:  +tr.dataset.px,
       val: +tr.dataset.val,
       pnl: +tr.dataset.pnl,
+      pct: +tr.dataset.pct,
       chg: +tr.dataset.chg,
+      day: +tr.dataset.day,
     };
     // Sous le centime affiché, rien ne se voit : on laisse la ligne tranquille
     // plutôt que de la faire clignoter pour un arrondi.
@@ -8470,11 +8487,26 @@ function _pxAnimate(before) {
     const dVal = Math.abs(now.val - old.val);
     if (dPx < 0.005 && dVal < 0.005) return;
 
-    // Seules les deux colonnes chiffrées bougent : le prix actuel et la valeur.
-    const cPx = tr.querySelector('.c-px');
-    if (cPx && dPx >= 0.005 && isFinite(old.px)) _pxCountTo(cPx, old.px, now.px);
-    const cVal = tr.querySelector('.c-val');
-    if (cVal && dVal >= 0.005 && isFinite(old.val)) _pxCountTo(cVal, old.val, now.val);
+    // Prix actuel et valeur.
+    if (dPx >= 0.005)  _pxCount(tr.querySelector('.c-px'),  old.px,  now.px);
+    if (dVal >= 0.005) _pxCount(tr.querySelector('.c-val'), old.val, now.val);
+
+    // +/- value : deux nombres dans le badge, le montant et le pourcentage.
+    // La flèche et la couleur, elles, basculent d'un coup.
+    _pxCount(tr.querySelector('.bd-eur'), Math.abs(old.pnl), Math.abs(now.pnl));
+    _pxCount(tr.querySelector('.bd-pct'), old.pct, now.pct, _pxFmtPct);
+
+    // Perf. totale sous la valeur et perf. jour : chacune s'affiche en % ou en
+    // €, on anime donc la grandeur réellement à l'écran.
+    _pxCount(tr.querySelector('.perf-total-sub'),
+             _perfTotalMode === 'eur' ? old.pnl : old.pct,
+             _perfTotalMode === 'eur' ? now.pnl : now.pct,
+             _perfTotalMode === 'eur' ? _pxFmtEurSgn : _pxFmtPct);
+
+    _pxCount(tr.querySelector('.perf-jour-cell'),
+             _perfJourMode === 'eur' ? old.day : old.chg,
+             _perfJourMode === 'eur' ? now.day : now.chg,
+             _perfJourMode === 'eur' ? _pxFmtDayEur : _pxFmtPct);
   });
 }
 
@@ -8486,13 +8518,24 @@ window.previewRefreshAnim = function() {
   try { renderPortfolioChart(); } catch (e) { console.warn('[previewRefreshAnim]', e); }
 
   document.querySelectorAll('#portfolio-tbody tr[data-tk]').forEach(tr => {
-    const px = +tr.dataset.px, val = +tr.dataset.val;
+    const px  = +tr.dataset.px,  val = +tr.dataset.val;
+    const pnl = +tr.dataset.pnl, pct = +tr.dataset.pct;
+    const chg = +tr.dataset.chg, day = +tr.dataset.day;
     const drift = (Math.random() - 0.5) * 0.03;   // ±1,5 %
+    const back = (v) => v * (1 - drift);          // point de départ fictif
 
-    const cPx = tr.querySelector('.c-px');
-    if (cPx && isFinite(px)) _pxCountTo(cPx, px * (1 - drift), px);
-    const cVal = tr.querySelector('.c-val');
-    if (cVal && isFinite(val)) _pxCountTo(cVal, val * (1 - drift), val);
+    _pxCount(tr.querySelector('.c-px'),  back(px),  px);
+    _pxCount(tr.querySelector('.c-val'), back(val), val);
+    _pxCount(tr.querySelector('.bd-eur'), Math.abs(back(pnl)), Math.abs(pnl));
+    _pxCount(tr.querySelector('.bd-pct'), back(pct), pct, _pxFmtPct);
+    _pxCount(tr.querySelector('.perf-total-sub'),
+             _perfTotalMode === 'eur' ? back(pnl) : back(pct),
+             _perfTotalMode === 'eur' ? pnl : pct,
+             _perfTotalMode === 'eur' ? _pxFmtEurSgn : _pxFmtPct);
+    _pxCount(tr.querySelector('.perf-jour-cell'),
+             _perfJourMode === 'eur' ? back(day) : back(chg),
+             _perfJourMode === 'eur' ? day : chg,
+             _perfJourMode === 'eur' ? _pxFmtDayEur : _pxFmtPct);
   });
 };
 
