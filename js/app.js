@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728q';
+const APP_VERSION = '20260728r';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -190,10 +190,14 @@ _splashWatchdog = setTimeout(() => {
 
   // App Check — protège Firestore et Auth contre les appels hors navigateur
   if (appCheckMod) try {
-    appCheckMod.initializeAppCheck(fbApp, {
+    const appCheck = appCheckMod.initializeAppCheck(fbApp, {
       provider: new appCheckMod.ReCaptchaV3Provider('6LcrZwstAAAAAIOKXUFbgxO49SUoVmoQycZf3Ekq'),
       isTokenAutoRefreshEnabled: true,
     });
+    // Exposés pour pouvoir vérifier l'obtention d'un jeton depuis la console :
+    //   await checkAppCheck()
+    window._appCheck = appCheck;
+    window._appCheckMod = appCheckMod;
   } catch(e) { console.warn('[appcheck] init échoué:', e.message); }
 
   fbAuth = auth.getAuth(fbApp);
@@ -8595,6 +8599,20 @@ window.previewRefreshAnim = function() {
              _perfJourMode === 'eur' ? day : chg,
              _perfJourMode === 'eur' ? _pxFmtDayEur : _pxFmtPct);
   });
+};
+
+// Diagnostic App Check, à lancer depuis la console : await checkAppCheck()
+// Demande un jeton et dit si Google l'a délivré. N'affiche jamais le jeton
+// entier — c'est un identifiant valable une heure.
+window.checkAppCheck = async function() {
+  if (!window._appCheckMod) return { ok: false, raison: "module App Check non chargé (bloqué par le réseau ou une extension ?)" };
+  if (!window._appCheck)    return { ok: false, raison: "App Check non initialisé — voir l'erreur [appcheck] au chargement" };
+  try {
+    const r = await window._appCheckMod.getToken(window._appCheck, /* forceRefresh */ true);
+    return { ok: true, jeton: (r.token || '').slice(0, 12) + '…', longueur: (r.token || '').length };
+  } catch (e) {
+    return { ok: false, code: e.code || null, raison: e.message };
+  }
 };
 
 function _initAnimPreviewBtn() {
