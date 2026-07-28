@@ -1711,18 +1711,22 @@ button.ec-choice:hover { border-color: var(--accent); background: var(--s3); }
    Posé par _pxSweep() sur les seules cellules dont le chiffre a bougé.
    Le comptage progressif du prix et de la valeur, lui, est en JS.
    ═══════════════════════════════════════════════════ */
-#portfolio-tbody td.px-sweep { position: relative; }
-#portfolio-tbody td.px-sweep::after {
+#portfolio-tbody .px-sweep { position: relative; }
+#portfolio-tbody .px-sweep::after {
   content: ''; position: absolute;
-  left: 6px; right: 6px; bottom: 6px; height: 2px;
-  border-radius: 2px; transform-origin: right center;
-  pointer-events: none;
+  height: 2px; border-radius: 2px;
+  transform-origin: right center; pointer-events: none;
   animation: px-sweep 0.8s cubic-bezier(0.3,0.9,0.3,1);
 }
-#portfolio-tbody td.px-sweep.px-up::after {
+/* Prix actuel : cellule à une seule ligne, trait calé dans le padding bas. */
+#portfolio-tbody td.px-sweep::after { left: 6px; right: 6px; bottom: 6px; }
+/* Valeur : le trait suit le montant, pas la cellule (qui porte aussi la
+   perf. totale en dessous). */
+#portfolio-tbody .c-val.px-sweep::after { left: 0; right: 0; bottom: -2px; }
+#portfolio-tbody .px-sweep.px-up::after {
   background: linear-gradient(90deg, rgba(0,224,158,0), var(--positive));
 }
-#portfolio-tbody td.px-sweep.px-down::after {
+#portfolio-tbody .px-sweep.px-down::after {
   background: linear-gradient(90deg, rgba(255,77,106,0), var(--negative));
 }
 @keyframes px-sweep {
@@ -1731,7 +1735,7 @@ button.ec-choice:hover { border-color: var(--accent); background: var(--s3); }
   100% { transform: scaleX(1); opacity: 0; }
 }
 @media (prefers-reduced-motion: reduce) {
-  #portfolio-tbody td.px-sweep::after { animation: none; opacity: 0; }
+  #portfolio-tbody .px-sweep::after { animation: none; opacity: 0; }
 }
 
 /* ═══════════════════════════════════════════════════

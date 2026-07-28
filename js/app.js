@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728c';
+const APP_VERSION = '20260728d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -8431,6 +8431,16 @@ function _pxSnapshot() {
   return m;
 }
 
+// Mêmes tickers, même ordre qu'avant le rendu ? Alors seuls les chiffres
+// ont pu bouger, et il ne faut pas rejouer l'animation d'entrée des lignes.
+function _pxSameComposition(before) {
+  if (!before || !before.size) return false;
+  const now = Array.prototype.map.call(
+    document.querySelectorAll('#portfolio-tbody tr[data-tk]'), tr => tr.dataset.tk);
+  const was = Array.from(before.keys());
+  return now.length === was.length && now.every((tk, i) => tk === was[i]);
+}
+
 // Fait défiler le nombre de `from` à `to` (easeOutCubic), formaté par `fmt`.
 function _pxCountTo(el, from, to) {
   const t0 = performance.now();
@@ -8444,6 +8454,7 @@ function _pxCountTo(el, from, to) {
 }
 
 function _pxSweep(cell, up) {
+  if (!cell) return;
   // Retrait + reflow : sans ça, deux refresh rapprochés ne rejouent pas l'animation.
   cell.classList.remove('px-sweep', 'px-up', 'px-down');
   void cell.offsetWidth;
@@ -8465,21 +8476,26 @@ function _pxAnimate(before) {
       pnl: +tr.dataset.pnl,
       chg: +tr.dataset.chg,
     };
-    if (now.px === old.px && now.val === old.val
-        && now.pnl === old.pnl && now.chg === old.chg) return;
+    // Sous le centime affiché, rien ne se voit : on laisse la ligne tranquille
+    // plutôt que de la faire clignoter pour un arrondi.
+    const dPx = Math.abs(now.px - old.px);
+    const dVal = Math.abs(now.val - old.val);
+    if (dPx < 0.005 && dVal < 0.005) return;
 
     // Sens donné par le prix ; à prix égal (qté modifiée), par la valeur.
-    const up = now.px !== old.px ? now.px > old.px : now.val >= old.val;
+    const up = dPx >= 0.005 ? now.px > old.px : now.val >= old.val;
 
+    // Seules les deux colonnes chiffrées sont animées : souligner aussi le
+    // badge +/- value et la perf. jour faisait quatre traits d'un coup.
     const cPx = tr.querySelector('.c-px');
-    if (cPx && now.px !== old.px && isFinite(old.px)) _pxCountTo(cPx, old.px, now.px);
+    if (cPx && dPx >= 0.005 && isFinite(old.px)) { _pxCountTo(cPx, old.px, now.px); _pxSweep(cPx, up); }
     const cVal = tr.querySelector('.c-val');
-    if (cVal && now.val !== old.val && isFinite(old.val)) _pxCountTo(cVal, old.val, now.val);
-
-    ['.c-px', '.c-valcell', '.c-plus', '.c-day'].forEach(sel => {
-      const cell = tr.querySelector(sel);
-      if (cell) _pxSweep(cell, up);
-    });
+    if (cVal && dVal >= 0.005 && isFinite(old.val)) {
+      _pxCountTo(cVal, old.val, now.val);
+      // Sur le montant lui-même, pas sur la cellule : celle-ci porte aussi
+      // la perf. totale en dessous, le trait passerait sous les deux lignes.
+      _pxSweep(cVal, up);
+    }
   });
 }
 
@@ -8491,12 +8507,18 @@ renderPortfolio = function() {
   const _pxBefore = _pxSnapshot();   // avant que le <tbody> soit vidé
   _origRenderPortfolio();
   _pxAnimate(_pxBefore);
+  // Le stagger n'a de sens que si le tableau change de composition (ajout,
+  // suppression, réordonnancement). Sur un simple refresh de prix, faire
+  // reglisser les lignes brouille le comptage des chiffres.
+  const _pxStagger = !_pxSameComposition(_pxBefore);
   // Add stagger animations
   const rows = document.querySelectorAll('#portfolio-tbody tr');
   rows.forEach((tr, i) => {
     if (tr.classList.contains('mobile-detail-row')) return;
-    tr.classList.add('stagger-row');
-    tr.style.animationDelay = (i * 0.04) + 's';
+    if (_pxStagger) {
+      tr.classList.add('stagger-row');
+      tr.style.animationDelay = (i * 0.04) + 's';
+    }
     // Add drag handle
     tr.setAttribute('draggable', 'true');
     tr.addEventListener('dragstart', e => onDragStart(e, i));
