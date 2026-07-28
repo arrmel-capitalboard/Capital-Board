@@ -85,16 +85,33 @@ await checkAppCheck()
 vérifier avec `APP_VERSION`. `_appCheck === undefined` signifie que l'initialisation a
 échoué au chargement — chercher une ligne `[appcheck]` dans la console.
 
-État au 2026-07-28 : l'app est enregistrée dans App Check avec le fournisseur reCAPTCHA
+État au 2026-07-29 : l'app est enregistrée dans App Check avec le fournisseur reCAPTCHA
 (étapes 1 à 3 faites), `capitalboard.fr` est dans les domaines de la clé. Reste à
-vérifier qu'un jeton est bien délivré, puis les étapes 5 et 6.
+vérifier qu'un jeton est bien délivré, puis l'étape 5.
 
 **5. Appliquer** — seulement une fois l'étape 4 concluante, et pas un jour de lancement :
 passer `Cloud Firestore` puis `Authentication` en « Appliqué ».
 
-**Point de vigilance** — le bot Discord et le Worker Cloudflare ne passent pas par
-App Check. Vérifier s'ils écrivent dans Firestore avant d'appliquer l'enforcement,
-sinon ils seront bloqués (un backend s'authentifie autrement, via compte de service).
+**Point de vigilance backend — levé le 2026-07-29.** Vérifié : tous les accès Firestore
+hors navigateur passent par un compte de service, qui contourne App Check et les règles.
+Rien à faire avant d'appliquer l'enforcement.
+
+| Composant | Authentification |
+|---|---|
+| Bot Discord (`discord-bot/src/firebase.js`) | `firebase-admin` + compte de service |
+| Worker Cloudflare (`capital-board-worker/src/index.js`) | JWT compte de service → OAuth → REST Firestore |
+| Scripts (`daily-recap`, `price-alerts`, `earnings-notify`, `queue-feature`) | `firebase-admin` + compte de service |
+| `firebase-messaging-sw.js` | réception FCM seule, ni Auth ni Firestore |
+
+**Pages front — corrigé le 2026-07-29.** `pages/auth-action.html` et `pages/index.html`
+initialisaient Firebase Auth sans App Check : appliquer l'enforcement `Authentication`
+aurait cassé la vérification d'email et la réinitialisation de mot de passe
+(`applyActionCode`, `verifyPasswordResetCode` sont des appels Identity Toolkit, rejetés
+sans jeton). Les deux pages initialisent maintenant App Check avec la même clé que
+`js/app.js`, en import dynamique + `catch` pour qu'un module bloqué ne casse pas la page.
+
+Toute nouvelle page qui appelle Auth, Firestore ou Storage doit initialiser App Check
+avant le premier appel, sinon elle cassera dès l'enforcement actif.
 
 ---
 

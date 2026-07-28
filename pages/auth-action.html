@@ -131,6 +131,21 @@ const firebaseConfig = {
   appId: "1:719745213666:web:02a3276a6348df7fed6abb"
 };
 const app = initializeApp(firebaseConfig);
+
+// App Check — obligatoire dès que l'enforcement Authentication est activé :
+// applyActionCode / verifyPasswordResetCode sont des appels Identity Toolkit,
+// rejetés sans jeton. Import dynamique + catch : si le module est bloqué
+// (extension, réseau), la page continue de fonctionner tant que l'enforcement
+// est désactivé, au lieu d'échouer au chargement sur un import statique.
+try {
+  const { initializeAppCheck, ReCaptchaV3Provider } =
+    await import("https://www.gstatic.com/firebasejs/10.13.2/firebase-app-check.js");
+  initializeAppCheck(app, {
+    provider: new ReCaptchaV3Provider('6LcrZwstAAAAAIOKXUFbgxO49SUoVmoQycZf3Ekq'),
+    isTokenAutoRefreshEnabled: true,
+  });
+} catch (e) { console.warn('[appcheck] init échoué:', e.message); }
+
 const auth = getAuth(app);
 
 const params = new URLSearchParams(location.search);
