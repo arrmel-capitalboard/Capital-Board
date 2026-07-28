@@ -73,6 +73,22 @@ les tokens fonctionnent rejetterait toutes les requêtes des utilisateurs.
 le compteur est local), recharger l'app : `appCheck/throttled` doit disparaître et le
 compteur de requêtes vérifiées monter dans l'onglet **Applications**.
 
+Depuis la console de l'app (`window.checkAppCheck`, posé dans `js/app.js`) :
+
+```js
+await checkAppCheck()
+// OK  → { ok: true, jeton: "eyJhbGciOi…", longueur: 812 }
+// KO  → { ok: false, code: "appCheck/…", raison: "…" }
+```
+
+`checkAppCheck is not defined` signifie que la page tourne sur une version antérieure :
+vérifier avec `APP_VERSION`. `_appCheck === undefined` signifie que l'initialisation a
+échoué au chargement — chercher une ligne `[appcheck]` dans la console.
+
+État au 2026-07-28 : l'app est enregistrée dans App Check avec le fournisseur reCAPTCHA
+(étapes 1 à 3 faites), `capitalboard.fr` est dans les domaines de la clé. Reste à
+vérifier qu'un jeton est bien délivré, puis les étapes 5 et 6.
+
 **5. Appliquer** — seulement une fois l'étape 4 concluante, et pas un jour de lancement :
 passer `Cloud Firestore` puis `Authentication` en « Appliqué ».
 
