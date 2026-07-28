@@ -69,7 +69,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260728b';
+const APP_VERSION = '20260728c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3238,6 +3238,13 @@ function renderPortfolio() {
         : `<span style="color:var(--text3);font-size:11px">—</span>`;
 
       const tr = document.createElement('tr');
+      // Repères pour l'animation de refresh : on compare ces valeurs d'un
+      // rendu à l'autre pour n'animer que ce qui a réellement bougé.
+      tr.dataset.tk  = row.ticker || '';
+      tr.dataset.px  = row.currentPrice;
+      tr.dataset.val = val;
+      tr.dataset.pnl = pnl;
+      tr.dataset.chg = chg;
       tr.innerHTML = `
         <td>
           <div class="ticker-cell">
@@ -3250,21 +3257,21 @@ function renderPortfolio() {
         </td>
         <td class="mono hide-mobile">${row.qty}</td>
         <td class="mono hide-mobile">${fmt(row.buyPrice)}</td>
-        <td class="mono hide-mobile">${fmt(row.currentPrice)}</td>
-        <td class="mono">
-          <div style="font-weight:500">${fmt(val)}</div>
+        <td class="mono hide-mobile c-px">${fmt(row.currentPrice)}</td>
+        <td class="mono c-valcell">
+          <div style="font-weight:500" class="c-val">${fmt(val)}</div>
           <div class="perf-total-sub ${isPos ? 'perf-pos' : 'perf-neg'}"
                data-pct="${isPos ? '+' : ''}${pct.toFixed(2)}%"
                data-eur="${isPos ? '+' : ''}${fmt(Math.abs(pnl))}"
                onclick="togglePerfTotalMode()"
                style="cursor:pointer">${isPos ? '+' : ''}${pct.toFixed(2)}%</div>
         </td>
-        <td class="hide-mobile">
+        <td class="hide-mobile c-plus">
           <span class="${isPos ? 'badge-pos' : 'badge-neg'}">
             ${isPos ? '▲' : '▼'} ${fmt(Math.abs(pnl))} (${isPos ? '+' : ''}${pct.toFixed(2)}%)
           </span>
         </td>
-        <td>${perfJourHtml}</td>
+        <td class="c-day">${perfJourHtml}</td>
         <td style="text-align:right;padding-right:18px;white-space:nowrap">
           <div class="btn-portfolio-actions" style="display:inline-flex;gap:6px;align-items:center">
             <button class="btn-edit" onclick="openEditModal(${i})" title="Modifier" style="display:inline-flex;align-items:center;justify-content:center">${IC.edit}</button>
@@ -8395,11 +8402,95 @@ async function fetchDividendYield(ticker) {
 }
 
 // ═══════════════════════════════════════════════════
+//  ANIMATION DES PRIX AU REFRESH (tableau « Mes titres »)
+//  renderPortfolio() reconstruit tout le <tbody> : on relève donc les
+//  valeurs AVANT le re-render, et on n'anime après coup que les lignes
+//  dont un chiffre a réellement bougé.
+//  Deux effets combinés :
+//   - le prix actuel et la valeur défilent de l'ancien vers le nouveau ;
+//   - un trait balaie chaque cellule modifiée (vert en hausse, rouge en baisse).
+// ═══════════════════════════════════════════════════
+const PX_COUNT_MS = 700;   // durée du comptage
+
+function _pxReduceMotion() {
+  return !!(window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+}
+
+// Photo des chiffres affichés, indexée par ticker.
+function _pxSnapshot() {
+  const m = new Map();
+  document.querySelectorAll('#portfolio-tbody tr[data-tk]').forEach(tr => {
+    if (!tr.dataset.tk) return;
+    m.set(tr.dataset.tk, {
+      px:  +tr.dataset.px,
+      val: +tr.dataset.val,
+      pnl: +tr.dataset.pnl,
+      chg: +tr.dataset.chg,
+    });
+  });
+  return m;
+}
+
+// Fait défiler le nombre de `from` à `to` (easeOutCubic), formaté par `fmt`.
+function _pxCountTo(el, from, to) {
+  const t0 = performance.now();
+  (function step(now) {
+    const t = Math.min((now - t0) / PX_COUNT_MS, 1);
+    const e = 1 - Math.pow(1 - t, 3);
+    el.textContent = fmt(from + (to - from) * e);
+    if (t < 1) requestAnimationFrame(step);
+    else el.textContent = fmt(to);   // valeur exacte en fin de course
+  })(t0);
+}
+
+function _pxSweep(cell, up) {
+  // Retrait + reflow : sans ça, deux refresh rapprochés ne rejouent pas l'animation.
+  cell.classList.remove('px-sweep', 'px-up', 'px-down');
+  void cell.offsetWidth;
+  cell.classList.add('px-sweep', up ? 'px-up' : 'px-down');
+  cell.addEventListener('animationend',
+    () => cell.classList.remove('px-sweep', 'px-up', 'px-down'), { once: true });
+}
+
+function _pxAnimate(before) {
+  if (!before || !before.size || _pxReduceMotion()) return;
+
+  document.querySelectorAll('#portfolio-tbody tr[data-tk]').forEach(tr => {
+    const old = before.get(tr.dataset.tk);
+    if (!old) return;   // ligne ajoutée depuis : rien à comparer
+
+    const now = {
+      px:  +tr.dataset.px,
+      val: +tr.dataset.val,
+      pnl: +tr.dataset.pnl,
+      chg: +tr.dataset.chg,
+    };
+    if (now.px === old.px && now.val === old.val
+        && now.pnl === old.pnl && now.chg === old.chg) return;
+
+    // Sens donné par le prix ; à prix égal (qté modifiée), par la valeur.
+    const up = now.px !== old.px ? now.px > old.px : now.val >= old.val;
+
+    const cPx = tr.querySelector('.c-px');
+    if (cPx && now.px !== old.px && isFinite(old.px)) _pxCountTo(cPx, old.px, now.px);
+    const cVal = tr.querySelector('.c-val');
+    if (cVal && now.val !== old.val && isFinite(old.val)) _pxCountTo(cVal, old.val, now.val);
+
+    ['.c-px', '.c-valcell', '.c-plus', '.c-day'].forEach(sel => {
+      const cell = tr.querySelector(sel);
+      if (cell) _pxSweep(cell, up);
+    });
+  });
+}
+
+// ═══════════════════════════════════════════════════
 // PATCH: renderPortfolio with stagger + drag handles
 // ═══════════════════════════════════════════════════
 const _origRenderPortfolio = renderPortfolio;
 renderPortfolio = function() {
+  const _pxBefore = _pxSnapshot();   // avant que le <tbody> soit vidé
   _origRenderPortfolio();
+  _pxAnimate(_pxBefore);
   // Add stagger animations
   const rows = document.querySelectorAll('#portfolio-tbody tr');
   rows.forEach((tr, i) => {
