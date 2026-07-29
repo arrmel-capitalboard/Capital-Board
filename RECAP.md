@@ -323,6 +323,44 @@ du statut ; pas de mail si l'admin publie sa propre idee.
 Le risque de double notification est nul en pratique — la publication ne part que de la
 file de moderation, que l'idee quitte aussitot.
 
+### Liens reseaux sociaux (30/07)
+
+Vraies URLs posees partout. Piege trouve : `youtube.com/@capitalboard` existe mais
+appartient a un tiers (chaine « Motni Vesnal ») — le site, l'app et le bot y envoyaient
+les visiteurs. Vrais comptes : YouTube `@CapitalBoardApp`, TikTok `@capital.board`,
+Instagram `capitalboard`, Facebook `id=61592639900050`, LinkedIn
+`linkedin.com/company/capitalboard/`.
+
+**Ces URLs sont dupliquees dans 4 fichiers** : `communaute/index.html`, `pages/index.html`
+(sameAs), `js/app.js` (`DEFAULT_SOCIAL` + `_MAIL_FOOTER_LINKS`), `discord-bot/src/commands/liens.js`.
+`config/app.social` (editable depuis l'admin) surcharge seulement l'app — le bot et les
+pages statiques ne lisent pas Firestore.
+
+Invitations Discord : trois codes coexistaient, celui de la modale Support (`DpYjWWegR`)
+expirait le 2026-08-17. Tout est sur `p73QMm4xDm`, permanent.
+
+Icones manquantes dans `assets/email/` : pas de `youtube.png` / `facebook.png` /
+`linkedin.png`, ces trois reseaux sont absents du footer des emails de diffusion.
+
+### Derogation PIN du compte admin (30/07)
+
+Champ `adminOptOut` dans `users/{uid}/data/security`, pose depuis la section Profil
+(boutons « Desactiver » / « Reactiver le code PIN »).
+
+**Pourquoi un champ separe de `enabled`** : `enabled:false` signifie « aucun PIN
+configure » et declenche l'ecran de configuration forcee. La derogation doit sauter le
+PIN, pas en creer un.
+
+Le drapeau n'est honore que si l'uid vaut `ADMIN_UID` : un autre compte qui se
+l'ecrirait resterait soumis au PIN. Le code enregistre n'est pas efface — reactiver le
+remet en service sans reconfiguration. Le bouton est aussi propose quand aucun PIN
+n'est configure, sinon l'admin serait renvoye vers la configuration forcee a chaque
+chargement sans echappatoire.
+
+Corrige au passage : le gate PIN d'apres validation 2FA ne consultait pas le
+kill-switch global `config/app.pinDisabled`.
+
 ## A faire prochaine session
 
-- [ ] Vrais liens reseaux sociaux (Instagram, YouTube, TikTok) quand disponibles
+- [ ] Icones email `youtube.png` / `facebook.png` / `linkedin.png` (34x34) pour le footer
+      des emails de diffusion

@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730f';
+const APP_VERSION = '20260730g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -304,6 +304,11 @@ _splashWatchdog = setTimeout(() => {
         // Kill-switch global (admin) : désactive le PIN pour TOUS les comptes.
         // Erreur de lecture → on garde le PIN actif (fail-safe, pas de bypass).
         if (await _isPinGloballyDisabled()) {
+          startApp(u);
+          return;
+        }
+        // Dérogation du seul compte admin, posée depuis la section Profil.
+        if (await _isPinOptedOut(u.uid)) {
           startApp(u);
           return;
         }
@@ -1063,8 +1068,9 @@ window.dvVerifyOtp = async function() {
     await _addTrustedDevice(user.uid, deviceId, _getDeviceLabel(), data.ipInfo || null);
     try { await deleteFirestoreDoc(ref); } catch(_) {}
     document.getElementById('device-verify-view').style.display = 'none';
-    // Gate PIN — obligatoire même après validation 2FA
+    // Gate PIN — obligatoire même après validation 2FA, hors dérogation admin
     try {
+      if (await _isPinGloballyDisabled() || await _isPinOptedOut(user.uid)) { startApp(user); return; }
       const pinOn = await _isPinEnabled(user.uid);
       if (!pinOn) { showPinSetupView(user); return; }
       showPinLockView(user); return;
@@ -1330,16 +1336,34 @@ window.refreshPinStatus = async function() {
   if (!box || !actions) return;
   const user = fbAuth.currentUser;
   if (!user) { box.textContent = 'Non connecté'; actions.innerHTML = ''; return; }
+  const _admin = isAdmin();
+  const _btnGhost = 'flex:1;padding:9px;background:var(--s2);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans)';
+  const _btnWarn  = 'flex:1;padding:9px;background:rgba(255,77,106,0.08);border:1px solid rgba(255,77,106,0.28);color:#ff4d6a;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans)';
   try {
+    // Dérogation admin : le compte admin peut se passer du PIN (bouton ci-dessous).
+    if (_admin && await _isPinOptedOut(user.uid)) {
+      box.innerHTML = '<span style="color:#f5b731;font-weight:600">⚠ Code PIN désactivé pour ce compte</span>' +
+        '<div style="font-size:11px;color:var(--text3);margin-top:4px">Dérogation administrateur : l\'application s\'ouvre sans code sur ce compte. ' +
+        'Elle ne concerne que vous — les autres comptes restent protégés.</div>';
+      actions.innerHTML = '<button onclick="adminReenablePin()" style="' + _btnGhost + '">Réactiver le code PIN</button>';
+      return;
+    }
     const enabled = await _isPinEnabled(user.uid);
     if (enabled) {
-      box.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;color:#22d98a;font-weight:600"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Code PIN actif</span><div style="font-size:11px;color:var(--text3);margin-top:4px">Demandé à chaque ouverture et à chaque rechargement de l\'application. Obligatoire, non désactivable.</div>';
-      actions.innerHTML = `
-        <button onclick="openPinSetupModal('change')" style="flex:1;padding:9px;background:var(--s2);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans)">Changer le code</button>
-      `;
+      box.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;color:#22d98a;font-weight:600"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Code PIN actif</span><div style="font-size:11px;color:var(--text3);margin-top:4px">Demandé à chaque ouverture et à chaque rechargement de l\'application.' +
+        (_admin ? '' : ' Obligatoire, non désactivable.') + '</div>';
+      actions.innerHTML =
+        '<button onclick="openPinSetupModal(\'change\')" style="' + _btnGhost + '">Changer le code</button>' +
+        (_admin ? '<button onclick="adminDisablePin()" style="' + _btnWarn + '">Désactiver</button>' : '');
     } else {
-      box.innerHTML = '<span style="color:#ff4d6a;font-weight:600">⚠ Code PIN obligatoire — non configuré.</span><div style="font-size:11px;color:var(--text3);margin-top:4px">Sera demandé au prochain rechargement.</div>';
-      actions.innerHTML = `<button onclick="openPinSetupModal('setup')" style="flex:1;padding:9px;background:#7c6df5;border:none;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">Configurer maintenant</button>`;
+      box.innerHTML = '<span style="color:#ff4d6a;font-weight:600">⚠ Code PIN' + (_admin ? '' : ' obligatoire') + ' — non configuré.</span><div style="font-size:11px;color:var(--text3);margin-top:4px">' +
+        (_admin ? 'La configuration sera demandée au prochain rechargement, sauf si vous désactivez le code.'
+                : 'Sera demandé au prochain rechargement.') + '</div>';
+      actions.innerHTML =
+        '<button onclick="openPinSetupModal(\'setup\')" style="flex:1;padding:9px;background:#7c6df5;border:none;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">Configurer maintenant</button>' +
+        // Sans ce bouton, l'admin sans PIN configuré serait renvoyé vers l'écran
+        // de configuration forcée à chaque chargement, sans échappatoire.
+        (_admin ? '<button onclick="adminDisablePin()" style="' + _btnWarn + '">Désactiver</button>' : '');
     }
   } catch(e) {
     box.textContent = 'Erreur de chargement.';
@@ -1417,7 +1441,42 @@ window.pinSetupSubmit = async function() {
   }
 };
 
-// Désactivation PIN supprimée : code obligatoire, non désactivable.
+// ─── Désactivation du PIN — compte admin uniquement ────────────────
+// Le PIN reste obligatoire pour tous les autres comptes. La dérogation ne
+// touche que le compte admin et n'efface pas le code enregistré : le
+// réactiver le remet en service sans reconfiguration.
+window.adminDisablePin = async function() {
+  const user = fbAuth.currentUser;
+  if (!user || !isAdmin()) return;
+  if (!confirm("Désactiver le code PIN sur votre compte ?\n\n"
+    + "L'application s'ouvrira sans code sur cet appareil comme sur les autres, "
+    + "dès que votre session est active. Les autres comptes restent protégés.\n\n"
+    + "Votre code est conservé : vous pourrez le réactiver ici sans le ressaisir.")) return;
+  const box = document.getElementById('pin-status-box');
+  try {
+    await _setPinOptOut(user.uid, true);
+    await window.refreshPinStatus();
+  } catch (e) {
+    console.error('[pin] désactivation admin échouée:', e);
+    if (box) box.textContent = 'Échec de la désactivation : ' + (e.message || e.code || 'erreur inconnue');
+  }
+};
+
+window.adminReenablePin = async function() {
+  const user = fbAuth.currentUser;
+  if (!user || !isAdmin()) return;
+  const box = document.getElementById('pin-status-box');
+  try {
+    await _setPinOptOut(user.uid, false);
+    await window.refreshPinStatus();
+    // Aucun code enregistré (dérogation posée avant toute configuration) :
+    // on enchaîne sur la configuration plutôt que d'attendre le rechargement.
+    if (!(await _isPinEnabled(user.uid))) window.openPinSetupModal('setup');
+  } catch (e) {
+    console.error('[pin] réactivation échouée:', e);
+    if (box) box.textContent = 'Échec de la réactivation : ' + (e.message || e.code || 'erreur inconnue');
+  }
+};
 
 // ─── CODE PIN 6 CHIFFRES — App lock au démarrage ───────
 // Stockage: users/{uid}/data/security = { pinHash, pinSalt, enabled, createdAt }
@@ -1447,6 +1506,26 @@ async function _loadSecurity(uid) {
 async function _isPinEnabled(uid) {
   const sec = await _loadSecurity(uid);
   return !!(sec && sec.enabled && sec.pinHash && sec.pinSalt);
+}
+
+// ─── Dérogation PIN du compte admin ─────────────────────────────
+// Champ `adminOptOut` dans users/{uid}/data/security, posé depuis la section
+// Profil. Distinct de `enabled:false`, qui signifie « aucun PIN configuré » et
+// déclenche l'écran de configuration forcée : ici on veut sauter le PIN, pas en
+// créer un. Le drapeau n'est honoré que pour ADMIN_UID — un autre compte qui se
+// l'écrirait resterait soumis au PIN.
+async function _isPinOptedOut(uid) {
+  if (uid !== ADMIN_UID) return false;
+  const sec = await _loadSecurity(uid);
+  return !!(sec && sec.adminOptOut);
+}
+
+async function _setPinOptOut(uid, optOut) {
+  const ref = firestoreDoc(db, 'users', uid, 'data', 'security');
+  await setFirestoreDoc(ref, {
+    adminOptOut: !!optOut,
+    adminOptOutAt: optOut ? Date.now() : null,
+  }, { merge: true });
 }
 
 // ─── Kill-switch PIN global (admin) ──────────────────────────────
