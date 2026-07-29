@@ -3101,15 +3101,27 @@ body.has-demo-banner { padding-top: 40px; }
    remplissage, la couleur reste disponible : un gain flouté reste vert, une
    perte reste rouge, sans un octet de JS pour lire les couleurs.
 
-   Trois couches empilées : une ombre seule se dilue en grandissant et ne
-   laisse qu'un voile fantomatique à ce rayon. Empilées, le halo reste dense
-   alors qu'il n'y a plus rien à déchiffrer. */
+   Couches empilées : une ombre seule se dilue en grandissant et ne laisse
+   qu'un voile fantomatique. Empilées, le halo reste dense alors qu'il n'y a
+   plus rien à déchiffrer.
+
+   Le rayon est en em, jamais en pixels : les montants vont de 25px pour la
+   valorisation à 13px dans les tableaux. Un rayon fixe de 18px valait 0.7em
+   sur l'un et 1.4em sur l'autre — l'ombre s'étalait tellement que son opacité
+   par pixel tombait à quelques pour cent, et les valeurs disparaissaient
+   purement et simplement au lieu d'être floues.
+
+   Pour ajuster : --cb-blur ci-dessous, c'est le seul réglage. */
+:root { --cb-blur: 0.30em; }
+
 .cb-blurred {
   -webkit-text-fill-color: transparent;
   text-shadow:
-    0 0 18px currentColor,
-    0 0 18px currentColor,
-    0 0 31px currentColor;
+    0 0 var(--cb-blur) currentColor,
+    0 0 var(--cb-blur) currentColor,
+    0 0 var(--cb-blur) currentColor,
+    0 0 var(--cb-blur) currentColor,
+    0 0 calc(var(--cb-blur) * 2) currentColor;
   user-select: none;
   cursor: default;
 }
