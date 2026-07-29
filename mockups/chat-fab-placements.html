@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Emplacements du bouton chatbot — Capital Board</title>
+<style>
+  :root{
+    --bg:#04060b; --s1:#0a0c14; --s2:#10121c; --s3:#171a26; --s4:#1e2130;
+    --border:rgba(255,255,255,.06); --border2:rgba(255,255,255,.1);
+    --text:#edf0f7; --text2:#8892a8; --text3:#495068;
+    --accent:#7c6df5; --accent-d:rgba(124,109,245,.12); --gold:#f5b731;
+    --positive:#00e09e; --negative:#ff4d6a; --radius:12px; --radius-lg:16px;
+  }
+  *{margin:0;padding:0;box-sizing:border-box}
+  body{background:var(--bg);color:var(--text);font-family:system-ui,-apple-system,'Segoe UI',sans-serif;line-height:1.5;padding:28px 20px 60px}
+  .wrap{max-width:1180px;margin:0 auto}
+  h1{font-size:24px;font-weight:800;letter-spacing:-.02em}
+  .sub{color:var(--text2);font-size:14px;margin:6px 0 24px}
+  .layout{display:grid;grid-template-columns:300px 1fr;gap:24px;align-items:start}
+  @media(max-width:820px){.layout{grid-template-columns:1fr}}
+
+  /* Panneau de contrôle */
+  .controls{background:var(--s1);border:1px solid var(--border);border-radius:var(--radius-lg);padding:16px;position:sticky;top:20px}
+  .controls h2{font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--text3);margin-bottom:12px}
+  .opt{width:100%;text-align:left;background:var(--s2);border:1px solid var(--border);color:var(--text);
+       padding:11px 12px;border-radius:10px;cursor:pointer;margin-bottom:8px;transition:.15s;font-size:14px}
+  .opt:hover{border-color:var(--border2)}
+  .opt.active{border-color:var(--accent);background:var(--accent-d)}
+  .opt b{display:block;font-weight:700;font-size:14px}
+  .opt small{color:var(--text2);font-size:12px}
+  .device{display:flex;gap:8px;margin-bottom:14px}
+  .device button{flex:1;background:var(--s2);border:1px solid var(--border);color:var(--text2);
+    padding:8px;border-radius:9px;cursor:pointer;font-size:13px;font-weight:600}
+  .device button.active{border-color:var(--accent);color:var(--text);background:var(--accent-d)}
+
+  /* Détail emplacement */
+  .detail{margin-top:16px;padding-top:16px;border-top:1px solid var(--border)}
+  .detail h3{font-size:14px;margin-bottom:8px}
+  .tag{display:inline-block;font-size:11px;padding:2px 8px;border-radius:20px;margin-bottom:10px}
+  .tag.reco{background:rgba(0,224,158,.12);color:var(--positive)}
+  .tag.warn{background:rgba(245,183,49,.12);color:var(--gold)}
+  .pc{font-size:12.5px;color:var(--text2);margin:4px 0;padding-left:18px;position:relative}
+  .pc::before{position:absolute;left:0}
+  .pc.p::before{content:'✓';color:var(--positive)}
+  .pc.c::before{content:'✕';color:var(--negative)}
+
+  /* Maquette app */
+  .stage{background:var(--s1);border:1px solid var(--border);border-radius:var(--radius-lg);
+    padding:22px;display:flex;justify-content:center;min-height:640px}
+  .frame{position:relative;background:var(--bg);border:1px solid var(--border2);border-radius:18px;overflow:hidden;
+    box-shadow:0 30px 70px -30px #000;transition:width .3s,height .3s}
+  .frame.desktop{width:100%;max-width:760px;height:600px}
+  .frame.mobile{width:340px;height:600px}
+
+  /* skeleton app */
+  .sk-side{position:absolute;left:0;top:0;bottom:0;width:150px;background:var(--s1);border-right:1px solid var(--border);padding:16px 12px}
+  .frame.mobile .sk-side{display:none}
+  .sk-logo{height:22px;width:110px;background:var(--s3);border-radius:6px;margin-bottom:20px}
+  .sk-nav{height:11px;border-radius:5px;background:var(--s2);margin-bottom:12px}
+  .sk-nav.on{background:var(--accent-d);width:85%}
+  .sk-nav:nth-child(3){width:70%}.sk-nav:nth-child(4){width:78%}.sk-nav:nth-child(5){width:60%}
+  .sk-nav:nth-child(6){width:72%}.sk-nav:nth-child(7){width:66%}
+  .sk-nav.chatnav{background:var(--accent-d);position:relative;display:none}
+  .sk-nav.chatnav.show{display:block}
+  .sk-nav.chatnav::before{content:'';position:absolute;left:6px;top:50%;transform:translateY(-50%);width:6px;height:6px;border-radius:50%;background:var(--accent)}
+
+  .sk-main{position:absolute;left:150px;right:0;top:0;bottom:0;padding:20px}
+  .frame.mobile .sk-main{left:0;bottom:60px}
+  .sk-head{height:14px;width:40%;background:var(--s3);border-radius:6px;margin-bottom:6px}
+  .sk-topbar{position:absolute;top:0;right:0;left:150px;height:52px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:flex-end;padding:0 16px;gap:10px}
+  .frame.mobile .sk-topbar{left:0}
+  .sk-sub{height:10px;width:55%;background:var(--s2);border-radius:5px;margin:14px 0 20px}
+  .sk-card{height:70px;background:var(--s1);border:1px solid var(--border);border-radius:12px;margin-bottom:12px}
+  .sk-row{height:38px;background:var(--s1);border:1px solid var(--border);border-radius:9px;margin-bottom:8px}
+
+  /* barre nav mobile */
+  .sk-mobnav{display:none;position:absolute;left:0;right:0;bottom:0;height:60px;background:var(--s1);border-top:1px solid var(--border);align-items:center;justify-content:space-around;padding:0 14px}
+  .frame.mobile .sk-mobnav{display:flex}
+  .sk-mobnav i{width:26px;height:26px;border-radius:7px;background:var(--s3);display:block}
+  .sk-mobnav i.on{background:var(--accent-d)}
+
+  .sk-headbtn{width:30px;height:30px;border-radius:8px;background:var(--s3)}
+
+  /* le FAB de démo */
+  .demo-fab{position:absolute;z-index:20;display:flex;align-items:center;justify-content:center;
+    background:var(--accent);color:#fff;box-shadow:0 12px 26px -8px rgba(124,109,245,.6);
+    transition:all .3s cubic-bezier(.2,.8,.2,1)}
+  .demo-fab svg{width:24px;height:24px}
+  /* variantes de position */
+  .demo-fab{width:52px;height:52px;border-radius:50%;right:18px;bottom:18px;left:auto;top:auto;}
+  .frame.mobile .demo-fab{right:16px;bottom:74px} /* défaut mobile au-dessus de la nav */
+
+  .p-br .demo-fab{right:18px;bottom:18px;left:auto;top:auto}
+  .frame.mobile.p-br .demo-fab{bottom:74px}
+  .p-bl .demo-fab{left:18px;bottom:18px;right:auto;top:auto}
+  .frame.mobile.p-bl .demo-fab{bottom:74px}
+  .p-bc .demo-fab{left:50%;transform:translateX(-50%);bottom:18px;right:auto;top:auto}
+  .frame.mobile.p-bc .demo-fab{bottom:74px}
+  .p-mr .demo-fab{right:0;top:50%;bottom:auto;left:auto;transform:translateY(-50%);
+    width:40px;height:64px;border-radius:12px 0 0 12px}
+  .p-tr .demo-fab{top:11px;right:16px;bottom:auto;left:auto;width:32px;height:32px;border-radius:9px}
+  .p-tr .demo-fab svg{width:18px;height:18px}
+  .p-nav .demo-fab{display:none}       /* intégré à la nav, pas de FAB flottant */
+
+  .hintbadge{position:absolute;z-index:19;font-size:10px;background:var(--accent-d);color:var(--accent);
+    padding:3px 7px;border-radius:6px;pointer-events:none;opacity:0;transition:.3s;white-space:nowrap}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Emplacements du bouton chatbot</h1>
+  <p class="sub">Cliquez une option à gauche pour la voir en direct sur la maquette. Basculez Desktop / Mobile — l'app a une barre de navigation en bas sur mobile, ce qui change les contraintes.</p>
+
+  <div class="layout">
+    <div class="controls">
+      <div class="device">
+        <button id="d-desktop" class="active" onclick="setDevice('desktop')">🖥 Desktop</button>
+        <button id="d-mobile" onclick="setDevice('mobile')">📱 Mobile</button>
+      </div>
+      <h2>Emplacements</h2>
+      <div id="opts"></div>
+      <div class="detail" id="detail"></div>
+    </div>
+
+    <div class="stage">
+      <div class="frame desktop p-br" id="frame">
+        <!-- sidebar -->
+        <div class="sk-side">
+          <div class="sk-logo"></div>
+          <div class="sk-nav on"></div>
+          <div class="sk-nav"></div>
+          <div class="sk-nav"></div>
+          <div class="sk-nav"></div>
+          <div class="sk-nav"></div>
+          <div class="sk-nav"></div>
+          <div class="sk-nav chatnav" id="chatnav"></div>
+        </div>
+        <!-- topbar -->
+        <div class="sk-topbar">
+          <div class="sk-headbtn"></div>
+          <div class="sk-headbtn"></div>
+        </div>
+        <!-- main -->
+        <div class="sk-main">
+          <div class="sk-head"></div>
+          <div class="sk-sub"></div>
+          <div class="sk-card"></div>
+          <div class="sk-row"></div>
+          <div class="sk-row"></div>
+          <div class="sk-row"></div>
+          <div class="sk-row"></div>
+        </div>
+        <!-- mobile nav -->
+        <div class="sk-mobnav"><i class="on"></i><i></i><i></i><i></i></div>
+        <!-- FAB démo -->
+        <div class="demo-fab">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.38 8.38 0 0 1-.9 3.8 8.5 8.5 0 0 1-7.6 4.7 8.38 8.38 0 0 1-3.8-.9L3 21l1.9-5.7a8.38 8.38 0 0 1-.9-3.8 8.5 8.5 0 0 1 4.7-7.6 8.38 8.38 0 0 1 3.8-.9h.5a8.48 8.48 0 0 1 8 8v.5z"/></svg>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+  var PLACEMENTS = [
+    { id:'br', cls:'p-br', name:'Bas droite', desc:'Standard, actuel',
+      tag:{t:'Recommandé', c:'reco'},
+      pros:['Convention universelle, repérée instantanément','Pouce naturel sur mobile','N\'occupe pas de contenu'],
+      cons:['Sur mobile, doit être surélevé pour ne pas masquer la barre de nav'] },
+    { id:'bl', cls:'p-bl', name:'Bas gauche', desc:'Côté opposé',
+      tag:null,
+      pros:['Libre si le coin droit est déjà pris','Discret'],
+      cons:['Moins attendu, moins repéré','Peut gêner un menu latéral'] },
+    { id:'bc', cls:'p-bc', name:'Bas centre', desc:'Centré',
+      tag:null,
+      pros:['Très visible','Symétrique'],
+      cons:['Masque le contenu central','Entre en conflit avec la barre nav mobile'] },
+    { id:'mr', cls:'p-mr', name:'Onglet latéral droit', desc:'Languette milieu droit',
+      tag:{t:'Original', c:'warn'},
+      pros:['Style « aide » assumé, toujours visible au scroll','Ne gêne aucun coin'],
+      cons:['Moins courant','Zone de tap plus petite sur mobile'] },
+    { id:'tr', cls:'p-tr', name:'Dans le header', desc:'Barre du haut',
+      tag:null,
+      pros:['Groupé avec les autres actions','Zéro flottement au-dessus du contenu'],
+      cons:['Peu visible, souvent ignoré','Loin du pouce sur mobile'] },
+    { id:'nav', cls:'p-nav', name:'Entrée de navigation', desc:'Dans la sidebar / nav',
+      tag:null,
+      pros:['Intégré, cohérent avec les autres pages','Découvrable dans le menu'],
+      cons:['Pas d\'appel visuel, se fond dans la liste','Un clic de plus pour ouvrir'] },
+  ];
+
+  var current = 'br';
+  var optsEl = document.getElementById('opts');
+  var frame = document.getElementById('frame');
+  var chatnav = document.getElementById('chatnav');
+
+  PLACEMENTS.forEach(function(p){
+    var b = document.createElement('button');
+    b.className = 'opt' + (p.id===current?' active':'');
+    b.id = 'opt-'+p.id;
+    b.innerHTML = '<b>'+p.name+'</b><small>'+p.desc+'</small>';
+    b.onclick = function(){ select(p.id); };
+    optsEl.appendChild(b);
+  });
+
+  function select(id){
+    current = id;
+    var p = PLACEMENTS.find(function(x){return x.id===id;});
+    PLACEMENTS.forEach(function(x){ frame.classList.remove(x.cls); });
+    frame.classList.add(p.cls);
+    chatnav.classList.toggle('show', id==='nav');
+    document.querySelectorAll('.opt').forEach(function(o){o.classList.remove('active');});
+    document.getElementById('opt-'+id).classList.add('active');
+
+    var d = document.getElementById('detail');
+    var tag = p.tag ? '<span class="tag '+p.tag.c+'">'+p.tag.t+'</span>' : '';
+    d.innerHTML = '<h3>'+p.name+'</h3>'+tag+
+      p.pros.map(function(x){return '<div class="pc p">'+x+'</div>';}).join('')+
+      p.cons.map(function(x){return '<div class="pc c">'+x+'</div>';}).join('');
+  }
+
+  function setDevice(dev){
+    frame.classList.remove('desktop','mobile');
+    frame.classList.add(dev);
+    document.getElementById('d-desktop').classList.toggle('active', dev==='desktop');
+    document.getElementById('d-mobile').classList.toggle('active', dev==='mobile');
+  }
+
+  select('br');
+</script>
+</body>
+</html>

@@ -1,0 +1,616 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capital Board — Animations des prix (Mes titres)</title>
+<style>
+  :root {
+    --bg:#04060b; --s1:#0a0c14; --s2:#10121c; --s3:#171a26;
+    --border:rgba(255,255,255,0.045); --border2:rgba(255,255,255,0.09);
+    --text:#edf0f7; --text2:#8892a8; --text3:#495068;
+    --positive:#00e09e; --negative:#ff4d6a; --gold:#f5b731;
+    --accent:#7c6df5; --accent2:#5b8dee;
+    --positive-d:rgba(0,224,158,0.08); --negative-d:rgba(255,77,106,0.08);
+    --accent-d:rgba(124,109,245,0.08);
+    --sans:'Switzer',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+    --spd:1;                      /* multiplicateur global de durée (mode ralenti) */
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; padding:30px 20px 80px; color:var(--text); font-family:var(--sans);
+    background:radial-gradient(ellipse at 50% -10%, #12101f 0%, #04060b 60%); min-height:100vh;
+  }
+  .wrap { max-width:1280px; margin:0 auto; }
+  h1 { font-size:21px; font-weight:800; letter-spacing:-.4px; margin:0 0 6px; }
+  p.sub { color:var(--text2); font-size:12.5px; line-height:1.65; margin:0 0 16px; max-width:840px; }
+  code { font-family:var(--mono); font-size:.92em; color:#b9c2d6; }
+
+  .key {
+    margin:0 0 20px; padding:12px 15px; border-radius:10px; max-width:840px;
+    background:rgba(124,109,245,0.06); border:1px solid rgba(124,109,245,0.22);
+    color:#c3bdf7; font-size:12.5px; line-height:1.6;
+  }
+  .key strong { color:#fff; }
+
+  .toolbar { display:flex; gap:9px; flex-wrap:wrap; align-items:center; margin-bottom:22px; }
+  .b {
+    background:none; border:1px solid var(--border2); color:var(--text2);
+    border-radius:8px; padding:8px 13px; font-family:var(--sans);
+    font-size:11.5px; font-weight:600; cursor:pointer;
+    transition:color .15s,border-color .15s,background .15s;
+  }
+  .b:hover { color:var(--text); background:rgba(255,255,255,.04); }
+  .b.p { background:var(--accent-d); border-color:rgba(124,109,245,.28); color:var(--accent2); }
+  .b.p:hover { background:rgba(124,109,245,.18); color:#fff; }
+  .b.on { background:var(--positive-d); border-color:rgba(0,224,158,.3); color:var(--positive); }
+
+  .grid { display:grid; grid-template-columns:repeat(auto-fill,minmax(430px,1fr)); gap:18px; }
+  .card {
+    background:var(--s1); border:1px solid var(--border); border-radius:14px;
+    padding:17px; display:flex; flex-direction:column;
+  }
+  .card h3 { font-size:13.5px; font-weight:700; margin:0 0 5px; display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .num {
+    display:grid; place-items:center; width:20px; height:20px; border-radius:6px;
+    background:var(--accent-d); color:var(--accent2);
+    font-size:11px; font-weight:700; font-family:var(--mono); flex-shrink:0;
+  }
+  .pill {
+    font-size:9.5px; font-weight:700; font-family:var(--mono); letter-spacing:.4px;
+    padding:2px 7px; border-radius:5px; text-transform:uppercase;
+    background:var(--positive-d); color:var(--positive);
+  }
+  .pill.warn { background:rgba(245,183,49,.1); color:var(--gold); }
+  .card p.d { color:var(--text2); font-size:11.5px; line-height:1.55; margin:0 0 13px; min-height:50px; }
+
+  /* ─────────── Tableau (structure et styles repris de l'app) ─────────── */
+  .tbl-box { background:var(--s2); border:1px solid var(--border2); border-radius:11px; padding:2px 10px 6px; }
+  table { width:100%; border-collapse:collapse; }
+  thead th {
+    font-family:var(--mono); font-size:8.5px; font-weight:600; letter-spacing:.6px;
+    color:var(--text3); text-transform:uppercase; text-align:right;
+    padding:9px 5px; border-bottom:1px solid var(--border); white-space:nowrap;
+  }
+  thead th:first-child { text-align:left; }
+  tbody td {
+    padding:10px 5px; font-size:11.5px; color:var(--text); text-align:right;
+    border-bottom:1px solid var(--border); font-family:var(--mono);
+    position:relative;
+  }
+  tbody td:first-child { text-align:left; }
+  tbody tr:last-child td { border-bottom:none; }
+  .tk { font-family:var(--sans); font-weight:600; font-size:11.5px; line-height:1.3; }
+  .tk small { display:block; font-family:var(--mono); font-size:8.5px; color:var(--text3); font-weight:400; }
+  .pos { color:var(--positive); }
+  .neg { color:var(--negative); }
+  .chipv {
+    display:inline-block; font-family:var(--mono); font-size:9.5px; font-weight:600;
+    padding:3px 7px; border-radius:6px; white-space:nowrap;
+    background:var(--positive-d); color:var(--positive); border:1px solid rgba(0,224,158,.22);
+  }
+  .chipv.dn { background:var(--negative-d); color:var(--negative); border-color:rgba(255,77,106,.22); }
+
+  .btns { display:flex; gap:7px; flex-wrap:wrap; margin-top:12px; }
+
+  details { margin-top:12px; }
+  summary { cursor:pointer; color:var(--text3); font-size:11px; font-weight:600; list-style:none; user-select:none; }
+  summary::-webkit-details-marker { display:none; }
+  summary::before { content:'▸ '; }
+  details[open] summary::before { content:'▾ '; }
+  summary:hover { color:var(--text2); }
+  pre {
+    margin:10px 0 0; padding:12px; border-radius:8px;
+    background:#06080e; border:1px solid var(--border);
+    color:#b9c2d6; font-family:var(--mono); font-size:10.5px; line-height:1.6; overflow-x:auto;
+  }
+  .tok { color:var(--accent2); }
+  .cmt { color:var(--text3); }
+
+  /* ═══════════ V1 — Flash de fond ═══════════ */
+  .v1 td.fx-up   { animation: f-up   calc(.9s * var(--spd)) cubic-bezier(.2,.8,.2,1); border-radius:6px; }
+  .v1 td.fx-down { animation: f-down calc(.9s * var(--spd)) cubic-bezier(.2,.8,.2,1); border-radius:6px; }
+  @keyframes f-up {
+    0%   { background:rgba(0,224,158,.22); box-shadow:inset 0 0 0 1px rgba(0,224,158,.38); }
+    100% { background:transparent;         box-shadow:inset 0 0 0 1px transparent; }
+  }
+  @keyframes f-down {
+    0%   { background:rgba(255,77,106,.20); box-shadow:inset 0 0 0 1px rgba(255,77,106,.36); }
+    100% { background:transparent;          box-shadow:inset 0 0 0 1px transparent; }
+  }
+
+  /* ═══════════ V2 — Défilement vertical (odomètre) ═══════════ */
+  .roll { display:inline-block; overflow:hidden; vertical-align:bottom; position:relative; }
+  .roll .rl { display:block; }
+  .roll .rl.out-up   { animation: r-out-up   calc(.42s * var(--spd)) cubic-bezier(.4,0,.2,1) forwards; }
+  .roll .rl.out-down { animation: r-out-down calc(.42s * var(--spd)) cubic-bezier(.4,0,.2,1) forwards; }
+  .roll .rl.in-up    { animation: r-in-up    calc(.42s * var(--spd)) cubic-bezier(.4,0,.2,1) both; }
+  .roll .rl.in-down  { animation: r-in-down  calc(.42s * var(--spd)) cubic-bezier(.4,0,.2,1) both; }
+  .roll .rl.enter    { position:absolute; left:0; right:0; top:0; text-align:right; }
+  @keyframes r-out-up   { to { transform:translateY(-100%); opacity:0; } }
+  @keyframes r-out-down { to { transform:translateY(100%);  opacity:0; } }
+  @keyframes r-in-up    { from { transform:translateY(100%);  opacity:0; } to { transform:none; opacity:1; } }
+  @keyframes r-in-down  { from { transform:translateY(-100%); opacity:0; } to { transform:none; opacity:1; } }
+  .v2 td.tint-up   { animation: t-up   calc(.9s * var(--spd)) ease-out; }
+  .v2 td.tint-down { animation: t-down calc(.9s * var(--spd)) ease-out; }
+  @keyframes t-up   { 0%,40% { color:var(--positive); } 100% { color:var(--text); } }
+  @keyframes t-down { 0%,40% { color:var(--negative); } 100% { color:var(--text); } }
+
+  /* ═══════════ V3 — Comptage progressif ═══════════ */
+  .v3 td.tint-up   { animation: t-up   calc(1.1s * var(--spd)) ease-out; }
+  .v3 td.tint-down { animation: t-down calc(1.1s * var(--spd)) ease-out; }
+
+  /* ═══════════ V4 — Soulignement balayé ═══════════ */
+  .v4 td.fx { }
+  .v4 td.fx::after {
+    content:''; position:absolute; left:5px; right:5px; bottom:5px; height:2px;
+    border-radius:2px; transform-origin:right center;
+    animation: u-sweep calc(.8s * var(--spd)) cubic-bezier(.3,.9,.3,1);
+  }
+  .v4 td.fx.up::after   { background:linear-gradient(90deg, rgba(0,224,158,0), var(--positive)); }
+  .v4 td.fx.down::after { background:linear-gradient(90deg, rgba(255,77,106,0), var(--negative)); }
+  @keyframes u-sweep {
+    0%   { transform:scaleX(0); opacity:1; }
+    55%  { transform:scaleX(1); opacity:1; }
+    100% { transform:scaleX(1); opacity:0; }
+  }
+
+  /* ═══════════ V5 — Delta flottant ═══════════ */
+  .delta {
+    position:absolute; right:5px; top:2px; pointer-events:none;
+    font-family:var(--mono); font-size:9.5px; font-weight:700; white-space:nowrap;
+    animation: d-float calc(1.15s * var(--spd)) cubic-bezier(.25,.8,.3,1) forwards;
+  }
+  .delta.up   { color:var(--positive); }
+  .delta.down { color:var(--negative); }
+  @keyframes d-float {
+    0%   { opacity:0; transform:translateY(6px); }
+    22%  { opacity:1; transform:translateY(-3px); }
+    70%  { opacity:1; transform:translateY(-9px); }
+    100% { opacity:0; transform:translateY(-15px); }
+  }
+
+  /* ═══════════ V6 — Halo + respiration ═══════════ */
+  .v6 td.fx-up   { animation: g-up   calc(.95s * var(--spd)) cubic-bezier(.2,.8,.2,1); }
+  .v6 td.fx-down { animation: g-down calc(.95s * var(--spd)) cubic-bezier(.2,.8,.2,1); }
+  @keyframes g-up {
+    0%   { color:var(--positive); text-shadow:0 0 12px rgba(0,224,158,.75); transform:scale(1.09); }
+    45%  { color:var(--positive); text-shadow:0 0 6px rgba(0,224,158,.4);  transform:scale(1); }
+    100% { color:var(--text);     text-shadow:none; transform:scale(1); }
+  }
+  @keyframes g-down {
+    0%   { color:var(--negative); text-shadow:0 0 12px rgba(255,77,106,.7); transform:scale(1.09); }
+    45%  { color:var(--negative); text-shadow:0 0 6px rgba(255,77,106,.36); transform:scale(1); }
+    100% { color:var(--text);     text-shadow:none; transform:scale(1); }
+  }
+  tbody td { transform-origin:right center; }
+
+  .note { color:var(--text3); font-size:11px; line-height:1.6; margin:22px 0 0; max-width:840px; }
+
+  @media (prefers-reduced-motion: reduce) { * { animation-duration:.01ms !important; } }
+  @media (max-width:760px) {
+    body { padding:20px 12px 60px; }
+    .grid { grid-template-columns:1fr; }
+    .card p.d { min-height:0; }
+    thead th:nth-child(3), tbody td:nth-child(3) { display:none; }  /* Valeur masquée */
+  }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <h1>Animations des prix — tableau « Mes titres »</h1>
+  <p class="sub">
+    Six façons de signaler qu'un prix vient de bouger au refresh. Chaque carte contient
+    un vrai tableau avec les quatre lignes du portefeuille ; « Refresh » tire de nouveaux
+    prix (±1,5 %) et recalcule valeur, +/- value et perf. jour, comme le ferait
+    <code>renderPortfolio()</code>. Les hausses sont en vert, les baisses en rouge.
+  </p>
+
+  <p class="key">
+    <strong>Point d'implémentation commun :</strong> <code>renderPortfolio()</code> reconstruit
+    tout le <code>&lt;tbody&gt;</code>, donc les anciennes valeurs disparaissent avant qu'on puisse
+    les comparer. Il faut les relever <em>avant</em> le re-render (une <code>Map</code> ticker → prix),
+    puis appliquer l'animation après. Les variantes 2 et 3 vont plus loin : elles ont besoin que la
+    cellule <em>survive</em> au refresh, donc de mettre à jour les cellules en place plutôt que de
+    régénérer le HTML.
+  </p>
+
+  <div class="toolbar">
+    <button class="b p" onclick="tickAll()">↻ Refresh (toutes les variantes)</button>
+    <button class="b" id="auto" onclick="toggleAuto()">▶ Tick auto (3 s)</button>
+    <button class="b" id="slow" onclick="toggleSlow()">🐢 Ralenti ×3</button>
+    <button class="b" onclick="forceDir(1)">↑ Forcer hausse</button>
+    <button class="b" onclick="forceDir(-1)">↓ Forcer baisse</button>
+  </div>
+
+  <div class="grid">
+
+    <div class="card">
+      <h3><span class="num">1</span> Flash de fond <span class="pill">recommandé</span></h3>
+      <p class="d">La cellule s'illumine 900 ms puis retombe. C'est la convention des terminaux boursiers : verte si le prix monte, rouge s'il baisse. Lecture immédiate, aucun déplacement de texte.</p>
+      <div class="tbl-box v1" data-k="v1"></div>
+      <div class="btns"><button class="b p" onclick="tick('v1')">↻ Refresh</button></div>
+      <details><summary>CSS + JS</summary>
+<pre><span class="cmt">/* css/style.css */</span>
+@keyframes f-up {
+  0%   { background: rgba(0,224,158,.22);
+         box-shadow: inset 0 0 0 1px rgba(0,224,158,.38); }
+  100% { background: transparent;
+         box-shadow: inset 0 0 0 1px transparent; }
+}
+@keyframes f-down { <span class="cmt">/* idem en --negative */</span> }
+#portfolio-tbody td.fx-up   { animation: f-up   .9s cubic-bezier(.2,.8,.2,1);
+                              border-radius: 6px; }
+#portfolio-tbody td.fx-down { animation: f-down .9s cubic-bezier(.2,.8,.2,1);
+                              border-radius: 6px; }
+
+<span class="cmt">// js/app.js — relever AVANT le re-render, animer APRÈS</span>
+function snapshotPrices() {
+  const m = new Map();
+  document.querySelectorAll('#portfolio-tbody tr[data-tk]').forEach(tr =&gt; {
+    m.set(tr.dataset.tk, +tr.querySelector('.c-px').dataset.raw);
+  });
+  return m;
+}
+function flashChanges(before) {
+  document.querySelectorAll('#portfolio-tbody tr[data-tk]').forEach(tr =&gt; {
+    const old = before.get(tr.dataset.tk);
+    if (old === undefined) return;              <span class="cmt">// ligne nouvelle</span>
+    ['.c-px', '.c-val', '.c-plus', '.c-day'].forEach(sel =&gt; {
+      const cell = tr.querySelector(sel);
+      const now  = +cell.dataset.raw;
+      if (!cell || now === old) return;
+      const cls = now &gt; old ? 'fx-up' : 'fx-down';
+      cell.classList.add(cls);
+      cell.addEventListener('animationend',
+        () =&gt; cell.classList.remove(cls), { once: true });
+    });
+  });
+}</pre>
+      </details>
+    </div>
+
+    <div class="card">
+      <h3><span class="num">2</span> Défilement vertical</h3>
+      <p class="d">L'ancien chiffre sort par le haut, le nouveau entre par le bas — l'inverse quand ça baisse. Le sens du mouvement dit déjà la direction, la couleur ne fait que confirmer. Effet « cotation en direct ».</p>
+      <div class="tbl-box v2" data-k="v2"></div>
+      <div class="btns"><button class="b p" onclick="tick('v2')">↻ Refresh</button></div>
+      <details><summary>HTML + CSS + JS</summary>
+<pre><span class="cmt">&lt;!-- chaque valeur animable est enveloppée --&gt;</span>
+&lt;td class="c-px"&gt;&lt;span class="roll"&gt;&lt;span class="rl"&gt;97,96 €&lt;/span&gt;&lt;/span&gt;&lt;/td&gt;
+
+.roll { display:inline-block; overflow:hidden;
+        vertical-align:bottom; position:relative; }
+.roll .rl { display:block; }
+.roll .rl.enter { position:absolute; inset:0 0 auto 0; text-align:right; }
+@keyframes r-out-up { to { transform:translateY(-100%); opacity:0; } }
+@keyframes r-in-up  { from { transform:translateY(100%); opacity:0; }
+                      to   { transform:none; opacity:1; } }
+
+<span class="cmt">// js/app.js — remplace le texte par un glissement</span>
+function rollTo(cell, text, up) {
+  const box = cell.querySelector('.roll');
+  const cur = box.querySelector('.rl:not(.enter)');
+  const nxt = document.createElement('span');
+  nxt.className = 'rl enter ' + (up ? 'in-up' : 'in-down');
+  nxt.textContent = text;
+  box.style.height = cur.offsetHeight + 'px';   <span class="cmt">// fige la hauteur</span>
+  box.appendChild(nxt);
+  cur.classList.add(up ? 'out-up' : 'out-down');
+  nxt.addEventListener('animationend', () =&gt; {
+    cur.remove();
+    nxt.classList.remove('enter', 'in-up', 'in-down');
+    box.style.height = '';
+  }, { once: true });
+}</pre>
+      </details>
+    </div>
+
+    <div class="card">
+      <h3><span class="num">3</span> Comptage progressif</h3>
+      <p class="d">Le nombre défile de l'ancienne à la nouvelle valeur en 700 ms, teinté pendant la transition. Même principe que <code>countUp()</code> déjà utilisé pour les cartes de stats — cohérent avec le haut de la page.</p>
+      <div class="tbl-box v3" data-k="v3"></div>
+      <div class="btns"><button class="b p" onclick="tick('v3')">↻ Refresh</button></div>
+      <details><summary>JS</summary>
+<pre><span class="cmt">// js/app.js — countUp() existe déjà, on l'applique aux cellules</span>
+function countCell(cell, from, to, fmt, ms) {
+  ms = ms || 700;
+  const t0 = performance.now();
+  cell.classList.add(to &gt; from ? 'tint-up' : 'tint-down');
+  (function step(now) {
+    const t = Math.min((now - t0) / ms, 1);
+    const e = 1 - Math.pow(1 - t, 3);            <span class="cmt">// easeOutCubic</span>
+    cell.textContent = fmt(from + (to - from) * e);
+    if (t &lt; 1) requestAnimationFrame(step);
+    else cell.dataset.raw = to;
+  })(t0);
+  cell.addEventListener('animationend',
+    () =&gt; cell.classList.remove('tint-up', 'tint-down'), { once: true });
+}</pre>
+      </details>
+    </div>
+
+    <div class="card">
+      <h3><span class="num">4</span> Soulignement balayé <span class="pill warn">discret</span></h3>
+      <p class="d">Un trait fin se déploie sous la valeur puis s'efface, sans toucher au fond ni à la couleur du texte. La variante la plus sobre : visible du coin de l'œil, jamais gênante à la lecture.</p>
+      <div class="tbl-box v4" data-k="v4"></div>
+      <div class="btns"><button class="b p" onclick="tick('v4')">↻ Refresh</button></div>
+      <details><summary>CSS</summary>
+<pre>#portfolio-tbody td { position: relative; }
+#portfolio-tbody td.fx::after {
+  content: ''; position: absolute;
+  left: 5px; right: 5px; bottom: 5px; height: 2px;
+  border-radius: 2px; transform-origin: right center;
+  animation: u-sweep .8s cubic-bezier(.3,.9,.3,1);
+}
+td.fx.up::after   { background: linear-gradient(90deg,
+                    rgba(0,224,158,0), <span class="tok">var(--positive)</span>); }
+td.fx.down::after { background: linear-gradient(90deg,
+                    rgba(255,77,106,0), <span class="tok">var(--negative)</span>); }
+@keyframes u-sweep {
+  0%   { transform: scaleX(0); opacity: 1; }
+  55%  { transform: scaleX(1); opacity: 1; }
+  100% { transform: scaleX(1); opacity: 0; }
+}</pre>
+      </details>
+    </div>
+
+    <div class="card">
+      <h3><span class="num">5</span> Delta flottant</h3>
+      <p class="d">L'écart exact (<code>+0,42 €</code>) apparaît au-dessus de la cellule, monte et s'efface. Seule variante qui donne le chiffre du mouvement, pas seulement son sens. Réservée aux colonnes en euros.</p>
+      <div class="tbl-box v5" data-k="v5"></div>
+      <div class="btns"><button class="b p" onclick="tick('v5')">↻ Refresh</button></div>
+      <details><summary>CSS + JS</summary>
+<pre>.delta {
+  position: absolute; right: 5px; top: 2px; pointer-events: none;
+  font-family: <span class="tok">var(--mono)</span>; font-size: 9.5px; font-weight: 700;
+  white-space: nowrap;
+  animation: d-float 1.15s cubic-bezier(.25,.8,.3,1) forwards;
+}
+.delta.up { color: <span class="tok">var(--positive)</span>; } .delta.down { color: <span class="tok">var(--negative)</span>; }
+@keyframes d-float {
+  0%   { opacity:0; transform:translateY(6px); }
+  22%  { opacity:1; transform:translateY(-3px); }
+  70%  { opacity:1; transform:translateY(-9px); }
+  100% { opacity:0; transform:translateY(-15px); }
+}
+
+<span class="cmt">// js/app.js</span>
+function showDelta(cell, diff) {
+  const el = document.createElement('span');
+  el.className = 'delta ' + (diff &gt; 0 ? 'up' : 'down');
+  el.textContent = (diff &gt; 0 ? '+' : '') + fmtEur(diff);
+  cell.appendChild(el);
+  el.addEventListener('animationend', () =&gt; el.remove(), { once: true });
+}</pre>
+      </details>
+    </div>
+
+    <div class="card">
+      <h3><span class="num">6</span> Halo + respiration</h3>
+      <p class="d">Le chiffre grossit de 9 %, s'allume d'un halo coloré, puis revient à sa taille et à sa couleur normales. Le plus démonstratif — pertinent si le refresh est rare, trop présent s'il est fréquent.</p>
+      <div class="tbl-box v6" data-k="v6"></div>
+      <div class="btns"><button class="b p" onclick="tick('v6')">↻ Refresh</button></div>
+      <details><summary>CSS</summary>
+<pre>#portfolio-tbody td { transform-origin: right center; }
+@keyframes g-up {
+  0%   { color: <span class="tok">var(--positive)</span>;
+         text-shadow: 0 0 12px rgba(0,224,158,.75); transform: scale(1.09); }
+  45%  { color: <span class="tok">var(--positive)</span>;
+         text-shadow: 0 0 6px rgba(0,224,158,.4);   transform: scale(1); }
+  100% { color: <span class="tok">var(--text)</span>; text-shadow: none; transform: scale(1); }
+}
+@keyframes g-down { <span class="cmt">/* idem en --negative */</span> }
+td.fx-up   { animation: g-up   .95s cubic-bezier(.2,.8,.2,1); }
+td.fx-down { animation: g-down .95s cubic-bezier(.2,.8,.2,1); }</pre>
+      </details>
+    </div>
+
+  </div>
+
+  <p class="note">
+    À noter : la colonne <em>Perf. jour</em> peut changer de signe. Sa couleur de base
+    (vert/rouge) est portée par la valeur elle-même, pas par l'animation — les deux se
+    superposent, d'où le retour à la couleur de la nouvelle valeur en fin d'animation
+    plutôt qu'au gris de base.
+  </p>
+</div>
+
+<script>
+// ═══════════════════ DONNÉES ═══════════════════
+const HOLDINGS = [
+  { name: 'Amundi PEA Nasdaq-100', tk: 'PUST.PA',  qty: 5, buy: 86.31,  px: 97.96,  day: -0.34 },
+  { name: 'Amundi PEA Emergent',   tk: 'PAEEM.PA', qty: 9, buy: 31.12,  px: 33.54,  day: -2.24 },
+  { name: 'Air Liquide',           tk: 'AI.PA',    qty: 2, buy: 161.02, px: 171.73, day: -3.08 },
+  { name: 'BNP Easy Stoxx 600',    tk: 'ETZ.PA',   qty: 6, buy: 19.85,  px: 21.22,  day:  0.05 },
+];
+const VARIANTS = ['v1', 'v2', 'v3', 'v4', 'v5', 'v6'];
+
+const nf = (n, d) => n.toFixed(d === undefined ? 2 : d).replace('.', ',');
+const eur = (n) => nf(n) + ' €';
+const pct = (n) => (n >= 0 ? '+' : '') + nf(n) + '%';
+// Champs dérivés du prix, recalculés à chaque tick comme dans l'app.
+const val  = (r) => r.px * r.qty;
+const plus = (r) => (r.px - r.buy) * r.qty;
+const plusPct = (r) => ((r.px - r.buy) / r.buy) * 100;
+
+let forced = 0;          // 0 = aléatoire, 1 = hausse forcée, -1 = baisse forcée
+let autoTimer = null;
+
+// ═══════════════════ RENDU ═══════════════════
+// La variante 2 a besoin d'un conteneur qui survit au refresh.
+function cellHTML(k, cls, txt) {
+  return k === 'v2'
+    ? '<td class="' + cls + '"><span class="roll"><span class="rl">' + txt + '</span></span></td>'
+    : '<td class="' + cls + '">' + txt + '</td>';
+}
+
+function rowHTML(k, r) {
+  const p = plus(r), up = p >= 0;
+  const chip = '<span class="chipv' + (up ? '' : ' dn') + '">' + (up ? '▲ +' : '▼ ')
+             + nf(p) + ' € (' + pct(plusPct(r)) + ')</span>';
+  return '<tr data-tk="' + r.tk + '">'
+    + '<td><span class="tk">' + r.name + '<small>' + r.tk + '</small></span></td>'
+    + cellHTML(k, 'c-px',  eur(r.px))
+    + cellHTML(k, 'c-val', eur(val(r)))
+    + '<td class="c-plus">' + chip + '</td>'
+    + '<td class="c-day ' + (r.day >= 0 ? 'pos' : 'neg') + '">' + pct(r.day) + '</td>'
+    + '</tr>';
+}
+
+function build(k) {
+  const rows = HOLDINGS.map(r => Object.assign({}, r));
+  state[k] = rows;
+  document.querySelector('[data-k="' + k + '"]').innerHTML =
+    '<table><thead><tr>'
+    + '<th>Titre</th><th>Prix actuel</th><th>Valeur</th><th>+/- value</th><th>Perf. jour</th>'
+    + '</tr></thead><tbody>' + rows.map(r => rowHTML(k, r)).join('') + '</tbody></table>';
+}
+
+const state = {};
+VARIANTS.forEach(build);
+
+// ═══════════════════ HELPERS D'ANIMATION ═══════════════════
+function once(el, cls) {
+  el.addEventListener('animationend', () => el.classList.remove(...cls.split(' ')), { once: true });
+}
+// V2 — l'ancien chiffre sort, le nouveau entre par le côté opposé.
+function rollTo(cell, text, up) {
+  const box = cell.querySelector('.roll');
+  if (!box) { cell.textContent = text; return; }
+  const cur = box.querySelector('.rl:not(.enter)');
+  if (!cur) return;
+  const nxt = document.createElement('span');
+  nxt.className = 'rl enter ' + (up ? 'in-up' : 'in-down');
+  nxt.textContent = text;
+  box.style.height = cur.offsetHeight + 'px';
+  box.style.width  = Math.max(cur.offsetWidth, 1) + 'px';
+  box.appendChild(nxt);
+  cur.classList.add(up ? 'out-up' : 'out-down');
+  nxt.addEventListener('animationend', () => {
+    cur.remove();
+    nxt.classList.remove('enter', 'in-up', 'in-down');
+    box.style.height = ''; box.style.width = '';
+  }, { once: true });
+}
+// V3 — interpolation du nombre entre ancienne et nouvelle valeur.
+function countCell(cell, from, to, fmt, ms) {
+  ms = ms || 700 * getSpd();
+  const t0 = performance.now();
+  const cls = to > from ? 'tint-up' : 'tint-down';
+  cell.classList.add(cls);
+  once(cell, cls);
+  (function step(now) {
+    const t = Math.min((now - t0) / ms, 1);
+    const e = 1 - Math.pow(1 - t, 3);
+    cell.textContent = fmt(from + (to - from) * e);
+    if (t < 1) requestAnimationFrame(step);
+    else cell.textContent = fmt(to);
+  })(t0);
+}
+// V5 — bulle éphémère portant l'écart chiffré.
+function showDelta(cell, diff) {
+  const el = document.createElement('span');
+  el.className = 'delta ' + (diff > 0 ? 'up' : 'down');
+  el.textContent = (diff > 0 ? '+' : '−') + nf(Math.abs(diff)) + ' €';
+  cell.appendChild(el);
+  el.addEventListener('animationend', () => el.remove(), { once: true });
+}
+function getSpd() {
+  return parseFloat(getComputedStyle(document.documentElement).getPropertyValue('--spd')) || 1;
+}
+
+// ═══════════════════ TICK ═══════════════════
+function tick(k) {
+  const rows = state[k];
+  const box  = document.querySelector('[data-k="' + k + '"]');
+  const trs  = box.querySelectorAll('tbody tr');
+
+  rows.forEach((r, i) => {
+    const tr = trs[i];
+    const before = { px: r.px, val: val(r), plus: plus(r), day: r.day };
+
+    // Nouveau prix : ±1,5 % (ou direction forcée), le reste en découle.
+    const drift = forced === 0 ? (Math.random() - 0.5) * 0.03
+                               : forced * (0.004 + Math.random() * 0.02);
+    r.px  = +(r.px * (1 + drift)).toFixed(2);
+    r.day = +(r.day + drift * 100).toFixed(2);
+
+    const after = { px: r.px, val: val(r), plus: plus(r), day: r.day };
+    const up = after.px >= before.px;
+
+    const cPx   = tr.querySelector('.c-px');
+    const cVal  = tr.querySelector('.c-val');
+    const cPlus = tr.querySelector('.c-plus');
+    const cDay  = tr.querySelector('.c-day');
+
+    // Le chip +/- value et la perf. jour se réécrivent dans toutes les variantes.
+    const p = after.plus, pUp = p >= 0;
+    cPlus.innerHTML = '<span class="chipv' + (pUp ? '' : ' dn') + '">' + (pUp ? '▲ +' : '▼ ')
+                    + nf(p) + ' € (' + pct(plusPct(r)) + ')</span>';
+    cDay.className = 'c-day ' + (after.day >= 0 ? 'pos' : 'neg');
+
+    if (k === 'v2') {
+      rollTo(cPx,  eur(after.px),  up);
+      rollTo(cVal, eur(after.val), up);
+      cDay.textContent = pct(after.day);
+      [cPx, cVal, cDay].forEach(c => {
+        const cls = up ? 'tint-up' : 'tint-down';
+        c.classList.add(cls); once(c, cls);
+      });
+      return;
+    }
+
+    if (k === 'v3') {
+      countCell(cPx,  before.px,  after.px,  eur);
+      countCell(cVal, before.val, after.val, eur);
+      countCell(cDay, before.day, after.day, pct);
+      return;
+    }
+
+    // Variantes 1, 4, 5, 6 : la valeur est posée, l'effet se joue par-dessus.
+    cPx.textContent  = eur(after.px);
+    cVal.textContent = eur(after.val);
+    cDay.textContent = pct(after.day);
+
+    if (k === 'v1' || k === 'v6') {
+      const cls = up ? 'fx-up' : 'fx-down';
+      [cPx, cVal, cPlus, cDay].forEach(c => { c.classList.add(cls); once(c, cls); });
+    }
+    if (k === 'v4') {
+      const cls = 'fx ' + (up ? 'up' : 'down');
+      [cPx, cVal, cPlus, cDay].forEach(c => { c.classList.add('fx', up ? 'up' : 'down'); once(c, cls); });
+    }
+    if (k === 'v5') {
+      showDelta(cPx,  after.px  - before.px);
+      showDelta(cVal, after.val - before.val);
+    }
+  });
+}
+
+function tickAll() { VARIANTS.forEach(tick); }
+
+// ═══════════════════ CONTRÔLES ═══════════════════
+function toggleAuto() {
+  const btn = document.getElementById('auto');
+  if (autoTimer) {
+    clearInterval(autoTimer); autoTimer = null;
+    btn.classList.remove('on'); btn.textContent = '▶ Tick auto (3 s)';
+  } else {
+    autoTimer = setInterval(tickAll, 3000);
+    btn.classList.add('on'); btn.textContent = '⏸ Tick auto en cours';
+    tickAll();
+  }
+}
+function toggleSlow() {
+  const root = document.documentElement;
+  const on = getSpd() > 1;
+  root.style.setProperty('--spd', on ? '1' : '3');
+  document.getElementById('slow').classList.toggle('on', !on);
+}
+function forceDir(d) { forced = d; tickAll(); forced = 0; }
+</script>
+</body>
+</html>

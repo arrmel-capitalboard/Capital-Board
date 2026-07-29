@@ -1,0 +1,244 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Capital Board — Aperçu du tracé progressif</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<style>
+  :root {
+    --bg:#04060b; --s1:#0a0c14; --s2:#10121c; --border2:rgba(255,255,255,0.09);
+    --text:#edf0f7; --text2:#8892a8; --text3:#495068;
+    --positive:#00e09e; --accent:#7c6df5; --accent2:#5b8dee;
+    --accent-d:rgba(124,109,245,0.08);
+    --sans:'Switzer',-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;
+    --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  }
+  * { box-sizing:border-box; }
+  body {
+    margin:0; padding:30px 20px 60px; color:var(--text); font-family:var(--sans);
+    background:radial-gradient(ellipse at 50% -10%, #12101f 0%, #04060b 60%); min-height:100vh;
+  }
+  .wrap { max-width:900px; margin:0 auto; }
+  h1 { font-size:20px; font-weight:800; letter-spacing:-.4px; margin:0 0 6px; }
+  p.sub { color:var(--text2); font-size:12.5px; line-height:1.6; margin:0 0 20px; }
+  code { font-family:var(--mono); font-size:.92em; color:#b9c2d6; }
+  .card {
+    background:linear-gradient(180deg, rgba(255,255,255,0.030), rgba(255,255,255,0) 42%), var(--s1);
+    border:1px solid var(--border2); border-radius:16px; padding:20px; position:relative;
+  }
+  .hd { font-size:22px; font-weight:800; color:var(--positive); letter-spacing:-.5px; }
+  .hd small { display:block; font-size:11px; font-weight:500; color:var(--text3); margin-top:3px; font-family:var(--sans); }
+  .chart-wrap { height:260px; margin-top:14px; position:relative; }
+  .btns { display:flex; gap:8px; flex-wrap:wrap; margin-top:16px; }
+  .b {
+    background:var(--accent-d); border:1px solid rgba(124,109,245,.28); color:var(--accent2);
+    border-radius:8px; padding:8px 14px; font-family:var(--sans); font-size:12px;
+    font-weight:600; cursor:pointer; transition:background .15s,color .15s;
+  }
+  .b:hover { background:rgba(124,109,245,.18); color:#fff; }
+  .b.g { background:none; border-color:var(--border2); color:var(--text2); }
+  .b.g:hover { color:var(--text); background:rgba(255,255,255,.04); }
+  .row { display:flex; align-items:center; gap:12px; margin-top:16px; flex-wrap:wrap; }
+  label { font-size:11.5px; color:var(--text2); display:flex; align-items:center; gap:7px; font-family:var(--mono); }
+  input[type=range] { width:150px; accent-color:var(--accent); }
+  .val { color:var(--accent2); font-family:var(--mono); font-size:11px; min-width:52px; }
+  .note { color:var(--text3); font-size:11px; line-height:1.6; margin-top:18px; }
+  @media (max-width:600px){ .chart-wrap { height:200px; } }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <h1>Tracé progressif puis cascade des pastilles</h1>
+  <p class="sub">
+    Copie conforme du code posé dans <code>js/app.js</code> (<code>pfRevealPlugin</code> +
+    <code>pfRunReveal</code>). Les curseurs servent à régler les durées avant de figer les
+    constantes <code>PF_REVEAL_*</code>.
+  </p>
+
+  <div class="card">
+    <div class="hd">+9,51 % <small>depuis le début · +109,63 € · vous faites mieux que la majorité des épargnants</small></div>
+    <div class="chart-wrap"><canvas id="cv"></canvas></div>
+    <div class="btns">
+      <button class="b" onclick="rebuild()">↻ Rejouer l'animation</button>
+      <button class="b g" onclick="reduced=!reduced;rebuild()" id="rm">Simuler « animations réduites » : off</button>
+    </div>
+    <div class="row">
+      <label>tracé <input type="range" id="s-line" min="200" max="3000" step="50" value="2000"><span class="val" id="v-line">2000 ms</span></label>
+      <label>pop <input type="range" id="s-dot" min="120" max="1200" step="20" value="700"><span class="val" id="v-dot">700 ms</span></label>
+      <label>décalage <input type="range" id="s-step" min="0" max="300" step="5" value="150"><span class="val" id="v-step">150 ms</span></label>
+    </div>
+    <p class="note">
+      Durée totale ≈ tracé + min(nb pastilles − 1, 12) × décalage + pop.
+      Avec les valeurs par défaut et 10 transactions : <span id="tot">—</span>.
+    </p>
+  </div>
+</div>
+
+<script>
+// ═══════════ COPIE CONFORME DE js/app.js ═══════════
+let PF_REVEAL_LINE_MS  = 2000;
+let PF_REVEAL_DOT_MS   = 700;
+let PF_REVEAL_DOT_STEP = 150;
+const PF_REVEAL_DOT_CAP = 12;
+
+function _pfEaseInOutQuad(t) { return t < 0.5 ? 2*t*t : 1 - Math.pow(-2*t + 2, 2) / 2; }
+function _pfEaseOutBack(t)   { const c1 = 1.70158, c3 = c1 + 1;
+                               return 1 + c3*Math.pow(t-1, 3) + c1*Math.pow(t-1, 2); }
+
+const pfRevealPlugin = {
+  id: 'pfReveal',
+  beforeInit(chart) {
+    chart.$pfReveal = { line: 0, dotsStarted: false, clipped: false };
+  },
+  beforeDatasetDraw(chart, args) {
+    const st = chart.$pfReveal;
+    if (!st) return;
+    if (args.index !== 0) return st.dotsStarted ? undefined : false;
+    if (st.line >= 1) return;
+    const { ctx, chartArea } = chart;
+    if (!chartArea) return;
+    ctx.save();
+    ctx.beginPath();
+    ctx.rect(chartArea.left, chartArea.top,
+             (chartArea.right - chartArea.left) * st.line,
+             chartArea.bottom - chartArea.top);
+    ctx.clip();
+    st.clipped = true;
+  },
+  afterDatasetDraw(chart, args) {
+    const st = chart.$pfReveal;
+    if (!st || args.index !== 0 || !st.clipped) return;
+    chart.ctx.restore();
+    st.clipped = false;
+  },
+};
+
+function pfRunReveal(chart, markerSets) {
+  const st = chart.$pfReveal;
+  if (!st) return;
+
+  const dots = [];
+  markerSets.forEach(di => {
+    const meta = chart.getDatasetMeta(di);
+    if (!meta) return;
+    meta.data.forEach((pt, i) => {
+      if (!pt.options.radius) return;
+      dots.push({ pt, r: pt.options.radius, i });
+    });
+  });
+  dots.sort((a, b) => a.i - b.i);
+
+  const reduce = reduced || (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches);
+  if (reduce) { chart.$pfReveal = null; chart.draw(); return; }
+
+  dots.forEach(d => { d.pt.options.radius = 0; });
+  st.dotsStarted = true;
+
+  const end = dots.length
+    ? PF_REVEAL_LINE_MS + Math.min(dots.length - 1, PF_REVEAL_DOT_CAP) * PF_REVEAL_DOT_STEP + PF_REVEAL_DOT_MS
+    : PF_REVEAL_LINE_MS;
+  document.getElementById('tot').textContent = Math.round(end) + ' ms';
+  const t0 = performance.now();
+
+  function frame(now) {
+    if (chart.$pfReveal !== st || !chart.ctx) return;
+    const e = now - t0;
+    st.line = _pfEaseInOutQuad(Math.min(e / PF_REVEAL_LINE_MS, 1));
+    dots.forEach((d, k) => {
+      const start = PF_REVEAL_LINE_MS + Math.min(k, PF_REVEAL_DOT_CAP) * PF_REVEAL_DOT_STEP;
+      const t = Math.min(Math.max((e - start) / PF_REVEAL_DOT_MS, 0), 1);
+      d.pt.options.radius = d.r * _pfEaseOutBack(t);
+    });
+    chart.draw();
+    if (e < end) { requestAnimationFrame(frame); return; }
+    dots.forEach(d => { d.pt.options.radius = d.r; });
+    chart.$pfReveal = null;
+    chart.draw();
+  }
+  requestAnimationFrame(frame);
+}
+// ═══════════ FIN DE LA COPIE ═══════════
+
+let reduced = false;
+let chart = null;
+
+const VALUES = [1000,1000,1012,1008,975,1002,1004,1004,1005,1006,1006,1007,1006,1008,1007,
+                1006,1005,1080,1082,1084,1086,1140,1142,1145,1150,1148,1152,1210,1212,
+                1180,1215,1218,1250,1252,1256,1258,1262,1266,1268,1272,1276,1280,1286,1292,1298,1306];
+const BUY  = [0, 2, 8, 17, 21, 24, 27, 32];
+const SELL = [4, 29];
+const LABELS = VALUES.map((_, i) => 'J' + i);
+const mark = (idx) => VALUES.map((v, i) => idx.includes(i) ? v : null);
+
+function build() {
+  const ctx = document.getElementById('cv').getContext('2d');
+  if (chart) chart.destroy();
+  const color = '#00e09e';
+  chart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels: LABELS,
+      datasets: [
+        {
+          label: 'Portefeuille', data: VALUES,
+          borderColor: color, borderWidth: 2,
+          pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: color,
+          tension: 0.2, fill: true, spanGaps: true,
+          backgroundColor: (c2) => {
+            const { ctx: cc, chartArea } = c2.chart;
+            if (!chartArea) return 'rgba(0,224,158,0.12)';
+            const g = cc.createLinearGradient(0, chartArea.top, 0, chartArea.bottom);
+            g.addColorStop(0,    'rgba(0,224,158,0.34)');
+            g.addColorStop(0.45, 'rgba(0,224,158,0.12)');
+            g.addColorStop(1,    'rgba(0,224,158,0)');
+            return g;
+          },
+        },
+        {
+          label: 'Achats', data: mark(BUY),
+          borderColor: 'transparent', backgroundColor: '#00e09e',
+          pointRadius: mark(BUY).map(v => v !== null ? 6 : 0), pointHoverRadius: 8,
+          pointStyle: 'circle', pointBorderColor: '#04060b', pointBorderWidth: 2,
+          showLine: false, fill: false,
+        },
+        {
+          label: 'Ventes', data: mark(SELL),
+          borderColor: 'transparent', backgroundColor: '#ff4d6a',
+          pointRadius: mark(SELL).map(v => v !== null ? 6 : 0), pointHoverRadius: 8,
+          pointStyle: 'circle', pointBorderColor: '#04060b', pointBorderWidth: 2,
+          showLine: false, fill: false,
+        },
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: { legend: { display: false }, tooltip: { enabled: false } },
+      scales: { x: { display: false }, y: { display: false, beginAtZero: false } }
+    },
+    plugins: [pfRevealPlugin]
+  });
+  pfRunReveal(chart, [1, 2]);
+}
+function rebuild() {
+  document.getElementById('rm').textContent = 'Simuler « animations réduites » : ' + (reduced ? 'on' : 'off');
+  build();
+}
+
+[['s-line','v-line',v=>PF_REVEAL_LINE_MS=v], ['s-dot','v-dot',v=>PF_REVEAL_DOT_MS=v], ['s-step','v-step',v=>PF_REVEAL_DOT_STEP=v]]
+  .forEach(([sid, vid, set]) => {
+    const s = document.getElementById(sid);
+    s.addEventListener('input', () => {
+      set(+s.value);
+      document.getElementById(vid).textContent = s.value + ' ms';
+      build();
+    });
+  });
+
+build();
+</script>
+</body>
+</html>

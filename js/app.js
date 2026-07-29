@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260729m';
+const APP_VERSION = '20260729n';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -10448,12 +10448,13 @@ function initDividendes() {
 
       const totalAnnual  = projRows.reduce((s, x) => s + x.annual, 0);
       const totalMonthly = totalAnnual / 12;
+      const projYear     = new Date().getFullYear();
       const maxAnnual    = Math.max(...projRows.map(x => x.annual), 1);
 
       projEl.innerHTML = `
         <div style="display:flex;gap:32px;margin-bottom:20px;flex-wrap:wrap">
           <div>
-            <div style="font-size:11px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Annuel estimé</div>
+            <div style="font-size:11px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">Annuel estimé<span style="background:rgba(245,183,49,0.12);color:var(--gold);border:1px solid rgba(245,183,49,0.25);border-radius:5px;padding:1px 7px;font-size:10px;letter-spacing:0.5px;font-weight:600;font-family:var(--mono)">${projYear}</span></div>
             <div style="font-size:28px;font-weight:700;color:var(--gold);font-family:var(--mono)">${totalAnnual.toLocaleString('fr-FR', { minimumFractionDigits:2, maximumFractionDigits:2 })} €</div>
           </div>
           <div>
