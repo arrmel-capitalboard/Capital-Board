@@ -3091,6 +3091,29 @@ body.has-demo-banner { padding-top: 40px; }
   #cb-chat-panel.cb-open { transform: translateY(0) scale(1); }
 }
 
+/* ─── MASQUER LE SOLDE ────────────────────────────────────────────────────
+   Le JS pose .cb-blurred sur les éléments portant un montant ; le rendu est
+   entièrement ici.
+
+   -webkit-text-fill-color plutôt que color: transparent — c'est ce qui rend
+   l'astuce possible. `color: transparent` neutraliserait aussi currentColor,
+   donc l'ombre elle-même deviendrait invisible. En ne touchant qu'au
+   remplissage, la couleur reste disponible : un gain flouté reste vert, une
+   perte reste rouge, sans un octet de JS pour lire les couleurs.
+
+   Trois couches empilées : une ombre seule se dilue en grandissant et ne
+   laisse qu'un voile fantomatique à ce rayon. Empilées, le halo reste dense
+   alors qu'il n'y a plus rien à déchiffrer. */
+.cb-blurred {
+  -webkit-text-fill-color: transparent;
+  text-shadow:
+    0 0 18px currentColor,
+    0 0 18px currentColor,
+    0 0 31px currentColor;
+  user-select: none;
+  cursor: default;
+}
+
 /* ─── MUR À IDÉES ─────────────────────────────────────────────────────────
    Formulaire de proposition, file de modération (admin), suivi de ses propres
    propositions, puis le mur trié par score. Tout passe par les variables de

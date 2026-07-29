@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260729g';
+const APP_VERSION = '20260729h';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1616,41 +1616,33 @@ async function _disablePin(uid) {
   try { await deleteFirestoreDoc(ref); } catch(_) {}
 }
 
-// ─── MASQUER LE SOLDE (toggle œil) — masque tout texte avec € ou % ──
+// ─── MASQUER LE SOLDE (toggle œil) — floute tout texte chiffré avec € ou % ──
 const _EYE_OPEN_SVG = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
 const _EYE_OFF_SVG  = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24"/><line x1="1" y1="1" x2="23" y2="23"/>';
 
-// Remplace les chiffres par • dans les text nodes contenant € / % / $ etc.
-// Plus propre que blur (pas de carré moche autour).
+// Floute les valeurs monétaires au lieu de les remplacer par des points.
+//
+// Le texte n'est plus touché : on pose une classe sur l'élément qui le porte
+// et le rendu se fait en CSS. Deux conséquences heureuses — la valeur n'a plus
+// besoin d'être mémorisée pour être restaurée, et le MutationObserver ne peut
+// plus boucler sur ses propres écritures (il ne reste que des mutations de
+// classe, qu'il n'observe pas).
+//
+// Contrepartie assumée : le montant reste présent dans le DOM, seulement
+// masqué à l'affichage. Le mode protège des regards et des captures d'écran,
+// pas d'un inspecteur ouvert.
 const _MONEY_RE = /[€$£¥%]|\bEUR\b|\bUSD\b/;
-const _origTextMap = new WeakMap();
 let _hideObserver = null;
 let _hideActive = false;
-
-function _maskTextNode(n) {
-  // Si la valeur actuelle a des chiffres, c'est une nouvelle valeur originale → l'enregistrer
-  if (/\d/.test(n.nodeValue || '')) {
-    _origTextMap.set(n, n.nodeValue);
-  } else if (!_origTextMap.has(n)) {
-    return; // pas de chiffres et pas d'original connu → rien à masquer
-  }
-  const orig = _origTextMap.get(n);
-  const masked = orig.replace(/\d/g, '•');
-  if (n.nodeValue !== masked) n.nodeValue = masked;
-}
-
-function _unmaskTextNode(n) {
-  if (_origTextMap.has(n)) {
-    n.nodeValue = _origTextMap.get(n);
-    _origTextMap.delete(n);
-  }
-}
 
 function _maskSensitiveIn(root) {
   if (!root) return;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: n => {
-      if (!_MONEY_RE.test(n.nodeValue || '')) return NodeFilter.FILTER_REJECT;
+      const v = n.nodeValue || '';
+      // Sans chiffre, il n'y a rien à cacher : un « % » seul dans un libellé
+      // ne doit pas flouter la ligne entière.
+      if (!/\d/.test(v) || !_MONEY_RE.test(v)) return NodeFilter.FILTER_REJECT;
       const p = n.parentElement;
       if (!p) return NodeFilter.FILTER_REJECT;
       if (p.closest('script,style,#device-verify-view,#verify-view,#login-view,#register-view')) return NodeFilter.FILTER_REJECT;
@@ -1658,9 +1650,14 @@ function _maskSensitiveIn(root) {
     }
   });
   let n;
-  const nodes = [];
-  while ((n = walker.nextNode())) nodes.push(n);
-  nodes.forEach(_maskTextNode);
+  while ((n = walker.nextNode())) {
+    const p = n.parentElement;
+    if (p) p.classList.add('cb-blurred');
+  }
+}
+
+function _unmaskAll() {
+  document.querySelectorAll('.cb-blurred').forEach(el => el.classList.remove('cb-blurred'));
 }
 
 // Throttle re-mask pour éviter de saturer le main thread sur renders fréquents
@@ -1689,9 +1686,7 @@ function _startHideObserver() {
           }
         }
       } else if (m.type === 'characterData') {
-        const v = m.target.nodeValue || '';
-        // Skip si plus aucun chiffre (déjà masqué) — évite boucle infinie
-        if (/\d/.test(v)) { needsRemask = true; }
+        if (/\d/.test(m.target.nodeValue || '')) { needsRemask = true; }
       }
       if (needsRemask) break;
     }
@@ -1703,12 +1698,7 @@ function _startHideObserver() {
 function _stopHideObserver() {
   _hideActive = false;
   if (_hideObserver) { _hideObserver.disconnect(); _hideObserver = null; }
-  // Restore tous les nodes masqués
-  const walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT, null);
-  let n;
-  const nodes = [];
-  while ((n = walker.nextNode())) if (_origTextMap.has(n)) nodes.push(n);
-  nodes.forEach(_unmaskTextNode);
+  _unmaskAll();
 }
 
 function _applyHideBalances(hidden) {
