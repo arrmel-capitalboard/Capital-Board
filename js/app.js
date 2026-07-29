@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260729i';
+const APP_VERSION = '20260729j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1652,12 +1652,24 @@ function _maskSensitiveIn(root) {
   let n;
   while ((n = walker.nextNode())) {
     const p = n.parentElement;
-    if (p) p.classList.add('cb-blurred');
+    if (!p || p.classList.contains('cb-blurred')) continue;
+    // La couleur est relevée AVANT de poser la classe : ensuite `color` vaut
+    // transparent, et une ombre en currentColor serait transparente elle aussi.
+    // On la fige donc dans --cb-ink, ce qui garde un gain vert et une perte
+    // rouge une fois flous.
+    try {
+      const c = getComputedStyle(p).color;
+      if (c && c !== 'rgba(0, 0, 0, 0)') p.style.setProperty('--cb-ink', c);
+    } catch (_) {}
+    p.classList.add('cb-blurred');
   }
 }
 
 function _unmaskAll() {
-  document.querySelectorAll('.cb-blurred').forEach(el => el.classList.remove('cb-blurred'));
+  document.querySelectorAll('.cb-blurred').forEach(el => {
+    el.classList.remove('cb-blurred');
+    el.style.removeProperty('--cb-ink');
+  });
 }
 
 // Throttle re-mask pour éviter de saturer le main thread sur renders fréquents

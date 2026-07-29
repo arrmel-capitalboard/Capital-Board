@@ -3095,11 +3095,14 @@ body.has-demo-banner { padding-top: 40px; }
    Le JS pose .cb-blurred sur les éléments portant un montant ; le rendu est
    entièrement ici.
 
-   -webkit-text-fill-color plutôt que color: transparent — c'est ce qui rend
-   l'astuce possible. `color: transparent` neutraliserait aussi currentColor,
-   donc l'ombre elle-même deviendrait invisible. En ne touchant qu'au
-   remplissage, la couleur reste disponible : un gain flouté reste vert, une
-   perte reste rouge, sans un octet de JS pour lire les couleurs.
+   `color: transparent` et non `-webkit-text-fill-color: transparent` : avec
+   ce dernier, Firefox cesse de peindre le texte ET son ombre, donc les
+   montants disparaissaient au lieu d'être flous. `color: transparent` laisse
+   l'ombre.
+
+   Reste que currentColor devient transparent lui aussi : la couleur d'origine
+   est donc relevée en JS avant le masquage et figée dans --cb-ink, ce qui
+   garde un gain vert et une perte rouge une fois flous.
 
    Couches empilées : une ombre seule se dilue en grandissant et ne laisse
    qu'un voile fantomatique. Empilées, le halo reste dense alors qu'il n'y a
@@ -3112,16 +3115,16 @@ body.has-demo-banner { padding-top: 40px; }
    purement et simplement au lieu d'être floues.
 
    Pour ajuster : --cb-blur ci-dessous, c'est le seul réglage. */
-:root { --cb-blur: 0.30em; }
+:root { --cb-blur: 0.32em; }
 
 .cb-blurred {
-  -webkit-text-fill-color: transparent;
+  color: transparent !important;
   text-shadow:
-    0 0 var(--cb-blur) currentColor,
-    0 0 var(--cb-blur) currentColor,
-    0 0 var(--cb-blur) currentColor,
-    0 0 var(--cb-blur) currentColor,
-    0 0 calc(var(--cb-blur) * 2) currentColor;
+    0 0 var(--cb-blur) var(--cb-ink, #edf0f7),
+    0 0 var(--cb-blur) var(--cb-ink, #edf0f7),
+    0 0 var(--cb-blur) var(--cb-ink, #edf0f7),
+    0 0 var(--cb-blur) var(--cb-ink, #edf0f7),
+    0 0 calc(var(--cb-blur) * 2) var(--cb-ink, #edf0f7);
   user-select: none;
   cursor: default;
 }
