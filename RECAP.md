@@ -391,3 +391,13 @@ deploiement : une regression du filtre pub n'atteint plus la VM.
 ## A faire prochaine session
 
 Rien de planifie, aucune dette ouverte.
+
+## Historique des chantiers
+
+Repris de `TODO.md`, supprime le 2026-07-30 (plus aucune tache en attente).
+
+- Mur a idees — signalement d'une idee publiee et commentaires : ecartes le 2026-07-30.
+- Guides SEO (ETF, dividendes, fiscalite PEA) : livres le 2026-07-30.
+- 7.7 App Check : termine le 2026-07-29.
+- 7.6 Presence Discord du bot : abandonne le 2026-07-29.
+- 7.5 Feature Idees : livree le 2026-07-29.
