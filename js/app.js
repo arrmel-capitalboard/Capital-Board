@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730g';
+const APP_VERSION = '20260730h';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1445,21 +1445,28 @@ window.pinSetupSubmit = async function() {
 // Le PIN reste obligatoire pour tous les autres comptes. La dérogation ne
 // touche que le compte admin et n'efface pas le code enregistré : le
 // réactiver le remet en service sans reconfiguration.
-window.adminDisablePin = async function() {
+window.adminDisablePin = function() {
   const user = fbAuth.currentUser;
   if (!user || !isAdmin()) return;
-  if (!confirm("Désactiver le code PIN sur votre compte ?\n\n"
-    + "L'application s'ouvrira sans code sur cet appareil comme sur les autres, "
-    + "dès que votre session est active. Les autres comptes restent protégés.\n\n"
-    + "Votre code est conservé : vous pourrez le réactiver ici sans le ressaisir.")) return;
-  const box = document.getElementById('pin-status-box');
-  try {
-    await _setPinOptOut(user.uid, true);
-    await window.refreshPinStatus();
-  } catch (e) {
-    console.error('[pin] désactivation admin échouée:', e);
-    if (box) box.textContent = 'Échec de la désactivation : ' + (e.message || e.code || 'erreur inconnue');
-  }
+  showConfirmModal({
+    icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
+    title: 'Désactiver le code PIN ?',
+    body: "L'application s'ouvrira sans code sur votre compte, sur cet appareil comme sur les autres.\n"
+        + 'Les autres comptes restent protégés.\n\n'
+        + 'Votre code est conservé : vous pourrez le réactiver ici sans le ressaisir.',
+    okLabel: 'Désactiver',
+    danger: true,
+    onConfirm: async () => {
+      const box = document.getElementById('pin-status-box');
+      try {
+        await _setPinOptOut(user.uid, true);
+        await window.refreshPinStatus();
+      } catch (e) {
+        console.error('[pin] désactivation admin échouée:', e);
+        if (box) box.textContent = 'Échec de la désactivation : ' + (e.message || e.code || 'erreur inconnue');
+      }
+    },
+  });
 };
 
 window.adminReenablePin = async function() {
@@ -14441,21 +14448,30 @@ const _MAIL_FOOTER_LINKS = [
   ['Discord',   'https://discord.gg/p73QMm4xDm',                   'discord.png'],
   ['Instagram', 'https://www.instagram.com/capitalboard',          'instagram.png'],
   ['TikTok',    'https://www.tiktok.com/@capital.board',            'tiktok.png'],
+  ['YouTube',   'https://www.youtube.com/@CapitalBoardApp',         'youtube.png'],
+  ['Facebook',  'https://www.facebook.com/profile.php?id=61592639900050', 'facebook.png'],
+  ['LinkedIn',  'https://www.linkedin.com/company/capitalboard/',   'linkedin.png'],
   ['GitHub',    'https://github.com/arrmel-capitalboard/Capital-Board', 'github.png'],
 ];
 // Construit le HTML de l'email de diffusion à partir du texte saisi.
 function _bcMailHtml(text) {
-  const cells = _MAIL_FOOTER_LINKS.map(([label, url, icon]) =>
-    '<td style="padding:0 7px"><a href="' + url + '" target="_blank" rel="noopener">' +
-    '<img src="' + _MAIL_ICON_BASE + icon + '" width="34" height="34" alt="' + label + '" ' +
-    'style="display:block;border:0;border-radius:9px;width:34px;height:34px"></a></td>'
-  ).join('');
+  // Rangées de 4 au maximum : 8 icônes en ligne feraient 384 px et déborderaient
+  // sur un écran de 320 px, les clients mail ne repliant pas un <tr>.
+  const _MAIL_ICONS_PER_ROW = 4;
+  const cells = _MAIL_FOOTER_LINKS.reduce((rows, [label, url, icon], i) => {
+    if (i % _MAIL_ICONS_PER_ROW === 0) rows.push([]);
+    rows[rows.length - 1].push(
+      '<td style="padding:5px 7px"><a href="' + url + '" target="_blank" rel="noopener">' +
+      '<img src="' + _MAIL_ICON_BASE + icon + '" width="34" height="34" alt="' + label + '" ' +
+      'style="display:block;border:0;border-radius:9px;width:34px;height:34px"></a></td>');
+    return rows;
+  }, []).map(r => '<tr>' + r.join('') + '</tr>').join('');
   return '<div style="font-family:sans-serif;background:#0f0f13;color:#e8eaf0;padding:32px">' +
     '<div style="max-width:480px;margin:0 auto;background:#1a1a24;border-radius:16px;padding:32px;border:1px solid #2a2a3a">' +
     '<div style="font-size:18px;font-weight:700;color:#7c6df5;margin-bottom:20px">Capital Board</div>' +
     '<div style="color:#e8eaf0;line-height:1.7;font-size:15px;white-space:pre-wrap">' + _escapeHtmlChat(text) + '</div>' +
     '</div>' +
-    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:20px auto 0"><tr>' + cells + '</tr></table>' +
+    '<table role="presentation" cellpadding="0" cellspacing="0" border="0" align="center" style="margin:20px auto 0">' + cells + '</table>' +
     '<div style="max-width:480px;margin:12px auto 0;text-align:center;font-size:11px;color:#4a5266">Capital Board · Ne pas répondre à cet email.</div>' +
     '</div>';
 }

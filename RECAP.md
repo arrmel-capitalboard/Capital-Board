@@ -339,8 +339,10 @@ pages statiques ne lisent pas Firestore.
 Invitations Discord : trois codes coexistaient, celui de la modale Support (`DpYjWWegR`)
 expirait le 2026-08-17. Tout est sur `p73QMm4xDm`, permanent.
 
-Icones manquantes dans `assets/email/` : pas de `youtube.png` / `facebook.png` /
-`linkedin.png`, ces trois reseaux sont absents du footer des emails de diffusion.
+Footer des emails de diffusion : `youtube.png`, `facebook.png` et `linkedin.png` generees
+le 30/07 (144x144, carre blanc arrondi + glyphe de marque, comme les 5 existantes ;
+script PIL jetable, non commite). Les 8 icones sont reparties en rangees de 4 — une seule
+ligne ferait 384 px et deborderait sur un ecran de 320 px, un `<tr>` ne se repliant pas.
 
 ### Derogation PIN du compte admin (30/07)
 
@@ -362,5 +364,8 @@ kill-switch global `config/app.pinDisabled`.
 
 ## A faire prochaine session
 
-- [ ] Icones email `youtube.png` / `facebook.png` / `linkedin.png` (34x34) pour le footer
-      des emails de diffusion
+Rien de planifie. Dettes connues, sans echeance :
+
+- Tri des idees cote client (pas d'index composite Firestore) — a revoir si le volume grossit
+- URLs des reseaux dupliquees dans 4 fichiers (`config/app.social` ne surcharge que l'app)
+- Mots-cles automod `mp`/`dm` en poids faible depuis le 30/07 — surveiller les faux negatifs
