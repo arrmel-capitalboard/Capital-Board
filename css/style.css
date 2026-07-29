@@ -3104,9 +3104,11 @@ body.has-demo-banner { padding-top: 40px; }
    est donc relevée en JS avant le masquage et figée dans --cb-ink, ce qui
    garde un gain vert et une perte rouge une fois flous.
 
-   Couches empilées : une ombre seule se dilue en grandissant et ne laisse
-   qu'un voile fantomatique. Empilées, le halo reste dense alors qu'il n'y a
-   plus rien à déchiffrer.
+   Deux leviers indépendants, à ne pas confondre : le rayon rend illisible,
+   les couches rendent visible. Trop de couches et le halo redessine la forme
+   des glyphes — c'était le cas à 5, où les montants restaient déchiffrables
+   tout en paraissant gras. Trois suffisent à ce que le halo se voie, pendant
+   que le rayon fait le travail de brouillage.
 
    Le rayon est en em, jamais en pixels : les montants vont de 25px pour la
    valorisation à 13px dans les tableaux. Un rayon fixe de 18px valait 0.7em
@@ -3115,16 +3117,14 @@ body.has-demo-banner { padding-top: 40px; }
    purement et simplement au lieu d'être floues.
 
    Pour ajuster : --cb-blur ci-dessous, c'est le seul réglage. */
-:root { --cb-blur: 0.32em; }
+:root { --cb-blur: 0.55em; }
 
 .cb-blurred {
   color: transparent !important;
   text-shadow:
     0 0 var(--cb-blur) var(--cb-ink, #edf0f7),
     0 0 var(--cb-blur) var(--cb-ink, #edf0f7),
-    0 0 var(--cb-blur) var(--cb-ink, #edf0f7),
-    0 0 var(--cb-blur) var(--cb-ink, #edf0f7),
-    0 0 calc(var(--cb-blur) * 2) var(--cb-ink, #edf0f7);
+    0 0 calc(var(--cb-blur) * 1.9) var(--cb-ink, #edf0f7);
   user-select: none;
   cursor: default;
 }
