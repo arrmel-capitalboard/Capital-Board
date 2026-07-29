@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260729l';
+const APP_VERSION = '20260729m';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1637,10 +1637,19 @@ const _EYE_OFF_SVG  = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-1
 // titre se retrouvait flouté dans le tableau.
 const _MONEY_RE = /\d[\s ]*[€$£¥%]|[€$£¥][\s ]*\d|\d[\s ]*(?:EUR|USD)\b/;
 
-// Colonnes de noms : jamais masquées, même si le libellé ressemble à un
-// montant (« MSCI World 100% Hedged »). Ajouter .no-blur sur tout nouvel
-// élément à préserver.
-const _NEVER_BLUR = '.ticker-name, .sd-name, .ec-row-name, .ec-modal-name, .ost-firm-name, .no-blur';
+// Jamais masqué. Deux familles :
+//   — les colonnes de noms, même quand le libellé ressemble à un montant
+//     (« MSCI World 100% Hedged ») ;
+//   — les pages de contenu éditorial. Actualités, Contenus favoris et Boîte à
+//     idées parlent des marchés en général, jamais du patrimoine de
+//     l'utilisateur : y flouter les chiffres rendait les articles illisibles
+//     sans rien protéger.
+// Poser .no-blur sur tout nouvel élément à préserver.
+// Les deux modales des idées vivent à la racine du document, hors de
+// #page-idees : il faut donc les nommer séparément.
+const _NEVER_BLUR = '.ticker-name, .sd-name, .ec-row-name, .ec-modal-name, .ost-firm-name, .no-blur,'
+  + ' #page-actualites, #page-favoris, #page-idees,'
+  + ' #idea-form-overlay, #idea-mine-overlay';
 
 let _hideObserver = null;
 let _hideActive = false;
