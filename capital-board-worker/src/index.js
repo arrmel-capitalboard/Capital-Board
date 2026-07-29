@@ -544,7 +544,16 @@ async function listAuthUsers(env) {
     });
     if (!res.ok) throw new Error(`identitytoolkit ${res.status}: ${await res.text()}`);
     const data = await res.json();
-    (data.userInfo || []).forEach(u => { if (u.localId) users.push({ localId: u.localId, email: u.email || '' }); });
+    (data.userInfo || []).forEach(u => {
+      if (!u.localId) return;
+      users.push({
+        localId:       u.localId,
+        email:         u.email || '',
+        emailVerified: !!u.emailVerified,
+        createdAt:     Number(u.createdAt)   || 0,
+        lastLoginAt:   Number(u.lastLoginAt) || 0,
+      });
+    });
     nextPageToken = data.nextPageToken || '';
   } while (nextPageToken);
   return users;
@@ -553,6 +562,48 @@ async function listAuthUsers(env) {
 // Emails des comptes Auth (pour les diffusions).
 async function listAuthEmails(env) {
   return (await listAuthUsers(env)).map(u => u.email).filter(Boolean);
+}
+
+// Supprime un compte Firebase Auth. Irréversible.
+async function deleteAuthUser(uid, env) {
+  const at = await getAccessToken(env);
+  const url = `https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:delete`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${at}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ localId: uid }),
+  });
+  if (!res.ok) throw new Error(`accounts:delete ${res.status}: ${await res.text()}`);
+}
+
+// Purge des inscriptions jamais confirmées. Un compte dont l'email n'est
+// toujours pas vérifié 7 jours après sa création est supprimé — délai annoncé
+// à l'inscription sur l'écran « Vérifiez votre email ». Un compte vérifié n'est
+// jamais touché, quelle que soit son ancienneté ou sa dernière connexion.
+const UNVERIFIED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+
+async function purgeUnverifiedAccounts(env) {
+  const users  = await listAuthUsers(env);
+  const cutoff = Date.now() - UNVERIFIED_TTL_MS;
+  let purged = 0;
+  for (const u of users) {
+    if (u.emailVerified) continue;                 // vérifié → intouchable
+    if (u.localId === env.ADMIN_UID) continue;     // jamais l'admin
+    if (!u.createdAt || u.createdAt > cutoff) continue; // date inconnue → on garde
+    try {
+      await deleteAuthUser(u.localId, env);
+      // Best-effort : ces comptes n'ont normalement aucun doc (ils ne sont
+      // jamais entrés dans l'app), mais on nettoie au cas où.
+      for (const path of [`roles/${u.localId}`, `presence/${u.localId}`, `supportThreads/${u.localId}`]) {
+        try { await firestoreDelete(path, env); } catch (_) {}
+      }
+      purged++;
+      console.log(`purge non vérifié: ${u.localId} (${u.email})`);
+    } catch (e) {
+      console.error(`purge ${u.localId}: ${e.message}`);
+    }
+  }
+  return purged;
 }
 
 // Génère un mot de passe temporaire lisible (sans caractères ambigus), avec au
@@ -1584,6 +1635,21 @@ export default {
         try { await broadcastEmailToAll(subject, html, env); }
         catch (e) { console.error('scheduled send ' + id + ': ' + e.message); }
       }
+    })());
+
+    // Purge des comptes jamais vérifiés. Le cron tourne toutes les 5 min mais
+    // lister tout Firebase Auth à ce rythme n'a aucun intérêt : on limite à un
+    // passage toutes les 6 h via un marqueur KV. Un délai de 7 jours tolère
+    // largement quelques heures de retard.
+    ctx.waitUntil((async () => {
+      const KEY = 'purge:unverified:lastRun';
+      try {
+        const last = Number(await env.EARNINGS.get(KEY)) || 0;
+        if (Date.now() - last < 6 * 60 * 60 * 1000) return;
+        await env.EARNINGS.put(KEY, String(Date.now()));
+        const n = await purgeUnverifiedAccounts(env);
+        if (n) console.log(`purge non vérifiés: ${n} compte(s) supprimé(s)`);
+      } catch (e) { console.error('cron purge: ' + e.message); }
     })());
   },
 };

@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260729o';
+const APP_VERSION = '20260729p';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -13896,10 +13896,19 @@ async function renderAdminUsers() {
     let authUsers = null;
     try { const r = await _adminAuthPost('/admin/list-auth-users', {}); if (r && r.ok && Array.isArray(r.users)) authUsers = r.users; } catch (_) {}
     if (authUsers) {
-      const authEmail = {};
-      const validUids = new Set(authUsers.map(a => { authEmail[a.localId] = a.email; return a.localId; }));
-      Object.keys(users).forEach(uid => { if (!validUids.has(uid)) delete users[uid]; });
-      Object.values(users).forEach(u => { if (!u.email && authEmail[u.uid]) u.email = authEmail[u.uid]; });
+      const byUid = {};
+      authUsers.forEach(a => { byUid[a.localId] = a; });
+      Object.keys(users).forEach(uid => { if (!byUid[uid]) delete users[uid]; });
+      // Auth fait foi pour l'existence du compte : on ajoute ceux qui n'ont
+      // aucun doc Firestore. Ce sont les inscrits qui ne sont jamais entrés
+      // dans l'app (mail de vérification jamais cliqué) — invisibles jusqu'ici,
+      // alors que ce sont justement ceux qu'on veut voir.
+      authUsers.forEach(a => {
+        const u = get(a.localId);
+        if (!u.email) u.email = a.email;
+        u.emailVerified = a.emailVerified !== false;
+        u.createdAt     = a.createdAt || 0;
+      });
     }
 
     const list = Object.values(users).sort((a, b) => (b.lastSeen ? b.lastSeen.getTime() : 0) - (a.lastSeen ? a.lastSeen.getTime() : 0));
@@ -13913,6 +13922,11 @@ async function renderAdminUsers() {
       const sub = (u.username ? '@' + u.username + ' · ' : '') + (u.email ? u.email + ' · ' : '') + _relTime(u.lastSeen);
       const dot = u.online ? '<span style="width:7px;height:7px;border-radius:50%;background:var(--positive);box-shadow:0 0 8px var(--positive);flex-shrink:0"></span>' : '<span style="width:7px;height:7px;border-radius:50%;background:var(--text3);flex-shrink:0"></span>';
       const roleBadge = '<span style="font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:5px;font-family:var(--mono);' + (isSuper ? 'background:rgba(255,77,106,.14);color:#ff5d78' : 'background:rgba(255,255,255,.06);color:var(--text3)') + '">' + (isSuper ? 'ADMIN' : 'USER') + '</span>';
+      // Compte non vérifié : le cron du worker le supprime 7 j après sa création.
+      const daysLeft = u.createdAt ? Math.ceil((u.createdAt + 7 * 86400000 - Date.now()) / 86400000) : null;
+      const verifBadge = u.emailVerified === false
+        ? '<span title="Email jamais vérifié — suppression automatique 7 jours après l\'inscription" style="font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:5px;font-family:var(--mono);background:rgba(245,183,49,.14);color:#f5b731">MAIL NON VÉRIFIÉ' + (daysLeft !== null ? ' · ' + (daysLeft > 0 ? 'J-' + daysLeft : 'PURGE') : '') + '</span>'
+        : '';
       const safeLabel = label.replace(/'/g, '');
       const resetBtn = (self || u.uid === ADMIN_UID) ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px" onclick="adminResetPassword(\'' + u.uid + '\',\'' + safeLabel + '\')">Reset mdp</button>';
       const delBtn = (self || u.uid === ADMIN_UID) ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px;border-color:rgba(255,93,120,.3);color:#ff5d78" onclick="adminDeleteUser(\'' + u.uid + '\',\'' + safeLabel + '\')">Effacer (RGPD)</button>';
@@ -13921,7 +13935,7 @@ async function renderAdminUsers() {
         '<div style="flex:1;min-width:0">' +
           '<div style="font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:7px">' + label +
             (u.lastSeen ? '<span title="Dernière connexion" style="font-size:10px;font-weight:600;color:var(--text2);font-family:var(--mono);padding:1px 6px;background:rgba(255,255,255,.05);border-radius:5px">' + _relTimeShort(u.lastSeen) + '</span>' : '') +
-            roleBadge + '</div>' +
+            roleBadge + verifBadge + '</div>' +
           '<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + sub + '</div>' +
         '</div>' +
         '<div style="display:flex;gap:6px;flex-shrink:0">' + resetBtn + delBtn + '</div>' +
@@ -13939,7 +13953,7 @@ async function renderAdminUsers() {
     if (pending.length) {
       html += '<button class="pf-btn ghost" id="admin-pending-btn" onclick="adminTogglePendingUsers()" style="font-size:11.5px;margin-top:12px">Voir les personnes non enregistrées (' + pending.length + ')</button>' +
         '<div id="admin-pending-users" style="display:none;margin-top:4px">' +
-          '<div style="font-size:11px;color:var(--text3);line-height:1.6;margin:8px 0">Comptes sans prénom/nom/nom d\'utilisateur complet.</div>' +
+          '<div style="font-size:11px;color:var(--text3);line-height:1.6;margin:8px 0">Comptes sans prénom/nom/nom d\'utilisateur complet. Ceux marqués <strong style="color:#f5b731">MAIL NON VÉRIFIÉ</strong> n\'ont jamais confirmé leur adresse : ils sont supprimés automatiquement 7 jours après l\'inscription.</div>' +
           pending.map(rowHtml).join('') +
         '</div>';
     }
