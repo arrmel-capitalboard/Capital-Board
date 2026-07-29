@@ -370,10 +370,9 @@ kill-switch global `config/app.pinDisabled`.
 deploiement. L'index attendu est decrit dans `firestore.indexes.json` (`ideas` :
 status ASC, score DESC) et declare dans `firebase.json`.
 
-**Il n'est pas encore cree** : l'API Admin renvoie 403 avec la cle de service
-(`firebase-adminsdk-fbsvc@capitalboard`), qui peut lister les index mais pas les creer.
-A faire en console Firebase, ou en ajoutant `roles/datastore.indexAdmin` a ce compte.
-Sans lui, tout fonctionne — juste en tri client.
+**Cree le 30/07** en console Firebase (etat READY verifie via l'API Admin). La cle de
+service `firebase-adminsdk-fbsvc@capitalboard` peut *lister* les index mais pas les creer
+(403) : pour en creer depuis un script, il faudrait lui ajouter `roles/datastore.indexAdmin`.
 
 **Liens dupliques.** `data/links.json` fait desormais reference et
 `scripts/check-links.mjs` verifie les 4 copies (28 controles), en echouant sur toute
@@ -391,4 +390,4 @@ deploiement : une regression du filtre pub n'atteint plus la VM.
 
 ## A faire prochaine session
 
-- [ ] Creer l'index composite `ideas` (status ASC, score DESC) — voir ci-dessus
+Rien de planifie, aucune dette ouverte.
