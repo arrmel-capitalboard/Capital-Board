@@ -287,7 +287,24 @@ Ruleset publie le 29/07 : `3d4ffd28-3547-4bda-b3bf-143f01692350`.
 Le TODO affirmait qu un bloc `ideas` restait dans les regles avec un trou de securite.
 C etait obsolete : le bloc avait deja ete retire. Les regles ont ete ecrites de zero.
 
+## Session 30/07/2026 — Guides SEO + avertissement legal
+
+**3 nouveaux guides** (template repris de `guides/pea-vs-cto.html`, CSS inline autonome) :
+`guides/fiscalite-pea.html`, `guides/investir-etf-pea.html`, `guides/dividendes-pea.html`.
+Chacun porte un schema `Article` **et** un schema `FAQPage` (rich results Google) —
+les 4 guides precedents n'avaient que `Article`.
+
+Maillage interne : cartes ajoutees dans la grille `#guides` de `pages/index.html`
+(7 cartes au total), bloc « A lire ensuite » dans les nouveaux guides, liens croises
+ajoutes dans le footer des 4 anciens. `sitemap.xml` : 3 URLs de plus (priority 0.8).
+
+**Avertissement « pas un conseil en investissement »** : n'existait que dans les mentions
+legales, les CGU, les footers de guides et 2 endroits de l'app (analyse IA, idees).
+Ajoute la ou l'utilisateur voit des chiffres — footer de la landing (`.foot-disclaimer`),
+ecran de connexion de l'app, liens legaux de la sidebar (`.sidebar-legal-note`), tiroir
+mobile, section « Informations legales » du modal profil, footer de la page communaute.
+`pages/soutien.html` et `404.html` non concernes (aucune donnee financiere).
+
 ## A faire prochaine session
 
-- [ ] Nouveaux guides SEO (investir ETF, dividendes PEA, fiscalite PEA)
 - [ ] Vrais liens reseaux sociaux (Instagram, YouTube, TikTok) quand disponibles

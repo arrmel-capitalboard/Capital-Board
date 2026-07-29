@@ -17,6 +17,7 @@ La feature est en place (voir RECAP.md). Ce qui n'a volontairement pas été fai
 
 ---
 
+*Guides SEO (ETF, dividendes, fiscalité PEA) : livrés le 2026-07-30, voir RECAP.md.*
 *7.6 Présence Discord du bot : abandonné le 2026-07-29.*
 *7.7 App Check : terminé le 2026-07-29, voir RECAP.md.*
 *7.5 Feature Idées : livrée le 2026-07-29, voir RECAP.md.*
