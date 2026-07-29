@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260729k';
+const APP_VERSION = '20260729l';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1631,7 +1631,17 @@ const _EYE_OFF_SVG  = '<path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-1
 // Contrepartie assumée : le montant reste présent dans le DOM, seulement
 // masqué à l'affichage. Le mode protège des regards et des captures d'écran,
 // pas d'un inspecteur ouvert.
-const _MONEY_RE = /[€$£¥%]|\bEUR\b|\bUSD\b/;
+// Le symbole doit toucher le nombre. Un « EUR » ou un « % » isolé quelque part
+// dans un texte ne fait pas un montant : « Amundi MSCI World UCITS ETF EUR »
+// contient EUR et des chiffres sans qu'il y ait la moindre somme, et le nom du
+// titre se retrouvait flouté dans le tableau.
+const _MONEY_RE = /\d[\s ]*[€$£¥%]|[€$£¥][\s ]*\d|\d[\s ]*(?:EUR|USD)\b/;
+
+// Colonnes de noms : jamais masquées, même si le libellé ressemble à un
+// montant (« MSCI World 100% Hedged »). Ajouter .no-blur sur tout nouvel
+// élément à préserver.
+const _NEVER_BLUR = '.ticker-name, .sd-name, .ec-row-name, .ec-modal-name, .ost-firm-name, .no-blur';
+
 let _hideObserver = null;
 let _hideActive = false;
 
@@ -1639,13 +1649,11 @@ function _maskSensitiveIn(root) {
   if (!root) return;
   const walker = document.createTreeWalker(root, NodeFilter.SHOW_TEXT, {
     acceptNode: n => {
-      const v = n.nodeValue || '';
-      // Sans chiffre, il n'y a rien à cacher : un « % » seul dans un libellé
-      // ne doit pas flouter la ligne entière.
-      if (!/\d/.test(v) || !_MONEY_RE.test(v)) return NodeFilter.FILTER_REJECT;
+      if (!_MONEY_RE.test(n.nodeValue || '')) return NodeFilter.FILTER_REJECT;
       const p = n.parentElement;
       if (!p) return NodeFilter.FILTER_REJECT;
       if (p.closest('script,style,#device-verify-view,#verify-view,#login-view,#register-view')) return NodeFilter.FILTER_REJECT;
+      if (p.closest(_NEVER_BLUR)) return NodeFilter.FILTER_REJECT;
       return NodeFilter.FILTER_ACCEPT;
     }
   });

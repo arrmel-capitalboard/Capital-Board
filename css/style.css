@@ -3117,7 +3117,7 @@ body.has-demo-banner { padding-top: 40px; }
    purement et simplement au lieu d'être floues.
 
    Pour ajuster : --cb-blur ci-dessous, c'est le seul réglage. */
-:root { --cb-blur: 0.55em; }
+:root { --cb-blur: 0.46em; }
 
 .cb-blurred {
   color: transparent !important;
