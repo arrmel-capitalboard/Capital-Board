@@ -173,9 +173,14 @@ Fonctionnent dans descriptions/valeurs de fields. PAS dans titres/noms de fields
 
 ## Rappels automod
 
-- Logs debug `[automod-pub]` toujours actifs dans PM2 (score + mistral) — retirer quand stable
-- `\bmp\b` et `\bdm\b` patterns larges → surveiller faux positifs
 - `src/lib/automod-pub.js` : HIGH_SCORE=8 (auto-delete), MID_SCORE=2 (→ Mistral)
+- **Deux listes de mots-cles depuis le 30/07** : `PUB_KEYWORDS` (francs, 2 pts) et
+  `PUB_WEAK_KEYWORDS` (ambigus, 1 pt). Un terme ambigu seul reste sous MID_SCORE, donc
+  n'appelle plus Mistral. Sont passes en ambigu : `mp`, `dm`, `gagne/gagné`, `follow`,
+  `x\d+` — tous normaux dans une conversation d'investissement (« x10 sur Nvidia »).
+  `mp`/`dm` restent francs uniquement en contexte de sollicitation (« dm moi »,
+  « envoie moi un mp », « prix en mp »).
+- Logs debug `[automod-pub]` : deja retires le 29/06, plus rien a nettoyer.
 
 ---
 

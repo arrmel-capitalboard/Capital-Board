@@ -6,6 +6,8 @@ const MISTRAL_API_KEY = process.env.MISTRAL_API_KEY;
 const recentMessages = new Map();
 const REPEAT_WINDOW = 5 * 60 * 1000;
 
+// Motifs francs : des formulations qu'on ne croise pas dans une conversation
+// normale sur l'investissement. Pesés 2 points chacun.
 const PUB_KEYWORDS = [
   /\brejoins?\b/i,
   /\brejoignez\b/i,
@@ -16,9 +18,7 @@ const PUB_KEYWORDS = [
   /\bpromo\s+code\b/i,
   /\b\d+\s*%\s*de\s*r[eé]duction\b/i,
   /\b\d+\s*%\s*off\b/i,
-  /\bgagnez?\b/i,
-  /\b(?:en\s+)?mp\b/i,
-  /\b(?:en\s+)?dm\b/i,
+  /\bgagnez\b/i,
   /\bmessage\s+priv[eé]\b/i,
   /\bje\s+(?:te\s+)?vends?\b/i,
   /\blien\s+en\s+bio\b/i,
@@ -29,13 +29,31 @@ const PUB_KEYWORDS = [
   /\blimited\s+offer\b/i,
   /\babonnez?-vous\b/i,
   /\bsubscribe\b/i,
-  /\bfollow(?:ez|s)?\b/i,
+  /\bfollow\s+me\b/i,
+  /\bfollowez\b/i,
   /\btelegram\b/i,
   /\bwhatsapp\b/i,
   /\bearn\s+money\b/i,
   /\bmake\s+money\b/i,
   /\bairdrop\b/i,
   /\bcrypto\s+pump\b/i,
+  // « mp » / « dm » uniquement en contexte de sollicitation : c'est la
+  // formulation qui trahit la pub, pas le sigle lui-même.
+  /\b(?:mp|dm)\s*(?:moi|nous|me)\b/i,
+  /\b(?:envoi|envoie|envoyez|[eé]cri|[eé]cris|[eé]crivez|contacte|contactez|passe|passez)\w*\s+(?:(?:moi|nous)\s+)?(?:un\s+|en\s+|par\s+)?(?:mp|dm)\b/i,
+  /\b(?:dispo|dispos|infos?|d[eé]tails?|tarifs?|prix)\s+(?:en|par)\s+(?:mp|dm)\b/i,
+];
+
+// Motifs ambigus : parfaitement normaux dans un échange sur l'investissement
+// (« il a fait x10 sur Nvidia », « j'ai gagné 200 € », « je follow cette
+// valeur », « je te réponds en MP »). Pesés 1 point : un seul ne suffit plus à
+// atteindre MID_SCORE, il faut qu'un autre signal l'accompagne. Sans ça, un
+// simple « x10 » déclenchait un appel Mistral à chaque message.
+const PUB_WEAK_KEYWORDS = [
+  /\b(?:en\s+)?mp\b/i,
+  /\b(?:en\s+)?dm\b/i,
+  /\bgagn[eé]e?s?\b/i,
+  /\bfollow(?:s|ers)?\b/i,
   /\bx\d+\b/i,
 ];
 
@@ -51,11 +69,18 @@ function scoreMessage(content, userId) {
   let score = 0;
   const reasons = [];
 
-  // 1. Mots-clés pub
+  // 1. Mots-clés pub francs
   const hits = PUB_KEYWORDS.filter((r) => r.test(content));
   if (hits.length > 0) {
     score += hits.length * 2;
     reasons.push(`mots-clés pub (×${hits.length})`);
+  }
+
+  // 1 bis. Mots-clés ambigus, moitié moins lourds.
+  const weakHits = PUB_WEAK_KEYWORDS.filter((r) => r.test(content));
+  if (weakHits.length > 0) {
+    score += weakHits.length;
+    reasons.push(`termes ambigus (×${weakHits.length})`);
   }
 
   // 2. Majuscules abusives (>60%, min 15 lettres)
