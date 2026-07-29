@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260729p';
+const APP_VERSION = '20260730a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6723,6 +6723,65 @@ async function buildPortfolioHistory(data, graphStart, graphEnd) {
   return dataset;
 }
 
+// Détail des transactions rattachées aux pastilles de la courbe.
+// Clé : datasetIndex (1 = achats, 2 = ventes) → dataIndex → [tx…].
+// Rempli par renderPortfolioChart, lu par le tooltip.
+let _pfTxByIdx = { 1: {}, 2: {} };
+const PF_TT_TX_MAX = 4;   // au-delà, on résume « +N autres »
+
+function _pfEur(v) {
+  return v.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
+}
+function _pfTxDateFr(d) {
+  if (!d) return '—';
+  return new Date(d + 'T12:00:00').toLocaleDateString('fr-FR',
+    { day: 'numeric', month: 'long', year: 'numeric' });
+}
+
+// Bloc HTML décrivant les transactions d'une pastille : quoi, combien,
+// à quel prix, quel montant, quand — et la plus-value réalisée sur une vente.
+function _pfTxDetailHtml(dsIdx, dataIndex) {
+  const txs = (_pfTxByIdx[dsIdx] || {})[dataIndex] || [];
+  if (!txs.length) return '';
+  const isBuy = dsIdx === 1;
+  const dot   = isBuy ? IC.dotGreen : IC.dotRed;
+  const verb  = isBuy ? 'Achat' : 'Vente';
+  const accent = isBuy ? '#00e09e' : '#ff4d6a';
+
+  const shown = txs.slice(0, PF_TT_TX_MAX);
+  let html = shown.map(tx => {
+    const montant = (tx.qty || 0) * (tx.price || 0);
+    const label = tx.name || tx.ticker || '—';
+    const tick  = tx.ticker && tx.name ? ' <span style="color:#495068">' + tx.ticker + '</span>' : '';
+    let pnl = '';
+    if (!isBuy && tx.realizedPnl != null) {
+      pnl = ' · <span style="color:' + (tx.realizedPnl >= 0 ? '#00e09e' : '#ff4d6a') + '">' +
+        (tx.realizedPnl >= 0 ? '+' : '') + _pfEur(tx.realizedPnl) + '</span>';
+    }
+    return '<div style="margin-top:6px">' +
+      '<div style="display:flex;align-items:center;gap:6px;color:#edf0f7;font-weight:600">' +
+        dot + '<span style="color:' + accent + '">' + verb + '</span>' +
+        '<span style="max-width:170px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' +
+          label + '</span>' + tick +
+      '</div>' +
+      '<div style="margin-left:16px;color:#8892a8;font-size:11px;white-space:nowrap">' +
+        (tx.qty || 0) + ' × ' + _pfEur(tx.price || 0) + ' = ' +
+        '<span style="color:#edf0f7">' + _pfEur(montant) + '</span>' + pnl +
+      '</div>' +
+      '<div style="margin-left:16px;color:#495068;font-size:11px;white-space:nowrap">' +
+        _pfTxDateFr(tx.date) +
+      '</div>' +
+    '</div>';
+  }).join('');
+
+  if (txs.length > shown.length) {
+    const rest = txs.length - shown.length;
+    html += '<div style="margin-top:4px;margin-left:16px;color:#495068;font-size:11px">+' +
+      rest + ' autre' + (rest > 1 ? 's' : '') + ' ' + verb.toLowerCase() + '</div>';
+  }
+  return html;
+}
+
 // Tooltip HTML externe du graphique portefeuille : permet d'afficher
 // des icônes SVG (date, prix) que le tooltip canvas de Chart.js ne rend pas.
 function portfolioChartTooltip(context) {
@@ -6734,7 +6793,7 @@ function portfolioChartTooltip(context) {
     el.style.cssText = 'position:absolute;pointer-events:none;background:#10121c;' +
       'border:1px solid rgba(255,255,255,0.06);border-radius:8px;padding:10px 12px;' +
       'font-size:12px;opacity:0;transition:opacity .12s;z-index:50;' +
-      'box-shadow:0 8px 24px rgba(0,0,0,0.5);white-space:nowrap';
+      'box-shadow:0 8px 24px rgba(0,0,0,0.5);max-width:min(280px,86vw)';
     const parent = chart.canvas.parentNode;
     if (getComputedStyle(parent).position === 'static') parent.style.position = 'relative';
     parent.appendChild(el);
@@ -6742,26 +6801,31 @@ function portfolioChartTooltip(context) {
   if (tooltip.opacity === 0) { el.style.opacity = 0; return; }
 
   const title = (tooltip.title && tooltip.title[0]) || '';
-  let rows = '';
+  let rows = '', details = '';
   (tooltip.dataPoints || []).forEach(dp => {
     const val = dp.parsed.y;
     if (val === null || val === undefined) return;
-    const valStr = val.toLocaleString('fr-FR', { style: 'currency', currency: 'EUR' });
     if (dp.datasetIndex === 0) {
-      rows += '<div style="display:flex;align-items:center;gap:6px;color:#edf0f7;margin-top:2px">' +
-        IC.wallet + '<span>' + valStr + '</span></div>';
+      rows += '<div style="display:flex;align-items:center;gap:6px;color:#edf0f7;margin-top:2px;white-space:nowrap">' +
+        IC.wallet + '<span>' + _pfEur(val) + '</span></div>';
     } else {
-      const isBuy = dp.datasetIndex === 1;
-      rows += '<div style="display:flex;align-items:center;gap:6px;color:#edf0f7;margin-top:4px">' +
-        (isBuy ? IC.dotGreen : IC.dotRed) +
-        '<span>' + (isBuy ? 'Achat' : 'Vente') + ' · ' + valStr + '</span></div>';
+      // Pastille achat/vente : on déplie le détail des transactions du jour.
+      details += _pfTxDetailHtml(dp.datasetIndex, dp.dataIndex);
     }
   });
-  el.innerHTML = '<div style="display:flex;align-items:center;gap:6px;color:#8892a8;margin-bottom:4px">' +
-    IC.calendar + '<span>' + title + '</span></div>' + rows;
+  if (details) {
+    details = '<div style="margin-top:8px;padding-top:6px;border-top:1px solid rgba(255,255,255,0.07)">' +
+      details + '</div>';
+  }
+  el.innerHTML = '<div style="display:flex;align-items:center;gap:6px;color:#8892a8;margin-bottom:4px;white-space:nowrap">' +
+    IC.calendar + '<span>' + title + '</span></div>' + rows + details;
 
   el.style.opacity = 1;
-  el.style.left = (chart.canvas.offsetLeft + tooltip.caretX) + 'px';
+  // Clamp horizontal : sur mobile un tooltip large sortait du canvas.
+  const cw   = chart.canvas.clientWidth || chart.width;
+  const half = el.offsetWidth / 2;
+  const x    = Math.min(Math.max(tooltip.caretX, half + 4), Math.max(cw - half - 4, half + 4));
+  el.style.left = (chart.canvas.offsetLeft + x) + 'px';
   el.style.top  = (chart.canvas.offsetTop + tooltip.caretY) + 'px';
   el.style.transform = 'translate(-50%, calc(-100% - 10px))';
 }
@@ -7073,6 +7137,8 @@ async function renderPortfolioChart() {
     const txMarkers = getTransactions(currentUser);
     const buyPoints = [];
     const sellPoints = [];
+    // Détail par pastille pour le tooltip (quoi, combien, prix, date).
+    _pfTxByIdx = { 1: {}, 2: {} };
     txMarkers.forEach(tx => {
       if (!tx.date || (tx.type !== 'buy' && tx.type !== 'sell')) return;
       // Find closest index in dataset
@@ -7082,10 +7148,15 @@ async function renderPortfolioChart() {
         if (dist < bestDist) { bestDist = dist; bestIdx = i; }
       });
       if (bestIdx >= 0 && bestDist < 3 * 86400 * 1000) {
-        if (tx.type === 'buy') buyPoints.push(bestIdx);
-        else sellPoints.push(bestIdx);
+        const ds = tx.type === 'buy' ? 1 : 2;
+        (ds === 1 ? buyPoints : sellPoints).push(bestIdx);
+        const bucket = _pfTxByIdx[ds];
+        (bucket[bestIdx] = bucket[bestIdx] || []).push(tx);
       }
     });
+    // Tri chronologique dans chaque pastille (plusieurs tx peuvent s'y agréger).
+    [1, 2].forEach(ds => Object.values(_pfTxByIdx[ds])
+      .forEach(list => list.sort((a, b) => (a.date || '').localeCompare(b.date || ''))));
 
     // Create point arrays: show colored dots only at buy/sell dates
     const dataValues = dataset.map(p => p.valeurTotale > 0 ? p.valeurTotale : null);
