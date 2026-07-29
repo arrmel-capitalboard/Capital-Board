@@ -362,10 +362,33 @@ chargement sans echappatoire.
 Corrige au passage : le gate PIN d'apres validation 2FA ne consultait pas le
 kill-switch global `config/app.pinDisabled`.
 
+### Dettes traitees le 30/07
+
+**Tri des idees.** `_loadPublishedIdeas` tente d'abord `where(status) + orderBy(score desc)
++ limit(200)`, et retombe sur le tri client si Firestore repond `failed-precondition`
+(index absent). La voie indexee reprend d'elle-meme des que l'index existe, sans
+deploiement. L'index attendu est decrit dans `firestore.indexes.json` (`ideas` :
+status ASC, score DESC) et declare dans `firebase.json`.
+
+**Il n'est pas encore cree** : l'API Admin renvoie 403 avec la cle de service
+(`firebase-adminsdk-fbsvc@capitalboard`), qui peut lister les index mais pas les creer.
+A faire en console Firebase, ou en ajoutant `roles/datastore.indexAdmin` a ce compte.
+Sans lui, tout fonctionne — juste en tri client.
+
+**Liens dupliques.** `data/links.json` fait desormais reference et
+`scripts/check-links.mjs` verifie les 4 copies (28 controles), en echouant sur toute
+divergence. La duplication reste voulue : le JSON-LD doit etre dans le HTML, le menu de
+l'app charge avant tout fetch, le bot ne lit pas Firestore.
+
+**Automod.** `discord-bot/test/automod-pub.test.js` (corpus de 10 messages legitimes et
+7 pubs, `npm test`, aucun reseau). `scoreMessage`, `HIGH_SCORE` et `MID_SCORE` sont
+exportes pour ca. Le test verrouille notamment la regression du 30/07 : un terme ambigu
+seul doit rester sous MID_SCORE.
+
+**CI.** Nouveau workflow `checks.yml` (liens + corpus + `node --check` sur les 3 fichiers
+JS principaux) sur chaque push et PR. `deploy-bot.yml` gagne un job `test` dont depend le
+deploiement : une regression du filtre pub n'atteint plus la VM.
+
 ## A faire prochaine session
 
-Rien de planifie. Dettes connues, sans echeance :
-
-- Tri des idees cote client (pas d'index composite Firestore) — a revoir si le volume grossit
-- URLs des reseaux dupliquees dans 4 fichiers (`config/app.social` ne surcharge que l'app)
-- Mots-cles automod `mp`/`dm` en poids faible depuis le 30/07 — surveiller les faux negatifs
+- [ ] Creer l'index composite `ideas` (status ASC, score DESC) — voir ci-dessus

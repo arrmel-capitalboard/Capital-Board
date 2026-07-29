@@ -1,0 +1,12 @@
+{
+  "_comment": "Source unique des liens publics Capital Board. Les pages statiques et l'app embarquent ces URLs en dur (JSON-LD et menu ne peuvent pas attendre un fetch) : scripts/check-links.mjs vérifie que toutes les copies concordent, et échoue en CI sinon. Modifier une URL ici, puis lancer `node scripts/check-links.mjs` pour savoir quels fichiers mettre à jour.",
+  "site": "https://capitalboard.fr",
+  "discord": "https://discord.gg/p73QMm4xDm",
+  "instagram": "https://www.instagram.com/capitalboard",
+  "tiktok": "https://www.tiktok.com/@capital.board",
+  "youtube": "https://www.youtube.com/@CapitalBoardApp",
+  "facebook": "https://www.facebook.com/profile.php?id=61592639900050",
+  "linkedin": "https://www.linkedin.com/company/capitalboard/",
+  "github": "https://github.com/arrmel-capitalboard/Capital-Board",
+  "paypal": "https://www.paypal.com/paypalme/capitalboard"
+}

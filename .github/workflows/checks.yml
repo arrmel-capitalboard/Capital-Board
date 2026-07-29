@@ -1,0 +1,32 @@
+name: Vérifications
+
+# Garde-fous rapides, sans secret ni déploiement : cohérence des liens publics
+# et corpus de test du filtre pub. Tourne sur chaque push et chaque PR.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+jobs:
+  checks:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Liens publics cohérents avec data/links.json
+        run: node scripts/check-links.mjs
+
+      - name: Corpus de test du filtre pub
+        working-directory: discord-bot
+        run: npm test
+
+      - name: Syntaxe des fichiers JS principaux
+        run: |
+          node --check js/app.js
+          node --check capital-board-worker/src/index.js
+          node --check discord-bot/src/index.js

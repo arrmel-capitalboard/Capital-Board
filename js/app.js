@@ -59,7 +59,7 @@ let fbApp, fbAuth, db,
     signInWithRedirect, getRedirectResult,
     updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser,
     getFirestoreDoc, getDocFromServer, setFirestoreDoc, firestoreDoc, firestoreCollection, deleteFirestoreDoc, getDocs,
-    addFirestoreDoc, onSnapshot, firestoreQuery, firestoreWhere, firestoreOrderBy, serverTimestamp,
+    addFirestoreDoc, onSnapshot, firestoreQuery, firestoreWhere, firestoreOrderBy, firestoreLimit, serverTimestamp,
     firestoreArrayUnion, firestoreArrayRemove, firestoreOr, firestoreDeleteField,
     firestoreWriteBatch, firestoreUpdateDoc;
 
@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730h';
+const APP_VERSION = '20260730i';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -181,6 +181,7 @@ _splashWatchdog = setTimeout(() => {
   firestoreQuery      = firestore.query;
   firestoreWhere      = firestore.where;
   firestoreOrderBy    = firestore.orderBy;
+  firestoreLimit      = firestore.limit;
   serverTimestamp     = firestore.serverTimestamp;
   firestoreArrayUnion  = firestore.arrayUnion;
   firestoreArrayRemove = firestore.arrayRemove;
@@ -15460,13 +15461,37 @@ async function _loadMyIdeaVotes() {
   snap.forEach(d => { _ideaVotes[d.id] = d.data().v; });
 }
 
-// Tri par score fait côté client : « where status + orderBy score » exigerait
-// un index composite à créer à la main dans la console Firebase.
+// Tri des idées publiées : « where status + orderBy score » réclame un index
+// composite (status ASC, score DESC), décrit dans firestore.indexes.json. Tant
+// qu'il n'existe pas, Firestore répond `failed-precondition` — on retombe alors
+// sur un tri client, et la voie indexée reprend d'elle-même dès sa création.
+// Le drapeau évite de retenter la requête indexée à chaque rafraîchissement.
+let _ideasIndexMissing = false;
+const _IDEAS_PAGE = 200;   // au-delà, on ne charge pas tout le mur d'un coup
+
+async function _loadPublishedIdeas() {
+  const coll = firestoreCollection(db, 'ideas');
+  if (!_ideasIndexMissing) {
+    try {
+      return await getDocs(firestoreQuery(coll,
+        firestoreWhere('status', '==', 'published'),
+        firestoreOrderBy('score', 'desc'),
+        firestoreLimit(_IDEAS_PAGE)));
+    } catch (e) {
+      if (e && e.code !== 'failed-precondition') throw e;
+      _ideasIndexMissing = true;
+      console.info('[idees] index composite absent, tri côté client (voir firestore.indexes.json)');
+    }
+  }
+  return await getDocs(firestoreQuery(coll, firestoreWhere('status', '==', 'published')));
+}
+
 async function _loadIdeas() {
-  const pub = await getDocs(firestoreQuery(
-    firestoreCollection(db, 'ideas'), firestoreWhere('status', '==', 'published')));
+  const pub = await _loadPublishedIdeas();
   _ideasPublished = [];
   pub.forEach(d => _ideasPublished.push({ id: d.id, ...d.data() }));
+  // Tri appliqué dans les deux cas : il départage les scores égaux par date, ce
+  // que l'index seul ne fait pas, et remet en ordre le repli non indexé.
   _ideasPublished.sort((a, b) => (b.score || 0) - (a.score || 0)
     || _ideaTime(b) - _ideaTime(a));
 

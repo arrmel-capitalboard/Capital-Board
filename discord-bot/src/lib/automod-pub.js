@@ -166,4 +166,7 @@ async function checkPub(content, userId) {
   return { blocked: false };
 }
 
-module.exports = { checkPub };
+// scoreMessage et les seuils sont exportés pour le corpus de test
+// (test/automod-pub.test.js) : ils permettent de verifier le niveau atteint
+// sans appeler Mistral. Le bot n'utilise que checkPub.
+module.exports = { checkPub, scoreMessage, HIGH_SCORE, MID_SCORE };
