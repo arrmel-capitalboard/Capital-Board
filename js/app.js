@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730e';
+const APP_VERSION = '20260730f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3049,7 +3049,7 @@ const SECTION_LABELS = {
   portfolio: 'Portefeuille', activite: 'Activité', dividendes: 'Dividendes', watchlist: 'Watchlist',
   performance: 'Performance', benchmark: 'Benchmark', projections: 'Projections', earnings: 'Calendrier résultats',
   recap: 'Récap du jour', actualites: 'Actualités', favoris: 'Contenus favoris', alertes: 'Alertes prix', notifications: 'Notifications', idees: 'Boîte à idées', support: 'Support',
-  admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord', facebook: 'Facebook',
+  admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord', facebook: 'Facebook', linkedin: 'LinkedIn',
   paypal: 'Faire un don',
 };
 const ALL_SECTIONS = Object.keys(SECTION_LABELS);
@@ -3059,7 +3059,7 @@ const DEFAULT_NAV = [
   { title: 'Analyse',        items: ['performance', 'benchmark', 'projections', 'earnings'] },
   { title: 'Outils',         items: ['actualites', 'favoris', 'recap', 'alertes', 'notifications', 'idees', 'support'] },
   { title: 'Administration', items: ['admin'] },
-  { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord', 'facebook'] },
+  { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord', 'facebook', 'linkedin'] },
   { title: 'Nous soutenir',  items: ['paypal'] },
 ];
 let _navNodes = null;   // cache des noeuds .nav-item par clé (sidebar desktop)
@@ -3069,13 +3069,14 @@ let _navDraft = null;   // brouillon d'édition admin
 // ─── Liens externes éditables par l'admin (config/app.social) ───
 // Entrées de menu ouvrant un lien (réseaux sociaux + don), URL modifiable
 // depuis l'éditeur d'organisation du menu.
-const SOCIAL_KEYS = ['instagram', 'tiktok', 'youtube', 'discord', 'facebook', 'paypal'];
+const SOCIAL_KEYS = ['instagram', 'tiktok', 'youtube', 'discord', 'facebook', 'linkedin', 'paypal'];
 const DEFAULT_SOCIAL = {
   instagram: 'https://www.instagram.com/capitalboard',
   tiktok:    'https://www.tiktok.com/@capital.board',
   youtube:   'https://www.youtube.com/@CapitalBoardApp',
   discord:   'https://discord.gg/p73QMm4xDm',
   facebook:  'https://www.facebook.com/profile.php?id=61592639900050',
+  linkedin:  'https://www.linkedin.com/company/capitalboard/',
   paypal:    'https://www.paypal.com/paypalme/capitalboard',
 };
 let _socialLinks = { ...DEFAULT_SOCIAL };

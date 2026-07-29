@@ -8,6 +8,7 @@ const TIKTOK    = 'https://www.tiktok.com/@capital.board';
 const INSTAGRAM = 'https://www.instagram.com/capitalboard';
 const YOUTUBE   = 'https://www.youtube.com/@CapitalBoardApp';
 const FACEBOOK  = 'https://www.facebook.com/profile.php?id=61592639900050';
+const LINKEDIN  = 'https://www.linkedin.com/company/capitalboard/';
 const PAYPAL    = 'https://www.paypal.com/paypalme/capitalboard';
 const GITHUB    = 'https://github.com/arrmel-capitalboard/Capital-Board';
 const LIENS_GIF = 'https://raw.githubusercontent.com/arrmel-capitalboard/Capital-Board/main/discord-bot/assets/liens.gif';
@@ -30,6 +31,7 @@ module.exports = {
         { name: 'Instagram', value: `[capitalboard](${INSTAGRAM})`,     inline: true },
         { name: 'YouTube',   value: `[CapitalBoardApp](${YOUTUBE})`,    inline: true },
         { name: 'Facebook',  value: `[Capital Board](${FACEBOOK})`,     inline: true },
+        { name: 'LinkedIn',  value: `[CapitalBoard](${LINKEDIN})`,      inline: true },
         { name: 'GitHub',    value: `[Capital-Board](${GITHUB})`,   inline: true },
         { name: 'Nous soutenir', value: `[PayPal](${PAYPAL})`,      inline: true },
       )
@@ -44,6 +46,7 @@ module.exports = {
     );
     const row2 = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setLabel('Facebook').setStyle(ButtonStyle.Link).setURL(FACEBOOK),
+      new ButtonBuilder().setLabel('LinkedIn').setStyle(ButtonStyle.Link).setURL(LINKEDIN),
       new ButtonBuilder().setLabel('GitHub').setStyle(ButtonStyle.Link).setURL(GITHUB),
       new ButtonBuilder().setLabel('Nous soutenir (PayPal)').setStyle(ButtonStyle.Link).setURL(PAYPAL),
     );
