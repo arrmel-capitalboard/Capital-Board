@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260729n';
+const APP_VERSION = '20260729o';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -10188,6 +10188,18 @@ async function loadDivJson() {
   }
 }
 
+// Yahoo date un dividende à sa date EX-dividende, dividendes.json (scrape
+// Boursorama) à sa date de PAIEMENT : pour un même versement elles diffèrent de
+// quelques jours (Crédit Agricole 2026 : 26/05 chez Yahoo, 28/05 dans le JSON).
+// Comparer les dates strictement laissait donc passer le doublon. Aucun émetteur
+// ne verse deux fois en moins d'une semaine, la proximité suffit à les fusionner.
+const DIV_SAME_EVENT_DAYS = 7;
+function _sameDivEvent(dateA, dateB) {
+  if (!dateA || !dateB) return false;
+  const gap = Math.abs(new Date(dateA + 'T12:00:00') - new Date(dateB + 'T12:00:00'));
+  return gap <= DIV_SAME_EVENT_DAYS * 86400000;
+}
+
 async function fetchDivHistory(ticker) {
   if (_divHistoryCache[ticker] !== undefined) return _divHistoryCache[ticker];
 
@@ -10216,7 +10228,7 @@ async function fetchDivHistory(ticker) {
   await loadDivJson();
   const jsonData = _divJsonData[ticker];
   if (jsonData?.next?.date) {
-    const alreadyIn = history.find(h => h.date === jsonData.next.date);
+    const alreadyIn = history.find(h => _sameDivEvent(h.date, jsonData.next.date));
     const todayStr  = new Date().toISOString().slice(0, 10);
     const isPast    = jsonData.next.date <= todayStr;
     if (!alreadyIn) {
@@ -10267,16 +10279,49 @@ function getQtyAtDate(txs, ticker, date) {
   return Math.max(0, qty);
 }
 
+// Réparation des portefeuilles touchés par le doublon ex-div / date de paiement :
+// avant _sameDivEvent, un même versement pouvait être enregistré deux fois, ce qui
+// gonflait les dividendes reçus, le solde espèces et la fréquence de la projection.
+// On garde l'entrée la plus ancienne (la date ex-dividende, celle que Yahoo
+// continuera de renvoyer) et on ne supprime jamais une saisie manuelle.
+function _dedupeDividendTxs(user) {
+  const txs  = getTransactions(user);
+  const divs = txs.filter(t => t.type === 'dividend' && t.date && t.ticker);
+  if (divs.length < 2) return 0;
+
+  const byTicker = {};
+  divs.forEach(t => { (byTicker[t.ticker] = byTicker[t.ticker] || []).push(t); });
+
+  const toDrop = new Set();
+  Object.values(byTicker).forEach(list => {
+    const sorted = [...list].sort((a, b) => a.date.localeCompare(b.date));
+    let keep = sorted[0];
+    for (let i = 1; i < sorted.length; i++) {
+      const cur = sorted[i];
+      if (!_sameDivEvent(keep.date, cur.date)) { keep = cur; continue; }
+      if      (cur.source  === 'yahoo-auto') toDrop.add(cur);
+      else if (keep.source === 'yahoo-auto') { toDrop.add(keep); keep = cur; }
+      else keep = cur;   // deux saisies manuelles : on ne touche pas
+    }
+  });
+
+  if (!toDrop.size) return 0;
+  saveTransactions(user, txs.filter(t => !toDrop.has(t)));
+  console.warn('[dividendes] ' + toDrop.size + ' doublon(s) ex-div/paiement supprimé(s)');
+  return toDrop.size;
+}
+
 // Détection + enregistrement automatique des dividendes versés (date passée),
 // indépendant de l'ouverture de la page Dividendes. Appelé au démarrage de l'app.
 async function _autoLogDividends() {
   if (window.IS_DEMO || !currentUser) return;
   try {
+    const removed = _dedupeDividendTxs(currentUser);
     const pf  = getPortfolio(currentUser);
     const txs = getTransactions(currentUser) || [];
     const ETF_TICKERS = ['WPEA.PA','ESEE.PA','ESE.PA','PUST.PA','PANX.PA','PAEEM.PA','ETZ.PA','EWLD.PA','CW8.PA','MWRD.PA','RS2K.PA','PCEU.PA','IUSQ.AS','IWDA.AS','VWCE.AS','VWRL.AS','CSPX.AS','EMIM.AS','XDWD.AS','SPPW.AS','SPY','QQQ','VTI','VT','VOO','ARKK','GLD','TLT','SOXX'];
     const actions = pf.filter(r => r.quoteType !== 'ETF' && r.quoteType !== 'MUTUALFUND' && !ETF_TICKERS.includes(r.ticker));
-    if (!actions.length) return;
+    if (!actions.length) { if (removed) { try { window.renderPortfolio(); } catch(_) {} } return; }
     const today = new Date().toISOString().slice(0, 10);
     const existingDiv = txs.filter(t => t.type === 'dividend');
     let added = 0;
@@ -10288,7 +10333,7 @@ async function _autoLogDividends() {
       try { history = await fetchDivHistory(r.ticker); } catch(_) { return; }
       (history || []).forEach(d => {
         if (d.next || d.date < firstBuy || d.date > today) return;
-        if (existingDiv.find(t => t.ticker === r.ticker && t.date === d.date)) return;
+        if (existingDiv.find(t => t.ticker === r.ticker && _sameDivEvent(t.date, d.date))) return;
         if (isDivIgnored(r.ticker, d.date)) return;   // supprimé par l'utilisateur
         const qty = getQtyAtDate(txs, r.ticker, d.date);
         if (!qty || !d.amount) return;
@@ -10300,7 +10345,7 @@ async function _autoLogDividends() {
         added++;
       });
     }));
-    if (added) { try { window.renderPortfolio(); } catch(_) {} }
+    if (added || removed) { try { window.renderPortfolio(); } catch(_) {} }
   } catch(e) { console.warn('[dividendes] auto-log:', e && e.message); }
 }
 
@@ -10374,7 +10419,7 @@ function initDividendes() {
     // Fusionner manuel + auto (éviter doublons par date)
     const allReceived = [...manualReceived];
     autoReceived.forEach(d => {
-      const alreadyManual = manualReceived.find(t => t.date === d.date);
+      const alreadyManual = manualReceived.find(t => _sameDivEvent(t.date, d.date));
       if (!alreadyManual) {
         const qtyAtDate = getQtyAtDate(txs, r.ticker, d.date);
         allReceived.push({ ticker: r.ticker, name: r.name, date: d.date, qty: qtyAtDate, price: d.amount, auto: true });
@@ -10395,7 +10440,7 @@ function initDividendes() {
       let added = 0;
       rows.forEach(x => x.allReceived.forEach(e => {
         if (!e.auto || !e.qty || !e.price) return;
-        if (existingDiv.find(t => t.ticker === e.ticker && t.date === e.date)) return;
+        if (existingDiv.find(t => t.ticker === e.ticker && _sameDivEvent(t.date, e.date))) return;
         logTransaction(currentUser, {
           type: 'dividend', ticker: e.ticker, name: e.name || e.ticker,
           qty: e.qty, price: e.price, date: e.date, source: 'yahoo-auto',
@@ -10511,7 +10556,7 @@ function initDividendes() {
       const buyTxsFallback = txs.filter(t => t.type==='buy' && t.ticker===r.ticker);
       const firstBuyDate   = buyDate || (buyTxsFallback.length ? buyTxsFallback.map(t=>t.date).sort()[0] : null);
       (history||[]).forEach(d => {
-        const alreadyManual = divTxs.find(t => t.ticker===r.ticker && t.date===d.date);
+        const alreadyManual = divTxs.find(t => t.ticker===r.ticker && _sameDivEvent(t.date, d.date));
         if (alreadyManual) return;
         if (isDivIgnored(r.ticker, d.date)) return;   // supprimé depuis l'Activité
         const during = firstBuyDate ? (d.date >= firstBuyDate && d.date <= today && !d.next) : false;
