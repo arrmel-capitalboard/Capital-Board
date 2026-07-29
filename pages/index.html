@@ -612,6 +612,13 @@
   .foot-links a { color: var(--text3); font-size: 13px; transition: color 0.15s; }
   .foot-links a:hover { color: var(--text1); }
   .foot-copy { color: var(--text3); font-size: 13px; }
+  /* Avertissement « pas de conseil en investissement » : visible sur toutes les
+     pages, pas seulement enterré dans les mentions légales. */
+  .foot-disclaimer {
+    max-width: 1200px; margin: 20px auto 0;
+    padding-top: 18px; border-top: 1px solid rgba(255,255,255,0.06);
+    color: var(--text3); font-size: 12px; line-height: 1.6;
+  }
 
   @media (max-width: 640px) {
     .hero { padding: 60px 20px 60px; }
@@ -619,6 +626,7 @@
     .feature { padding: 24px; }
     .cta-card { padding: 40px 24px; }
     .foot-inner { flex-direction: column; text-align: center; }
+    .foot-disclaimer { text-align: center; font-size: 11px; }
   }
 
   /* ─── Scroll reveal (apparition au défilement) ─── */
@@ -1077,6 +1085,14 @@
       <a href="app.html">Accès app</a>
     </div>
   </div>
+  <p class="foot-disclaimer">
+    Capital Board est un outil de suivi de portefeuille. Les informations et analyses
+    affichées sont fournies à titre informatif et ne constituent ni un conseil en
+    investissement, ni une recommandation d'achat ou de vente. Les performances passées
+    ne préjugent pas des performances futures et tout investissement comporte un risque
+    de perte en capital. Vous restez seul responsable de vos décisions.
+    <a href="legal/mentions-legales.html" style="color:var(--text3);text-decoration:underline">En savoir plus</a>.
+  </p>
 </footer>
 </main>
 

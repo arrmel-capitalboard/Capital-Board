@@ -2697,6 +2697,16 @@ body.has-demo-banner { padding-top: 40px; }
 .sidebar-legal-links a:hover { color: var(--accent); }
 .sidebar-legal-links span { opacity: 0.4; }
 
+/* Avertissement « pas de conseil en investissement », sous les liens légaux.
+   Doublé dans le tiroir mobile et le modal profil (voir pages/app.html). */
+.sidebar-legal-note {
+  margin: 0; padding: 0 12px 10px;
+  font-size: 9.5px; line-height: 1.5; text-align: center;
+  color: var(--text3); opacity: 0.75;
+}
+/* Popover « ⋯ » (sidebar repliée) : 214px de large, on resserre le padding. */
+.sidebar.collapsed .sidebar-extra.open .sidebar-legal-note { padding: 0 2px 4px; }
+
 
 /* ── Spinners number input (Projections) ── */
 #page-projections input[type=number] {

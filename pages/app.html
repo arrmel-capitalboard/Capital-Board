@@ -16,7 +16,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260729l">
+<link rel="stylesheet" href="css/style.css?v=20260730b">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -203,6 +203,10 @@
       <span class="sep">·</span>
       <a href="legal/cgu.html" target="_blank">CGU</a>
     </div>
+    <p style="text-align:center;margin-top:10px;font-size:10.5px;line-height:1.55;color:var(--text3);opacity:0.8">
+      Outil de suivi de portefeuille. Aucun contenu ne constitue un conseil en
+      investissement. Tout investissement comporte un risque de perte en capital.
+    </p>
   </div>
 
   <!-- VUE FORCE SETUP PIN (comptes sans PIN configuré) -->
@@ -452,6 +456,10 @@
       <a class="mobile-drawer-item" href="legal/mentions-legales.html" target="_blank" style="text-decoration:none">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#8892a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg></span>Mentions légales
       </a>
+      <p style="margin:4px 20px 8px;font-size:10.5px;line-height:1.55;color:var(--text3)">
+        Outil de suivi. Aucun conseil en investissement. Tout investissement comporte un
+        risque de perte en capital.
+      </p>
       <div style="height:1px;background:var(--border);margin:8px 20px"></div>
       <div class="mobile-drawer-item" onclick="doLogout()" style="color:var(--negative)">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg></span>Déconnexion
@@ -556,6 +564,9 @@
         <span>·</span>
         <a href="legal/mentions-legales.html" target="_blank">Mentions</a>
       </div>
+      <p class="sidebar-legal-note">
+        Outil de suivi — aucun conseil en investissement.
+      </p>
       <button onclick="toggleHideBalances()" id="sidebar-hide-btn" title="Masquer/afficher solde" style="width:100%;display:flex;align-items:center;justify-content:center;gap:8px;padding:8px;background:var(--s2);border:1px solid var(--border);color:var(--text2);border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans);margin-bottom:8px">
         <svg id="sidebar-hide-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
         <span id="sidebar-hide-label">Masquer le solde</span>
@@ -1640,6 +1651,13 @@
       <a href="legal/politique-confidentialite.html" target="_blank" style="color:var(--accent);text-decoration:none;padding:6px 0;display:inline-flex;align-items:center;gap:6px">→ Politique de confidentialité</a>
       <a href="legal/mentions-legales.html" target="_blank" style="color:var(--accent);text-decoration:none;padding:6px 0;display:inline-flex;align-items:center;gap:6px">→ Mentions légales</a>
     </div>
+    <p style="margin-top:10px;font-size:11px;line-height:1.6;color:var(--text3)">
+      Capital Board est un outil de suivi de portefeuille. Les valorisations, analyses et
+      contenus affichés sont fournis à titre informatif et ne constituent ni un conseil en
+      investissement, ni une recommandation d'achat ou de vente. Les performances passées ne
+      préjugent pas des performances futures ; tout investissement comporte un risque de
+      perte en capital. Vous restez seul responsable de vos décisions.
+    </p>
 
     <!-- Déconnexion -->
     <div style="height:1px;background:var(--border);margin:18px 0"></div>
@@ -1912,7 +1930,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260730a"></script>
+<script src="js/app.js?v=20260730b"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
