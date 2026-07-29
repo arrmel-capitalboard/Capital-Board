@@ -13,7 +13,6 @@ La feature est en place (voir RECAP.md). Ce qui n'a volontairement pas été fai
   en amont : rien ne remonte une idée déjà publiée qui poserait problème. L'admin peut
   la retirer du mur, mais seulement s'il la voit passer.
 - **Commentaires sous les idées.** Le vote est le seul retour possible.
-- **Notification à l'auteur quand son idée est publiée.** Seul le refus envoie un mail.
 
 ---
 

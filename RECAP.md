@@ -305,6 +305,19 @@ ecran de connexion de l'app, liens legaux de la sidebar (`.sidebar-legal-note`),
 mobile, section « Informations legales » du modal profil, footer de la page communaute.
 `pages/soutien.html` et `404.html` non concernes (aucune donnee financiere).
 
+### Notification de publication d'une idee (30/07)
+
+`POST /admin/idea-published` sur le Worker, pendant exact de `/admin/idea-rejected` :
+controle `ADMIN_UID`, email resolu par `accounts:lookup`, template `emailIdeaPublished`,
+plus une push FCM si `roles/{uid}.fcmToken` existe (best-effort, un echec de push ne fait
+pas echouer le mail). Cote client, `adminPublishIdea` appelle l'endpoint apres l'ecriture
+du statut ; pas de mail si l'admin publie sa propre idee.
+
+**Pas de flag « deja notifie » en base** : les regles limitent les updates admin a
+`status/rejectReason/moderatedAt`, en ajouter un imposerait un redeploiement du ruleset.
+Le risque de double notification est nul en pratique — la publication ne part que de la
+file de moderation, que l'idee quitte aussitot.
+
 ## A faire prochaine session
 
 - [ ] Vrais liens reseaux sociaux (Instagram, YouTube, TikTok) quand disponibles
