@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730d';
+const APP_VERSION = '20260730e';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3072,10 +3072,10 @@ let _navDraft = null;   // brouillon d'édition admin
 const SOCIAL_KEYS = ['instagram', 'tiktok', 'youtube', 'discord', 'facebook', 'paypal'];
 const DEFAULT_SOCIAL = {
   instagram: 'https://www.instagram.com/capitalboard',
-  tiktok:    'https://www.tiktok.com/@capitalboard',
-  youtube:   'https://www.youtube.com/@capitalboard',
+  tiktok:    'https://www.tiktok.com/@capital.board',
+  youtube:   'https://www.youtube.com/@CapitalBoardApp',
   discord:   'https://discord.gg/p73QMm4xDm',
-  facebook:  'https://www.facebook.com/profile.php?id=61592307454394',
+  facebook:  'https://www.facebook.com/profile.php?id=61592639900050',
   paypal:    'https://www.paypal.com/paypalme/capitalboard',
 };
 let _socialLinks = { ...DEFAULT_SOCIAL };
@@ -14360,7 +14360,7 @@ const _MAIL_FOOTER_LINKS = [
   ['Site',      'https://capitalboard.fr',                         'site.png'],
   ['Discord',   'https://discord.gg/p73QMm4xDm',                   'discord.png'],
   ['Instagram', 'https://www.instagram.com/capitalboard',          'instagram.png'],
-  ['TikTok',    'https://www.tiktok.com/@capitalboard',            'tiktok.png'],
+  ['TikTok',    'https://www.tiktok.com/@capital.board',            'tiktok.png'],
   ['GitHub',    'https://github.com/arrmel-capitalboard/Capital-Board', 'github.png'],
 ];
 // Construit le HTML de l'email de diffusion à partir du texte saisi.

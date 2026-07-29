@@ -4,9 +4,10 @@ const { SlashCommandBuilder, EmbedBuilder, ActionRowBuilder, ButtonBuilder, Butt
 const config = require('../config');
 const E = require('../lib/emojis');
 
-const TIKTOK    = 'https://www.tiktok.com/@capitalboard';
+const TIKTOK    = 'https://www.tiktok.com/@capital.board';
 const INSTAGRAM = 'https://www.instagram.com/capitalboard';
-const YOUTUBE   = 'https://www.youtube.com/@capitalboard';
+const YOUTUBE   = 'https://www.youtube.com/@CapitalBoardApp';
+const FACEBOOK  = 'https://www.facebook.com/profile.php?id=61592639900050';
 const PAYPAL    = 'https://www.paypal.com/paypalme/capitalboard';
 const GITHUB    = 'https://github.com/arrmel-capitalboard/Capital-Board';
 const LIENS_GIF = 'https://raw.githubusercontent.com/arrmel-capitalboard/Capital-Board/main/discord-bot/assets/liens.gif';
@@ -25,9 +26,10 @@ module.exports = {
       .setTitle(`${E.ARROW}  Retrouvez Capital Board`)
       .addFields(
         { name: 'Site web',   value: '[capitalboard.fr](https://capitalboard.fr)', inline: true },
-        { name: 'TikTok',    value: `[capitalboard](${TIKTOK})`,    inline: true },
-        { name: 'Instagram', value: `[capitalboard](${INSTAGRAM})`, inline: true },
-        { name: 'YouTube',   value: `[capitalboard](${YOUTUBE})`,   inline: true },
+        { name: 'TikTok',    value: `[capital.board](${TIKTOK})`,       inline: true },
+        { name: 'Instagram', value: `[capitalboard](${INSTAGRAM})`,     inline: true },
+        { name: 'YouTube',   value: `[CapitalBoardApp](${YOUTUBE})`,    inline: true },
+        { name: 'Facebook',  value: `[Capital Board](${FACEBOOK})`,     inline: true },
         { name: 'GitHub',    value: `[Capital-Board](${GITHUB})`,   inline: true },
         { name: 'Nous soutenir', value: `[PayPal](${PAYPAL})`,      inline: true },
       )
@@ -41,6 +43,7 @@ module.exports = {
       new ButtonBuilder().setLabel('YouTube').setStyle(ButtonStyle.Link).setURL(YOUTUBE),
     );
     const row2 = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setLabel('Facebook').setStyle(ButtonStyle.Link).setURL(FACEBOOK),
       new ButtonBuilder().setLabel('GitHub').setStyle(ButtonStyle.Link).setURL(GITHUB),
       new ButtonBuilder().setLabel('Nous soutenir (PayPal)').setStyle(ButtonStyle.Link).setURL(PAYPAL),
     );
