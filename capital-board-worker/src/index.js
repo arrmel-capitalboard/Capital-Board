@@ -768,6 +768,26 @@ function emailIdeaRejected(title, reason) {
 </div></body></html>`;
 }
 
+function emailIdeaPublished(title) {
+  const base = 'https://capitalboard.fr';
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${CSS_BASE}
+  .quote{background:#12121c;border-left:3px solid #00e09e;padding:12px 16px;border-radius:6px;margin:16px 0;color:#e8eaf0}
+  .btn{display:inline-block;background:#7c6df5;color:#fff;text-decoration:none;padding:13px 26px;
+    border-radius:10px;font-weight:600;font-size:15px}
+  </style></head><body>
+<div class="card">
+  <div class="logo">Capital Board</div>
+  <h2>Votre idée est en ligne 🎉</h2>
+  <p>Bonjour,</p>
+  <p>Votre proposition vient d'être publiée sur le mur à idées :</p>
+  <div class="quote">${escapeHtml(title)}</div>
+  <p>Les autres membres peuvent désormais la découvrir et voter pour ou contre.</p>
+  <p style="text-align:center;margin:24px 0"><a class="btn" href="${base}/app.html">Voir le mur à idées</a></p>
+  <p>Merci d'avoir pris le temps de contribuer : les idées des membres orientent réellement ce qui est développé.</p>
+  <div class="footer">Capital Board · Ne pas répondre à cet email.</div>
+</div></body></html>`;
+}
+
 // Le titre et le motif viennent de saisies libres et atterrissent dans du HTML.
 function escapeHtml(s) {
   return String(s || '')
@@ -1096,6 +1116,35 @@ export default {
           await sendEmail(to, 'Votre idée n\'a pas été retenue — Capital Board',
             emailIdeaRejected(title || '', reason || ''), env);
           return json({ ok: true });
+        } catch (e) { return json({ ok: false, error: e.message }, 500); }
+      }
+
+      // ── POST /admin/idea-published ──────────────────────────────────────
+      // Pendant de /admin/idea-rejected : prévient l'auteur que son idée est
+      // en ligne. La publication elle-même est écrite par le client (règles
+      // admin) ; cet endpoint n'envoie que le mail et la push éventuelle.
+      if (url.pathname === '/admin/idea-published' && request.method === 'POST') {
+        const { idToken, uid, title } = await request.json();
+        const admin = await verifyIdToken(idToken, env);
+        if (!admin || admin.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        if (!uid) return json({ error: 'uid requis' }, 400);
+        try {
+          const to = await getAuthEmail(uid, env);
+          if (!to) return json({ ok: false, error: 'Aucune adresse pour ce compte' }, 404);
+          await sendEmail(to, 'Votre idée est publiée — Capital Board',
+            emailIdeaPublished(title || ''), env);
+          // Push PWA en complément si l'auteur y est abonné. Best-effort :
+          // une push ratée ne doit pas faire échouer la notification par mail.
+          let pushed = false;
+          try {
+            const doc = await firestoreGet(`roles/${uid}`, env);
+            const fcmToken = fsStr(doc, 'fcmToken');
+            if (fcmToken) {
+              pushed = await sendFcm(fcmToken, 'Votre idée est publiée 🎉',
+                'Les membres peuvent maintenant voter pour votre proposition.', env);
+            }
+          } catch (_) {}
+          return json({ ok: true, pushed });
         } catch (e) { return json({ ok: false, error: e.message }, 500); }
       }
 

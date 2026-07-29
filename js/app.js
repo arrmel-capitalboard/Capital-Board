@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730b';
+const APP_VERSION = '20260730c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -15667,14 +15667,41 @@ window.deleteMyIdea = async function(ideaId) {
   } catch (e) { console.warn('[idees] retrait refusé:', e.message); }
 };
 
+// La publication prévient l'auteur (mail + push s'il y est abonné). Comme pour
+// le refus, l'échec de la notification ne doit pas défaire la modération : le
+// statut est déjà écrit, on se contente de le signaler à l'admin.
 window.adminPublishIdea = async function(ideaId) {
   const msg = document.getElementById('idea-mod-msg-' + ideaId);
+  const idea = _ideasPending.find(i => i.id === ideaId);
+  if (msg) msg.textContent = 'Publication en cours…';
   try {
     await firestoreUpdateDoc(firestoreDoc(db, 'ideas', ideaId), {
       status: 'published', moderatedAt: serverTimestamp(),
     });
-    await renderIdeasPage();
-  } catch (e) { if (msg) msg.textContent = 'Échec : ' + e.message; }
+  } catch (e) {
+    if (msg) msg.textContent = 'Échec : ' + e.message;
+    return;
+  }
+  // Pas de mail à soi-même quand l'admin publie sa propre idée.
+  const authorUid = idea ? idea.authorUid : null;
+  const selfUid = fbAuth.currentUser ? fbAuth.currentUser.uid : null;
+  if (authorUid && authorUid !== selfUid) {
+    try {
+      const idToken = await fbAuth.currentUser.getIdToken();
+      const res = await fetch(WORKER_URL + '/admin/idea-published', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, uid: authorUid, title: idea ? idea.title : '' }),
+      });
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+    } catch (e) {
+      // renderIdeasPage() ci-dessous reconstruit la file : un message posé dans
+      // #idea-mod-msg-* disparaîtrait aussitôt, d'où l'alerte.
+      console.warn('[idees] notification de publication non envoyée:', e.message);
+      alert('Idée publiée, mais l\'auteur n\'a pas pu être prévenu (' + e.message + ').');
+    }
+  }
+  await renderIdeasPage();
 };
 
 window.adminUnpublishIdea = async function(ideaId) {
