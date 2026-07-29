@@ -2,8 +2,8 @@
 
 // /nouveaute — ajoute manuellement une nouveauté à la file de validation
 // (pour ce qui n'est pas capté par un commit feat). Elle suit ensuite le même
-// circuit : message de validation (où l'on peut joindre une image via le
-// bouton 🖼️), puis publication le lundi si validée. Réservée au fondateur.
+// circuit : message de validation (texte seul, modifiable), puis publication
+// le lundi si validée. Réservée au fondateur.
 
 const { SlashCommandBuilder, MessageFlags } = require('discord.js');
 const firebase = require('../firebase');
@@ -30,6 +30,6 @@ module.exports = {
 
     await interaction.deferReply({ flags: MessageFlags.Ephemeral });
     await newsqueue.addPending(interaction.options.getString('texte'), { source: 'manuel' });
-    await interaction.editReply('Nouveauté ajoutée. Un message de validation va apparaître — utilisez 🖼️ pour joindre une image.');
+    await interaction.editReply('Nouveauté ajoutée. Un message de validation va apparaître dans le salon de validation.');
   },
 };

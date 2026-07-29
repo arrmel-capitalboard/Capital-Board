@@ -3,7 +3,8 @@
 // Publication hebdomadaire des nouveautés validées : chaque lundi à 18h
 // (heure de Paris), un récap groupé des « approved » non encore envoyés est
 // posté dans le salon nouveautés, puis ces entrées sont marquées envoyées et
-// leur message de validation est verrouillé.
+// leur message de validation est verrouillé. Texte seul : les nouveautés ne
+// portent pas d'image (seul le GIF d'en-tête de l'embed récap).
 //
 // Pas de calcul de délai (DST, redémarrages) : on vérifie l'heure de Paris
 // toutes les 10 min et on garde en Firestore la date du dernier lundi traité
@@ -40,27 +41,10 @@ async function lockMessage(client, data) {
   try {
     const channel = await client.channels.fetch(data.channelId);
     const msg = await channel.messages.fetch(data.messageId);
-    await msg.edit(newsqueue.publishedPayload(data.text, data.imageName || null));
+    await msg.edit(newsqueue.publishedPayload(data.text));
   } catch (e) {
     console.error('[newsweekly] verrouillage message :', e.message);
   }
-}
-
-/** URLs fraîches des photos rattachées à une nouveauté (ré-résout les liens signés). */
-async function freshImageUrls(client, photoRefs) {
-  const urls = [];
-  for (const ref of photoRefs || []) {
-    try {
-      const channel = await client.channels.fetch(ref.channelId);
-      const msg = await channel.messages.fetch(ref.msgId);
-      for (const att of msg.attachments.values()) {
-        if (newsqueue.isImageAttachment(att)) urls.push(att.url);
-      }
-    } catch (e) {
-      console.error('[newsweekly] photo introuvable :', e.message);
-    }
-  }
-  return urls;
 }
 
 /**
@@ -83,18 +67,6 @@ async function publish(client) {
 
   const channel = await client.channels.fetch(COMMUNITY_CHANNEL);
   await channel.send({ embeds: [embed] });
-
-  // Photos rattachées : un message par nouveauté qui en a, sous le récap.
-  for (const d of toSend) {
-    const urls = await freshImageUrls(client, d.data().photoRefs);
-    if (!urls.length) continue;
-    const embeds = urls.slice(0, 10).map((url, i) => {
-      const e = new EmbedBuilder().setColor(VIOLET).setImage(url);
-      if (i === 0) e.setTitle(`✅  ${d.data().text}`);
-      return e;
-    });
-    await channel.send({ embeds }).catch((e) => console.error('[newsweekly] envoi photos :', e.message));
-  }
 
   const batch = db.batch();
   toSend.forEach((d) => batch.update(d.ref, { sentAt: Date.now() }));
