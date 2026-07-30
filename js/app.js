@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730r';
+const APP_VERSION = '20260730s';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1872,9 +1872,53 @@ const _COUNTRY_FR = {
 function _trRegion(s)  { return _REGION_FR[s] || s || ''; }
 function _trCountry(s) { return _COUNTRY_FR[s] || s || ''; }
 
+// ── Journal des connexions ───────────────────────────────────────────────────
+// Enregistre par le Worker (IP et ville depuis les en-tetes Cloudflare), pas par
+// le navigateur : c'est ce qui rend le journal utile en cas de compromission,
+// une session volee ne pouvant pas effacer ses traces.
+async function _logSession() {
+  try {
+    const idToken = await fbAuth.currentUser.getIdToken();
+    await fetch(`${WORKER_URL}/log-session`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, deviceLabel: _getDeviceLabel() }),
+    });
+  } catch (e) { console.warn('[auth] journal de connexion:', e.message); }
+}
+
+window.refreshLoginLog = async function() {
+  const el = document.getElementById('login-log-list');
+  if (!el) return;
+  const user = fbAuth.currentUser;
+  if (!user) { el.innerHTML = ''; return; }
+  el.innerHTML = '<div style="color:var(--text3);font-style:italic">Chargement…</div>';
+  try {
+    const snap = await getFirestoreDoc(firestoreDoc(db, 'users', user.uid, 'data', 'loginLog'));
+    const entries = ((snap.exists() && snap.data().entries) || []).slice().reverse();
+    if (!entries.length) {
+      el.innerHTML = '<div style="color:var(--text3);font-style:italic">Aucune connexion enregistrée pour le moment.</div>';
+      return;
+    }
+    el.innerHTML = entries.slice(0, 10).map(e => {
+      const d = new Date(Number(e.at) || 0);
+      const quand = d.toLocaleString('fr-FR', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' });
+      const lieu = [e.city, e.country].filter(Boolean).join(', ');
+      return '<div style="display:flex;justify-content:space-between;gap:10px;padding:5px 0;border-bottom:1px solid var(--border)">' +
+        '<span style="color:var(--text2)">' + _escapeHtmlChat(quand) + '</span>' +
+        '<span style="color:var(--text3);text-align:right">' + _escapeHtmlChat(lieu || 'lieu inconnu') +
+          (e.ip ? ' · ' + _escapeHtmlChat(e.ip) : '') + '</span>' +
+      '</div>';
+    }).join('');
+  } catch (e) {
+    el.innerHTML = '<div style="color:var(--text3);font-style:italic">Journal indisponible.</div>';
+  }
+};
+
 window.refreshTrustedDevices = async function() {
   const container = document.getElementById('trusted-devices-list');
   if (!container) return;
+  window.refreshLoginLog();   // meme section du profil
   const user = fbAuth.currentUser;
   if (!user) { container.innerHTML = '<div style="color:var(--text3);font-style:italic;padding:8px 0">Non connecté</div>'; return; }
   container.innerHTML = '<div style="color:var(--text3);font-style:italic;padding:8px 0">Chargement…</div>';
@@ -2330,6 +2374,9 @@ async function startApp(user) {
     setTimeout(() => appEl.classList.remove('app-enter'), 600);
     _restoreHideBalances();
     _startVersionCheck();
+    // Journal des connexions : en arriere-plan, jamais bloquant. Le mode demo
+    // n'a pas de session Firebase, rien a enregistrer.
+    if (!window.IS_DEMO) _logSession();
     document.getElementById('user-avatar').textContent = (displayName[0] || '?').toUpperCase();
     document.getElementById('user-name-display').textContent = displayName;
 

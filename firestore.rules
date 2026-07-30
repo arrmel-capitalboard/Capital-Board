@@ -41,15 +41,19 @@ service cloud.firestore {
       // On compare les clés *modifiées* et non le document résultant : les
       // comptes pas encore migrés portent encore pinHash/pinSalt, et un
       // `hasOnly` sur le résultat leur refuserait toute écriture.
+      // loginLog est le journal des connexions, ecrit par le Worker : un
+      // attaquant qui detient la session ne doit pas pouvoir effacer ses traces.
+      // Il reste lisible par son proprietaire (regle `read` ci-dessus).
       allow create: if _isVerified() && _isSelf(uid)
-        && docId != 'trustedDevices'
+        && !(docId in ['trustedDevices','loginLog'])
         && (docId != 'security' || request.resource.data.keys().hasOnly(
              ['adminOptOut','adminOptOutAt']));
       allow update: if _isVerified() && _isSelf(uid)
-        && docId != 'trustedDevices'
+        && !(docId in ['trustedDevices','loginLog'])
         && (docId != 'security' || request.resource.data.diff(resource.data)
              .affectedKeys().hasOnly(['adminOptOut','adminOptOutAt']));
-      allow delete: if _isVerified() && _isSelf(uid) && docId != 'trustedDevices';
+      allow delete: if _isVerified() && _isSelf(uid)
+        && !(docId in ['trustedDevices','loginLog']);
     }
 
     match /users/{uid}/ideaVotes/{ideaId} {

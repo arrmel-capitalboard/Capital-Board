@@ -1670,6 +1670,16 @@
     <button onclick="signOutEverywhere()" style="width:100%;margin-top:6px;padding:8px;background:rgba(255,77,106,0.14);border:1px solid rgba(255,77,106,0.32);color:#ff4d6a;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--sans)">Déconnecter toutes les sessions (vous compris)</button>
     <div style="font-size:10.5px;color:var(--text3);margin-top:6px;line-height:1.5">À utiliser si vous pensez qu'un tiers a accès à votre compte : toutes les sessions ouvertes sont coupées, la vôtre comprise.</div>
 
+    <!-- Journal des connexions. Ecrit par le Worker et interdit au client dans les
+         regles : une session volee ne doit pas pouvoir effacer ses traces. -->
+    <div style="height:1px;background:var(--border);margin:18px 0"></div>
+    <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:6px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      Connexions récentes
+    </div>
+    <div id="login-log-list" style="display:flex;flex-direction:column;gap:6px;font-size:12px"></div>
+    <div style="font-size:10.5px;color:var(--text3);margin-top:8px;line-height:1.5">Une connexion que vous ne reconnaissez pas ? Changez votre mot de passe : toutes les sessions seront coupées.</div>
+
     <!-- Mentions légales -->
     <div style="height:1px;background:var(--border);margin:18px 0"></div>
     <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:6px">
@@ -1960,7 +1970,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260730r"></script>
+<script src="js/app.js?v=20260730s"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

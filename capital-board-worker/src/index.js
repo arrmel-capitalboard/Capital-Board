@@ -1608,6 +1608,45 @@ export default {
         return json({ available: holders.length === 0 });
       }
 
+      // ── POST /log-session ───────────────────────────────────────────────
+      // Journal des connexions, écrit par le serveur. Jusqu'ici rien ne permettait
+      // à un membre de savoir qu'un tiers s'était connecté à son compte : on avait
+      // beaucoup de prévention, aucune détection.
+      //
+      // Écrit par le Worker et interdit au client dans les règles : un attaquant
+      // qui a la session ne doit pas pouvoir effacer ses traces. L'IP et la ville
+      // viennent des en-têtes Cloudflare, donc rien à demander à un service tiers.
+      if (url.pathname === '/log-session' && request.method === 'POST') {
+        const { idToken, deviceLabel } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        const path = `users/${user.localId}/data/loginLog`;
+
+        const entry = {
+          mapValue: {
+            fields: {
+              at:      { integerValue: String(Date.now()) },
+              ip:      { stringValue: request.headers.get('CF-Connecting-IP') || '' },
+              city:    { stringValue: String(request.cf?.city || '') },
+              country: { stringValue: String(request.cf?.country || '') },
+              device:  { stringValue: String(deviceLabel || '').slice(0, 80) },
+            },
+          },
+        };
+
+        // Lecture puis réécriture bornée : un journal de 30 entrées suffit à
+        // repérer une connexion anormale, et borne la taille du document.
+        let entries = [];
+        try {
+          const doc = await firestoreGet(path, env);
+          entries = doc.fields?.entries?.arrayValue?.values || [];
+        } catch (_) { /* premier enregistrement */ }
+        entries.push(entry);
+        if (entries.length > 30) entries = entries.slice(-30);
+
+        await firestoreUpdate(path, { entries: { arrayValue: { values: entries } } }, ['entries'], env);
+        return json({ ok: true });
+      }
+
       // ── POST /revoke-sessions ───────────────────────────────────────────
       // Invalide TOUS les jetons de rafraîchissement du compte appelant.
       //
