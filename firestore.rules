@@ -5,8 +5,15 @@ service cloud.firestore {
     function _isVerified() {
       return request.auth != null && request.auth.token.email_verified == true;
     }
+    // Deux conditions cumulées : le rôle en base ET l'uid attendu. Le rôle seul
+    // laissait une deuxième définition de l'admin coexister avec l'`ADMIN_UID`
+    // codé dans le client et le Worker — un document `roles` marqué superadmin
+    // aurait ouvert tous les droits Firestore. Ajouter un second administrateur
+    // demande donc de modifier cette ligne, volontairement.
     function _isAdmin() {
-      return request.auth != null && get(/databases/$(database)/documents/roles/$(request.auth.uid)).data.role == 'superadmin';
+      return request.auth != null
+        && request.auth.uid == 'A6nZQ8PcxdURytSesA17xK81I9T2'
+        && get(/databases/$(database)/documents/roles/$(request.auth.uid)).data.role == 'superadmin';
     }
     function _isSelf(uid) {
       return request.auth != null && request.auth.uid == uid;
@@ -26,7 +33,23 @@ service cloud.firestore {
       // trustedDevices est écrit uniquement par le Worker, après vérification du
       // code envoyé par email. Sinon il suffisait de s'inscrire soi-même comme
       // appareil de confiance pour ne jamais voir la 2FA.
-      allow write: if _isVerified() && _isSelf(uid) && docId != 'trustedDevices';
+      //
+      // security ne porte plus de secret : le condensat du code PIN vit dans
+      // pinSecrets/{uid}, écrit par le Worker (/set-pin). Le client n'y touche
+      // plus que la dérogation administrateur.
+      //
+      // On compare les clés *modifiées* et non le document résultant : les
+      // comptes pas encore migrés portent encore pinHash/pinSalt, et un
+      // `hasOnly` sur le résultat leur refuserait toute écriture.
+      allow create: if _isVerified() && _isSelf(uid)
+        && docId != 'trustedDevices'
+        && (docId != 'security' || request.resource.data.keys().hasOnly(
+             ['adminOptOut','adminOptOutAt']));
+      allow update: if _isVerified() && _isSelf(uid)
+        && docId != 'trustedDevices'
+        && (docId != 'security' || request.resource.data.diff(resource.data)
+             .affectedKeys().hasOnly(['adminOptOut','adminOptOutAt']));
+      allow delete: if _isVerified() && _isSelf(uid) && docId != 'trustedDevices';
     }
 
     match /users/{uid}/ideaVotes/{ideaId} {

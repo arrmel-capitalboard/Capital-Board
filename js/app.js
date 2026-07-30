@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730k';
+const APP_VERSION = '20260730l';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1190,8 +1190,7 @@ window.pinSetupViewSubmit = async function() {
 
 // ─── PIN LOCK SCREEN ──────────────────────────────────
 let _pinLockUser = null;
-let _pinLockAttempts = 0;
-const _PIN_MAX_ATTEMPTS = 5;
+// Le comptage des tentatives et le verrouillage sont tenus par le Worker.
 
 function _updatePinDots(len) {
   const dots = document.querySelectorAll('#pin-dots .pin-dot');
@@ -1205,7 +1204,6 @@ function _shakePinDots() {
 
 function showPinLockView(user) {
   _pinLockUser = user;
-  _pinLockAttempts = 0;
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-view').style.display = 'none';
@@ -1237,21 +1235,23 @@ window.pinLockSubmit = async function() {
   if (!user) return;
   setLoading('pin-lock-btn', true);
   try {
-    const ok = await _verifyPin(user.uid, val);
-    if (ok) {
-      _pinLockAttempts = 0;
-      _pinUnlockSuccess(user);
+    const r = await _verifyPin(user.uid, val);
+    if (r.valid) {
+          _pinUnlockSuccess(user);
     } else {
-      _pinLockAttempts++;
       _shakePinDots();
       inp.value = '';
       _updatePinDots(0);
-      const remain = _PIN_MAX_ATTEMPTS - _pinLockAttempts;
-      if (remain <= 0) {
-        if (err) { err.textContent = 'Trop de tentatives. Déconnexion.'; err.style.display = 'block'; }
-        setTimeout(() => window.pinLockLogout(), 1500);
+      if (r.locked) {
+        const min = Math.max(1, Math.ceil((r.retryAfterSec || 900) / 60));
+        if (err) { err.textContent = `Trop de tentatives. Réessayez dans ${min} minute(s).`; err.style.display = 'block'; }
+        setTimeout(() => window.pinLockLogout(), 2500);
       } else {
-        if (err) { err.textContent = `Code incorrect. ${remain} tentative(s) restante(s).`; err.style.display = 'block'; }
+        const left = r.left != null ? r.left : '';
+        if (err) {
+          err.textContent = left === '' ? 'Code incorrect.' : `Code incorrect. ${left} tentative(s) restante(s).`;
+          err.style.display = 'block';
+        }
         setTimeout(() => inp.focus(), 50);
       }
     }
@@ -1459,17 +1459,7 @@ window.adminReenablePin = async function() {
 // Stockage: users/{uid}/data/security = { pinHash, pinSalt, enabled, createdAt }
 // Hash: SHA-256(salt + pin) via SubtleCrypto.
 
-async function _sha256(str) {
-  const buf = new TextEncoder().encode(str);
-  const hash = await crypto.subtle.digest('SHA-256', buf);
-  return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
-}
 
-function _genSalt() {
-  const arr = new Uint8Array(16);
-  crypto.getRandomValues(arr);
-  return Array.from(arr).map(b => b.toString(16).padStart(2, '0')).join('');
-}
 
 async function _loadSecurity(uid) {
   try {
@@ -1480,9 +1470,11 @@ async function _loadSecurity(uid) {
   } catch(_) { return null; }
 }
 
+// `enabled` suffit : le condensat n'est plus visible du client. Les comptes au
+// format ancien portent encore pinHash/pinSalt, la condition les couvre aussi.
 async function _isPinEnabled(uid) {
   const sec = await _loadSecurity(uid);
-  return !!(sec && sec.enabled && sec.pinHash && sec.pinSalt);
+  return !!(sec && sec.enabled);
 }
 
 // ─── Dérogation PIN du compte admin ─────────────────────────────
@@ -1645,16 +1637,25 @@ async function saveNameSetup(uid) {
   }
 }
 
+// Le code part au Worker, qui le dérive en PBKDF2 et garde le condensat hors de
+// portée du navigateur. Avant, le client calculait un SHA-256 et l'écrivait dans
+// un document qu'il peut relire : 6 chiffres se cassaient hors ligne en un rien
+// de temps.
 async function _setupPin(uid, pin) {
-  if (!/^\d{6}$/.test(pin)) throw new Error('PIN doit faire 6 chiffres');
-  const salt = _genSalt();
-  const pinHash = await _sha256(salt + pin);
-  const ref = firestoreDoc(db, 'users', uid, 'data', 'security');
-  await setFirestoreDoc(ref, {
-    pinHash, pinSalt: salt, enabled: true, createdAt: Date.now(),
-  }, { merge: true });
+  if (!/^\d{6}$/.test(pin)) throw new Error('Le code doit faire 6 chiffres');
+  const idToken = await fbAuth.currentUser.getIdToken();
+  const res = await fetch(`${WORKER_URL}/set-pin`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken, pin }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'Enregistrement du code impossible');
 }
 
+// Renvoie la réponse du Worker : { valid, left?, locked?, retryAfterSec? }. Le
+// comptage des tentatives et le verrouillage sont décidés côté serveur, le
+// compteur local ne servant plus qu'à l'affichage.
 async function _verifyPin(uid, pin) {
   try {
     const idToken = await fbAuth.currentUser.getIdToken();
@@ -1663,18 +1664,13 @@ async function _verifyPin(uid, pin) {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken, pin }),
     });
-    const { valid } = await res.json();
-    return !!valid;
+    return await res.json();
   } catch (e) {
     console.error('_verifyPin error:', e);
-    return false;
+    return { valid: false };
   }
 }
 
-async function _disablePin(uid) {
-  const ref = firestoreDoc(db, 'users', uid, 'data', 'security');
-  try { await deleteFirestoreDoc(ref); } catch(_) {}
-}
 
 // ─── MASQUER LE SOLDE (toggle œil) — floute tout texte chiffré avec € ou % ──
 const _EYE_OPEN_SVG = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';

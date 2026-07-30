@@ -837,6 +837,35 @@ function emailIdeaRejected(title, reason) {
 </div></body></html>`;
 }
 
+// ── Code PIN : secret côté serveur, dérivation lente ───────────────────────
+// Le condensat vit dans pinSecrets/{uid}, collection sans règle Firestore, donc
+// hors d'atteinte du client. PBKDF2 remplace le SHA-256 simple : sur 10^6
+// combinaisons, un simple SHA-256 se force instantanément hors ligne.
+const PIN_ITERATIONS = 150000;
+const PIN_MAX_TRIES  = 5;
+const PIN_LOCK_MS    = 15 * 60 * 1000;
+
+async function pbkdf2Hex(pin, saltHex, iterations) {
+  const salt = Uint8Array.from(saltHex.match(/.{2}/g).map(h => parseInt(h, 16)));
+  const key = await crypto.subtle.importKey('raw', new TextEncoder().encode(pin), 'PBKDF2', false, ['deriveBits']);
+  const bits = await crypto.subtle.deriveBits(
+    { name: 'PBKDF2', hash: 'SHA-256', salt, iterations }, key, 256);
+  return Array.from(new Uint8Array(bits)).map(b => b.toString(16).padStart(2, '0')).join('');
+}
+
+async function setPinSecret(uid, pin, env) {
+  const saltBytes = crypto.getRandomValues(new Uint8Array(16));
+  const saltHex = Array.from(saltBytes).map(b => b.toString(16).padStart(2, '0')).join('');
+  await firestoreSet(`pinSecrets/${uid}`, {
+    hash:        { stringValue: await pbkdf2Hex(pin, saltHex, PIN_ITERATIONS) },
+    salt:        { stringValue: saltHex },
+    iters:       { integerValue: String(PIN_ITERATIONS) },
+    attempts:    { integerValue: '0' },
+    lockedUntil: { integerValue: '0' },
+    updatedAt:   { integerValue: String(Date.now()) },
+  }, env);
+}
+
 // ── OTP : le serveur est seule autorité ────────────────────────────────────
 // Le code n'existe que dans otpChallenges/{uid}, une collection sans règle
 // Firestore : les règles refusent par défaut, donc aucun client ne peut la lire,
@@ -1141,13 +1170,90 @@ export default {
         if (!idToken || !/^\d{6}$/.test(pin ?? '')) return json({ valid: false });
 
         const user = await verifyIdToken(idToken, env);
-        const doc  = await firestoreGet(`users/${user.localId}/data/security`, env);
-        const pinHash = fsStr(doc, 'pinHash');
-        const pinSalt = fsStr(doc, 'pinSalt');
-        if (!pinHash || !pinSalt) return json({ valid: false });
+        const uid = user.localId;
+        const secretPath = `pinSecrets/${uid}`;
+        const now = Date.now();
 
-        const computed = await sha256(pinSalt + pin);
-        return json({ valid: computed === pinHash });
+        let secret = null;
+        try { secret = await firestoreGet(secretPath, env); } catch (_) {}
+
+        // Verrouillage serveur : 6 chiffres se testent en un instant si rien ne
+        // limite les essais. Le compteur client (5 tentatives) ne protégeait rien.
+        if (secret) {
+          const lockedUntil = fsNum(secret, 'lockedUntil') || 0;
+          if (lockedUntil > now) {
+            return json({ valid: false, locked: true, retryAfterSec: Math.ceil((lockedUntil - now) / 1000) });
+          }
+        }
+
+        let ok = false, legacy = false;
+        if (secret && fsStr(secret, 'hash')) {
+          ok = otpEqual(
+            await pbkdf2Hex(pin, fsStr(secret, 'salt'), fsNum(secret, 'iters') || PIN_ITERATIONS),
+            fsStr(secret, 'hash'),
+          );
+        } else {
+          // Ancien format : SHA-256(sel + pin) dans users/{uid}/data/security,
+          // lisible par le titulaire. Vérifié une dernière fois, puis migré.
+          const old = await firestoreGet(`users/${uid}/data/security`, env).catch(() => null);
+          const h = old && fsStr(old, 'pinHash');
+          const s = old && fsStr(old, 'pinSalt');
+          if (!h || !s) return json({ valid: false });
+          ok = otpEqual(await sha256(s + pin), h);
+          legacy = true;
+        }
+
+        if (!ok) {
+          const attempts = (secret ? fsNum(secret, 'attempts') || 0 : 0) + 1;
+          const locked = attempts >= PIN_MAX_TRIES;
+          const counters = {
+            attempts:    { integerValue: String(locked ? 0 : attempts) },
+            lockedUntil: { integerValue: String(locked ? now + PIN_LOCK_MS : 0) },
+          };
+          // Le compteur existe aussi pour un compte encore au format ancien : le
+          // document est alors créé sans condensat, ce qui laisse la migration
+          // se faire au premier code correct.
+          await firestoreUpdate(secretPath, counters, ['attempts', 'lockedUntil'], env);
+          return json({
+            valid: false,
+            ...(locked ? { locked: true, retryAfterSec: Math.ceil(PIN_LOCK_MS / 1000) }
+                       : { left: PIN_MAX_TRIES - attempts }),
+          });
+        }
+
+        // Succès : compteur remis à zéro, et migration du format ancien.
+        if (legacy) {
+          await setPinSecret(uid, pin, env);
+          await firestoreUpdate(`users/${uid}/data/security`, {},
+            ['pinHash', 'pinSalt'], env);
+        } else {
+          await firestoreUpdate(secretPath,
+            { attempts: { integerValue: '0' }, lockedUntil: { integerValue: '0' } },
+            ['attempts', 'lockedUntil'], env);
+        }
+        return json({ valid: true });
+      }
+
+      // ── POST /set-pin ───────────────────────────────────────────────────
+      // Enregistre ou change le code. Le condensat ne quitte jamais le serveur :
+      // avant, le client calculait un SHA-256 et l'écrivait sous users/{uid},
+      // qu'il peut relire — un code à 6 chiffres se retrouvait hors ligne en une
+      // fraction de seconde.
+      if (url.pathname === '/set-pin' && request.method === 'POST') {
+        const { idToken, pin } = await request.json();
+        if (!idToken || !/^\d{6}$/.test(pin ?? '')) {
+          return json({ ok: false, error: 'Le code doit faire exactement 6 chiffres.' }, 400);
+        }
+        const user = await verifyIdToken(idToken, env);
+        if (!user.emailVerified) return json({ ok: false, error: 'Adresse email non vérifiée' }, 403);
+
+        await setPinSecret(user.localId, pin, env);
+        // Le client lit `enabled` pour savoir s'il doit demander le code.
+        await firestoreUpdate(`users/${user.localId}/data/security`, {
+          enabled:   { booleanValue: true },
+          createdAt: { integerValue: String(Date.now()) },
+        }, ['enabled', 'createdAt', 'pinHash', 'pinSalt'], env);
+        return json({ ok: true });
       }
 
       // ── POST /admin/health ──────────────────────────────────────────────
