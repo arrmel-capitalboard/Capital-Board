@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730q';
+const APP_VERSION = '20260730r';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1984,6 +1984,34 @@ window.revokeTrustedDevice = function(deviceId) {
   });
 };
 
+// Coupe toutes les sessions du compte. Volontairement separe de la revocation
+// d'appareil de confiance, qui n'agit que sur la 2FA a la prochaine connexion.
+window.signOutEverywhere = function() {
+  const user = fbAuth.currentUser;
+  if (!user) return;
+  showConfirmModal({
+    icon: _DEVICE_TRASH_SVG,
+    title: 'Déconnecter toutes les sessions ?',
+    body: 'Tous les appareils connectés à votre compte sont déconnectés immédiatement, celui-ci compris.\n'
+        + 'Vous devrez vous reconnecter, avec une nouvelle vérification par email.',
+    okLabel: 'Tout déconnecter',
+    cancelLabel: 'Annuler',
+    danger: true,
+    onConfirm: async () => {
+      try {
+        await _revokeAllSessions();
+      } catch (e) {
+        console.error('[auth] révocation échouée:', e);
+        alert('Échec de la déconnexion : ' + (e.message || 'erreur inconnue'));
+        return;
+      }
+      try { window.closeProfilModal && window.closeProfilModal(); } catch (_) {}
+      try { await signOut(fbAuth); } catch (_) {}
+      try { stopApp(); } catch (_) {}
+    },
+  });
+};
+
 window.revokeAllOtherDevices = function() {
   const user = fbAuth.currentUser;
   if (!user) return;
@@ -2596,9 +2624,15 @@ window.saveNewPassword = async function() {
     document.getElementById('profil-old-pass').value = '';
     document.getElementById('profil-new-pass').value = '';
     document.getElementById('profil-new-pass2').value = '';
-    status.textContent = '✓ Mot de passe mis à jour !';
     status.style.color = 'var(--positive)';
-    setTimeout(() => { status.textContent = ''; }, 3000);
+    status.textContent = '✓ Mot de passe mis à jour. Déconnexion de tous les appareils…';
+    // Sans cette révocation, une session ouverte ailleurs survivait au
+    // changement de mot de passe : c'est précisément ce qu'on veut couper.
+    try { await _revokeAllSessions(); } catch (e) { console.warn('[auth] révocation:', e.message); }
+    setTimeout(async () => {
+      try { await signOut(fbAuth); } catch (_) {}
+      try { stopApp(); } catch (_) {}
+    }, 1800);
   } catch(e) {
     const msgs = {
       // L'utilisateur est déjà connecté : préciser « mot de passe actuel »
@@ -2772,6 +2806,20 @@ async function _revokeTrustedDevice(uid, deviceId) {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({ idToken, deviceId }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'révocation refusée');
+}
+
+// Invalide toutes les sessions du compte, y compris la sienne. Un changement de
+// mot de passe seul ne suffisait pas : les jetons de rafraîchissement Firebase y
+// survivent, donc une session déjà ouverte ailleurs restait valable.
+async function _revokeAllSessions() {
+  const idToken = await fbAuth.currentUser.getIdToken();
+  const res = await fetch(`${WORKER_URL}/revoke-sessions`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken }),
   });
   const data = await res.json().catch(() => ({}));
   if (!res.ok || !data.ok) throw new Error(data.error || 'révocation refusée');

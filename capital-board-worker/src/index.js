@@ -1608,6 +1608,44 @@ export default {
         return json({ available: holders.length === 0 });
       }
 
+      // ── POST /revoke-sessions ───────────────────────────────────────────
+      // Invalide TOUS les jetons de rafraîchissement du compte appelant.
+      //
+      // Nécessaire parce qu'un changement de mot de passe ne suffit pas : les
+      // jetons de rafraîchissement Firebase y survivent. Quelqu'un qui détenait
+      // déjà une session continuait donc à renouveler son accès indéfiniment,
+      // mot de passe changé ou non. Retirer un appareil de confiance ne coupait
+      // rien non plus : ça n'agit que sur la 2FA à la prochaine connexion.
+      //
+      // L'appelant est déconnecté lui aussi : la révocation est par compte, pas
+      // par session. C'est le comportement attendu après un changement de mot de
+      // passe ou un soupçon de compromission.
+      if (url.pathname === '/revoke-sessions' && request.method === 'POST') {
+        const { idToken } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        const at = await getAccessToken(env);
+        const res = await fetch(
+          `https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:update`,
+          {
+            method: 'POST',
+            headers: { Authorization: `Bearer ${at}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              localId: user.localId,
+              validSince: String(Math.floor(Date.now() / 1000)),
+            }),
+          },
+        );
+        if (!res.ok) {
+          console.error('revoke-sessions: ' + (await res.text()));
+          return json({ ok: false, error: 'Révocation impossible' }, 500);
+        }
+        // Les appareils de confiance partent avec : sinon la 2FA ne serait pas
+        // redemandée à la reconnexion, ce qui viderait la révocation de son sens.
+        await firestoreUpdate(`users/${user.localId}/data/trustedDevices`,
+          { devices: { mapValue: { fields: {} } } }, ['devices'], env);
+        return json({ ok: true });
+      }
+
       // ── POST /revoke-devices ────────────────────────────────────────────
       // Retrait d'appareils de confiance. Passe par le Worker parce que le
       // client n'a plus le droit d'écrire trustedDevices ; retirer n'affaiblit

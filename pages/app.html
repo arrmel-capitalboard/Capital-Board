@@ -1664,6 +1664,11 @@
     </div>
     <button onclick="refreshTrustedDevices()" style="width:100%;padding:8px;background:var(--s2);border:1px solid var(--border);color:var(--text2);border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans);margin-bottom:6px">Rafraîchir la liste</button>
     <button onclick="revokeAllOtherDevices()" style="width:100%;padding:8px;background:rgba(255,77,106,0.08);border:1px solid rgba(255,77,106,0.2);color:#ff4d6a;border-radius:8px;font-size:11px;font-weight:600;cursor:pointer;font-family:var(--sans)">Révoquer tous les autres appareils</button>
+    <!-- Distinct du bouton ci-dessus : celui-la retire les appareils de confiance
+         (la 2FA sera redemandee a la prochaine connexion), celui-ci coupe les
+         sessions deja ouvertes, ce que rien ne faisait avant. -->
+    <button onclick="signOutEverywhere()" style="width:100%;margin-top:6px;padding:8px;background:rgba(255,77,106,0.14);border:1px solid rgba(255,77,106,0.32);color:#ff4d6a;border-radius:8px;font-size:11px;font-weight:700;cursor:pointer;font-family:var(--sans)">Déconnecter toutes les sessions (vous compris)</button>
+    <div style="font-size:10.5px;color:var(--text3);margin-top:6px;line-height:1.5">À utiliser si vous pensez qu'un tiers a accès à votre compte : toutes les sessions ouvertes sont coupées, la vôtre comprise.</div>
 
     <!-- Mentions légales -->
     <div style="height:1px;background:var(--border);margin:18px 0"></div>
@@ -1955,7 +1960,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260730q"></script>
+<script src="js/app.js?v=20260730r"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
