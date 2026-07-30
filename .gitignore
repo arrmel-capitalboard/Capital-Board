@@ -30,3 +30,7 @@ npm-debug.log
 # OS
 .DS_Store
 Thumbs.db
+
+# Rapports d'audit de securite : le depot est public, ils decrivent des
+# failles non corrigees et leur chemin d'exploitation. A garder en local.
+SECURITE-AUDIT-*.md
