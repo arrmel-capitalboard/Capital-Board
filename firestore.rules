@@ -35,7 +35,10 @@ service cloud.firestore {
     }
 
     match /roles/{uid} {
-      allow read: if request.auth != null;
+      // Lecture limitée à soi et à l'admin. Ouverte à tout compte connecté, elle
+      // laissait énumérer nom, prénom, pseudo et jeton push de tous les membres.
+      // La disponibilité d'un pseudo se demande au Worker (/username-available).
+      allow read: if _isSelf(uid) || _isAdmin();
       allow create: if _isAdmin() || (_isSelf(uid)
         && request.resource.data.keys().hasOnly(['firstName','lastName','username','avatarHue','fcmToken','mustChangePassword','role'])
         && (!('role' in request.resource.data) || request.resource.data.role == 'user'));
@@ -46,15 +49,15 @@ service cloud.firestore {
       allow delete: if _isAdmin();
     }
 
-    // Réservation d'unicité des noms d'utilisateur. Création seule côté client
-    // (un compte réserve son propre pseudo) ; jamais d'update/delete client —
-    // le Worker (admin, hors règles) libère/réassigne lors d'un changement.
+    // Réservation d'unicité des noms d'utilisateur. Lecture ouverte aux comptes
+    // connectés ; toute écriture appartient au Worker (Admin SDK, hors règles),
+    // qui réserve à la création du pseudo et libère l'ancien lors d'un changement.
     match /usernames/{name} {
       allow read: if request.auth != null;
-      allow create: if _isVerified()
-        && request.resource.data.keys().hasOnly(['uid'])
-        && request.resource.data.uid == request.auth.uid;
-      allow update, delete: if false;
+      // Aucune écriture client : le Worker (/change-username) réserve et libère.
+      // La création côté client n'était utilisée par rien et permettait de
+      // squatter autant de pseudos qu'on voulait.
+      allow create, update, delete: if false;
     }
 
     match /presence/{uid} {
@@ -72,16 +75,33 @@ service cloud.firestore {
       allow create: if _isAdmin();
     }
 
+    function _threadFields() {
+      return ['closed','archived','reason','ticketId','createdAt','closedAt',
+              'closedBy','reopenedAt','lastAt','lastFrom','unreadAdmin',
+              'unreadUser','userEmail','userName'];
+    }
+
     match /supportChats/{userId}/messages/{msgId} {
       allow read: if request.auth != null && (_isSelf(userId) || _isAdmin());
-      allow create: if _isVerified() && ((_isSelf(userId) && request.resource.data.from in ['user', 'system']) || (_isAdmin() && request.resource.data.from in ['admin', 'system']));
+      // L'utilisateur ne peut écrire qu'en son nom : autorisé sur 'system', il
+      // pouvait fabriquer de faux messages de l'application.
+      allow create: if _isVerified() && ((_isSelf(userId) && request.resource.data.from == 'user') || (_isAdmin() && request.resource.data.from in ['admin', 'system']));
       allow update: if _isVerified() && (_isSelf(userId) || _isAdmin()) && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['read']);
       allow delete: if _isAdmin();
     }
 
     match /supportThreads/{userId} {
       allow read: if request.auth != null && (_isSelf(userId) || _isAdmin());
-      allow write: if _isVerified() && (_isSelf(userId) || _isAdmin());
+      // L'admin écrit librement. L'utilisateur est borné aux champs de son propre
+      // fil : sans cette liste, il pouvait poser un `lastAt` dans le futur et
+      // rester en permanence en tête de la file de support.
+      // create et update sont séparés : à la création `resource` est nul, et
+      // `diff(resource.data)` y provoquerait une erreur, donc un refus.
+      allow create: if _isAdmin() || (_isVerified() && _isSelf(userId)
+        && request.resource.data.keys().hasOnly(_threadFields()));
+      allow update: if _isAdmin() || (_isVerified() && _isSelf(userId)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(_threadFields()));
+      allow delete: if _isAdmin();
     }
 
     // ── Mur à idées ────────────────────────────────────────────────────────
@@ -94,6 +114,14 @@ service cloud.firestore {
     // les votes ; ils ne sont acceptés que si le doc de vote de l'appelant
     // change de façon cohérente dans la même transaction — d'où getAfter.
     // Sans ce contrôle, n'importe qui pourrait incrémenter le score en boucle.
+
+    // Pseudo réel de l'appelant, ou 'membre' s'il n'en a pas — exactement ce que
+    // le client envoie. Empêche de publier une idée sous le nom d'un autre.
+    function _usernameOf(uid) {
+      return exists(/databases/$(database)/documents/roles/$(uid))
+        ? get(/databases/$(database)/documents/roles/$(uid)).data.get('username', 'membre')
+        : 'membre';
+    }
 
     function _myVote(ideaId) {
       return exists(/databases/$(database)/documents/users/$(request.auth.uid)/ideaVotes/$(ideaId))
@@ -117,6 +145,7 @@ service cloud.firestore {
         && request.resource.data.keys().hasOnly(
              ['title','body','authorUid','authorName','status','createdAt','up','down','score'])
         && _isSelf(request.resource.data.authorUid)
+        && request.resource.data.authorName == _usernameOf(request.auth.uid)
         && request.resource.data.status == 'pending'
         && request.resource.data.up == 0
         && request.resource.data.down == 0

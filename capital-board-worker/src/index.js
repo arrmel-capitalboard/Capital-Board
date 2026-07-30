@@ -1417,6 +1417,33 @@ export default {
         return json({ ok: true, expiresAt: now + OTP_TTL_MS });
       }
 
+      // ── GET /username-available?u=nom ───────────────────────────────────
+      // Disponibilité d'un pseudo. Passe par le serveur parce que le client ne
+      // peut plus lire la collection roles (elle exposait tous les membres), et
+      // parce qu'à l'inscription l'appelant n'est pas encore authentifié : le
+      // contrôle échouait alors silencieusement.
+      if (url.pathname === '/username-available' && request.method === 'GET') {
+        const ip = request.headers.get('CF-Connecting-IP') || 'anon';
+        const rlKey = `una:rl:${ip}`;
+        const n = parseInt((await env.EARNINGS.get(rlKey)) || '0', 10);
+        if (n >= 30) return json({ error: 'Trop de requêtes' }, 429);
+        await env.EARNINGS.put(rlKey, String(n + 1), { expirationTtl: 60 });
+
+        const uname = (url.searchParams.get('u') || '').trim().toLowerCase();
+        if (!/^[a-z0-9._-]{3,20}$/.test(uname)) {
+          return json({ available: false, error: 'format' });
+        }
+        if (/capitalboard/.test(uname)) return json({ available: false, error: 'reserve' });
+
+        // Réservation explicite, puis comptes existants sans réservation.
+        try {
+          await firestoreGet(`usernames/${uname}`, env);
+          return json({ available: false });
+        } catch (_) { /* pas de réservation : on continue */ }
+        const holders = await rolesWithUsername(uname, env);
+        return json({ available: holders.length === 0 });
+      }
+
       // ── POST /revoke-devices ────────────────────────────────────────────
       // Retrait d'appareils de confiance. Passe par le Worker parce que le
       // client n'a plus le droit d'écrire trustedDevices ; retirer n'affaiblit

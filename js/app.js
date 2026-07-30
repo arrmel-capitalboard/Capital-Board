@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730j';
+const APP_VERSION = '20260730k';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1606,10 +1606,14 @@ function showNameSetupModal(user) {
     '</div>';
 }
 
-async function _isUsernameTaken(username, selfUid) {
-  const q = firestoreQuery(firestoreCollection(db, 'roles'), firestoreWhere('username', '==', username));
-  const snap = await getDocs(q);
-  return snap.docs.some(d => d.id !== selfUid);
+// Disponibilité demandée au Worker : le client ne lit plus la collection roles,
+// qui exposait le nom et le prénom de tous les membres. Marche aussi avant la
+// création du compte, ce qui n'était pas le cas de la requête Firestore.
+async function _isUsernameTaken(username, _selfUid) {
+  const res = await fetch(`${WORKER_URL}/username-available?u=${encodeURIComponent(username)}`);
+  if (!res.ok) throw new Error('vérification indisponible');
+  const data = await res.json();
+  return data.available === false;
 }
 
 async function saveNameSetup(uid) {
