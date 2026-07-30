@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730i';
+const APP_VERSION = '20260730j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -283,9 +283,11 @@ _splashWatchdog = setTimeout(() => {
         if (autoTrust) {
           try { await u.getIdToken(true); } catch(_) {}
           try {
+            // Le Worker décide : il n'accepte que le premier appareil d'un compte
+            // créé il y a moins de 15 min. Le client ne peut plus s'auto-déclarer.
             const ipInfo = await _fetchIpInfo();
-            await _addTrustedDevice(u.uid, deviceId, _getDeviceLabel(), ipInfo);
-          } catch(_) {}
+            await _trustFirstDevice(u, deviceId, ipInfo);
+          } catch(e) { console.warn('[2fa] auto-trust refusé:', e.message); }
           try { localStorage.removeItem('signup_auto_trust'); } catch(_) {}
         } else {
           const trusted = await _isDeviceTrusted(u.uid, deviceId);
@@ -293,8 +295,8 @@ _splashWatchdog = setTimeout(() => {
             showDeviceVerifyView(u.email);
             return;
           }
-          // Trusted → bump lastSeen async (pas bloquant)
-          _updateDeviceLastSeen(u.uid, deviceId);
+          // lastSeen nest plus rafraichi ici : lecriture de trustedDevices
+          // appartient au Worker. La date est posee a chaque verification.
         }
       } catch(e) {
         console.error('[2fa] device check échoué:', e);
@@ -956,33 +958,18 @@ function _startDvResendCooldown() {
   _dvResendTimer = setInterval(tick, 1000);
 }
 
+// Le code est généré, stocké et vérifié par le Worker. Le navigateur ne le voit
+// jamais : avant, il le fabriquait et l'écrivait sous users/{uid}, que son
+// titulaire peut lire — la 2FA se contournait donc avec le seul mot de passe.
 async function _dvGenerateAndSend(user) {
-  // Force refresh token (rules _isVerified)
   try { await user.reload(); await user.getIdToken(true); } catch(_) {}
-  const code = _genOtp();
-  const expiresAt = Date.now() + 10 * 60 * 1000;
-  const deviceId = _getDeviceId();
-  const deviceLabel = _getDeviceLabel();
-  // Fetch IP/location en parallèle (best-effort, non bloquant si échoue)
-  const ipInfo = await _fetchIpInfo();
-  // Stocke IP info dans deviceOtp pour pouvoir l'ajouter au trustedDevice après vérif
-  const ref = firestoreDoc(db, 'users', user.uid, 'data', 'deviceOtp');
-  const payload = {
-    code, expiresAt, attempts: 0, deviceId, deviceLabel,
+  const ipInfo = await _fetchIpInfo();   // best-effort, sert à l'email et au journal
+  await _requestOtp(user, '2fa', {
+    deviceId: _getDeviceId(),
+    deviceLabel: _getDeviceLabel(),
+    location: _fmtLocation(ipInfo) || 'Lieu inconnu',
     ipInfo: ipInfo || null,
-    createdAt: Date.now(),
-  };
-  try {
-    await setFirestoreDoc(ref, payload);
-  } catch(e) {
-    if (e.code === 'permission-denied') {
-      await new Promise(r => setTimeout(r, 800));
-      try { await user.getIdToken(true); } catch(_) {}
-      await setFirestoreDoc(ref, payload);
-    } else { throw e; }
-  }
-  const location = _fmtLocation(ipInfo) || 'Lieu inconnu';
-  await _send2faOtpEmail(user.email, code, deviceLabel, location);
+  });
   _dvLastSent = Date.now();
 }
 
@@ -1043,31 +1030,13 @@ window.dvVerifyOtp = async function() {
   if (!user || !user.email) return;
   setLoading('dv-verify-btn', true);
   try {
-    const ref = firestoreDoc(db, 'users', user.uid, 'data', 'deviceOtp');
-    const snap = await getFirestoreDoc(ref);
-    if (!snap.exists()) {
-      if (ve) { ve.textContent = 'Code expiré. Renvoyez-en un nouveau.'; ve.style.display = 'block'; }
+    // Le Worker tranche et, si le code est bon, déclare lui-même l'appareil de
+    // confiance. Le client ne peut donc plus se déclarer de confiance seul.
+    const r = await _verifyOtp(user, '2fa', input);
+    if (!r.valid) {
+      if (ve) { ve.textContent = _otpErrorText(r); ve.style.display = 'block'; }
       return;
     }
-    const data = snap.data();
-    if (Date.now() > data.expiresAt) {
-      if (ve) { ve.textContent = 'Code expiré. Renvoyez-en un nouveau.'; ve.style.display = 'block'; }
-      return;
-    }
-    if ((data.attempts || 0) >= 5) {
-      if (ve) { ve.textContent = 'Trop de tentatives. Renvoyez un nouveau code.'; ve.style.display = 'block'; }
-      return;
-    }
-    if (data.code !== input) {
-      const left = 5 - ((data.attempts || 0) + 1);
-      await setFirestoreDoc(ref, { ...data, attempts: (data.attempts || 0) + 1 });
-      if (ve) { ve.textContent = `Code incorrect. ${left} tentative(s) restante(s).`; ve.style.display = 'block'; }
-      return;
-    }
-    // OK → ajoute device trusté avec IP info stockée dans le doc OTP + cleanup
-    const deviceId = _getDeviceId();
-    await _addTrustedDevice(user.uid, deviceId, _getDeviceLabel(), data.ipInfo || null);
-    try { await deleteFirestoreDoc(ref); } catch(_) {}
     document.getElementById('device-verify-view').style.display = 'none';
     // Gate PIN — obligatoire même après validation 2FA, hors dérogation admin
     try {
@@ -2029,11 +1998,7 @@ window.revokeAllOtherDevices = function() {
     danger: true,
     onConfirm: async () => {
       try {
-        const devices = await _getTrustedDevices(user.uid);
-        const currentId = _getDeviceId();
-        const kept = devices[currentId] ? { [currentId]: devices[currentId] } : {};
-        const ref = firestoreDoc(db, 'users', user.uid, 'data', 'trustedDevices');
-        await setFirestoreDoc(ref, { devices: kept });
+        await _revokeOtherTrustedDevices();
         await window.refreshTrustedDevices();
       } catch(e) {
         console.error('[2fa] revoke all échoué:', e);
@@ -2659,9 +2624,6 @@ window.delBackToStep1 = function() {
 };
 
 // Génère code 6 chiffres
-function _genOtp() {
-  return String(Math.floor(100000 + Math.random() * 900000));
-}
 
 // ─── 2FA DEVICE TRUST ──────────────────────────────────────
 
@@ -2761,73 +2723,79 @@ function _fmtLocation(info) {
   return _trCountry(info.country) || '';
 }
 
-async function _addTrustedDevice(uid, deviceId, label, ipInfo) {
-  const ref = firestoreDoc(db, 'users', uid, 'data', 'trustedDevices');
-  const snap = await getFirestoreDoc(ref);
-  const data = (snap.exists() && snap.data()) || {};
-  const devices = data.devices || {};
-  const now = Date.now();
-  // Purge expirés à l'écriture
-  for (const [id, d] of Object.entries(devices)) {
-    if (!d || !d.expiresAt || d.expiresAt <= now) delete devices[id];
-  }
-  devices[deviceId] = {
-    label: label || _getDeviceLabel(),
-    firstSeen: devices[deviceId]?.firstSeen || now,
-    lastSeen: now,
-    expiresAt: now + DEVICE_TRUST_MS,
-    ip: ipInfo?.ip || devices[deviceId]?.ip || '',
-    city: ipInfo?.city || devices[deviceId]?.city || '',
-    region: ipInfo?.region || devices[deviceId]?.region || '',
-    country: ipInfo?.country || devices[deviceId]?.country || '',
-    countryCode: ipInfo?.countryCode || devices[deviceId]?.countryCode || '',
-  };
-  await setFirestoreDoc(ref, { devices });
+// Auto-confiance du premier appareil, arbitrée par le Worker.
+async function _trustFirstDevice(user, deviceId, ipInfo) {
+  const idToken = await user.getIdToken();
+  const res = await fetch(`${WORKER_URL}/trust-device`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken, deviceId, deviceLabel: _getDeviceLabel(), ipInfo: ipInfo || null }),
+  });
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'refus du serveur');
 }
 
-async function _updateDeviceLastSeen(uid, deviceId) {
-  try {
-    const ref = firestoreDoc(db, 'users', uid, 'data', 'trustedDevices');
-    const snap = await getFirestoreDoc(ref);
-    if (!snap.exists()) return;
-    const data = snap.data() || {};
-    const devices = data.devices || {};
-    if (!devices[deviceId]) return;
-    devices[deviceId].lastSeen = Date.now();
-    await setFirestoreDoc(ref, { devices });
-  } catch(_) {}
-}
-
+// Les appareils de confiance ne sont plus ecrits par le navigateur : ajout et
+// retrait passent par le Worker, seul a pouvoir modifier trustedDevices.
 async function _revokeTrustedDevice(uid, deviceId) {
-  const ref = firestoreDoc(db, 'users', uid, 'data', 'trustedDevices');
-  const snap = await getFirestoreDoc(ref);
-  if (!snap.exists()) return;
-  const data = snap.data() || {};
-  const devices = data.devices || {};
-  delete devices[deviceId];
-  await setFirestoreDoc(ref, { devices });
-}
-
-async function _sendOtpEmail(_toEmail, code) {
   const idToken = await fbAuth.currentUser.getIdToken();
-  const turnstileToken = _getTurnstileToken('turnstile-delete');
-  const res = await fetch(`${WORKER_URL}/send-otp`, {
+  const res = await fetch(`${WORKER_URL}/revoke-devices`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idToken, type: 'delete', code, turnstileToken }),
+    body: JSON.stringify({ idToken, deviceId }),
   });
-  _resetTurnstile('turnstile-delete');
-  if (!res.ok) throw new Error('Erreur envoi OTP suppression');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'révocation refusée');
 }
 
-async function _send2faOtpEmail(_toEmail, code, deviceLabel, location) {
+async function _revokeOtherTrustedDevices() {
   const idToken = await fbAuth.currentUser.getIdToken();
-  const res = await fetch(`${WORKER_URL}/send-otp`, {
+  const res = await fetch(`${WORKER_URL}/revoke-devices`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idToken, type: '2fa', code, deviceLabel, location }),
+    body: JSON.stringify({ idToken, keepDeviceId: _getDeviceId() }),
   });
-  if (!res.ok) throw new Error('Erreur envoi OTP 2FA');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'révocation refusée');
+}
+
+// ── OTP : le Worker génère et vérifie, le client ne fait que demander ────────
+// Demande un code. `extra` porte le contexte affiché dans l'email (appareil,
+// lieu) et, pour la 2FA, l'identifiant d'appareil que le Worker déclarera de
+// confiance après vérification.
+async function _requestOtp(user, type, extra = {}) {
+  const idToken = await user.getIdToken();
+  const body = { idToken, type, ...extra };
+  if (type === 'delete') {
+    body.turnstileToken = _getTurnstileToken('turnstile-delete');
+  }
+  const res = await fetch(`${WORKER_URL}/request-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(body),
+  });
+  if (type === 'delete') _resetTurnstile('turnstile-delete');
+  const data = await res.json().catch(() => ({}));
+  if (!res.ok || !data.ok) throw new Error(data.error || 'Envoi du code impossible');
+  return data;
+}
+
+async function _verifyOtp(user, type, code) {
+  const idToken = await user.getIdToken();
+  const res = await fetch(`${WORKER_URL}/verify-otp`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ idToken, type, code }),
+  });
+  return await res.json().catch(() => ({ valid: false }));
+}
+
+// Message utilisateur à partir de la réponse du Worker.
+function _otpErrorText(r) {
+  if (r.error === 'expired') return 'Code expiré. Renvoyez-en un nouveau.';
+  if (r.error === 'locked')  return 'Trop de tentatives. Renvoyez un nouveau code.';
+  if (r.error === 'wrong')   return `Code incorrect. ${r.left} tentative(s) restante(s).`;
+  return r.error || 'Vérification impossible.';
 }
 
 let _delLastSent = 0;
@@ -2865,23 +2833,9 @@ window.delFinalize = async function() {
   if (!user || !user.email) return;
   setLoading('del-final-btn', true);
   try {
-    // Force refresh token (sinon email_verified claim peut être stale → rules deny)
+    // Rafraîchit le token (le claim email_verified peut être périmé).
     try { await user.reload(); await user.getIdToken(true); } catch(_) {}
-    const code = _genOtp();
-    const expiresAt = Date.now() + 10 * 60 * 1000; // 10 min
-    const otpRef = firestoreDoc(db, 'users', user.uid, 'data', 'deleteOtp');
-    const payload = { code, expiresAt, attempts: 0, createdAt: Date.now() };
-    try {
-      await setFirestoreDoc(otpRef, payload);
-    } catch(e) {
-      // Retry une fois après nouveau refresh token (propagation SDK Firestore parfois lente)
-      if (e.code === 'permission-denied') {
-        await new Promise(r => setTimeout(r, 800));
-        try { await user.getIdToken(true); } catch(_) {}
-        await setFirestoreDoc(otpRef, payload);
-      } else { throw e; }
-    }
-    await _sendOtpEmail(user.email, code);
+    await _requestOtp(user, 'delete');
     _delLastSent = Date.now();
     // Bascule étape 4 (saisie code)
     document.getElementById('del-step-2').style.display = 'none';
@@ -2912,15 +2866,7 @@ window.delResendOtp = async function() {
   if (oerr) oerr.style.display = 'none';
   try {
     try { await user.reload(); await user.getIdToken(true); } catch(_) {}
-    const code = _genOtp();
-    const expiresAt = Date.now() + 10 * 60 * 1000;
-    await setFirestoreDoc(firestoreDoc(db, 'users', user.uid, 'data', 'deleteOtp'), {
-      code,
-      expiresAt,
-      attempts: 0,
-      createdAt: Date.now(),
-    });
-    await _sendOtpEmail(user.email, code);
+    await _requestOtp(user, 'delete');
     _delLastSent = Date.now();
     _startResendCooldown();
     if (oerr) {
@@ -2953,25 +2899,9 @@ window.delVerifyOtp = async function() {
   if (!user || !user.email) return;
   setLoading('del-verify-btn', true);
   try {
-    const ref = firestoreDoc(db, 'users', user.uid, 'data', 'deleteOtp');
-    const snap = await getFirestoreDoc(ref);
-    if (!snap.exists()) {
-      if (oerr) { oerr.textContent = 'Code expiré. Renvoyez-en un nouveau.'; oerr.style.display = 'block'; }
-      return;
-    }
-    const data = snap.data();
-    if (Date.now() > data.expiresAt) {
-      if (oerr) { oerr.textContent = 'Code expiré. Renvoyez-en un nouveau.'; oerr.style.display = 'block'; }
-      return;
-    }
-    if ((data.attempts || 0) >= 5) {
-      if (oerr) { oerr.textContent = 'Trop de tentatives. Renvoyez un nouveau code.'; oerr.style.display = 'block'; }
-      return;
-    }
-    if (data.code !== input) {
-      const left = 5 - ((data.attempts || 0) + 1);
-      await setFirestoreDoc(ref, { ...data, attempts: (data.attempts || 0) + 1 });
-      if (oerr) { oerr.textContent = `Code incorrect. ${left} tentative(s) restante(s).`; oerr.style.display = 'block'; }
+    const r = await _verifyOtp(user, 'delete', input);
+    if (!r.valid) {
+      if (oerr) { oerr.textContent = _otpErrorText(r); oerr.style.display = 'block'; }
       return;
     }
     // Code OK → bascule étape progress

@@ -12,7 +12,24 @@ service cloud.firestore {
       return request.auth != null && request.auth.uid == uid;
     }
 
-    match /users/{uid}/{path=**} {
+    // Le document de l'utilisateur et ses sous-collections sont privés. Les
+    // chemins sont énumérés au lieu d'un `{path=**}` global : il faut pouvoir
+    // exclure `data/trustedDevices` de l'écriture client, et une règle large
+    // qui autorise l'emporte toujours sur une règle étroite qui refuse.
+    match /users/{uid} {
+      allow read: if _isSelf(uid);
+      allow write: if _isVerified() && _isSelf(uid);
+    }
+
+    match /users/{uid}/data/{docId} {
+      allow read: if _isSelf(uid);
+      // trustedDevices est écrit uniquement par le Worker, après vérification du
+      // code envoyé par email. Sinon il suffisait de s'inscrire soi-même comme
+      // appareil de confiance pour ne jamais voir la 2FA.
+      allow write: if _isVerified() && _isSelf(uid) && docId != 'trustedDevices';
+    }
+
+    match /users/{uid}/ideaVotes/{ideaId} {
       allow read: if _isSelf(uid);
       allow write: if _isVerified() && _isSelf(uid);
     }

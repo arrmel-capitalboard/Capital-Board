@@ -1,5 +1,6 @@
 // Capital Board — Cloudflare Worker
-// Endpoints : POST /verify-pin | POST /send-otp | GET /yahoo | GET /news | POST /chat
+// Endpoints : POST /verify-pin | POST /request-otp | POST /verify-otp | GET /yahoo
+//             | GET /news | POST /chat
 
 import { KB } from './kb.js';
 
@@ -388,6 +389,9 @@ async function verifyIdToken(idToken, env) {
   if (payload.exp < now)           throw new Error('Token expiré');
   if (payload.iat > now + 300)     throw new Error('Token émis dans le futur');
   if (payload.aud !== env.FIREBASE_PROJECT_ID) throw new Error('Token audience invalide');
+  if (payload.iss !== `https://securetoken.google.com/${env.FIREBASE_PROJECT_ID}`) {
+    throw new Error('Token émetteur invalide');
+  }
   if (!payload.sub)                throw new Error('Token sub manquant');
 
   const jwks = await getGoogleJwks();
@@ -400,7 +404,11 @@ async function verifyIdToken(idToken, env) {
   const valid    = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, sig, sigInput);
   if (!valid) throw new Error('Signature invalide');
 
-  return { localId: payload.sub, email: payload.email };
+  return {
+    localId: payload.sub,
+    email: payload.email,
+    emailVerified: payload.email_verified === true,
+  };
 }
 
 // ── Firestore REST ─────────────────────────────────────────────────────────
@@ -492,6 +500,43 @@ async function firestoreDelete(path, env) {
   const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${path}`;
   const res = await fetch(url, { method: 'DELETE', headers: { Authorization: `Bearer ${token}` } });
   if (!res.ok && res.status !== 404) throw new Error(`Firestore delete ${res.status}`);
+}
+
+// Déclare un appareil de confiance après vérification du code. Écrit par le
+// Worker et non par le client : sinon il suffirait d'écrire soi-même dans
+// users/{uid}/data/trustedDevices pour ne jamais voir la 2FA.
+async function trustDevice(uid, deviceId, label, ipInfo, env) {
+  const path = `users/${uid}/data/trustedDevices`;
+  const now = Date.now();
+
+  // Lit les appareils déjà connus, en purgeant les expirés au passage.
+  let devices = {};
+  try {
+    const doc = await firestoreGet(path, env);
+    const raw = doc.fields?.devices?.mapValue?.fields || {};
+    for (const [id, v] of Object.entries(raw)) {
+      const f = v.mapValue?.fields || {};
+      const expiresAt = Number(f.expiresAt?.integerValue ?? 0);
+      if (expiresAt > now) devices[id] = f;   // conservé au format REST
+    }
+  } catch (_) { /* document absent : premier appareil */ }
+
+  const prev = devices[deviceId] || {};
+  devices[deviceId] = {
+    label:       { stringValue: String(label || 'Appareil inconnu').slice(0, 80) },
+    firstSeen:   { integerValue: String(Number(prev.firstSeen?.integerValue ?? now)) },
+    lastSeen:    { integerValue: String(now) },
+    expiresAt:   { integerValue: String(now + DEVICE_TRUST_MS) },
+    ip:          { stringValue: String(ipInfo?.ip || prev.ip?.stringValue || '') },
+    city:        { stringValue: String(ipInfo?.city || prev.city?.stringValue || '') },
+    region:      { stringValue: String(ipInfo?.region || prev.region?.stringValue || '') },
+    country:     { stringValue: String(ipInfo?.country || prev.country?.stringValue || '') },
+    countryCode: { stringValue: String(ipInfo?.countryCode || prev.countryCode?.stringValue || '') },
+  };
+
+  const fields = {};
+  for (const [id, f] of Object.entries(devices)) fields[id] = { mapValue: { fields: f } };
+  await firestoreUpdate(path, { devices: { mapValue: { fields } } }, ['devices'], env);
 }
 
 // Liste tous les documents d'une collection (paginé).
@@ -662,7 +707,10 @@ const CSS_BASE = `
   .footer{margin-top:32px;color:#4a5266;font-size:12px;text-align:center}
 `;
 
+// escapeHtml sur le code : meme genere par le serveur, on n'interpole jamais
+// une valeur brute dans du HTML d'email.
 function emailDelete(code) {
+  code = escapeHtml(code);
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${CSS_BASE}</style></head><body>
 <div class="card">
   <div class="logo">Capital Board</div>
@@ -676,6 +724,10 @@ function emailDelete(code) {
 }
 
 function email2fa(code, deviceLabel, location) {
+  // deviceLabel et location viennent du navigateur : toujours echappes.
+  code = escapeHtml(code);
+  deviceLabel = escapeHtml(deviceLabel);
+  location = escapeHtml(location);
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${CSS_BASE}</style></head><body>
 <div class="card">
   <div class="logo">Capital Board</div>
@@ -749,6 +801,23 @@ async function getAuthEmail(localId, env) {
   return u && u.email ? u.email : '';
 }
 
+// Date de création d'un compte Auth (ms), pour borner /trust-device.
+async function getAuthCreatedAt(localId, env) {
+  const at = await getAccessToken(env);
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:lookup`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${at}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ localId: [localId] }),
+    }
+  );
+  if (!res.ok) return null;
+  const data = await res.json();
+  const u = (data.users || [])[0];
+  return u && u.createdAt ? Number(u.createdAt) : null;
+}
+
 function emailIdeaRejected(title, reason) {
   const motif = reason
     ? `<p><strong>Motif :</strong> ${escapeHtml(reason)}</p>`
@@ -766,6 +835,34 @@ function emailIdeaRejected(title, reason) {
   <p>Vous pouvez la retravailler et en proposer une nouvelle version quand vous le souhaitez.</p>
   <div class="footer">Capital Board · Ne pas répondre à cet email.</div>
 </div></body></html>`;
+}
+
+// ── OTP : le serveur est seule autorité ────────────────────────────────────
+// Le code n'existe que dans otpChallenges/{uid}, une collection sans règle
+// Firestore : les règles refusent par défaut, donc aucun client ne peut la lire,
+// même avec la session de l'utilisateur. Avant, le code était généré dans le
+// navigateur et stocké sous users/{uid}, que son titulaire peut lire : quiconque
+// avait le mot de passe lisait le code et passait la 2FA sans la boîte mail.
+const OTP_TTL_MS      = 10 * 60 * 1000;  // validité d'un code
+const OTP_MAX_TRIES    = 5;              // essais avant invalidation
+const OTP_MAX_SENDS    = 5;              // envois par fenêtre
+const OTP_SEND_WINDOW  = 30 * 60 * 1000; // fenêtre de comptage des envois
+const OTP_RESEND_MS    = 45 * 1000;      // délai minimum entre deux envois
+const DEVICE_TRUST_MS  = 90 * 24 * 60 * 60 * 1000;
+
+function otpGenerate() {
+  const a = new Uint32Array(1);
+  crypto.getRandomValues(a);
+  return String(a[0] % 1000000).padStart(6, '0');
+}
+
+// Comparaison à durée constante : évite de distinguer un code proche par le
+// temps de réponse.
+function otpEqual(a, b) {
+  if (a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
 }
 
 function emailIdeaPublished(title) {
@@ -1247,13 +1344,16 @@ export default {
         return json({ ok: true });
       }
 
-      // ── POST /send-otp ──────────────────────────────────────────────────
-      if (url.pathname === '/send-otp' && request.method === 'POST') {
-        const { idToken, type, code, deviceLabel, location, turnstileToken } = await request.json();
-        if (!idToken || !code || !['delete', '2fa'].includes(type)) {
+      // ── POST /request-otp ───────────────────────────────────────────────
+      // Génère le code, le garde côté serveur, l'envoie par email. Le client ne
+      // le voit jamais. Remplace l'ancien /send-otp, où le code était fabriqué
+      // par le navigateur et simplement relayé.
+      if (url.pathname === '/request-otp' && request.method === 'POST') {
+        const { idToken, type, deviceId, deviceLabel, location, ipInfo, turnstileToken } = await request.json();
+        if (!idToken || !['delete', '2fa'].includes(type)) {
           return json({ ok: false, error: 'Paramètres invalides' }, 400);
         }
-        // Turnstile requis pour suppression (hors session), optionnel pour 2FA (user déjà authentifié au login)
+        // Turnstile sur la suppression : action destructrice et hors parcours normal.
         if (type === 'delete') {
           const humanVerified = await verifyTurnstile(turnstileToken, env);
           if (!humanVerified) return json({ ok: false, error: 'Vérification humaine échouée' }, 403);
@@ -1261,13 +1361,163 @@ export default {
 
         const user = await verifyIdToken(idToken, env);
         if (!user.email) return json({ ok: false, error: 'Email introuvable' }, 400);
+        // Adresse non vérifiée = adresse non prouvée. Sans ce contrôle, on
+        // pouvait créer un compte avec l'email d'un tiers et lui faire envoyer
+        // un message signé par notre domaine.
+        if (!user.emailVerified) {
+          return json({ ok: false, error: 'Adresse email non vérifiée' }, 403);
+        }
+
+        const path = `otpChallenges/${user.localId}`;
+        const now = Date.now();
+
+        // Anti-abus : délai entre deux envois, et plafond par fenêtre glissante.
+        let sends = 0, windowStart = now;
+        try {
+          const prev = await firestoreGet(path, env);
+          const lastSentAt = fsNum(prev, 'lastSentAt') || 0;
+          const prevWindow = fsNum(prev, 'windowStart') || 0;
+          if (now - lastSentAt < OTP_RESEND_MS) {
+            return json({ ok: false, error: 'Patientez avant de demander un nouveau code' }, 429);
+          }
+          if (now - prevWindow < OTP_SEND_WINDOW) {
+            windowStart = prevWindow;
+            sends = fsNum(prev, 'sends') || 0;
+            if (sends >= OTP_MAX_SENDS) {
+              return json({ ok: false, error: 'Trop de codes demandés, réessayez plus tard' }, 429);
+            }
+          }
+        } catch (_) { /* aucune demande précédente */ }
+
+        const code = otpGenerate();
+        const salt = crypto.randomUUID();
+        await firestoreSet(path, {
+          type:        { stringValue: type },
+          codeHash:    { stringValue: await sha256(salt + code) },
+          salt:        { stringValue: salt },
+          expiresAt:   { integerValue: String(now + OTP_TTL_MS) },
+          attempts:    { integerValue: '0' },
+          sends:       { integerValue: String(sends + 1) },
+          windowStart: { integerValue: String(windowStart) },
+          lastSentAt:  { integerValue: String(now) },
+          deviceId:    { stringValue: String(deviceId || '') },
+          deviceLabel: { stringValue: String(deviceLabel || '').slice(0, 80) },
+          ip:          { stringValue: String(ipInfo?.ip || '') },
+          city:        { stringValue: String(ipInfo?.city || '') },
+          region:      { stringValue: String(ipInfo?.region || '') },
+          country:     { stringValue: String(ipInfo?.country || '') },
+          countryCode: { stringValue: String(ipInfo?.countryCode || '') },
+        }, env);
 
         const [subject, html] = type === 'delete'
           ? ['Confirmation suppression de compte — Capital Board', emailDelete(code)]
-          : ['Code de vérification — nouvel appareil Capital Board', email2fa(code, deviceLabel, location)];
-
+          : ['Code de vérification — nouvel appareil Capital Board',
+             email2fa(code, deviceLabel, location)];
         await sendEmail(user.email, subject, html, env);
+        return json({ ok: true, expiresAt: now + OTP_TTL_MS });
+      }
+
+      // ── POST /revoke-devices ────────────────────────────────────────────
+      // Retrait d'appareils de confiance. Passe par le Worker parce que le
+      // client n'a plus le droit d'écrire trustedDevices ; retirer n'affaiblit
+      // rien, mais l'écriture doit rester d'un seul côté.
+      // { deviceId } retire cet appareil ; { keepDeviceId } retire tous les autres.
+      if (url.pathname === '/revoke-devices' && request.method === 'POST') {
+        const { idToken, deviceId, keepDeviceId } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        if (!deviceId && !keepDeviceId) return json({ ok: false, error: 'Paramètres invalides' }, 400);
+
+        const path = `users/${user.localId}/data/trustedDevices`;
+        let raw = {};
+        try {
+          const doc = await firestoreGet(path, env);
+          raw = doc.fields?.devices?.mapValue?.fields || {};
+        } catch (_) { return json({ ok: true, removed: 0 }); }
+
+        const kept = {};
+        let removed = 0;
+        for (const [id, v] of Object.entries(raw)) {
+          const drop = keepDeviceId ? id !== keepDeviceId : id === deviceId;
+          if (drop) removed++; else kept[id] = v;
+        }
+        await firestoreUpdate(path, { devices: { mapValue: { fields: kept } } }, ['devices'], env);
+        return json({ ok: true, removed });
+      }
+
+      // ── POST /trust-device ──────────────────────────────────────────────
+      // Premier appareil d'un compte fraîchement créé : évite de demander un
+      // code par email juste après l'inscription. Trois conditions cumulées,
+      // sinon c'est un contournement de la 2FA : email vérifié, compte créé il
+      // y a moins de 15 minutes, et aucun appareil de confiance existant.
+      if (url.pathname === '/trust-device' && request.method === 'POST') {
+        const { idToken, deviceId, deviceLabel, ipInfo } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        if (!user.emailVerified) return json({ ok: false, error: 'Adresse email non vérifiée' }, 403);
+        if (!deviceId) return json({ ok: false, error: 'deviceId requis' }, 400);
+
+        const createdAt = await getAuthCreatedAt(user.localId, env);
+        if (!createdAt || Date.now() - createdAt > 15 * 60 * 1000) {
+          return json({ ok: false, error: 'Compte trop ancien pour cette voie' }, 403);
+        }
+
+        const now = Date.now();
+        try {
+          const doc = await firestoreGet(`users/${user.localId}/data/trustedDevices`, env);
+          const raw = doc.fields?.devices?.mapValue?.fields || {};
+          const active = Object.values(raw).some(v =>
+            Number(v.mapValue?.fields?.expiresAt?.integerValue ?? 0) > now);
+          if (active) return json({ ok: false, error: 'Un appareil est déjà enregistré' }, 403);
+        } catch (_) { /* aucun document : cas attendu */ }
+
+        await trustDevice(user.localId, deviceId, deviceLabel, ipInfo, env);
         return json({ ok: true });
+      }
+
+      // ── POST /verify-otp ────────────────────────────────────────────────
+      // Compare le code, compte les essais, et pour la 2FA déclare l'appareil
+      // de confiance lui-même : le client n'a aucun rôle dans la décision.
+      if (url.pathname === '/verify-otp' && request.method === 'POST') {
+        const { idToken, type, code } = await request.json();
+        if (!idToken || !['delete', '2fa'].includes(type) || !/^\d{6}$/.test(code ?? '')) {
+          return json({ valid: false, error: 'Paramètres invalides' }, 400);
+        }
+        const user = await verifyIdToken(idToken, env);
+        const path = `otpChallenges/${user.localId}`;
+
+        let doc;
+        try { doc = await firestoreGet(path, env); }
+        catch (_) { return json({ valid: false, error: 'expired' }); }
+
+        const now = Date.now();
+        if (fsStr(doc, 'type') !== type)        return json({ valid: false, error: 'expired' });
+        if ((fsNum(doc, 'expiresAt') || 0) < now) {
+          await firestoreDelete(path, env);
+          return json({ valid: false, error: 'expired' });
+        }
+        const attempts = fsNum(doc, 'attempts') || 0;
+        if (attempts >= OTP_MAX_TRIES) {
+          await firestoreDelete(path, env);
+          return json({ valid: false, error: 'locked' });
+        }
+
+        const computed = await sha256(fsStr(doc, 'salt') + code);
+        if (!otpEqual(computed, fsStr(doc, 'codeHash') || '')) {
+          await firestoreUpdate(path, { attempts: { integerValue: String(attempts + 1) } }, ['attempts'], env);
+          return json({ valid: false, error: 'wrong', left: Math.max(0, OTP_MAX_TRIES - attempts - 1) });
+        }
+
+        // Code correct : usage unique, on efface avant toute suite.
+        await firestoreDelete(path, env);
+
+        if (type === '2fa') {
+          const deviceId = fsStr(doc, 'deviceId');
+          if (!deviceId) return json({ valid: false, error: 'device manquant' }, 400);
+          await trustDevice(user.localId, deviceId, fsStr(doc, 'deviceLabel'), {
+            ip: fsStr(doc, 'ip'), city: fsStr(doc, 'city'), region: fsStr(doc, 'region'),
+            country: fsStr(doc, 'country'), countryCode: fsStr(doc, 'countryCode'),
+          }, env);
+        }
+        return json({ valid: true });
       }
 
       // ── POST /forgot-password ───────────────────────────────────────────
