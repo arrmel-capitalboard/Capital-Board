@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730o';
+const APP_VERSION = '20260730p';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -689,7 +689,8 @@ function firebaseErrorMsg(code) {
     'auth/user-not-found':           'Aucun compte avec cet email.',
     'auth/wrong-password':           'Mot de passe incorrect.',
     'auth/email-already-in-use':     'Cet email est déjà utilisé.',
-    'auth/weak-password':            'Mot de passe trop faible (6 caractères min).',
+    'auth/weak-password':            'Mot de passe trop faible : 10 caractères minimum, avec minuscule, majuscule et chiffre.',
+    'auth/password-does-not-meet-requirements': 'Mot de passe trop faible : 10 caractères minimum, avec minuscule, majuscule et chiffre.',
     'auth/too-many-requests':        'Trop de tentatives. Réessayez plus tard.',
     'auth/invalid-credential':       'Email ou mot de passe incorrect.',
   };
@@ -2025,6 +2026,29 @@ window.doLogin = async function() {
 };
 
 // ─── REGISTER ─────────────────────────────────────────
+// ── Robustesse du mot de passe ───────────────────────────────────────────────
+// La règle est imposée par Firebase (politique ENFORCE : 10 caractères, avec
+// minuscule, majuscule et chiffre). Ce contrôle local sert à annoncer le problème
+// avant l'envoi, avec un message utile plutôt qu'un code d'erreur brut. Les trois
+// endroits qui changent un mot de passe passent par ici, pour éviter que trois
+// règles différentes se contredisent — c'était le cas : 6 caractères à
+// l'inscription, 6 au profil, 8 au changement forcé.
+const PASSWORD_MIN = 10;
+
+function passwordProblem(pass, email) {
+  const p = String(pass || '');
+  if (p.length < PASSWORD_MIN) return 'Mot de passe : ' + PASSWORD_MIN + ' caractères minimum.';
+  if (!/[a-z]/.test(p))        return 'Ajoutez au moins une lettre minuscule.';
+  if (!/[A-Z]/.test(p))        return 'Ajoutez au moins une lettre majuscule.';
+  if (!/[0-9]/.test(p))        return 'Ajoutez au moins un chiffre.';
+  // Un mot de passe qui contient l'adresse email ne résiste à rien.
+  const local = String(email || '').split('@')[0].toLowerCase();
+  if (local.length >= 4 && p.toLowerCase().includes(local)) {
+    return "Le mot de passe ne doit pas contenir votre adresse email.";
+  }
+  return null;
+}
+
 window.doRegister = async function() {
   const firstName = (document.getElementById('reg-firstname').value || '').trim();
   const lastName  = (document.getElementById('reg-lastname').value || '').trim();
@@ -2044,7 +2068,8 @@ window.doRegister = async function() {
     if (await _isUsernameTaken(username, '')) { err.textContent = 'Ce nom d\'utilisateur est déjà pris.'; err.style.display = 'block'; return; }
   } catch (_) { /* si la vérif échoue on laisse passer, contrôle repassé au 1er login */ }
   if (pass !== pass2) { err.textContent = 'Les mots de passe ne correspondent pas.'; err.style.display = 'block'; return; }
-  if (pass.length < 6) { err.textContent = 'Mot de passe trop court (6 caractères min).'; err.style.display = 'block'; return; }
+  const _pwProblem = passwordProblem(pass, email);
+  if (_pwProblem) { err.textContent = _pwProblem; err.style.display = 'block'; return; }
   const rgpdChecked = document.getElementById('reg-rgpd')?.checked;
   if (!rgpdChecked) { if (rgpdErr) { rgpdErr.style.display = 'block'; } return; }
   if (!(await _isSignupOpen())) {
@@ -2558,7 +2583,8 @@ window.saveNewPassword = async function() {
 
   if (!oldPass || !newPass || !newPass2) { status.textContent = 'Remplissez tous les champs.'; status.style.color = 'var(--negative)'; return; }
   if (newPass !== newPass2) { status.textContent = 'Les mots de passe ne correspondent pas.'; status.style.color = 'var(--negative)'; return; }
-  if (newPass.length < 6) { status.textContent = 'Mot de passe trop court (6 caractères min).'; status.style.color = 'var(--negative)'; return; }
+  const _pwProblem = passwordProblem(newPass, user.email);
+  if (_pwProblem) { status.textContent = _pwProblem; status.style.color = 'var(--negative)'; return; }
 
   try {
     const cred = EmailAuthProvider.credential(user.email, oldPass);
@@ -14194,7 +14220,7 @@ function _showForcedPasswordModal(user) {
       '<div style="font-size:20px;font-weight:800;color:#f0f2f8;margin-bottom:8px">Changement de mot de passe requis</div>' +
       '<div style="font-size:13px;color:#98a1b5;line-height:1.6;margin-bottom:20px">Votre mot de passe a été réinitialisé par un administrateur. Choisissez un nouveau mot de passe pour continuer.</div>' +
       '<input id="fp-current" type="password" placeholder="Mot de passe temporaire" autocomplete="current-password" style="' + inp + '">' +
-      '<input id="fp-new" type="password" placeholder="Nouveau mot de passe (8 caractères min.)" autocomplete="new-password" style="' + inp + '">' +
+      '<input id="fp-new" type="password" placeholder="Nouveau mot de passe (10 car., 1 maj., 1 chiffre)" autocomplete="new-password" style="' + inp + '">' +
       '<input id="fp-confirm" type="password" placeholder="Confirmer le nouveau mot de passe" autocomplete="new-password" style="' + inp + '">' +
       '<div id="fp-error" style="display:none;color:#ff5d78;font-size:12px;margin-bottom:10px"></div>' +
       '<button id="fp-btn" onclick="saveForcedPassword(\'' + user.uid + '\')" style="width:100%;box-sizing:border-box;padding:12px;border:none;border-radius:12px;background:#7c6df5;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Valider</button>' +
@@ -14209,7 +14235,8 @@ async function saveForcedPassword(uid) {
   const fail = m => { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } };
   if (errEl) errEl.style.display = 'none';
   if (!cur) return fail('Saisissez le mot de passe temporaire.');
-  if (np.length < 8) return fail('Nouveau mot de passe : 8 caractères minimum.');
+  const _pwProblem = passwordProblem(np, (fbAuth.currentUser && fbAuth.currentUser.email) || '');
+  if (_pwProblem) return fail(_pwProblem);
   if (np !== np2) return fail('Les mots de passe ne correspondent pas.');
   if (np === cur) return fail('Choisissez un mot de passe différent du temporaire.');
   if (btn) { btn.disabled = true; btn.textContent = 'Enregistrement…'; }
