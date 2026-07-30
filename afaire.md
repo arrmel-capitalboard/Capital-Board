@@ -7,39 +7,123 @@ avant toute nouvelle fonctionnalité.
 
 ---
 
-## Sécurité
+## Sécurité — pistes de renforcement
 
-### 1. Passer `firebase-admin` en v14 sur le bot
+Classées par rapport valeur / effort. Rien ici n'est une faille connue : ce sont
+des couches supplémentaires. L'état actuel est sain, ces points le rendraient plus
+difficile à casser ou plus rapide à diagnostiquer.
 
-**État** : 8 alertes `npm audit` restantes, toutes le même avis — `uuid`, bornes de
-buffer manquantes en v3/v5/v6 quand l'appelant fournit un `buf`.
+### A. Mettre Cloudflare devant capitalboard.fr — le plus gros gain
 
-**Pourquoi ce n'est pas urgent** : le code concerné n'est jamais appelé de cette façon
-par les librairies Google qui l'embarquent. Aucun chemin exploitable identifié sur ce
-projet.
+Aujourd'hui le site est servi directement par GitHub Pages, qui ne permet aucun
+en-tête HTTP. Passer le domaine derrière Cloudflare (gratuit) débloque d'un coup :
 
-**Pourquoi le faire quand même** : rester sur des dépendances à jour évite qu'une
-alerte réellement exploitable se noie dans le bruit des alertes ignorées.
+- **un vrai CSP**, en mode « rapport seulement » d'abord, ce qui permet enfin de
+  poser `script-src` et `connect-src` sans risquer de casser l'app en aveugle
+  (voir point B, qui devient facile)
+- `X-Frame-Options` / `frame-ancestors`, qui remplacerait la sortie de cadre en
+  JavaScript, contournable
+- `Strict-Transport-Security`, `Referrer-Policy`, `Permissions-Policy`
+- limitation de débit et WAF au bord, donc **avant** d'atteindre le Worker
+- purge de cache maîtrisée, utile au passage pour le gate de version
 
-**Comment** : version majeure, donc à traiter à froid. `npm i firebase-admin@14` dans
-`discord-bot/`, puis vérifier les trois usages réels — Firestore (lecture des
-portefeuilles, file des nouveautés), Auth (résolution d'emails), et les scripts
-GitHub Actions qui importent la même librairie. Le corpus `npm test` ne couvre que
-l'automod : la vérification se fait en lançant le bot.
+Effort : une soirée, dont l'essentiel est du DNS. Aucun changement de code.
 
-### 2. Surveiller la CI qui exécute du code de PR forkée
+### B. Compléter le CSP (`script-src`, `connect-src`)
 
-`checks.yml` se déclenche sur `pull_request` et lance `npm test`. Le code d'une pull
-request venue d'un fork s'exécute donc sur le runner GitHub.
+Posé le 30/07 : `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`.
+Manquent les deux directives qui limiteraient réellement une XSS. Elles demandent
+d'autoriser une quinzaine d'hôtes (Firebase, Turnstile, reCAPTCHA, Yahoo, ipapi,
+proxys CORS de secours) et une omission casse l'app en silence.
 
-**Aujourd'hui sans impact** : aucun secret n'est exposé à ce workflow et le
-`GITHUB_TOKEN` d'une PR forkée est en lecture seule. L'abus se limiterait à l'usage du
-runner.
+À faire après le point A, en mode rapport seulement. Sinon, en direct avec la
+console ouverte et un `git revert` prêt.
 
-**Règle à tenir** : ne jamais ajouter de secret à ce workflow, et ne jamais basculer
-sur `pull_request_target`, qui exécuterait le code du fork avec les droits du dépôt.
+### C. Se passer des proxys CORS tiers pour les données financières
 
-### 3. Zones auditées le 30/07 — soldé
+`js/app.js` utilise quatre relais tiers en secours de Yahoo : `api.allorigins.win`,
+`corsproxy.io`, `cors.eu.org`, `api.codetabs.com`. Ces services voient les requêtes
+et **pourraient altérer les cours renvoyés** — sur une app de suivi de patrimoine,
+c'est un problème d'intégrité, pas seulement de confidentialité.
+
+Le Worker fait déjà proxy Yahoo proprement (`/yahoo`, allowlist d'hôtes). La piste :
+supprimer les relais tiers et accepter un échec propre quand le Worker ne répond
+pas, plutôt qu'une valeur venue d'un inconnu.
+
+### D. MFA Firebase native (TOTP) à la place de la 2FA maison
+
+La 2FA actuelle est désormais arbitrée par le Worker et solide, mais elle reste une
+mécanique maison : le gate vit dans le client, et c'est notre code qui décide. La
+MFA Firebase bloque au niveau de l'émission du jeton — aucun contournement client
+n'est possible, par construction. Gain net de robustesse, coût : refonte du parcours
+de connexion, et l'enrôlement TOTP à expliquer aux membres.
+
+### E. Ré-verrouillage après inactivité
+
+Le code PIN est demandé au chargement et au rechargement, mais une session laissée
+ouverte reste ouverte indéfiniment. Redemander le code après 30 minutes d'inactivité
+couvrirait le cas de l'ordinateur laissé sans surveillance — qui est précisément la
+menace que le PIN est censé traiter.
+
+### F. Durée de confiance d'un appareil : 90 jours
+
+`DEVICE_TRUST_DAYS = 90` dans `js/app.js`. Trois mois sans re-vérification, c'est
+long pour une app de finances. 30 jours serait un meilleur compromis. Arbitrage de
+confort, pas une faille — une ligne à changer.
+
+### G. Alerte à chaque connexion, et pas seulement sur appareil inconnu
+
+Un appareil déjà de confiance se connecte sans rien signaler. Le journal des
+connexions (posé le 30/07) permet de le constater après coup, mais pas d'être
+prévenu. Une push ou un email « nouvelle connexion depuis Lyon » rendrait la
+détection immédiate. Attention au bruit : à réserver aux connexions depuis un
+pays ou une IP inhabituels.
+
+### H. Rétention et purge
+
+- `auditLog` grandit sans limite. Une purge des entrées de plus d'un an, dans le
+  cron du Worker qui existe déjà.
+- `otpChallenges` : les défis abandonnés ne sont jamais supprimés. Inoffensifs
+  (inutilisables passé 10 minutes) mais ils s'accumulent.
+- `loginLog` est déjà borné à 30 entrées.
+
+### I. Limiteur de débit partagé côté Worker
+
+Chaque route se protège aujourd'hui à sa façon, ou pas du tout : `/chat` et
+`/username-available` comptent par IP, `/request-otp` et `/verify-pin` comptent par
+compte, `/set-pin` et `/revoke-sessions` ne comptent rien. `/set-pin` fait une
+dérivation PBKDF2 de 150 000 itérations, donc du CPU à chaque appel.
+
+Un helper unique `rateLimit(clé, max, fenêtre)` appliqué à toutes les routes
+d'écriture éviterait d'oublier le prochain endpoint ajouté. C'est comme ça que
+`/log-session` est né sans limite.
+
+### J. Sauvegardes Firestore
+
+Aucune sauvegarde aujourd'hui. Ce n'est pas de la sécurité au sens strict, mais une
+suppression accidentelle ou malveillante serait définitive. Les exports Firestore
+gérés demandent le plan Blaze ; un script d'export via la clé de service est
+possible, mais il ne doit **jamais** écrire dans un dépôt public.
+
+### K. Passer `firebase-admin` en v14 sur le bot
+
+8 alertes `npm audit` restantes, toutes le même avis `uuid` (bornes de buffer
+manquantes quand l'appelant fournit un `buf`) — jamais atteint par les librairies
+Google qui l'embarquent. Version majeure : à traiter à froid, en lançant le bot pour
+vérifier Firestore, Auth et les scripts GitHub Actions.
+
+### L. Surveiller la CI qui exécute du code de PR forkée
+
+`checks.yml` se déclenche sur `pull_request` et lance `npm test`. Sans impact
+aujourd'hui : aucun secret n'y est exposé et le `GITHUB_TOKEN` d'une PR forkée est
+en lecture seule. Règle à tenir : **jamais** de secret dans ce workflow, et jamais
+de `pull_request_target`.
+
+---
+
+## Sécurité — ce qui a été fait le 30/07
+
+### Zones auditées — soldé
 
 Toutes passées au crible, résultats :
 
@@ -62,7 +146,7 @@ Toutes passées au crible, résultats :
   code PIN. Assumé, le chiffrer n'aurait pas de sens puisque la clé serait au même
   endroit.
 
-### 4. Compléter le CSP (demande une session de test navigateur)
+### Durcissement navigateur — posé
 
 Posé le 30/07 sur `app.html`, `index.html` et la page communauté :
 `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, plus une sortie de
@@ -80,7 +164,22 @@ Note : `frame-ancestors` et `report-only` sont ignorés dans une balise `meta`,
 seul un en-tête HTTP les accepte. Un jour derrière Cloudflare devant le site,
 ce serait faisable proprement.
 
-### 5. Rappels de conception à ne pas casser
+### Chart.js hébergé chez nous — fait le 30/07
+
+Chargé depuis `cdn.jsdelivr.net` sans contrôle d'intégrité : un CDN compromis ou un
+paquet détourné aurait injecté du JavaScript arbitraire dans l'app de tous les
+utilisateurs, ce qui vaut prise de contrôle de n'importe quel compte.
+
+Le fichier vient désormais du paquet npm officiel (`chart.js@4.4.0`,
+`dist/chart.umd.js`, intégrité vérifiée par npm au téléchargement) et vit dans
+`assets/vendor/`, version figée dans le nom. Plus aucune dépendance tierce à
+l'exécution, et un `script-src 'self'` deviendra d'autant plus simple à poser.
+
+Reste chargé depuis l'extérieur, sans alternative : Turnstile et reCAPTCHA
+(chargeurs mutables, l'intégrité n'y est pas applicable) et le SDK Firebase depuis
+`gstatic.com`.
+
+### Rappels de conception à ne pas casser
 
 - **Le code PIN et la 2FA sont arbitrés par le Worker.** Ne jamais redonner au client
   la génération d'un code, le calcul d'un condensat, ou l'écriture de
@@ -97,7 +196,7 @@ ce serait faisable proprement.
 
 ## Fonctionnalités
 
-### 6. Pièces jointes dans les tickets de support
+### Pièces jointes dans les tickets de support
 
 **État** : retiré le 30/07. Le bouton tentait un envoi vers Firebase Storage, que le
 projet n'a jamais provisionné — l'envoi échouait à chaque fois. Storage exige
@@ -119,7 +218,7 @@ désormais le plan Blaze, donc un compte de facturation.
 Ne rien faire est acceptable : un support en texte seul se tient très bien au
 démarrage.
 
-### 7. Mur à idées — suites écartées
+### Mur à idées — suites écartées
 
 Signalement d'une idée déjà publiée, et commentaires sous les idées. Écartés le 30/07 :
 à reconsidérer seulement quand le volume de membres le justifiera.
