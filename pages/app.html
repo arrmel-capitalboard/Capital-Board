@@ -19,7 +19,14 @@
   // HTTP, impossible sur GitHub Pages : on sort du cadre par le script. Evite
   // qu'un site tiers affiche l'app dans une iframe invisible pour capter des
   // clics (clickjacking).
-  if (window.top !== window.self) { try { window.top.location = window.self.location; } catch (e) { document.documentElement.innerHTML = ''; } }
+  // Le cadrage par nos propres pages reste autorise : la home affiche la demo
+  // dans une iframe. Un parent d'une autre origine leve une erreur a la lecture
+  // de son origine, donc l'echec vaut refus.
+  if (window.top !== window.self) {
+    var memeOrigine = false;
+    try { memeOrigine = window.top.location.origin === window.self.location.origin; } catch (e) { memeOrigine = false; }
+    if (!memeOrigine) { try { window.top.location = window.self.location; } catch (e) { document.documentElement.innerHTML = ''; } }
+  }
 </script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Capital Board</title>
