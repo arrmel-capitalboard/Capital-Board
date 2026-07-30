@@ -2,6 +2,25 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
+<!-- Durcissement navigateur. GitHub Pages ne permet pas d'en-tetes HTTP, donc
+     tout passe par cette balise. Volontairement partiel : script-src et
+     connect-src exigeraient d'autoriser une vingtaine d'hotes (Firebase, proxys
+     CORS de secours, Turnstile, reCAPTCHA) et ne peuvent pas etre poses sans une
+     session de test en navigateur. Les trois directives ci-dessous, elles, ne
+     peuvent rien casser : la page n'utilise ni <object>, ni <embed>, ni <base>,
+     ni formulaire classique.
+       object-src  : bloque les greffons, voie classique d'escalade d'une XSS
+       base-uri    : empeche de detourner la resolution des URL relatives
+       form-action : empeche d'exfiltrer un formulaire vers un domaine tiers -->
+<meta http-equiv="Content-Security-Policy"
+      content="object-src 'none'; base-uri 'self'; form-action 'self'">
+<script>
+  // Anti-cadrage. `frame-ancestors` et `X-Frame-Options` demandent un en-tete
+  // HTTP, impossible sur GitHub Pages : on sort du cadre par le script. Evite
+  // qu'un site tiers affiche l'app dans une iframe invisible pour capter des
+  // clics (clickjacking).
+  if (window.top !== window.self) { try { window.top.location = window.self.location; } catch (e) { document.documentElement.innerHTML = ''; } }
+</script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Capital Board</title>
 <link rel="icon" type="image/png" href="assets/logo.png">
@@ -1936,7 +1955,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260730n"></script>
+<script src="js/app.js?v=20260730o"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

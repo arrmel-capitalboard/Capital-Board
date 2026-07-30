@@ -2,6 +2,18 @@
 <html lang="fr">
 <head>
 <meta charset="UTF-8">
+<!-- Durcissement navigateur. GitHub Pages ne permet pas d'en-tetes HTTP, donc
+     tout passe par cette balise. Volontairement partiel : script-src et
+     connect-src exigeraient d'autoriser une vingtaine d'hotes (Firebase, proxys
+     CORS de secours, Turnstile, reCAPTCHA) et ne peuvent pas etre poses sans une
+     session de test en navigateur. Les trois directives ci-dessous, elles, ne
+     peuvent rien casser : la page n'utilise ni <object>, ni <embed>, ni <base>,
+     ni formulaire classique.
+       object-src  : bloque les greffons, voie classique d'escalade d'une XSS
+       base-uri    : empeche de detourner la resolution des URL relatives
+       form-action : empeche d'exfiltrer un formulaire vers un domaine tiers -->
+<meta http-equiv="Content-Security-Policy"
+      content="object-src 'none'; base-uri 'self'; form-action 'self'">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Communauté Capital Board — Discord, Instagram, YouTube, TikTok</title>
 <meta name="description" content="Rejoignez la communauté Capital Board : serveur Discord, Instagram, YouTube, TikTok, Facebook, LinkedIn et GitHub. Investisseurs particuliers français, bienvenue.">

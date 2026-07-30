@@ -62,7 +62,25 @@ Toutes passées au crible, résultats :
   code PIN. Assumé, le chiffrer n'aurait pas de sens puisque la clé serait au même
   endroit.
 
-### 4. Rappels de conception à ne pas casser
+### 4. Compléter le CSP (demande une session de test navigateur)
+
+Posé le 30/07 sur `app.html`, `index.html` et la page communauté :
+`object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, plus une sortie de
+cadre en JavaScript contre le clickjacking. GitHub Pages ne permettant pas
+d'en-tête HTTP, tout passe par une balise `meta`.
+
+Ce qui manque, et qui limiterait vraiment les dégâts d'une XSS future :
+`script-src` et `connect-src`. Les poser demande d'autoriser une vingtaine
+d'hôtes — Firebase (gstatic, firestore, identitytoolkit, securetoken,
+fcmregistrations), Turnstile, reCAPTCHA, jsdelivr, les proxys CORS de secours,
+Yahoo, ipapi — et une erreur casse l'app en silence. À faire en gardant
+l'onglet ouvert sur la console, avec un `git revert` prêt.
+
+Note : `frame-ancestors` et `report-only` sont ignorés dans une balise `meta`,
+seul un en-tête HTTP les accepte. Un jour derrière Cloudflare devant le site,
+ce serait faisable proprement.
+
+### 5. Rappels de conception à ne pas casser
 
 - **Le code PIN et la 2FA sont arbitrés par le Worker.** Ne jamais redonner au client
   la génération d'un code, le calcul d'un condensat, ou l'écriture de
@@ -79,7 +97,7 @@ Toutes passées au crible, résultats :
 
 ## Fonctionnalités
 
-### 5. Pièces jointes dans les tickets de support
+### 6. Pièces jointes dans les tickets de support
 
 **État** : retiré le 30/07. Le bouton tentait un envoi vers Firebase Storage, que le
 projet n'a jamais provisionné — l'envoi échouait à chaque fois. Storage exige
@@ -101,7 +119,7 @@ désormais le plan Blaze, donc un compte de facturation.
 Ne rien faire est acceptable : un support en texte seul se tient très bien au
 démarrage.
 
-### 6. Mur à idées — suites écartées
+### 7. Mur à idées — suites écartées
 
 Signalement d'une idée déjà publiée, et commentaires sous les idées. Écartés le 30/07 :
 à reconsidérer seulement quand le volume de membres le justifiera.
