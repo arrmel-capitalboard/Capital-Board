@@ -508,7 +508,13 @@ async function firestoreDelete(path, env) {
 // Indispensable pour compter des tentatives : un `lire puis écrire` laisse
 // passer la force brute par requêtes parallèles, puisqu'elles lisent toutes la
 // même valeur avant qu'aucune n'ait écrit. Ici chaque requête consomme un essai,
-// quel que soit le parallélisme. Le document est créé s'il n'existe pas.
+// quel que soit le parallélisme.
+//
+// Le document est créé s'il n'existe pas. Un write ne portant qu'un `transform`
+// échoue sur un document absent, ce qui bloquait le premier essai de code d'un
+// compte encore au format ancien : on passe donc par `update` + `updateTransforms`.
+// `updateMask` doit rester non vide, sinon l'écriture REMPLACE le document et
+// emporterait le condensat du code.
 async function firestoreIncrement(path, field, env) {
   const token = await getAccessToken(env);
   const base = `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
@@ -517,10 +523,12 @@ async function firestoreIncrement(path, field, env) {
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
     body: JSON.stringify({
       writes: [{
-        transform: {
-          document: `${base}/${path}`,
-          fieldTransforms: [{ fieldPath: field, increment: { integerValue: '1' } }],
+        update: {
+          name: `${base}/${path}`,
+          fields: { touchedAt: { integerValue: String(Date.now()) } },
         },
+        updateMask: { fieldPaths: ['touchedAt'] },
+        updateTransforms: [{ fieldPath: field, increment: { integerValue: '1' } }],
       }],
     }),
   });
