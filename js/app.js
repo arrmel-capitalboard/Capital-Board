@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730p';
+const APP_VERSION = '20260730q';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -686,8 +686,11 @@ function logTransaction(user, tx) {
 function firebaseErrorMsg(code) {
   const msgs = {
     'auth/invalid-email':            'Adresse email invalide.',
-    'auth/user-not-found':           'Aucun compte avec cet email.',
-    'auth/wrong-password':           'Mot de passe incorrect.',
+    // Volontairement identiques : distinguer les deux confirme à un inconnu
+    // qu'une adresse a un compte ici. Firebase renvoie d'ailleurs désormais
+    // `invalid-credential` dans les deux cas (confidentialité des emails activée).
+    'auth/user-not-found':           'Email ou mot de passe incorrect.',
+    'auth/wrong-password':           'Email ou mot de passe incorrect.',
     'auth/email-already-in-use':     'Cet email est déjà utilisé.',
     'auth/weak-password':            'Mot de passe trop faible : 10 caractères minimum, avec minuscule, majuscule et chiffre.',
     'auth/password-does-not-meet-requirements': 'Mot de passe trop faible : 10 caractères minimum, avec minuscule, majuscule et chiffre.',
@@ -2598,11 +2601,17 @@ window.saveNewPassword = async function() {
     setTimeout(() => { status.textContent = ''; }, 3000);
   } catch(e) {
     const msgs = {
-      'auth/wrong-password': 'Mot de passe actuel incorrect.',
-      'auth/weak-password':  'Nouveau mot de passe trop faible.',
-      'auth/too-many-requests': 'Trop de tentatives. Réessayez plus tard.',
+      // L'utilisateur est déjà connecté : préciser « mot de passe actuel »
+      // n'apprend rien à un tiers. `invalid-credential` est ce que Firebase
+      // renvoie depuis l'activation de la confidentialité des emails.
+      'auth/wrong-password':      'Mot de passe actuel incorrect.',
+      'auth/invalid-credential':  'Mot de passe actuel incorrect.',
+      'auth/weak-password':       'Nouveau mot de passe trop faible : 10 caractères minimum, avec minuscule, majuscule et chiffre.',
+      'auth/password-does-not-meet-requirements': 'Nouveau mot de passe trop faible : 10 caractères minimum, avec minuscule, majuscule et chiffre.',
+      'auth/too-many-requests':   'Trop de tentatives. Réessayez plus tard.',
     };
-    status.textContent = msgs[e.code] || 'Erreur : ' + e.message;
+    // Pas de repli sur e.message : les messages bruts du SDK exposent des détails inutiles.
+    status.textContent = msgs[e.code] || 'Erreur, réessayez.';
     status.style.color = 'var(--negative)';
   }
 };
