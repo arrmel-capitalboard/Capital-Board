@@ -1,6 +1,6 @@
 # À faire — Capital Board
 
-Dernière mise à jour : 30 juillet 2026.
+Dernière mise à jour : 30 juillet 2026 (fin du balayage de sécurité).
 
 Priorité par ordre décroissant. Les points de sécurité sont en tête : ils passent
 avant toute nouvelle fonctionnalité.
@@ -39,16 +39,28 @@ runner.
 **Règle à tenir** : ne jamais ajouter de secret à ce workflow, et ne jamais basculer
 sur `pull_request_target`, qui exécuterait le code du fork avec les droits du dépôt.
 
-### 3. Zones encore jamais auditées
+### 3. Zones auditées le 30/07 — soldé
 
-À passer au crible lors d'une prochaine session :
+Toutes passées au crible, résultats :
 
-- les scripts planifiés (`daily-recap`, `price-alerts`, `dividendes`, `earnings`) et
-  leur usage des secrets
-- le cache KV du Worker : possibilité d'empoisonnement, données mises en cache
-- ce que le navigateur conserve en `localStorage`, sur un poste partagé
-- la couverture des règles Firestore collection par collection, pour repérer une
-  collection écrite par le client sans règle correspondante
+- **Couverture des règles Firestore** : `earningsSubscribers` n'avait aucune règle.
+  Les abonnements aux résultats étaient refusés en silence — corrigé, plus réinjection
+  des abonnements existants dans l'index.
+- **Cache KV du Worker** : aucun contrôle de format sur les symboles, chaque chaîne
+  inventée écrivait une clé. Huit requêtes suffisaient à épuiser le quota journalier et
+  faire tomber tous les caches. Corrigé (`isValidSymbol`, plus d'échecs mis en cache).
+- **Scripts planifiés** : `dividendes.yml` échouait chaque semaine depuis le 29/06
+  (droit d'écriture manquant) — corrigé, un mois rattrapé. Les autres tournent et font
+  réellement leur travail : vérifié dans les logs, `daily-recap` envoie bien ses push,
+  `price-alerts` lit les bonnes clés. Les chemins Firestore et les clés de réglages
+  concordent entre app et scripts.
+- **Permissions des workflows** : bloc `permissions` explicite sur les 9, au strict
+  minimum.
+- **`localStorage`** : rien de sensible — pas de jeton, pas de code PIN. Seuls
+  l'identifiant d'appareil et le cache de la courbe. Ce dernier reste en clair sur le
+  poste : sur un ordinateur partagé, les valeurs du portefeuille sont lisibles sans le
+  code PIN. Assumé, le chiffrer n'aurait pas de sens puisque la clé serait au même
+  endroit.
 
 ### 4. Rappels de conception à ne pas casser
 
