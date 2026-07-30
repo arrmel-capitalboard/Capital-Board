@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730s';
+const APP_VERSION = '20260730t';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -14210,6 +14210,7 @@ async function adminSetRole(uid, role) {
   if (!isAdmin()) return;
   try {
     await setFirestoreDoc(firestoreDoc(db, 'roles', uid), { role }, { merge: true });
+    _audit('role_change', 'uid=' + uid + ' role=' + role);
     renderAdminUsers();
   } catch (e) {
     console.error('[admin] setRole:', e);
@@ -14678,6 +14679,7 @@ async function adminToggleMaintenance(el) {
   try {
     const msg = (document.getElementById('admin-maint-msg') || {}).value || '';
     await _setAppConfig({ maintenance: wanted, maintenanceMsg: msg });
+    _audit('maintenance', wanted ? 'on' : 'off');
     _audit('maintenance', wanted ? 'ON' : 'OFF');
     _adminMaintStatus(wanted);
   } catch (e) {
@@ -14704,6 +14706,7 @@ async function adminToggleSignup(el) {
   el.disabled = true;
   try {
     await _setAppConfig({ signupOpen: open });
+    _audit('signup_open', open ? 'on' : 'off');
     _audit('signup', open ? 'ouvert' : 'fermé');
     _adminSignupStatus(open);
   } catch (e) {
@@ -14730,6 +14733,7 @@ async function adminTogglePinGlobal(el) {
   if (status) status.textContent = 'Enregistrement…';
   try {
     await _setPinGloballyDisabled(wanted);
+    _audit('pin_global', wanted ? 'desactive' : 'actif');
     _adminPinStatusText(wanted);
   } catch (e) {
     console.error('[admin] toggle PIN global échoué:', e);

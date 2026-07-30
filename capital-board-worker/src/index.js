@@ -1293,6 +1293,7 @@ export default {
         const user = await verifyIdToken(idToken, env);
         if (!user.emailVerified) return json({ ok: false, error: 'Adresse email non vérifiée' }, 403);
 
+        await audit('set_pin', '', user.localId, request, env);
         await setPinSecret(user.localId, pin, env);
         // Le client lit `enabled` pour savoir s'il doit demander le code.
         await firestoreUpdate(`users/${user.localId}/data/security`, {
@@ -1340,6 +1341,7 @@ export default {
         if (!admin || admin.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
         if (!uid) return json({ error: 'uid requis' }, 400);
         if (uid === env.ADMIN_UID) return json({ error: 'Action interdite sur le compte admin' }, 400);
+        await audit('reset_password', 'uid=' + uid, admin.localId, request, env);
         const tempPassword = genTempPassword();
         try {
           await setAuthPassword(uid, tempPassword, env);
@@ -1408,6 +1410,7 @@ export default {
         if (!title || !body) return json({ error: 'Titre et message requis' }, 400);
         const roles = await firestoreList('roles', env);
         const tokens = roles.map(d => fsStr(d, 'fcmToken')).filter(Boolean);
+        await audit('broadcast_push', title, user.localId, request, env);
         let sent = 0, failed = 0;
         for (const t of tokens) { (await sendFcm(t, title, body, env)) ? sent++ : failed++; }
         return json({ ok: true, sent, failed, total: tokens.length });
@@ -1451,6 +1454,7 @@ export default {
           catch (e) { return json({ ok: false, error: 'Échec envoi : ' + e.message }, 500); }
           return json({ ok: true, sent: 1, failed: 0, total: 1, test: true });
         }
+        await audit('broadcast_email', subject, user.localId, request, env);
         const r = await broadcastEmailToAll(subject, html, env);
         return json({ ok: true, ...r });
       }
@@ -1609,7 +1613,26 @@ export default {
       }
 
       // ── POST /log-session ───────────────────────────────────────────────
-      // Journal des connexions, écrit par le serveur. Jusqu'ici rien ne permettait
+      // Journal d'audit ecrit par le serveur. Le client en ecrivait deja un, mais il
+// choisissait quoi y mettre : une session admin volee pouvait agir sans laisser
+// de trace. Ici l'entree part du Worker, a chaque route privilegiee, et le
+// declencheur n'a aucun moyen de l'eviter. Best-effort : un echec d'audit ne doit
+// pas empecher l'action demandee d'aboutir.
+async function audit(action, details, uid, request, env) {
+  try {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    await firestoreSet(`auditLog/${id}`, {
+      action:  { stringValue: String(action) },
+      details: { stringValue: String(details || '').slice(0, 300) },
+      by:      { stringValue: String(uid || '') },
+      ip:      { stringValue: request.headers.get('CF-Connecting-IP') || '' },
+      source:  { stringValue: 'worker' },
+      at:      { timestampValue: new Date().toISOString() },
+    }, env);
+  } catch (e) { console.error('audit ' + action + ': ' + e.message); }
+}
+
+// Journal des connexions, écrit par le serveur. Jusqu'ici rien ne permettait
       // à un membre de savoir qu'un tiers s'était connecté à son compte : on avait
       // beaucoup de prévention, aucune détection.
       //
@@ -1640,6 +1663,21 @@ export default {
           const doc = await firestoreGet(path, env);
           entries = doc.fields?.entries?.arrayValue?.values || [];
         } catch (_) { /* premier enregistrement */ }
+
+        // Sans ce filtre, la route est un amplificateur d'écritures : rechargée
+        // en boucle, elle consomme le quota Firestore quotidien et fait échouer
+        // toutes les écritures de l'application. Une même IP sur le même appareil
+        // ne réécrit donc pas avant 30 minutes ; un contexte différent passe
+        // toujours, puisque c'est exactement ce qu'on veut voir apparaître.
+        const last = entries[entries.length - 1]?.mapValue?.fields;
+        if (last) {
+          const memeContexte =
+            (last.ip?.stringValue || '') === (entry.mapValue.fields.ip.stringValue) &&
+            (last.device?.stringValue || '') === (entry.mapValue.fields.device.stringValue);
+          const recent = Date.now() - Number(last.at?.integerValue || 0) < 30 * 60 * 1000;
+          if (memeContexte && recent) return json({ ok: true, skipped: true });
+        }
+
         entries.push(entry);
         if (entries.length > 30) entries = entries.slice(-30);
 
@@ -1678,6 +1716,7 @@ export default {
           console.error('revoke-sessions: ' + (await res.text()));
           return json({ ok: false, error: 'Révocation impossible' }, 500);
         }
+        await audit('revoke_sessions', '', user.localId, request, env);
         // Les appareils de confiance partent avec : sinon la 2FA ne serait pas
         // redemandée à la reconnexion, ce qui viderait la révocation de son sens.
         await firestoreUpdate(`users/${user.localId}/data/trustedDevices`,
