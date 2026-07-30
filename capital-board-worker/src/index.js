@@ -1079,6 +1079,15 @@ async function fetchSymbolEarningsDetail(sym, env) {
   return { symbol: sym.toUpperCase(), name, domain, next, history };
 }
 
+// Un symbole boursier n'a pas de forme libre. Sans ce filtre, n'importe quelle
+// chaine devenait une cle KV : chaque symbole invente ecrivait une entree, et le
+// quota d'ecritures journalier du plan gratuit (1000) se vidait en quelques
+// requetes, emportant avec lui tous les caches du Worker.
+const SYMBOL_RE = /^[A-Z0-9][A-Z0-9.\-^=]{0,14}$/;
+function isValidSymbol(s) {
+  return SYMBOL_RE.test(String(s || '').trim().toUpperCase());
+}
+
 // Earnings d'un symbole avec cache KV 24h (clé earn:SYM).
 async function getSymbolEarningsCached(sym, env) {
   const key = 'earn5:' + sym.toUpperCase();
@@ -1087,8 +1096,9 @@ async function getSymbolEarningsCached(sym, env) {
   let items = null;
   try { items = await fetchSymbolEarnings(sym, env); }
   catch (e) { console.error('earnings', sym, e.message); }
-  // TTL adaptatif : succès avec date = 24h ; vide = 1h (re-check) ; erreur = 10min.
-  if (items === null) { await env.EARNINGS.put(key, '[]', { expirationTtl: 600 }); return []; }
+  // Un echec n'est plus mis en cache : sinon un symbole inexistant coutait une
+  // ecriture KV, et le quota journalier devenait trivial a epuiser.
+  if (items === null) return [];
   const ttl = items.length ? EARN_TTL : 3600;
   await env.EARNINGS.put(key, JSON.stringify(items), { expirationTtl: ttl });
   return items;
@@ -1757,7 +1767,7 @@ export default {
       if (url.pathname === '/earnings' && request.method === 'GET') {
         const symbolsParam = url.searchParams.get('symbols');
         if (!symbolsParam) return json({ items: [] });
-        const syms = [...new Set(symbolsParam.split(',').map(s => s.trim().toUpperCase()).filter(Boolean))].slice(0, 130);
+        const syms = [...new Set(symbolsParam.split(',').map(s => s.trim().toUpperCase()).filter(isValidSymbol))].slice(0, 130);
         const from = url.searchParams.get('from');
         const to   = url.searchParams.get('to');
         let items = await getEarningsForSymbols(syms, env);
@@ -1910,7 +1920,9 @@ export default {
         const rawSyms = (url.searchParams.get('symbols') || '').trim();
         if (!rawSyms) return json({ quotes: {}, updatedAt: Date.now() });
         // Dédup + borne (évite l'abus : max 60 tickers par appel).
-        const symbols = [...new Set(rawSyms.split(',').map((s) => s.trim()).filter(Boolean))].slice(0, 60);
+        // Meme filtre de format que pour les earnings : evite de relayer chez Yahoo
+        // n'importe quelle chaine fournie par l'appelant.
+        const symbols = [...new Set(rawSyms.split(',').map((s) => s.trim()).filter(isValidSymbol))].slice(0, 60);
 
         const quotes = {};
         await Promise.all(symbols.map(async (sym) => {
@@ -1949,7 +1961,7 @@ export default {
       // Historique (4 trimestres) + prochaine date pour un titre. Cache KV 24h.
       if (url.pathname === '/earnings-detail' && request.method === 'GET') {
         const symbol = (url.searchParams.get('symbol') || '').trim().toUpperCase();
-        if (!symbol) return json({ error: 'symbol manquant' }, 400);
+        if (!isValidSymbol(symbol)) return json({ error: 'symbole invalide' }, 400);
         const key = 'earndet1:' + symbol;
         const cached = await env.EARNINGS.get(key);
         if (cached !== null) {
@@ -1959,7 +1971,8 @@ export default {
         try { detail = await fetchSymbolEarningsDetail(symbol, env); }
         catch (e) { console.error('earnings-detail', symbol, e.message); }
         const payload = JSON.stringify(detail || { error: 'indisponible' });
-        await env.EARNINGS.put(key, payload, { expirationTtl: detail ? EARN_TTL : 600 });
+        // Seuls les succes sont caches, meme raison que ci-dessus.
+        if (detail) await env.EARNINGS.put(key, payload, { expirationTtl: EARN_TTL });
         return new Response(payload, { headers: { 'Content-Type': 'application/json', 'Cache-Control': 'no-store', ...corsHeaders } });
       }
 
