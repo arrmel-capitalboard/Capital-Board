@@ -502,6 +502,33 @@ async function firestoreDelete(path, env) {
   if (!res.ok && res.status !== 404) throw new Error(`Firestore delete ${res.status}`);
 }
 
+// Incrémente un compteur côté serveur et renvoie la NOUVELLE valeur, en une
+// seule opération atomique (fieldTransform Firestore).
+//
+// Indispensable pour compter des tentatives : un `lire puis écrire` laisse
+// passer la force brute par requêtes parallèles, puisqu'elles lisent toutes la
+// même valeur avant qu'aucune n'ait écrit. Ici chaque requête consomme un essai,
+// quel que soit le parallélisme. Le document est créé s'il n'existe pas.
+async function firestoreIncrement(path, field, env) {
+  const token = await getAccessToken(env);
+  const base = `projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents`;
+  const res = await fetch(`https://firestore.googleapis.com/v1/${base}:commit`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      writes: [{
+        transform: {
+          document: `${base}/${path}`,
+          fieldTransforms: [{ fieldPath: field, increment: { integerValue: '1' } }],
+        },
+      }],
+    }),
+  });
+  if (!res.ok) throw new Error(`Firestore increment ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  return Number(data.writeResults?.[0]?.transformResults?.[0]?.integerValue ?? 0);
+}
+
 // Déclare un appareil de confiance après vérification du code. Écrit par le
 // Worker et non par le client : sinon il suffirait d'écrire soi-même dans
 // users/{uid}/data/trustedDevices pour ne jamais voir la 2FA.
@@ -1196,6 +1223,18 @@ export default {
           }
         }
 
+        // Essai decompte AVANT toute comparaison, et atomiquement : un
+        // `lire puis ecrire` laisse passer la force brute par requetes
+        // parallele, qui lisent toutes le meme compteur.
+        const attempts = await firestoreIncrement(secretPath, 'attempts', env);
+        if (attempts > PIN_MAX_TRIES) {
+          await firestoreUpdate(secretPath, {
+            attempts:    { integerValue: '0' },
+            lockedUntil: { integerValue: String(now + PIN_LOCK_MS) },
+          }, ['attempts', 'lockedUntil'], env);
+          return json({ valid: false, locked: true, retryAfterSec: Math.ceil(PIN_LOCK_MS / 1000) });
+        }
+
         let ok = false, legacy = false;
         if (secret && fsStr(secret, 'hash')) {
           ok = otpEqual(
@@ -1214,16 +1253,13 @@ export default {
         }
 
         if (!ok) {
-          const attempts = (secret ? fsNum(secret, 'attempts') || 0 : 0) + 1;
           const locked = attempts >= PIN_MAX_TRIES;
-          const counters = {
-            attempts:    { integerValue: String(locked ? 0 : attempts) },
-            lockedUntil: { integerValue: String(locked ? now + PIN_LOCK_MS : 0) },
-          };
-          // Le compteur existe aussi pour un compte encore au format ancien : le
-          // document est alors créé sans condensat, ce qui laisse la migration
-          // se faire au premier code correct.
-          await firestoreUpdate(secretPath, counters, ['attempts', 'lockedUntil'], env);
+          if (locked) {
+            await firestoreUpdate(secretPath, {
+              attempts:    { integerValue: '0' },
+              lockedUntil: { integerValue: String(now + PIN_LOCK_MS) },
+            }, ['attempts', 'lockedUntil'], env);
+          }
           return json({
             valid: false,
             ...(locked ? { locked: true, retryAfterSec: Math.ceil(PIN_LOCK_MS / 1000) }
@@ -1488,7 +1524,10 @@ export default {
         const now = Date.now();
 
         // Anti-abus : délai entre deux envois, et plafond par fenêtre glissante.
-        let sends = 0, windowStart = now;
+        // Le compteur d'envois est incrémenté atomiquement AVANT l'envoi : sinon
+        // des demandes parallèles lisent toutes la même valeur et le plafond ne
+        // borne plus le nombre d'emails expédiés.
+        let windowStart = now;
         try {
           const prev = await firestoreGet(path, env);
           const lastSentAt = fsNum(prev, 'lastSentAt') || 0;
@@ -1496,14 +1535,20 @@ export default {
           if (now - lastSentAt < OTP_RESEND_MS) {
             return json({ ok: false, error: 'Patientez avant de demander un nouveau code' }, 429);
           }
-          if (now - prevWindow < OTP_SEND_WINDOW) {
-            windowStart = prevWindow;
-            sends = fsNum(prev, 'sends') || 0;
-            if (sends >= OTP_MAX_SENDS) {
-              return json({ ok: false, error: 'Trop de codes demandés, réessayez plus tard' }, 429);
-            }
-          }
+          if (now - prevWindow < OTP_SEND_WINDOW) windowStart = prevWindow;
         } catch (_) { /* aucune demande précédente */ }
+
+        // Fenêtre expirée : on repart de zéro, sinon on consomme un envoi.
+        let sends;
+        if (windowStart === now) {
+          sends = 1;
+          await firestoreUpdate(path, { sends: { integerValue: '1' } }, ['sends'], env);
+        } else {
+          sends = await firestoreIncrement(path, 'sends', env);
+          if (sends > OTP_MAX_SENDS) {
+            return json({ ok: false, error: 'Trop de codes demandés, réessayez plus tard' }, 429);
+          }
+        }
 
         const code = otpGenerate();
         const salt = crypto.randomUUID();
@@ -1513,7 +1558,7 @@ export default {
           salt:        { stringValue: salt },
           expiresAt:   { integerValue: String(now + OTP_TTL_MS) },
           attempts:    { integerValue: '0' },
-          sends:       { integerValue: String(sends + 1) },
+          sends:       { integerValue: String(sends) },
           windowStart: { integerValue: String(windowStart) },
           lastSentAt:  { integerValue: String(now) },
           deviceId:    { stringValue: String(deviceId || '') },
@@ -1637,16 +1682,18 @@ export default {
           await firestoreDelete(path, env);
           return json({ valid: false, error: 'expired' });
         }
-        const attempts = fsNum(doc, 'attempts') || 0;
-        if (attempts >= OTP_MAX_TRIES) {
+        // L'essai est decompte AVANT la comparaison, et de facon atomique : sinon
+        // des requetes parallele lisent toutes le meme compteur et la limite de
+        // 5 essais ne borne plus rien face a une force brute concurrente.
+        const attempts = await firestoreIncrement(path, 'attempts', env);
+        if (attempts > OTP_MAX_TRIES) {
           await firestoreDelete(path, env);
           return json({ valid: false, error: 'locked' });
         }
 
         const computed = await sha256(fsStr(doc, 'salt') + code);
         if (!otpEqual(computed, fsStr(doc, 'codeHash') || '')) {
-          await firestoreUpdate(path, { attempts: { integerValue: String(attempts + 1) } }, ['attempts'], env);
-          return json({ valid: false, error: 'wrong', left: Math.max(0, OTP_MAX_TRIES - attempts - 1) });
+          return json({ valid: false, error: 'wrong', left: Math.max(0, OTP_MAX_TRIES - attempts) });
         }
 
         // Code correct : usage unique, on efface avant toute suite.
