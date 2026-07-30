@@ -70,7 +70,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730l';
+const APP_VERSION = '20260730m';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2763,6 +2763,24 @@ async function _revokeOtherTrustedDevices() {
 // Demande un code. `extra` porte le contexte affiché dans l'email (appareil,
 // lieu) et, pour la 2FA, l'identifiant d'appareil que le Worker déclarera de
 // confiance après vérification.
+// -- Echappement pour contexte attribut HTML --------------------------------
+// _escapeHtmlChat protege le texte entre balises, pas l'interieur d'un attribut :
+// une valeur contenant un guillemet en sort et peut ajouter un gestionnaire
+// d'evenement. Cas reel : `imageUrl` d'un message de support, ecrit par
+// n'importe quel membre et affiche dans la session de l'admin.
+function _attr(v) {
+  return String(v == null ? '' : v)
+    .replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/'/g, '&#39;')
+    .replace(/</g, '&lt;').replace(/>/g, '&gt;');
+}
+
+// URL destinee a href/src. Seuls http(s) et les images en data: passent, ce qui
+// ecarte `javascript:` ; le reste devient une chaine vide.
+function _safeUrl(v) {
+  const u = String(v == null ? '' : v).trim();
+  return /^(https?:\/\/|data:image\/)/i.test(u) ? _attr(u) : '';
+}
+
 async function _requestOtp(user, type, extra = {}) {
   const idToken = await user.getIdToken();
   const body = { idToken, type, ...extra };
@@ -3862,7 +3880,7 @@ function renderDropdown(ddId, suggestions, onSelect) {
   _ddCallback = onSelect;
   dd.innerHTML = suggestions.map((s, i) => {
     const logoStr = LOGO_CACHE[s.symbol]
-      ? '<img src="' + LOGO_CACHE[s.symbol] + '" style="width:22px;height:22px;border-radius:5px;object-fit:contain;background:var(--s3)" onerror="this.style.display=\'none\'">'
+      ? '<img src="' + _safeUrl(LOGO_CACHE[s.symbol]) + '" style="width:22px;height:22px;border-radius:5px;object-fit:contain;background:var(--s3)" onerror="this.style.display=\'none\'">'
       : '<div style="width:22px;height:22px;border-radius:5px;background:var(--s3);display:grid;place-items:center;font-size:8px;font-weight:700;color:var(--accent);font-family:var(--mono)">' + s.symbol.replace(/\.[A-Z]+$/, '').slice(0,3) + '</div>';
     // Prix depuis cache si disponible
     const cached = getCachedPrice(s.symbol);
@@ -4337,7 +4355,7 @@ function logoHtml(ticker, size, cssClass) {
 
   const onErr = 'var p=this.parentNode;p.textContent=\x22' + abbr + '\x22;p.classList.remove(\x22logo-wrap\x22)';
   return '<div class="' + cssClass + ' logo-wrap">' +
-    '<img src="' + url + '" style="' + st + '" onerror="' + onErr + '">' +
+    '<img src="' + _safeUrl(url) + '" style="' + st + '" onerror="' + onErr + '">' +
     '</div>';
 }
 
@@ -4351,7 +4369,7 @@ function logoHtmlModal(ticker) {
   }
   const onErr = 'this.parentNode.innerHTML=\x22' + abbr + '\x22;this.parentNode.style.fontSize=\x2210px\x22';
   return '<div style="' + base + 'background:var(--s3);border:1px solid var(--border2);overflow:hidden">' +
-    '<img src="' + url + '" style="width:32px;height:32px;object-fit:contain" onerror="' + onErr + '">' +
+    '<img src="' + _safeUrl(url) + '" style="width:32px;height:32px;object-fit:contain" onerror="' + onErr + '">' +
     '</div>';
 }
 
@@ -12945,8 +12963,8 @@ function _newsCard(n, proxyImg) {
   const norm    = s => String(s || '').toLowerCase().replace(/\s+/g, ' ').trim().slice(0, 60);
   const summary = norm(n.summary) && norm(n.summary) !== norm(n.title) ? n.summary : '';
 
-  return '<a class="news-card' + (summary ? '' : ' news-card-nosum') + '" href="' + href + '" target="_blank" rel="noopener noreferrer">'
-    + (img ? '<img class="news-thumb" src="' + img + '" alt="" loading="lazy" onerror="this.remove()">' : '')
+  return '<a class="news-card' + (summary ? '' : ' news-card-nosum') + '" href="' + _safeUrl(href) + '" target="_blank" rel="noopener noreferrer">'
+    + (img ? '<img class="news-thumb" src="' + _safeUrl(img) + '" alt="" loading="lazy" onerror="this.remove()">' : '')
     + '<div class="news-body">'
     +   '<div class="news-meta"><span class="news-source">' + _escapeHtmlChat(n.source) + '</span>'
     +     (when ? '<span class="news-date" title="' + _escapeHtmlChat(full) + '">' + _escapeHtmlChat(when) + '</span>' : '')
@@ -12997,7 +13015,7 @@ function _feedCarousel(items, proxyImg) {
     let ava = (posts.find(p => /^https:\/\//i.test(p.avatar || '')) || {}).avatar || '';
     if (ava) ava = proxyImg ? WORKER_URL + '/fav-img?url=' + encodeURIComponent(ava) : ava.replace(/"/g, '%22');
     const avaImg = ava
-      ? '<img class="fav-car-avatar" src="' + ava + '" alt="" loading="lazy" onerror="this.remove()">'
+      ? '<img class="fav-car-avatar" src="' + _safeUrl(ava) + '" alt="" loading="lazy" onerror="this.remove()">'
       : '';
 
     const cartes = posts.map(p => {
@@ -13008,9 +13026,9 @@ function _feedCarousel(items, proxyImg) {
       // La vignette est posée deux fois : en fond (floutée par le CSS) pour
       // combler le cadre, et par-dessus en entier. Même URL donc même
       // téléchargement, le navigateur ne la charge qu'une fois.
-      return '<a class="fav-car-card" href="' + href + '" target="_blank" rel="noopener noreferrer">'
+      return '<a class="fav-car-card" href="' + _safeUrl(href) + '" target="_blank" rel="noopener noreferrer">'
         + (img ? '<div class="fav-car-media" style="background-image:url(&quot;' + img + '&quot;)">'
-               +   '<img src="' + img + '" alt="" loading="lazy" onerror="this.parentNode.remove()">'
+               +   '<img src="' + _safeUrl(img) + '" alt="" loading="lazy" onerror="this.parentNode.remove()">'
                + '</div>' : '')
         + '<div class="fav-car-body">'
         +   '<div class="fav-car-title">' + _escapeHtmlChat(p.title) + '</div>'
@@ -13513,7 +13531,7 @@ function openAddAlertModal() {
   });
   if (!items.length) { alert('Ajoutez des actions au portefeuille ou a la watchlist.'); return; }
   const sel = document.getElementById('alert-ticker-select');
-  sel.innerHTML = items.map(i => '<option value="' + i.ticker + '">' + i.name + ' (' + i.ticker + ')</option>').join('');
+  sel.innerHTML = items.map(i => '<option value="' + _attr(i.ticker) + '">' + _escapeHtmlChat(i.name) + ' (' + _escapeHtmlChat(i.ticker) + ')</option>').join('');
   document.getElementById('alert-price').value = '';
   document.getElementById('alert-direction').value = 'below';
   document.getElementById('alert-modal-overlay').classList.add('open');
@@ -15033,7 +15051,10 @@ function _renderChatMessages(msgs) {
     // Contenu (texte ou image)
     let body;
     if (m.type === "image" && m.imageUrl) {
-      body = '<a href="' + m.imageUrl + '" target="_blank" rel="noopener"><img src="' + m.imageUrl + '" alt="img" style="max-width:240px;max-height:240px;border-radius:8px;display:block"></a>';
+      const _iu = _safeUrl(m.imageUrl);
+      body = _iu
+        ? '<a href="' + _iu + '" target="_blank" rel="noopener"><img src="' + _iu + '" alt="img" style="max-width:240px;max-height:240px;border-radius:8px;display:block"></a>'
+        : '<span style="color:var(--text3);font-size:11px">[image non affichable]</span>';
       if (m.text) body += '<div style="margin-top:6px">' + _escapeHtmlChat(m.text) + '</div>';
     } else {
       body = _escapeHtmlChat(m.text || "");
