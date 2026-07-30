@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260731a';
+const APP_VERSION = '20260731b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1237,8 +1237,10 @@ window.pinLockSubmit = async function() {
     if (r.valid) {
           _pinUnlockSuccess(user);
     } else if (r.serverError) {
-      if (err) { err.textContent = 'Vérification indisponible, réessayez dans un instant.'; err.style.display = 'block'; }
+      if (err) { err.textContent = 'Vérification indisponible — ' + r.serverError; err.style.display = 'block'; }
       console.error('[pin] verify serveur:', r.serverError);
+    } else if (r.noSecret) {
+      if (err) { err.textContent = 'Aucun code enregistré sur ce compte. Déconnectez-vous et reconnectez-vous.'; err.style.display = 'block'; }
     } else {
       _shakePinDots();
       inp.value = '';
@@ -1668,7 +1670,7 @@ async function _verifyPin(uid, pin) {
     const data = await res.json().catch(() => ({}));
     // Une panne du Worker ne doit pas se lire « Code incorrect » : sans ce test,
     // une réponse d'erreur n'a pas de `valid` et passait pour un mauvais code.
-    if (!res.ok) return { valid: false, serverError: data.error || `HTTP ${res.status}` };
+    if (!res.ok) return { valid: false, serverError: `HTTP ${res.status}` + (data.stage ? ` (étape : ${data.stage})` : '') };
     return data;
   } catch (e) {
     console.error('_verifyPin error:', e);

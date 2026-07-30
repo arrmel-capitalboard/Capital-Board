@@ -1214,11 +1214,17 @@ export default {
         const { idToken, pin } = await request.json();
         if (!idToken || !/^\d{6}$/.test(pin ?? '')) return json({ valid: false });
 
+        // Marqueur d'etape : une panne ici se lisait « Erreur serveur », sans
+        // moyen de savoir quel appel a lache. Le nom d'etape n'expose rien
+        // d'interne, et le detail reste dans les logs Cloudflare.
+        let stage = 'token';
+        try {
         const user = await verifyIdToken(idToken, env);
         const uid = user.localId;
         const secretPath = `pinSecrets/${uid}`;
         const now = Date.now();
 
+        stage = 'lecture';
         let secret = null;
         try { secret = await firestoreGet(secretPath, env); } catch (_) {}
 
@@ -1234,8 +1240,10 @@ export default {
         // Essai decompte AVANT toute comparaison, et atomiquement : un
         // `lire puis ecrire` laisse passer la force brute par requetes
         // parallele, qui lisent toutes le meme compteur.
+        stage = 'compteur';
         const attempts = await firestoreIncrement(secretPath, 'attempts', env);
         if (attempts > PIN_MAX_TRIES) {
+          stage = 'verrou';
           await firestoreUpdate(secretPath, {
             attempts:    { integerValue: '0' },
             lockedUntil: { integerValue: String(now + PIN_LOCK_MS) },
@@ -1243,6 +1251,7 @@ export default {
           return json({ valid: false, locked: true, retryAfterSec: Math.ceil(PIN_LOCK_MS / 1000) });
         }
 
+        stage = 'comparaison';
         let ok = false, legacy = false;
         if (secret && fsStr(secret, 'hash')) {
           ok = otpEqual(
@@ -1252,10 +1261,13 @@ export default {
         } else {
           // Ancien format : SHA-256(sel + pin) dans users/{uid}/data/security,
           // lisible par le titulaire. Vérifié une dernière fois, puis migré.
+          stage = 'lecture ancien format';
           const old = await firestoreGet(`users/${uid}/data/security`, env).catch(() => null);
           const h = old && fsStr(old, 'pinHash');
           const s = old && fsStr(old, 'pinSalt');
-          if (!h || !s) return json({ valid: false });
+          // Aucun condensat d'aucun format : il n'y a rien a verifier. C'est un
+          // etat anormal, pas un mauvais code, et le client doit le distinguer.
+          if (!h || !s) return json({ valid: false, noSecret: true });
           ok = otpEqual(await sha256(s + pin), h);
           legacy = true;
         }
@@ -1263,6 +1275,7 @@ export default {
         if (!ok) {
           const locked = attempts >= PIN_MAX_TRIES;
           if (locked) {
+            stage = 'verrou';
             await firestoreUpdate(secretPath, {
               attempts:    { integerValue: '0' },
               lockedUntil: { integerValue: String(now + PIN_LOCK_MS) },
@@ -1277,15 +1290,21 @@ export default {
 
         // Succès : compteur remis à zéro, et migration du format ancien.
         if (legacy) {
+          stage = 'migration';
           await setPinSecret(uid, pin, env);
           await firestoreUpdate(`users/${uid}/data/security`, {},
             ['pinHash', 'pinSalt'], env);
         } else {
+          stage = 'remise a zero';
           await firestoreUpdate(secretPath,
             { attempts: { integerValue: '0' }, lockedUntil: { integerValue: '0' } },
             ['attempts', 'lockedUntil'], env);
         }
         return json({ valid: true });
+        } catch (e) {
+          console.error(`verify-pin [${stage}]: ${e.message}`);
+          return json({ valid: false, stage }, 500);
+        }
       }
 
       // ── POST /set-pin ───────────────────────────────────────────────────
