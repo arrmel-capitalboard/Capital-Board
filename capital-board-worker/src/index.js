@@ -1325,7 +1325,10 @@ export default {
         try {
           const users = await listAuthUsers(env);
           return json({ ok: true, users });
-        } catch (e) { return json({ error: e.message }, 500); }
+        } catch (e) {
+          console.error('list-auth-users: ' + e.message);
+          return json({ error: 'Erreur serveur' }, 500);
+        }
       }
 
       // ── POST /admin/reset-password ──────────────────────────────────────
@@ -2086,8 +2089,14 @@ export default {
       return json({ error: 'Not found' }, 404);
 
     } catch (e) {
+      // Le detail reste dans les logs Cloudflare. Le renvoyer au client exposait
+      // des messages internes : codes d'API Google, chemins Firestore, etat du
+      // projet. Un jeton refuse est par ailleurs un 401, pas un 500.
       console.error(e.message);
-      return json({ error: e.message }, 500);
+      const authFailed = /Token|Signature|jwk|audience|emetteur|Cle publique/i.test(e.message || '');
+      return authFailed
+        ? json({ error: 'Authentification invalide' }, 401)
+        : json({ error: 'Erreur serveur' }, 500);
     }
   },
 
