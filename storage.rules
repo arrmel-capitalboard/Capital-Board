@@ -1,0 +1,42 @@
+rules_version = '2';
+
+// NON DEPLOYE au 2026-07-30 : le projet est sur le plan gratuit (Spark) et
+// Firebase Storage demande desormais le plan Blaze, donc un compte de
+// facturation. Ce fichier est pret le jour ou le projet basculera ; le deploiement
+// se fait via l'API firebaserules, release `firebase.storage/<bucket>`.
+
+// Règles Firebase Storage. Un seul usage aujourd'hui : les pièces jointes des
+// tickets de support, rangées sous support-attachments/{uid}/.
+//
+// Les règles Storage ne peuvent pas lire Firestore : l'administrateur est donc
+// identifié par son uid en dur, comme dans firestore.rules.
+service firebase.storage {
+  match /b/{bucket}/o {
+
+    function _isAdmin() {
+      return request.auth != null
+        && request.auth.uid == 'A6nZQ8PcxdURytSesA17xK81I9T2';
+    }
+
+    match /support-attachments/{uid}/{fileName} {
+      // Une pièce jointe n'est visible que de l'auteur du ticket et de l'admin.
+      allow read: if request.auth != null
+        && (request.auth.uid == uid || _isAdmin());
+
+      // Dépôt : images uniquement, 5 Mo maximum, email vérifié. L'admin peut
+      // déposer dans le fil d'un membre, c'est le parcours de réponse.
+      allow write: if request.auth != null
+        && request.auth.token.email_verified == true
+        && (request.auth.uid == uid || _isAdmin())
+        && request.resource.size < 5 * 1024 * 1024
+        && request.resource.contentType.matches('image/.*');
+
+      allow delete: if _isAdmin();
+    }
+
+    // Tout le reste du bucket est fermé : rien d'autre n'y est censé vivre.
+    match /{allPaths=**} {
+      allow read, write: if false;
+    }
+  }
+}

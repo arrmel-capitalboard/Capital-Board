@@ -63,14 +63,15 @@ let fbApp, fbAuth, db,
     firestoreArrayUnion, firestoreArrayRemove, firestoreOr, firestoreDeleteField,
     firestoreWriteBatch, firestoreUpdateDoc;
 
-let fbStorage = null, fbStorageRef, fbStorageUploadBytes, fbStorageGetDownloadURL;
+// SDK Storage retire le 2026-07-30 : plus aucun appelant depuis la suppression
+// du bouton « joindre une image » (Storage n'est pas provisionne sur le projet).
 let fcmMessaging = null, getFCMToken, onFCMMessage;
 let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toasts en double)
 // VAPID key : Firebase Console → Project Settings → Cloud Messaging → Web Push certificates → Generate key pair
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260730m';
+const APP_VERSION = '20260730n';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -144,13 +145,12 @@ _splashWatchdog = setTimeout(() => {
   // Sur mobile à forte latence, le séquentiel cumulait les allers-retours et
   // dépassait le watchdog de 15 s (« chargement trop long »).
   const V = "https://www.gstatic.com/firebasejs/10.12.0/";
-  const [appMod, auth, firestore, appCheckMod, msgMod, storageMod] = await Promise.all([
+  const [appMod, auth, firestore, appCheckMod, msgMod] = await Promise.all([
     import(V + "firebase-app.js"),
     import(V + "firebase-auth.js"),
     import(V + "firebase-firestore.js"),
     import(V + "firebase-app-check.js").catch(e => (console.warn('[appcheck] import KO:', e.message), null)),
     import(V + "firebase-messaging.js").catch(e => (console.warn('[fcm] import KO:', e.message), null)),
-    import(V + "firebase-storage.js").catch(e => (console.warn('[storage] import KO:', e.message), null)),
   ]);
   const { initializeApp } = appMod;
 
@@ -216,12 +216,6 @@ _splashWatchdog = setTimeout(() => {
     fcmMessaging = msgMod.getMessaging(fbApp);
   } catch(e) { console.warn('FCM unavailable:', e.message); }
 
-  if (storageMod) try {
-    fbStorage = storageMod.getStorage(fbApp);
-    fbStorageRef = storageMod.ref;
-    fbStorageUploadBytes = storageMod.uploadBytes;
-    fbStorageGetDownloadURL = storageMod.getDownloadURL;
-  } catch(e) { console.warn('Storage unavailable:', e.message); }
 
   // Google Sign-In : récupère le résultat du signInWithRedirect (iOS/PWA standalone).
   try {
@@ -15088,9 +15082,10 @@ function _chatInputBarHtml(placeholder, sendId, sendDisabled) {
     + panel
     + '<div class="chat-input-bar">'
     + '<button type="button" onclick="toggleEmojiPanel()" class="chat-tool-btn" title="Emoji">😀</button>'
-    + '<label class="chat-tool-btn" title="Joindre image">📎'
-    + '<input type="file" accept="image/*" onchange="uploadSupportImage(this)" style="display:none">'
-    + '</label>'
+    // Bouton « joindre une image » retire le 2026-07-30 : l'envoi passait par
+    // Firebase Storage, jamais provisionne (le plan gratuit ne le permet plus),
+    // donc l'upload echouait a chaque fois. storage.rules est pret si le projet
+    // passe un jour en Blaze ; l'affichage des images recues reste en place.
     + '<input id="chat-input" placeholder="' + placeholder + '" ' + (sendDisabled ? "disabled " : "") + 'oninput="signalTyping()" onkeydown="if(event.key===&quot;Enter&quot;)sendSupportMessage()">'
     + '<button ' + (sendId ? 'id="' + sendId + '" ' : '') + 'onclick="sendSupportMessage()" ' + (sendDisabled ? "disabled" : "") + '>Envoyer</button>'
     + '</div>';
@@ -15163,30 +15158,6 @@ window.sendSupportMessage = async function() {
   catch(e) { console.error("send support:", e); alert("Erreur envoi"); input.value = text; }
 };
 
-window.uploadSupportImage = async function(fileInput) {
-  const file = fileInput.files && fileInput.files[0];
-  fileInput.value = "";
-  if (!file) return;
-  if (!file.type.startsWith("image/")) { alert("Image uniquement."); return; }
-  if (file.size > 5 * 1024 * 1024) { alert("Max 5 Mo."); return; }
-  if (!fbStorage) { alert("Storage non disponible."); return; }
-  const targetUid = isAdmin() ? _activeSupportThread : currentUser;
-  if (!targetUid) return;
-  const sendBtn = document.getElementById("chat-send");
-  if (sendBtn) sendBtn.disabled = true;
-  try {
-    const path = "support-attachments/" + targetUid + "/" + Date.now() + "-" + file.name.replace(/[^a-zA-Z0-9.-]/g, "_");
-    const sref = fbStorageRef(fbStorage, path);
-    await fbStorageUploadBytes(sref, file);
-    const url = await fbStorageGetDownloadURL(sref);
-    await _sendSupportPayload(targetUid, { type: "image", imageUrl: url, fileName: file.name });
-  } catch(e) {
-    console.error("upload:", e);
-    alert("Erreur upload : " + (e.message || e));
-  } finally {
-    if (sendBtn) sendBtn.disabled = false;
-  }
-};
 
 window.insertEmoji = function(emo) {
   const input = document.getElementById("chat-input");
