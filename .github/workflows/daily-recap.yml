@@ -17,6 +17,11 @@ on:
         required: false
         default: false
 
+# Jeton au strict minimum : lecture seule. Explicite pour rester vrai
+# si le defaut du depot change un jour.
+permissions:
+  contents: read
+
 jobs:
   send-recap:
     runs-on: ubuntu-latest

@@ -7,6 +7,11 @@ on:
   push:
     branches: [main]
 
+# Jeton au strict minimum : lecture seule. Explicite pour rester vrai
+# si le defaut du depot change un jour.
+permissions:
+  contents: read
+
 jobs:
   queue:
     runs-on: ubuntu-latest

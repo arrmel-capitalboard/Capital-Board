@@ -5,6 +5,10 @@ on:
     - cron: '0 6 * * 1'  # Tous les lundis à 6h UTC
   workflow_dispatch:
 
+# Le workflow commite data/dividendes.json : il lui faut l'ecriture.
+permissions:
+  contents: write
+
 jobs:
   update-dividends:
     runs-on: ubuntu-latest

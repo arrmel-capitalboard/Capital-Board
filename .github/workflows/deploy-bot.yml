@@ -12,6 +12,11 @@ concurrency:
   group: deploy-bot
   cancel-in-progress: false
 
+# Jeton au strict minimum : lecture seule. Explicite pour rester vrai
+# si le defaut du depot change un jour.
+permissions:
+  contents: read
+
 jobs:
   # Le corpus de test tourne avant le déploiement : une régression du filtre pub
   # bloque la mise en production au lieu d'atterrir sur la VM.

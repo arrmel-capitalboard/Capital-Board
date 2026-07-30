@@ -6,6 +6,11 @@ on:
     - cron: '0 8-18 * * 1-5'
   workflow_dispatch:
 
+# Jeton au strict minimum : lecture seule. Explicite pour rester vrai
+# si le defaut du depot change un jour.
+permissions:
+  contents: read
+
 jobs:
   check-alerts:
     runs-on: ubuntu-latest
