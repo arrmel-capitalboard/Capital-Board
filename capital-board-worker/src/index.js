@@ -28,7 +28,9 @@ ${KB}`;
 
 const CORS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
-  'Access-Control-Allow-Headers': 'Content-Type',
+  // Authorization : /username-available accepte le jeton du demandeur pour
+  // s'exclure lui-meme du controle d'unicite.
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
 };
 
 // Hôtes Yahoo Finance autorisés pour /yahoo (évite l'open proxy).
@@ -1634,13 +1636,22 @@ export default {
         }
         if (/capitalboard/.test(uname)) return json({ available: false, error: 'reserve' });
 
+        // Le demandeur ne doit pas se voir refuser son propre pseudo : sans ce
+        // test, un compte qui porte deja ce nom ne pouvait plus valider
+        // l'onboarding. Jeton optionnel — l'inscription interroge sans compte.
+        let self = null;
+        const bearer = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+        if (bearer) {
+          try { self = (await verifyIdToken(bearer, env)).localId; } catch (_) { self = null; }
+        }
+
         // Réservation explicite, puis comptes existants sans réservation.
         try {
-          await firestoreGet(`usernames/${uname}`, env);
-          return json({ available: false });
+          const claim = await firestoreGet(`usernames/${uname}`, env);
+          if (!self || fsStr(claim, 'uid') !== self) return json({ available: false });
         } catch (_) { /* pas de réservation : on continue */ }
         const holders = await rolesWithUsername(uname, env);
-        return json({ available: holders.length === 0 });
+        return json({ available: holders.every((h) => h === self) });
       }
 
       // ── POST /log-session ───────────────────────────────────────────────

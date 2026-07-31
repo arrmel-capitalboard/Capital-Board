@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260731d';
+const APP_VERSION = '20260731e';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1604,8 +1604,15 @@ function showNameSetupModal(user) {
 // Disponibilité demandée au Worker : le client ne lit plus la collection roles,
 // qui exposait le nom et le prénom de tous les membres. Marche aussi avant la
 // création du compte, ce qui n'était pas le cas de la requête Firestore.
+// Le jeton part avec la demande quand une session existe : le Worker exclut
+// alors le demandeur du contrôle, sinon un compte qui porte déjà ce pseudo se
+// le voyait refuser et ne pouvait plus valider l'onboarding.
 async function _isUsernameTaken(username, _selfUid) {
-  const res = await fetch(`${WORKER_URL}/username-available?u=${encodeURIComponent(username)}`);
+  const headers = {};
+  try {
+    if (fbAuth.currentUser) headers.Authorization = 'Bearer ' + (await fbAuth.currentUser.getIdToken());
+  } catch (_) { /* pas de session : contrôle anonyme */ }
+  const res = await fetch(`${WORKER_URL}/username-available?u=${encodeURIComponent(username)}`, { headers });
   if (!res.ok) throw new Error('vérification indisponible');
   const data = await res.json();
   return data.available === false;
