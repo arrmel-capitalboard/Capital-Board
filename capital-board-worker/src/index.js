@@ -876,7 +876,11 @@ function emailIdeaRejected(title, reason) {
 // Le condensat vit dans pinSecrets/{uid}, collection sans règle Firestore, donc
 // hors d'atteinte du client. PBKDF2 remplace le SHA-256 simple : sur 10^6
 // combinaisons, un simple SHA-256 se force instantanément hors ligne.
-const PIN_ITERATIONS = 150000;
+// Workers plafonne PBKDF2 a 100 000 iterations : au-dela, deriveBits echoue et
+// la migration du code depuis l'ancien format cassait a l'ecriture, apres une
+// comparaison pourtant reussie. Les secrets deja ecrits portent leur propre
+// `iters`, la verification reste donc compatible avec toute valeur passee.
+const PIN_ITERATIONS = 100000;
 const PIN_MAX_TRIES  = 5;
 const PIN_LOCK_MS    = 15 * 60 * 1000;
 
@@ -1303,7 +1307,9 @@ export default {
         return json({ valid: true });
         } catch (e) {
           console.error(`verify-pin [${stage}]: ${e.message}`);
-          return json({ valid: false, stage }, 500);
+          // TEMPORAIRE : `detail` sert a confirmer la cause de la panne de
+          // migration. A retirer une fois le code verifie de bout en bout.
+          return json({ valid: false, stage, detail: e.message }, 500);
         }
       }
 
