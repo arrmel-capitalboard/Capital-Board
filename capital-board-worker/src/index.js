@@ -1307,9 +1307,7 @@ export default {
         return json({ valid: true });
         } catch (e) {
           console.error(`verify-pin [${stage}]: ${e.message}`);
-          // TEMPORAIRE : `detail` sert a confirmer la cause de la panne de
-          // migration. A retirer une fois le code verifie de bout en bout.
-          return json({ valid: false, stage, detail: e.message }, 500);
+          return json({ valid: false, stage }, 500);
         }
       }
 
