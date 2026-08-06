@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260807d';
+const APP_VERSION = '20260807e';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2432,7 +2432,7 @@ async function startApp(user) {
     // (applyNavLayout gère aussi la visibilité de l'entrée Admin)
     _getAppConfig().then(c => {
       applySocialLinks(c.social);
-      applyNavLayout(c.nav);
+      applyNavLayout(_navFromConfig(c));
       applyFeatureFlags(c.features);
     }).catch(() => {
       applySocialLinks(null);
@@ -3230,6 +3230,20 @@ const SECTION_LABELS = {
 };
 const ALL_SECTIONS = Object.keys(SECTION_LABELS);
 const ADMIN_ONLY_KEYS = ['admin']; // rendus uniquement pour l'admin
+// Version de l'organisation par défaut. À incrémenter dès que DEFAULT_NAV est
+// remanié : une config enregistrée par l'admin prime sur DEFAULT_NAV, et sans
+// ce garde-fou un remaniement restait invisible tant que personne n'avait
+// rouvert l'éditeur pour réenregistrer le menu.
+const NAV_LAYOUT_VERSION = 2;
+
+// Organisation sauvegardée, ou null si elle date d'avant le dernier remaniement
+// — auquel cas DEFAULT_NAV reprend la main. Réenregistrer le menu depuis
+// l'éditeur admin la réimpose aussitôt.
+function _navFromConfig(cfg) {
+  if (!cfg || !Array.isArray(cfg.nav) || !cfg.nav.length) return null;
+  return (Number(cfg.navVersion) || 0) >= NAV_LAYOUT_VERSION ? cfg.nav : null;
+}
+
 // Une catégorie par enveloppe : chacune n'a qu'une entrée tant que le module
 // est à l'état d'annonce, mais la place est faite pour ses pages à venir.
 const DEFAULT_NAV = [
@@ -13951,8 +13965,9 @@ async function renderAdminPage() {
   applyFeatureFlags(cfg.features || {});
 
   // Éditeur d'organisation du menu
-  _navDraft = (Array.isArray(cfg.nav) && cfg.nav.length)
-    ? _mergeNavOrphans(cfg.nav)
+  const savedNav = _navFromConfig(cfg);
+  _navDraft = savedNav
+    ? _mergeNavOrphans(savedNav)
     : JSON.parse(JSON.stringify(DEFAULT_NAV));
   _socialDraft = { ...DEFAULT_SOCIAL, ...(cfg.social && typeof cfg.social === 'object' ? cfg.social : {}) };
   renderNavEditor();
@@ -14074,7 +14089,7 @@ async function _saveNav() {
   applyNavLayout(_navDraft);
   applyFeatureFlags(_featureFlags);
   renderNavEditor();
-  try { await _setAppConfig({ nav: _navDraft }); _audit('nav_update', ''); }
+  try { await _setAppConfig({ nav: _navDraft, navVersion: NAV_LAYOUT_VERSION }); _audit('nav_update', ''); }
   catch (e) { console.error('[admin] save nav:', e); }
 }
 
