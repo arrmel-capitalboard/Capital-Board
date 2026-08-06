@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260807e';
+const APP_VERSION = '20260807f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3209,7 +3209,7 @@ function applyFeatureFlags(features) {
   _featureFlags = features || {};
   FLAGGABLE.forEach(key => {
     const on = _featureFlags[key] !== false;
-    const needles = ["showPage('" + key + "')", "showPageMobile('" + key + "')"];
+    const needles = ["showPage('" + key + "')", "showPageMobile('" + key + "')", "showPeaTab('" + key + "')"];
     document.querySelectorAll('[onclick]').forEach(el => {
       const oc = el.getAttribute('onclick') || '';
       if (needles.some(n => oc.includes(n))) {
@@ -3217,14 +3217,19 @@ function applyFeatureFlags(features) {
       }
     });
   });
+  const active = (document.querySelector('.page.active') || {}).id;
+  if (active) _syncPeaTabs(active.replace('page-', ''));
 }
 
 // ─── Organisation du menu (config/app.nav) ───
+// Entrées de menu. Les sous-onglets du PEA (activite, dividendes, watchlist,
+// performance, benchmark, projections, earnings, recap, alertes) n'y figurent
+// plus : ils vivent dans la barre #pea-tabs, pas dans le menu. Leurs toggles
+// restent accessibles à l'admin via PEA_TABS.
 const SECTION_LABELS = {
-  portfolio: 'Portefeuille', activite: 'Activité', dividendes: 'Dividendes', watchlist: 'Watchlist',
-  performance: 'Performance', benchmark: 'Benchmark', projections: 'Projections', earnings: 'Calendrier résultats',
-  recap: 'Récap du jour', actualites: 'Actualités', favoris: 'Contenus favoris', alertes: 'Alertes prix', notifications: 'Notifications', idees: 'Boîte à idées', support: 'Support',
-  depenses: 'Dépenses & abonnements', cto: 'Portefeuille CTO', crypto: 'Portefeuille crypto', fiscalite: 'Récap fiscal',
+  portfolio: 'Mon PEA', cto: 'Mon CTO', crypto: 'Ma crypto', depenses: 'Dépenses & abonnements',
+  actualites: 'Actualités', favoris: 'Contenus favoris', notifications: 'Notifications', idees: 'Boîte à idées', support: 'Support',
+  fiscalite: 'Récap fiscal',
   admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord', facebook: 'Facebook', linkedin: 'LinkedIn',
   paypal: 'Faire un don',
 };
@@ -3234,7 +3239,7 @@ const ADMIN_ONLY_KEYS = ['admin']; // rendus uniquement pour l'admin
 // remanié : une config enregistrée par l'admin prime sur DEFAULT_NAV, et sans
 // ce garde-fou un remaniement restait invisible tant que personne n'avait
 // rouvert l'éditeur pour réenregistrer le menu.
-const NAV_LAYOUT_VERSION = 2;
+const NAV_LAYOUT_VERSION = 3;
 
 // Organisation sauvegardée, ou null si elle date d'avant le dernier remaniement
 // — auquel cas DEFAULT_NAV reprend la main. Réenregistrer le menu depuis
@@ -3244,16 +3249,13 @@ function _navFromConfig(cfg) {
   return (Number(cfg.navVersion) || 0) >= NAV_LAYOUT_VERSION ? cfg.nav : null;
 }
 
-// Une catégorie par enveloppe : chacune n'a qu'une entrée tant que le module
-// est à l'état d'annonce, mais la place est faite pour ses pages à venir.
+// Une entrée par compte suivi. Chaque compte ouvre sa propre vue, qui porte
+// ses sous-onglets s'il en a — le menu ne descend jamais à ce niveau.
 const DEFAULT_NAV = [
   // Tout ce qui concerne le PEA tient dans une seule catégorie : le suivi et
   // son analyse répondent à la même question, les séparer obligeait à passer
   // d'un bloc à l'autre pour une même ligne.
-  { title: 'Mon PEA',        items: ['portfolio', 'activite', 'dividendes', 'watchlist', 'performance', 'benchmark', 'projections', 'earnings', 'recap', 'alertes'] },
-  { title: 'Mon CTO',        items: ['cto'] },
-  { title: 'Ma crypto',      items: ['crypto'] },
-  { title: 'Mon budget',     items: ['depenses'] },
+  { title: 'Mes comptes',    items: ['portfolio', 'cto', 'crypto', 'depenses'] },
   // 'notifications' reste dans SECTION_LABELS sans figurer ici : l'entrée est
   // retirée du menu, mais l'admin peut la remettre depuis l'éditeur.
   { title: 'Outils',         items: ['actualites', 'favoris', 'fiscalite', 'idees', 'support'] },
@@ -3398,16 +3400,14 @@ function applyNavLayout(nav) {
   }
 }
 
-function showPage(id) {
-  if (FLAGGABLE.includes(id) && !_isFeatureOn(id)) return; // section désactivée
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById('page-' + id).classList.add('active');
-  event.currentTarget.classList.add('active');
-  // Sync mobile nav
-  document.querySelectorAll('.mobile-nav-item').forEach(b => {
-    b.classList.toggle('active', b.dataset.mob === id);
-  });
+// Les dix vues du PEA, regroupées derrière une seule entrée de menu. L'ordre
+// fait foi pour la barre de sous-onglets.
+const PEA_TABS = ['portfolio', 'activite', 'dividendes', 'watchlist', 'performance',
+                  'benchmark', 'projections', 'earnings', 'recap', 'alertes'];
+
+// Rendu différé propre à une page. Extrait des trois fonctions de navigation
+// qui en avaient chacune une copie.
+function _runPageHook(id) {
   if (window.IS_DEMO && id === 'performance') { _renderDemoBlocked('page-performance', 'Analyse de performance'); return; }
   if (id === 'activite')    renderActivite();
   if (id === 'graphiques')  initCharts();
@@ -3419,6 +3419,52 @@ function showPage(id) {
   if (id === 'idees')       renderIdeasPage();
   if (id === 'earnings')    renderEarningsCalendar();
   if (id === 'admin')       renderAdminPage();
+}
+
+// Affiche la barre de sous-onglets quand la page active appartient au PEA, et
+// y marque l'onglet courant. Un onglet dont la section est désactivée par
+// l'admin disparaît de la barre.
+function _syncPeaTabs(id) {
+  const bar = document.getElementById('pea-tabs');
+  if (!bar) return;
+  const inPea = PEA_TABS.includes(id);
+  bar.hidden = !inPea;
+  bar.querySelectorAll('.pea-tab').forEach(btn => {
+    const key = btn.dataset.tab;
+    const off = FLAGGABLE.includes(key) && !_isFeatureOn(key);
+    btn.style.display = off ? 'none' : '';
+    btn.classList.toggle('active', key === id);
+    btn.setAttribute('aria-current', key === id ? 'page' : 'false');
+  });
+}
+
+// Bascule d'un sous-onglet à l'autre. L'entrée « Mon PEA » du menu garde son
+// état actif : elle n'est pas la cible du clic, contrairement à showPage().
+function showPeaTab(id) {
+  if (FLAGGABLE.includes(id) && !_isFeatureOn(id)) return;
+  const page = document.getElementById('page-' + id);
+  if (!page) return;
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  page.classList.add('active');
+  document.querySelectorAll('.mobile-nav-item').forEach(b => {
+    b.classList.toggle('active', b.dataset.mob === id);
+  });
+  _syncPeaTabs(id);
+  _runPageHook(id);
+}
+
+function showPage(id) {
+  if (FLAGGABLE.includes(id) && !_isFeatureOn(id)) return; // section désactivée
+  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
+  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  document.getElementById('page-' + id).classList.add('active');
+  event.currentTarget.classList.add('active');
+  // Sync mobile nav
+  document.querySelectorAll('.mobile-nav-item').forEach(b => {
+    b.classList.toggle('active', b.dataset.mob === id);
+  });
+  _syncPeaTabs(id);
+  _runPageHook(id);
 }
 
 function _renderDemoBlocked(pageId, sectionTitle) {
@@ -3443,21 +3489,15 @@ function showPageMobile(id) {
   syncMobileNav(id);
   // Sync sidebar nav
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+  // Les sous-onglets du PEA n'ont pas d'entrée propre : c'est « Mon PEA » qui
+  // reste marquée, sinon la barre latérale n'indiquait plus rien.
+  const navKey = PEA_TABS.includes(id) ? 'portfolio' : id;
   document.querySelectorAll('.nav-item').forEach(n => {
     const onclick = n.getAttribute('onclick') || '';
-    if (onclick.includes("'" + id + "'")) n.classList.add('active');
+    if (onclick.includes("'" + navKey + "'")) n.classList.add('active');
   });
-  if (window.IS_DEMO && id === 'performance') { _renderDemoBlocked('page-performance', 'Analyse de performance'); return; }
-  if (id === 'activite')    renderActivite();
-  if (id === 'graphiques')  initCharts();
-  if (id === 'recap')       renderRecapPage();
-  if (id === 'actualites')  renderActualites();
-  if (id === 'favoris')     renderFavoris();
-  if (id === 'alertes')     renderAlertsList();
-  if (id === 'support')     renderSupportPage();
-  if (id === 'idees')       renderIdeasPage();
-  if (id === 'earnings')    renderEarningsCalendar();
-  if (id === 'admin')       renderAdminPage();
+  _syncPeaTabs(id);
+  _runPageHook(id);
 }
 
 // ─── PORTFOLIO ────────────────────────────────────────
@@ -14082,7 +14122,32 @@ function renderNavEditor() {
       (catHidden ? '<div style="font-size:11px;color:#f5b731;margin:-4px 0 9px">Masquée — invisible dans le menu, sur ordinateur comme sur mobile.</div>' : '') +
       items + addOpts +
     '</div>';
+  }).join('') + _navEditorPeaTabs();
+}
+
+// Les sous-onglets du PEA ne sont plus des entrées de menu : sans ce bloc,
+// l'admin n'aurait plus aucun moyen d'en désactiver un.
+function _navEditorPeaTabs() {
+  const labels = {
+    portfolio: 'Portefeuille', activite: 'Activité', dividendes: 'Dividendes', watchlist: 'Watchlist',
+    performance: 'Performance', benchmark: 'Benchmark', projections: 'Projections',
+    earnings: 'Calendrier résultats', recap: 'Récap du jour', alertes: 'Alertes prix',
+  };
+  const rows = PEA_TABS.map(key => {
+    const flaggable = FLAGGABLE.includes(key);
+    const on = _isFeatureOn(key);
+    const ctrl = flaggable
+      ? '<label class="toggle-switch" style="transform:scale(.78);transform-origin:right center" title="Activer / masquer"><input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="adminToggleFeature(\'' + key + '\',this)"><span class="toggle-track"></span></label>'
+      : '<span style="font-size:8.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">core</span>';
+    return '<div style="display:flex;align-items:center;justify-content:space-between;padding:7px 10px;background:var(--s2);border:1px solid var(--border);border-radius:9px;margin-bottom:5px">' +
+      '<span style="font-size:12.5px;color:var(--text)' + (flaggable && !on ? ';opacity:.45' : '') + '">' + labels[key] + '</span>' + ctrl +
+    '</div>';
   }).join('');
+  return '<div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:#0f1119">' +
+    '<div style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px">Sous-onglets de « Mon PEA »</div>' +
+    '<div style="font-size:11px;color:var(--text3);line-height:1.5;margin-bottom:9px">Barre affichée dans la page, pas dans le menu. L\'ordre est fixe.</div>' +
+    rows +
+  '</div>';
 }
 
 async function _saveNav() {

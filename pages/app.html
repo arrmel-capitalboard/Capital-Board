@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260807b">
+<link rel="stylesheet" href="css/style.css?v=20260807f">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -397,46 +397,17 @@
     <div class="mobile-drawer">
       <div class="mobile-drawer-handle"></div>
       <div id="mobile-nav-dynamic">
-      <div class="mobile-drawer-section">Mon PEA</div>
+      <div class="mobile-drawer-section">Mes comptes</div>
+      <!-- Entree unique : les dix vues du PEA sont devenues des sous-onglets. -->
       <div class="mobile-drawer-item" onclick="showPageMobile('portfolio');closeMobileDrawer()" data-mob="portfolio">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span>Portefeuille
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span>Mon PEA
       </div>
-      <div class="mobile-drawer-item" onclick="showPageMobile('activite');closeMobileDrawer()" data-mob="activite">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span>Activité
-      </div>
-      <div class="mobile-drawer-item" onclick="showPageMobile('dividendes');closeMobileDrawer()" data-mob="dividendes">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/></svg></span>Dividendes
-      </div>
-      <div class="mobile-drawer-item" onclick="showPageMobile('watchlist');closeMobileDrawer()" data-mob="watchlist">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b8dee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>Watchlist
-      </div>
-      <div class="mobile-drawer-item" onclick="showPageMobile('performance');closeMobileDrawer()" data-mob="performance">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a29bfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>Performance
-      </div>
-      <div class="mobile-drawer-item" onclick="showPageMobile('benchmark');closeMobileDrawer()" data-mob="benchmark">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span>Benchmark
-      </div>
-      <div class="mobile-drawer-item" onclick="showPageMobile('projections');closeMobileDrawer()" data-mob="projections">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg></span>Projections
-      </div>
-      <div class="mobile-drawer-item" onclick="showPageMobile('earnings');closeMobileDrawer()" data-mob="earnings">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span>Calendrier résultats
-      </div>
-      <div class="mobile-drawer-item" onclick="showPageMobile('recap');closeMobileDrawer()" data-mob="recap">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span>Récap du jour
-      </div>
-      <div class="mobile-drawer-item" onclick="showPageMobile('alertes');closeMobileDrawer()" data-mob="alertes">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span>Alertes prix
-      </div>
-      <div class="mobile-drawer-section">Mon CTO</div>
       <div class="mobile-drawer-item" onclick="showPageMobile('cto');closeMobileDrawer()" data-mob="cto">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/><circle cx="19" cy="6" r="1.6"/></svg></span>Portefeuille CTO <span class="nav-soon">Bientôt</span>
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/><circle cx="19" cy="6" r="1.6"/></svg></span>Mon CTO <span class="nav-soon">Bientôt</span>
       </div>
-      <div class="mobile-drawer-section">Ma crypto</div>
       <div class="mobile-drawer-item" onclick="showPageMobile('crypto');closeMobileDrawer()" data-mob="crypto">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f7931a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.5 8h4a2 2 0 0 1 0 4h-4h4.5a2 2 0 0 1 0 4H9.5"/><path d="M9.5 8V6.2M9.5 17.8V16M12.5 6v2M12.5 16v2"/></svg></span>Portefeuille crypto <span class="nav-soon">Bientôt</span>
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f7931a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.5 8h4a2 2 0 0 1 0 4h-4h4.5a2 2 0 0 1 0 4H9.5"/><path d="M9.5 8V6.2M9.5 17.8V16M12.5 6v2M12.5 16v2"/></svg></span>Ma crypto <span class="nav-soon">Bientôt</span>
       </div>
-      <div class="mobile-drawer-section">Mon budget</div>
       <div class="mobile-drawer-item" onclick="showPageMobile('depenses');closeMobileDrawer()" data-mob="depenses">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg></span>Dépenses & abonnements <span class="nav-soon">Bientôt</span>
       </div>
@@ -525,46 +496,18 @@
     </div>
     <nav class="sidebar-nav">
       <div id="nav-dynamic">
-      <div class="nav-section-label">Mon PEA</div>
+      <div class="nav-section-label">Mes comptes</div>
+      <!-- Entrée unique : les dix vues du PEA sont devenues des sous-onglets,
+           voir la barre #pea-tabs. -->
       <div class="nav-item active" onclick="showPage('portfolio')">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span> Portefeuille
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span> Mon PEA
       </div>
-      <div class="nav-item" onclick="showPage('activite')">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></span> Activité
-      </div>
-      <div class="nav-item" onclick="showPage('dividendes')">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/></svg></span> Dividendes
-      </div>
-      <div class="nav-item" onclick="showPage('watchlist')">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b8dee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span> Watchlist
-      </div>
-      <div class="nav-item" onclick="showPage('performance')">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a29bfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span> Performance
-      </div>
-      <div class="nav-item" onclick="showPage('benchmark')">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg></span> Benchmark
-      </div>
-      <div class="nav-item" onclick="showPage('projections')">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg></span> Projections
-      </div>
-      <div class="nav-item" onclick="showPage('earnings')">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span> Calendrier résultats
-      </div>
-      <div class="nav-item" onclick="showPage('recap')">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></span> Récap du jour
-      </div>
-      <div class="nav-item" onclick="showPage('alertes')">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg></span> Alertes prix
-      </div>
-      <div class="nav-section-label" style="margin-top:14px">Mon CTO</div>
       <div class="nav-item" onclick="showPage('cto')" id="nav-cto">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/><circle cx="19" cy="6" r="1.6"/></svg></span> Portefeuille CTO <span class="nav-soon">Bientôt</span>
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/><circle cx="19" cy="6" r="1.6"/></svg></span> Mon CTO <span class="nav-soon">Bientôt</span>
       </div>
-      <div class="nav-section-label" style="margin-top:14px">Ma crypto</div>
       <div class="nav-item" onclick="showPage('crypto')" id="nav-crypto">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f7931a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.5 8h4a2 2 0 0 1 0 4h-4h4.5a2 2 0 0 1 0 4H9.5"/><path d="M9.5 8V6.2M9.5 17.8V16M12.5 6v2M12.5 16v2"/></svg></span> Portefeuille crypto <span class="nav-soon">Bientôt</span>
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f7931a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.5 8h4a2 2 0 0 1 0 4h-4h4.5a2 2 0 0 1 0 4H9.5"/><path d="M9.5 8V6.2M9.5 17.8V16M12.5 6v2M12.5 16v2"/></svg></span> Ma crypto <span class="nav-soon">Bientôt</span>
       </div>
-      <div class="nav-section-label" style="margin-top:14px">Mon budget</div>
       <div class="nav-item" onclick="showPage('depenses')" id="nav-depenses">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg></span> Dépenses & abonnements <span class="nav-soon">Bientôt</span>
       </div>
@@ -658,6 +601,24 @@
   </aside>
 
   <main class="main">
+
+    <!-- ═══ SOUS-ONGLETS DE « MON PEA » ════════════════
+         Les dix vues du PEA tenaient dix entrées de menu. Elles sont
+         regroupées derrière une seule entrée, et cette barre prend le relais
+         pour circuler entre elles. Affichée par _syncPeaTabs() uniquement
+         quand la page active en fait partie. -->
+    <nav class="pea-tabs" id="pea-tabs" aria-label="Sections du PEA" hidden>
+      <button type="button" class="pea-tab" data-tab="portfolio"  onclick="showPeaTab('portfolio')">Portefeuille</button>
+      <button type="button" class="pea-tab" data-tab="activite"   onclick="showPeaTab('activite')">Activité</button>
+      <button type="button" class="pea-tab" data-tab="dividendes" onclick="showPeaTab('dividendes')">Dividendes</button>
+      <button type="button" class="pea-tab" data-tab="watchlist"  onclick="showPeaTab('watchlist')">Watchlist</button>
+      <button type="button" class="pea-tab" data-tab="performance" onclick="showPeaTab('performance')">Performance</button>
+      <button type="button" class="pea-tab" data-tab="benchmark"  onclick="showPeaTab('benchmark')">Benchmark</button>
+      <button type="button" class="pea-tab" data-tab="projections" onclick="showPeaTab('projections')">Projections</button>
+      <button type="button" class="pea-tab" data-tab="earnings"   onclick="showPeaTab('earnings')">Calendrier résultats</button>
+      <button type="button" class="pea-tab" data-tab="recap"      onclick="showPeaTab('recap')">Récap du jour</button>
+      <button type="button" class="pea-tab" data-tab="alertes"    onclick="showPeaTab('alertes')">Alertes prix</button>
+    </nav>
 
     <!-- PORTFOLIO PAGE -->
     <div class="page active" id="page-portfolio">
@@ -2478,7 +2439,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260807e"></script>
+<script src="js/app.js?v=20260807f"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

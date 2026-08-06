@@ -3566,3 +3566,69 @@ body.has-demo-banner { padding-top: 40px; }
 }
 .tease-fisc:first-of-type { border-top: none; }
 .tease-fisc-value { font-weight: 600; font-variant-numeric: tabular-nums; white-space: nowrap; }
+
+/* ═══════════════════════════════════════════════════════════
+   SOUS-ONGLETS DE « MON PEA »
+   Les dix vues du PEA tenaient dix entrées de menu. Le menu n'en garde
+   qu'une, cette barre prend le relais à l'intérieur de la page.
+   ═══════════════════════════════════════════════════════════ */
+
+.pea-tabs {
+  display: flex;
+  gap: 4px;
+  margin-bottom: 20px;
+  padding-bottom: 2px;
+  border-bottom: 1px solid var(--border);
+  overflow-x: auto;
+  /* Barre de défilement masquée : elle doublerait le trait de séparation. */
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+.pea-tabs::-webkit-scrollbar { display: none; }
+.pea-tabs[hidden] { display: none; }
+
+.pea-tab {
+  position: relative;
+  flex: 0 0 auto;
+  background: none;
+  border: none;
+  border-radius: 8px 8px 0 0;
+  padding: 9px 13px 11px;
+  color: var(--text3);
+  font-size: 13px;
+  font-weight: 500;
+  font-family: inherit;
+  white-space: nowrap;
+  cursor: pointer;
+  transition: color 0.15s ease, background 0.15s ease;
+}
+.pea-tab:hover { color: var(--text); background: rgba(255,255,255,0.03); }
+
+/* Le trait actif déborde d'un pixel sur la bordure de la barre pour la
+   recouvrir : sans ça les deux traits se superposent et bavent. */
+.pea-tab.active { color: var(--text); font-weight: 600; }
+.pea-tab.active::after {
+  content: '';
+  position: absolute;
+  left: 10px; right: 10px; bottom: -1px;
+  height: 2px;
+  border-radius: 2px 2px 0 0;
+  background: var(--accent);
+}
+
+@media (max-width: 900px) {
+  .pea-tabs { margin-bottom: 16px; }
+}
+
+@media (max-width: 768px) {
+  /* Bord à bord : la barre défile jusqu'aux bords de l'écran, sinon le
+     dernier onglet semble coupé par une marge et non par le débordement.
+     Les valeurs suivent le padding horizontal de .main à chaque palier. */
+  .pea-tabs { margin: 0 -14px 14px; padding: 0 14px 2px; }
+  .pea-tab { padding: 8px 11px 10px; font-size: 12.5px; }
+  .pea-tab.active::after { left: 8px; right: 8px; }
+}
+
+@media (max-width: 380px) {
+  .pea-tabs { margin: 0 -10px 12px; padding: 0 10px 2px; }
+}
