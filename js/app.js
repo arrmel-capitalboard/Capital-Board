@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260807b';
+const APP_VERSION = '20260807c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3202,7 +3202,7 @@ window.setAvatarHue = async function(deg) {
 };
 
 // ─── Feature flags (config/app.features) ───
-const FLAGGABLE = ['watchlist','dividendes','performance','benchmark','projections','earnings','recap','alertes','actualites','favoris','idees','depenses','cto'];
+const FLAGGABLE = ['watchlist','dividendes','performance','benchmark','projections','earnings','recap','alertes','actualites','favoris','idees','depenses','cto','crypto','fiscalite'];
 let _featureFlags = {};
 function _isFeatureOn(key) { return _featureFlags[key] !== false; }
 function applyFeatureFlags(features) {
@@ -3224,16 +3224,21 @@ const SECTION_LABELS = {
   portfolio: 'Portefeuille', activite: 'Activité', dividendes: 'Dividendes', watchlist: 'Watchlist',
   performance: 'Performance', benchmark: 'Benchmark', projections: 'Projections', earnings: 'Calendrier résultats',
   recap: 'Récap du jour', actualites: 'Actualités', favoris: 'Contenus favoris', alertes: 'Alertes prix', notifications: 'Notifications', idees: 'Boîte à idées', support: 'Support',
-  depenses: 'Dépenses & abonnements', cto: 'Compte-titres (CTO)',
+  depenses: 'Dépenses & abonnements', cto: 'Portefeuille CTO', crypto: 'Portefeuille crypto', fiscalite: 'Récap fiscal',
   admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord', facebook: 'Facebook', linkedin: 'LinkedIn',
   paypal: 'Faire un don',
 };
 const ALL_SECTIONS = Object.keys(SECTION_LABELS);
 const ADMIN_ONLY_KEYS = ['admin']; // rendus uniquement pour l'admin
+// Une catégorie par enveloppe : chacune n'a qu'une entrée tant que le module
+// est à l'état d'annonce, mais la place est faite pour ses pages à venir.
 const DEFAULT_NAV = [
-  { title: 'Mon PEA',        items: ['portfolio', 'activite', 'dividendes', 'watchlist', 'cto'] },
-  { title: 'Analyse',        items: ['performance', 'benchmark', 'projections', 'earnings'] },
-  { title: 'Outils',         items: ['actualites', 'favoris', 'recap', 'alertes', 'notifications', 'idees', 'support', 'depenses'] },
+  { title: 'Mon PEA',        items: ['portfolio', 'activite', 'dividendes', 'watchlist'] },
+  { title: 'Mon CTO',        items: ['cto'] },
+  { title: 'Ma crypto',      items: ['crypto'] },
+  { title: 'Mon budget',     items: ['depenses'] },
+  { title: 'Analyse',        items: ['performance', 'benchmark', 'projections', 'earnings', 'fiscalite'] },
+  { title: 'Outils',         items: ['actualites', 'favoris', 'recap', 'alertes', 'notifications', 'idees', 'support'] },
   { title: 'Administration', items: ['admin'] },
   { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord', 'facebook', 'linkedin'] },
   { title: 'Nous soutenir',  items: ['paypal'] },

@@ -410,8 +410,17 @@
       <div class="mobile-drawer-item" onclick="showPageMobile('watchlist');closeMobileDrawer()" data-mob="watchlist">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b8dee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>Watchlist
       </div>
+      <div class="mobile-drawer-section">Mon CTO</div>
       <div class="mobile-drawer-item" onclick="showPageMobile('cto');closeMobileDrawer()" data-mob="cto">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/><circle cx="19" cy="6" r="1.6"/></svg></span>Compte-titres (CTO) <span class="nav-soon">Bientôt</span>
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/><circle cx="19" cy="6" r="1.6"/></svg></span>Portefeuille CTO <span class="nav-soon">Bientôt</span>
+      </div>
+      <div class="mobile-drawer-section">Ma crypto</div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('crypto');closeMobileDrawer()" data-mob="crypto">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f7931a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.5 8h4a2 2 0 0 1 0 4h-4h4.5a2 2 0 0 1 0 4H9.5"/><path d="M9.5 8V6.2M9.5 17.8V16M12.5 6v2M12.5 16v2"/></svg></span>Portefeuille crypto <span class="nav-soon">Bientôt</span>
+      </div>
+      <div class="mobile-drawer-section">Mon budget</div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('depenses');closeMobileDrawer()" data-mob="depenses">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg></span>Dépenses & abonnements <span class="nav-soon">Bientôt</span>
       </div>
       <div class="mobile-drawer-section">Analyse</div>
       <div class="mobile-drawer-item" onclick="showPageMobile('performance');closeMobileDrawer()" data-mob="performance">
@@ -425,6 +434,9 @@
       </div>
       <div class="mobile-drawer-item" onclick="showPageMobile('projections');closeMobileDrawer()" data-mob="projections">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg></span>Projections
+      </div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('fiscalite');closeMobileDrawer()" data-mob="fiscalite">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="15" y1="12" x2="9" y2="18"/><circle cx="9.5" cy="12.5" r="1.2"/><circle cx="14.5" cy="17.5" r="1.2"/></svg></span>Récap fiscal <span class="nav-soon">Bientôt</span>
       </div>
       <div class="mobile-drawer-section">Outils</div>
       <div class="mobile-drawer-item" onclick="showPageMobile('actualites');closeMobileDrawer()" data-mob="actualites">
@@ -447,9 +459,6 @@
       </div>
       <div class="mobile-drawer-item" onclick="showPageMobile('idees');closeMobileDrawer()" data-mob="idees">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></span>Boîte à idées
-      </div>
-      <div class="mobile-drawer-item" onclick="showPageMobile('depenses');closeMobileDrawer()" data-mob="depenses">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg></span>Dépenses & abonnements <span class="nav-soon">Bientôt</span>
       </div>
       <div class="mobile-drawer-section">Administration</div>
       <div class="mobile-drawer-item" onclick="showPageMobile('admin');closeMobileDrawer()" data-mob="admin" id="mob-nav-admin">
@@ -529,8 +538,17 @@
       <div class="nav-item" onclick="showPage('watchlist')">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b8dee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span> Watchlist
       </div>
+      <div class="nav-section-label" style="margin-top:14px">Mon CTO</div>
       <div class="nav-item" onclick="showPage('cto')" id="nav-cto">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/><circle cx="19" cy="6" r="1.6"/></svg></span> Compte-titres (CTO) <span class="nav-soon">Bientôt</span>
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/><circle cx="19" cy="6" r="1.6"/></svg></span> Portefeuille CTO <span class="nav-soon">Bientôt</span>
+      </div>
+      <div class="nav-section-label" style="margin-top:14px">Ma crypto</div>
+      <div class="nav-item" onclick="showPage('crypto')" id="nav-crypto">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f7931a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.5 8h4a2 2 0 0 1 0 4h-4h4.5a2 2 0 0 1 0 4H9.5"/><path d="M9.5 8V6.2M9.5 17.8V16M12.5 6v2M12.5 16v2"/></svg></span> Portefeuille crypto <span class="nav-soon">Bientôt</span>
+      </div>
+      <div class="nav-section-label" style="margin-top:14px">Mon budget</div>
+      <div class="nav-item" onclick="showPage('depenses')" id="nav-depenses">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg></span> Dépenses & abonnements <span class="nav-soon">Bientôt</span>
       </div>
       <div class="nav-section-label" style="margin-top:14px">Analyse</div>
       <div class="nav-item" onclick="showPage('performance')">
@@ -544,6 +562,9 @@
       </div>
       <div class="nav-item" onclick="showPage('earnings')">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/></svg></span> Calendrier résultats
+      </div>
+      <div class="nav-item" onclick="showPage('fiscalite')" id="nav-fiscalite">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="15" y1="12" x2="9" y2="18"/><circle cx="9.5" cy="12.5" r="1.2"/><circle cx="14.5" cy="17.5" r="1.2"/></svg></span> Récap fiscal <span class="nav-soon">Bientôt</span>
       </div>
       <div class="nav-section-label" style="margin-top:14px">Outils</div>
       <div class="nav-item" onclick="showPage('actualites')">
@@ -566,9 +587,6 @@
       </div>
       <div class="nav-item" onclick="showPage('idees')" id="nav-idees">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></span> Boîte à idées <span id="idees-badge" style="display:none;background:#ff4d6a;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;margin-left:6px"></span>
-      </div>
-      <div class="nav-item" onclick="showPage('depenses')" id="nav-depenses">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg></span> Dépenses & abonnements <span class="nav-soon">Bientôt</span>
       </div>
       <div class="nav-item" onclick="showPage('admin')" id="nav-admin">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span> Admin
@@ -1435,6 +1453,223 @@
       </div>
     </div>
 
+    <!-- ═══ RÉCAP FISCAL (annonce) ═════════════════════
+         Sujet sensible : la page insiste sur le fait qu'aucun chiffre n'est
+         calculé aujourd'hui et que rien ne remplace l'IFU du courtier. -->
+    <div class="page" id="page-fiscalite">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Récap fiscal</div>
+          <div class="page-subtitle">Votre année d'investissement, prête à déclarer — en préparation</div>
+        </div>
+      </div>
+
+      <div class="tease-hero">
+        <div class="tease-badge">En préparation</div>
+        <div class="tease-title">Le moment le plus pénible de l'année tient sur une page.</div>
+        <p class="tease-lead">
+          Chaque printemps, il faut retrouver ses ventes, ses dividendes, ses retenues
+          à l'étranger et ses moins-values reportées. Le prochain module rassemblera
+          tout ça au fil de l'année, pour que la déclaration ne soit plus une fouille
+          dans douze mois de relevés.
+        </p>
+      </div>
+
+      <div class="tease-grid">
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="19" y1="5" x2="5" y2="19"/><circle cx="6.5" cy="6.5" r="2.5"/><circle cx="17.5" cy="17.5" r="2.5"/></svg></div>
+          <div class="tease-card-title">Plus et moins-values, ligne par ligne</div>
+          <div class="tease-card-desc">
+            Chaque vente rapprochée de son prix de revient, avec le calcul du prix moyen
+            pondéré quand la ligne a été achetée en plusieurs fois.
+          </div>
+        </div>
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+          <div class="tease-card-title">Dividendes et retenues étrangères</div>
+          <div class="tease-card-desc">
+            Ce qui a été prélevé à la source hors de France est isolé — c'est souvent
+            là que dort un crédit d'impôt qu'on oublie de réclamer.
+          </div>
+        </div>
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><polyline points="7 13 11 9 14 12 20 6"/></svg></div>
+          <div class="tease-card-title">Moins-values reportées</div>
+          <div class="tease-card-desc">
+            Une mauvaise année s'impute sur les suivantes pendant dix ans. Encore
+            faut-il s'en souvenir : le module garde le stock à jour.
+          </div>
+        </div>
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg></div>
+          <div class="tease-card-title">Un récap exportable</div>
+          <div class="tease-card-desc">
+            Un document clair à garder, à confronter à l'imprimé de votre courtier,
+            ou à transmettre à qui s'occupe de votre déclaration.
+          </div>
+        </div>
+      </div>
+
+      <div class="tease-mock">
+        <div class="tease-mock-head">
+          <div class="card-title" style="margin-bottom:0">Aperçu</div>
+          <div class="tease-mock-label">Illustration — chiffres fictifs</div>
+        </div>
+        <div class="tease-mock-cols">
+          <div>
+            <div class="tease-mock-label" style="margin-bottom:9px">Année en cours</div>
+            <div class="tease-fisc"><span>Cessions réalisées</span><span class="tease-fisc-value">14 opérations</span></div>
+            <div class="tease-fisc"><span>Plus-values</span><span class="tease-fisc-value" style="color:#00e09e">+ 3 260 €</span></div>
+            <div class="tease-fisc"><span>Moins-values de l'année</span><span class="tease-fisc-value" style="color:var(--text2)">− 480 €</span></div>
+            <div class="tease-fisc"><span>Report des années passées</span><span class="tease-fisc-value" style="color:var(--text2)">− 1 100 €</span></div>
+            <div class="tease-fisc" style="border-top:1px solid var(--border2)"><span style="color:var(--text2)">Base imposable estimée</span><span class="tease-fisc-value">1 680 €</span></div>
+          </div>
+          <div>
+            <div class="tease-mock-label" style="margin-bottom:9px">Dividendes</div>
+            <div class="tease-fisc"><span>Encaissés — France</span><span class="tease-fisc-value">318 €</span></div>
+            <div class="tease-fisc"><span>Encaissés — étranger</span><span class="tease-fisc-value">254 €</span></div>
+            <div class="tease-fisc"><span>Retenue à la source</span><span class="tease-fisc-value" style="color:#f5b731">− 38 €</span></div>
+            <div class="tease-fisc" style="border-top:1px solid var(--border2)"><span style="color:var(--text2)">Crédit d'impôt à réclamer</span><span class="tease-fisc-value" style="color:#00e09e">38 €</span></div>
+            <p style="font-size:11px;color:var(--text3);line-height:1.6;margin-top:10px">
+              Les sommes du PEA n'apparaissent pas ici tant qu'aucun retrait n'est effectué :
+              l'enveloppe reste à l'abri.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tease-foot">
+        <div class="tease-foot-text">
+          Le module n'est pas encore disponible, et aucune date n'est annoncée.
+          Une ligne de votre déclaration vous pose problème chaque année ? Dites-la nous.
+        </div>
+        <button class="btn-primary" onclick="document.getElementById('nav-idees').click()" style="font-size:13px;padding:10px 18px;white-space:nowrap">Proposer une idée</button>
+      </div>
+
+      <p class="tease-note">
+        Chiffres inventés pour l'exemple. Capital Board ne fournit pas de conseil fiscal :
+        le récap servira d'aide à la saisie, jamais de substitut à l'imprimé fiscal unique
+        de votre courtier ni à l'avis d'un professionnel.
+      </p>
+    </div>
+
+    <!-- ═══ CRYPTO (annonce) ═══════════════════════════
+         Lecture seule assumée dès la page d'annonce : c'est la première
+         question que se pose quiconque rattache un portefeuille crypto. -->
+    <div class="page" id="page-crypto">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Crypto</div>
+          <div class="page-subtitle">La part la plus volatile de votre patrimoine — en préparation</div>
+        </div>
+      </div>
+
+      <div class="tease-hero">
+        <div class="tease-badge">En préparation</div>
+        <div class="tease-title">Vos cryptos font partie de votre patrimoine. Elles devraient être dans le même tableau.</div>
+        <p class="tease-lead">
+          Un portefeuille suivi à moitié ne dit pas grand-chose de votre exposition réelle.
+          Le prochain module rattachera vos plateformes et vos adresses publiques pour que
+          la crypto apparaisse à côté du PEA — avec sa volatilité et sa fiscalité propres.
+        </p>
+      </div>
+
+      <div class="tease-grid">
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+          <div class="tease-card-title">En lecture seule, sans exception</div>
+          <div class="tease-card-desc">
+            Adresses publiques ou clés d'API limitées à la consultation. Aucune clé privée,
+            aucune phrase de récupération, aucun retrait possible depuis Capital Board.
+          </div>
+        </div>
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg></div>
+          <div class="tease-card-title">Votre vraie exposition</div>
+          <div class="tease-card-desc">
+            La part que la crypto pèse dans l'ensemble, valorisée en euros. Parfois la
+            réponse suffit à décider du prochain arbitrage.
+          </div>
+        </div>
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+          <div class="tease-card-title">La volatilité mise en face</div>
+          <div class="tease-card-desc">
+            Amplitude des variations, plus forte baisse encaissée, poids dans le risque
+            total : de quoi comparer honnêtement avec le reste du portefeuille.
+          </div>
+        </div>
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg></div>
+          <div class="tease-card-title">Ce qui est imposable, et quand</div>
+          <div class="tease-card-desc">
+            Passer d'une crypto à une autre ne déclenche rien ; revenir en euros, si.
+            Le module suivra les cessions taxables et les comptes détenus à l'étranger.
+          </div>
+        </div>
+      </div>
+
+      <div class="tease-mock">
+        <div class="tease-mock-head">
+          <div class="card-title" style="margin-bottom:0">Aperçu</div>
+          <div class="tease-mock-label">Illustration — chiffres fictifs</div>
+        </div>
+        <div class="tease-mock-cols">
+          <div>
+            <div class="tease-mock-label" style="margin-bottom:9px">Part dans le patrimoine</div>
+            <div class="tease-split-bar">
+              <div class="tease-split-seg" style="width:78%;background:#7c6df5"></div>
+              <div class="tease-split-seg" style="width:22%;background:#f7931a"></div>
+            </div>
+            <div class="tease-legend">
+              <div class="tease-legend-item"><span class="tease-legend-dot" style="background:#7c6df5"></span>Comptes titres <span class="tease-legend-amount">41 750 €</span></div>
+              <div class="tease-legend-item"><span class="tease-legend-dot" style="background:#f7931a"></span>Crypto <span class="tease-legend-amount">11 780 €</span></div>
+            </div>
+            <div style="margin-top:16px">
+              <div class="tease-bar-row">
+                <div class="tease-bar-top"><span>Bitcoin</span><span class="tease-bar-amount">7 420 €</span></div>
+                <div class="tease-bar-track"><div class="tease-bar-fill" style="width:63%;background:#f7931a"></div></div>
+              </div>
+              <div class="tease-bar-row">
+                <div class="tease-bar-top"><span>Ethereum</span><span class="tease-bar-amount">3 180 €</span></div>
+                <div class="tease-bar-track"><div class="tease-bar-fill" style="width:27%;background:#818cf8"></div></div>
+              </div>
+              <div class="tease-bar-row" style="margin-bottom:0">
+                <div class="tease-bar-top"><span>Autres</span><span class="tease-bar-amount">1 180 €</span></div>
+                <div class="tease-bar-track"><div class="tease-bar-fill" style="width:10%;background:#94a3b8"></div></div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="tease-mock-label" style="margin-bottom:9px">Année en cours</div>
+            <div class="tease-fisc"><span>Retours en euros</span><span class="tease-fisc-value">3 opérations</span></div>
+            <div class="tease-fisc"><span>Plus-value imposable</span><span class="tease-fisc-value" style="color:#00e09e">+ 890 €</span></div>
+            <div class="tease-fisc"><span>Échanges entre cryptos</span><span class="tease-fisc-value" style="color:var(--text2)">non imposables</span></div>
+            <div class="tease-fisc"><span>Plateformes à déclarer</span><span class="tease-fisc-value" style="color:#f5b731">2</span></div>
+            <div class="tease-fisc" style="border-top:1px solid var(--border2)"><span style="color:var(--text2)">Plus forte baisse encaissée</span><span class="tease-fisc-value" style="color:#ff4d6a">− 38 %</span></div>
+            <p style="font-size:11px;color:var(--text3);line-height:1.6;margin-top:10px">
+              Un compte ouvert sur une plateforme étrangère se déclare, même sans aucune
+              vente dans l'année.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tease-foot">
+        <div class="tease-foot-text">
+          Le module n'est pas encore disponible, et aucune date n'est annoncée.
+          Quelles plateformes utilisez-vous ? La réponse décidera de l'ordre des priorités.
+        </div>
+        <button class="btn-primary" onclick="document.getElementById('nav-idees').click()" style="font-size:13px;padding:10px 18px;white-space:nowrap">Proposer une idée</button>
+      </div>
+
+      <p class="tease-note">
+        Chiffres inventés pour l'exemple. Aucun portefeuille crypto n'est rattaché à
+        Capital Board aujourd'hui, et rien ici ne constitue un conseil en investissement.
+        Les crypto-actifs peuvent perdre l'intégralité de leur valeur.
+      </p>
+    </div>
+
     <!-- ═══ COMPTE-TITRES / CTO (annonce) ══════════════
          Même parti pris que la page Dépenses : rien de réel, l'aperçu est
          une illustration signalée comme telle. -->
@@ -2242,7 +2477,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260807b"></script>
+<script src="js/app.js?v=20260807c"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
