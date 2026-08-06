@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260807a">
+<link rel="stylesheet" href="css/style.css?v=20260807b">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -410,6 +410,9 @@
       <div class="mobile-drawer-item" onclick="showPageMobile('watchlist');closeMobileDrawer()" data-mob="watchlist">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b8dee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>Watchlist
       </div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('cto');closeMobileDrawer()" data-mob="cto">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/><circle cx="19" cy="6" r="1.6"/></svg></span>Compte-titres (CTO) <span class="nav-soon">Bientôt</span>
+      </div>
       <div class="mobile-drawer-section">Analyse</div>
       <div class="mobile-drawer-item" onclick="showPageMobile('performance');closeMobileDrawer()" data-mob="performance">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a29bfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg></span>Performance
@@ -525,6 +528,9 @@
       </div>
       <div class="nav-item" onclick="showPage('watchlist')">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b8dee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span> Watchlist
+      </div>
+      <div class="nav-item" onclick="showPage('cto')" id="nav-cto">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/><circle cx="19" cy="6" r="1.6"/></svg></span> Compte-titres (CTO) <span class="nav-soon">Bientôt</span>
       </div>
       <div class="nav-section-label" style="margin-top:14px">Analyse</div>
       <div class="nav-item" onclick="showPage('performance')">
@@ -1429,6 +1435,124 @@
       </div>
     </div>
 
+    <!-- ═══ COMPTE-TITRES / CTO (annonce) ══════════════
+         Même parti pris que la page Dépenses : rien de réel, l'aperçu est
+         une illustration signalée comme telle. -->
+    <div class="page" id="page-cto">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Compte-titres (CTO)</div>
+          <div class="page-subtitle">Un second compte à suivre, en préparation</div>
+        </div>
+      </div>
+
+      <div class="tease-hero">
+        <div class="tease-badge">En préparation</div>
+        <div class="tease-title">Le PEA s'arrête là où votre portefeuille continue.</div>
+        <p class="tease-lead">
+          Une action américaine, un ETF non éligible, un plafond de versements atteint :
+          tôt ou tard, une partie de vos titres vit ailleurs que sur le PEA. Le prochain
+          module suit ce compte-titres à côté, avec ses propres règles — et surtout sa
+          propre fiscalité.
+        </p>
+      </div>
+
+      <div class="tease-grid">
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#ff9f43" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"/></svg></div>
+          <div class="tease-card-title">Tout ce que le PEA refuse</div>
+          <div class="tease-card-desc">
+            Actions hors zone euro, ETF non éligibles, valeurs américaines : les lignes
+            que votre PEA ne peut pas loger trouvent enfin leur place.
+          </div>
+        </div>
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M9 3v18"/><path d="M3 9h18"/></svg></div>
+          <div class="tease-card-title">Une vue consolidée</div>
+          <div class="tease-card-desc">
+            Vos deux comptes réunis dans un même total : allocation réelle, exposition
+            par zone et par secteur, sans additionner deux tableaux à la main.
+          </div>
+        </div>
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/></svg></div>
+          <div class="tease-card-title">La fiscalité suivie à part</div>
+          <div class="tease-card-desc">
+            Le CTO n'a pas l'abri du PEA : chaque vente compte. Le module suit les
+            plus-values réalisées dans l'année et ce qu'elles représentent une fois
+            l'imposition passée.
+          </div>
+        </div>
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20V10"/><path d="M18 20V4"/><path d="M6 20v-4"/></svg></div>
+          <div class="tease-card-title">Où verser le mois prochain</div>
+          <div class="tease-card-desc">
+            Plafond du PEA, antériorité fiscale, titres visés : le module indiquera
+            lequel des deux comptes mérite votre prochain versement.
+          </div>
+        </div>
+      </div>
+
+      <div class="tease-mock">
+        <div class="tease-mock-head">
+          <div class="card-title" style="margin-bottom:0">Aperçu</div>
+          <div class="tease-mock-label">Illustration — chiffres fictifs</div>
+        </div>
+        <div class="tease-mock-cols">
+          <div>
+            <div class="tease-mock-label" style="margin-bottom:9px">Répartition des encours</div>
+            <div class="tease-split-bar">
+              <div class="tease-split-seg" style="width:68%;background:#7c6df5"></div>
+              <div class="tease-split-seg" style="width:32%;background:#ff9f43"></div>
+            </div>
+            <div class="tease-legend">
+              <div class="tease-legend-item"><span class="tease-legend-dot" style="background:#7c6df5"></span>PEA <span class="tease-legend-amount">28 400 €</span></div>
+              <div class="tease-legend-item"><span class="tease-legend-dot" style="background:#ff9f43"></span>CTO <span class="tease-legend-amount">13 350 €</span></div>
+            </div>
+            <div style="margin-top:16px">
+              <div class="tease-bar-row">
+                <div class="tease-bar-top"><span>Amérique du Nord</span><span class="tease-bar-amount">61 %</span></div>
+                <div class="tease-bar-track"><div class="tease-bar-fill" style="width:61%;background:#5b8dee"></div></div>
+              </div>
+              <div class="tease-bar-row">
+                <div class="tease-bar-top"><span>Zone euro</span><span class="tease-bar-amount">29 %</span></div>
+                <div class="tease-bar-track"><div class="tease-bar-fill" style="width:29%;background:#00cec9"></div></div>
+              </div>
+              <div class="tease-bar-row" style="margin-bottom:0">
+                <div class="tease-bar-top"><span>Asie émergente</span><span class="tease-bar-amount">10 %</span></div>
+                <div class="tease-bar-track"><div class="tease-bar-fill" style="width:10%;background:#c084fc"></div></div>
+              </div>
+            </div>
+          </div>
+          <div>
+            <div class="tease-mock-label" style="margin-bottom:9px">Année en cours — CTO</div>
+            <div class="tease-fisc"><span>Plus-values réalisées</span><span class="tease-fisc-value" style="color:#00e09e">+ 2 180 €</span></div>
+            <div class="tease-fisc"><span>Moins-values imputables</span><span class="tease-fisc-value" style="color:var(--text2)">− 340 €</span></div>
+            <div class="tease-fisc"><span>Dividendes encaissés</span><span class="tease-fisc-value">412 €</span></div>
+            <div class="tease-fisc"><span>Imposition estimée</span><span class="tease-fisc-value" style="color:#f5b731">− 675 €</span></div>
+            <div class="tease-fisc" style="border-top:1px solid var(--border2)"><span style="color:var(--text2)">Gain net estimé</span><span class="tease-fisc-value">1 577 €</span></div>
+            <p style="font-size:11px;color:var(--text3);line-height:1.6;margin-top:10px">
+              Estimation indicative : votre situation personnelle peut changer le calcul.
+              Capital Board ne remplacera pas votre déclaration.
+            </p>
+          </div>
+        </div>
+      </div>
+
+      <div class="tease-foot">
+        <div class="tease-foot-text">
+          Le module n'est pas encore disponible, et aucune date n'est annoncée.
+          Vous avez déjà un compte-titres ? Dites-nous ce qu'il vous manque aujourd'hui.
+        </div>
+        <button class="btn-primary" onclick="document.getElementById('nav-idees').click()" style="font-size:13px;padding:10px 18px;white-space:nowrap">Proposer une idée</button>
+      </div>
+
+      <p class="tease-note">
+        Les montants de cette page sont inventés pour l'exemple. Capital Board ne suit
+        aujourd'hui que le PEA, et ne fournit ni conseil en investissement ni conseil fiscal.
+      </p>
+    </div>
+
     <!-- ═══ DÉPENSES & ABONNEMENTS (annonce) ═══════════
          Aucune donnée réelle ici : la section n'existe pas encore, la page
          annonce l'intention du module. L'aperçu est une illustration figée,
@@ -2118,7 +2242,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260807a"></script>
+<script src="js/app.js?v=20260807b"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
