@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260807c';
+const APP_VERSION = '20260807d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3233,12 +3233,16 @@ const ADMIN_ONLY_KEYS = ['admin']; // rendus uniquement pour l'admin
 // Une catégorie par enveloppe : chacune n'a qu'une entrée tant que le module
 // est à l'état d'annonce, mais la place est faite pour ses pages à venir.
 const DEFAULT_NAV = [
-  { title: 'Mon PEA',        items: ['portfolio', 'activite', 'dividendes', 'watchlist'] },
+  // Tout ce qui concerne le PEA tient dans une seule catégorie : le suivi et
+  // son analyse répondent à la même question, les séparer obligeait à passer
+  // d'un bloc à l'autre pour une même ligne.
+  { title: 'Mon PEA',        items: ['portfolio', 'activite', 'dividendes', 'watchlist', 'performance', 'benchmark', 'projections', 'earnings', 'recap', 'alertes'] },
   { title: 'Mon CTO',        items: ['cto'] },
   { title: 'Ma crypto',      items: ['crypto'] },
   { title: 'Mon budget',     items: ['depenses'] },
-  { title: 'Analyse',        items: ['performance', 'benchmark', 'projections', 'earnings', 'fiscalite'] },
-  { title: 'Outils',         items: ['actualites', 'favoris', 'recap', 'alertes', 'notifications', 'idees', 'support'] },
+  // 'notifications' reste dans SECTION_LABELS sans figurer ici : l'entrée est
+  // retirée du menu, mais l'admin peut la remettre depuis l'éditeur.
+  { title: 'Outils',         items: ['actualites', 'favoris', 'fiscalite', 'idees', 'support'] },
   { title: 'Administration', items: ['admin'] },
   { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord', 'facebook', 'linkedin'] },
   { title: 'Nous soutenir',  items: ['paypal'] },
