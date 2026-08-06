@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260731e';
+const APP_VERSION = '20260807a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3202,7 +3202,7 @@ window.setAvatarHue = async function(deg) {
 };
 
 // ─── Feature flags (config/app.features) ───
-const FLAGGABLE = ['watchlist','dividendes','performance','benchmark','projections','earnings','recap','alertes','actualites','favoris','idees'];
+const FLAGGABLE = ['watchlist','dividendes','performance','benchmark','projections','earnings','recap','alertes','actualites','favoris','idees','depenses'];
 let _featureFlags = {};
 function _isFeatureOn(key) { return _featureFlags[key] !== false; }
 function applyFeatureFlags(features) {
@@ -3224,6 +3224,7 @@ const SECTION_LABELS = {
   portfolio: 'Portefeuille', activite: 'Activité', dividendes: 'Dividendes', watchlist: 'Watchlist',
   performance: 'Performance', benchmark: 'Benchmark', projections: 'Projections', earnings: 'Calendrier résultats',
   recap: 'Récap du jour', actualites: 'Actualités', favoris: 'Contenus favoris', alertes: 'Alertes prix', notifications: 'Notifications', idees: 'Boîte à idées', support: 'Support',
+  depenses: 'Dépenses & abonnements',
   admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord', facebook: 'Facebook', linkedin: 'LinkedIn',
   paypal: 'Faire un don',
 };
@@ -3232,7 +3233,7 @@ const ADMIN_ONLY_KEYS = ['admin']; // rendus uniquement pour l'admin
 const DEFAULT_NAV = [
   { title: 'Mon PEA',        items: ['portfolio', 'activite', 'dividendes', 'watchlist'] },
   { title: 'Analyse',        items: ['performance', 'benchmark', 'projections', 'earnings'] },
-  { title: 'Outils',         items: ['actualites', 'favoris', 'recap', 'alertes', 'notifications', 'idees', 'support'] },
+  { title: 'Outils',         items: ['actualites', 'favoris', 'recap', 'alertes', 'notifications', 'idees', 'support', 'depenses'] },
   { title: 'Administration', items: ['admin'] },
   { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord', 'facebook', 'linkedin'] },
   { title: 'Nous soutenir',  items: ['paypal'] },
@@ -3334,7 +3335,7 @@ function _renderNavInto(container, nodes, layout, labelCls, spaced) {
   // menu, sous les réseaux sociaux.
   const placed = new Set();
   layout.forEach(cat => (cat.items || []).forEach(key => placed.add(key)));
-  const merged = layout.map(cat => ({ title: cat.title, items: [...(cat.items || [])] }));
+  const merged = layout.map(cat => ({ title: cat.title, hidden: !!cat.hidden, items: [...(cat.items || [])] }));
   DEFAULT_NAV.forEach(cat => {
     const missing = (cat.items || []).filter(key => !placed.has(key));
     if (!missing.length) return;
@@ -3345,6 +3346,10 @@ function _renderNavInto(container, nodes, layout, labelCls, spaced) {
 
   container.innerHTML = '';
   merged.forEach(cat => {
+    // Catégorie masquée depuis l'admin : ni titre ni entrées. Supprimer la
+    // catégorie ne suffisait pas — ses entrées, toujours listées dans
+    // DEFAULT_NAV, revenaient par la récupération des orphelins ci-dessus.
+    if (cat.hidden) return;
     const visible = (cat.items || []).filter(usable);
     if (!visible.length) return; // catégorie vide → pas de titre
     addSection(cat.title, visible);
@@ -14037,13 +14042,21 @@ function renderNavEditor() {
           optGroup('Déplacer depuis une autre catégorie', elsewhere) +
         '</select>'
       : '';
-    return '<div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:#0f1119">' +
+    // Une catégorie masquée reste éditable : on la grise sans la replier, pour
+    // qu'un clic de plus suffise à la remettre.
+    const catHidden = !!cat.hidden;
+    const hideTitle = catHidden ? 'Afficher la catégorie' : 'Masquer la catégorie pour tout le monde';
+    const hideBtn = '<button style="' + mini + (catHidden ? ';color:#f5b731;border-color:rgba(245,183,49,.35)' : '') + '" onclick="adminNavToggleCategory(' + ci + ')" title="' + hideTitle + '">' + (catHidden ? '🙈' : '👁') + '</button>';
+    return '<div style="border:1px solid var(--border);border-radius:12px;padding:12px;margin-bottom:10px;background:#0f1119' + (catHidden ? ';opacity:.55' : '') + '">' +
       '<div style="display:flex;gap:6px;align-items:center;margin-bottom:9px">' +
         '<input value="' + (cat.title || '').replace(/"/g, '&quot;') + '" onchange="adminNavRenameCategory(' + ci + ',this)" placeholder="Titre catégorie" style="flex:1;background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;font-weight:600;padding:8px 10px;font-family:var(--sans);outline:none">' +
+        hideBtn +
         '<button style="' + mini + '" onclick="adminNavMoveCategory(' + ci + ',-1)" title="Monter catégorie">▲</button>' +
         '<button style="' + mini + '" onclick="adminNavMoveCategory(' + ci + ',1)" title="Descendre catégorie">▼</button>' +
         '<button style="' + mini + ';color:#ff5d78" onclick="adminNavDeleteCategory(' + ci + ')" title="Supprimer catégorie">✕</button>' +
-      '</div>' + items + addOpts +
+      '</div>' +
+      (catHidden ? '<div style="font-size:11px;color:#f5b731;margin:-4px 0 9px">Masquée — invisible dans le menu, sur ordinateur comme sur mobile.</div>' : '') +
+      items + addOpts +
     '</div>';
   }).join('');
 }
@@ -14087,6 +14100,10 @@ async function adminNavSetSocial(key, inp) {
   catch (e) { console.error('[admin] save social:', e); }
 }
 function adminNavRenameCategory(ci, inp) { _navDraft[ci].title = inp.value; _saveNav(); }
+// Masque une catégorie entière (ex. « Nous soutenir ») sans la supprimer :
+// la supprimer ne tenait pas, ses entrées étant réinjectées depuis DEFAULT_NAV
+// à la lecture suivante de la config.
+function adminNavToggleCategory(ci) { _navDraft[ci].hidden = !_navDraft[ci].hidden; _saveNav(); }
 function adminNavDeleteCategory(ci) { _navDraft.splice(ci, 1); _saveNav(); }
 function adminNavMoveCategory(ci, dir) {
   const ni = ci + dir;

@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260730b">
+<link rel="stylesheet" href="css/style.css?v=20260807a">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -445,6 +445,9 @@
       <div class="mobile-drawer-item" onclick="showPageMobile('idees');closeMobileDrawer()" data-mob="idees">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></span>Boîte à idées
       </div>
+      <div class="mobile-drawer-item" onclick="showPageMobile('depenses');closeMobileDrawer()" data-mob="depenses">
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg></span>Dépenses & abonnements <span class="nav-soon">Bientôt</span>
+      </div>
       <div class="mobile-drawer-section">Administration</div>
       <div class="mobile-drawer-item" onclick="showPageMobile('admin');closeMobileDrawer()" data-mob="admin" id="mob-nav-admin">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span>Admin
@@ -557,6 +560,9 @@
       </div>
       <div class="nav-item" onclick="showPage('idees')" id="nav-idees">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg></span> Boîte à idées <span id="idees-badge" style="display:none;background:#ff4d6a;color:#fff;font-size:10px;font-weight:700;padding:2px 6px;border-radius:10px;margin-left:6px"></span>
+      </div>
+      <div class="nav-item" onclick="showPage('depenses')" id="nav-depenses">
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg></span> Dépenses & abonnements <span class="nav-soon">Bientôt</span>
       </div>
       <div class="nav-item" onclick="showPage('admin')" id="nav-admin">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg></span> Admin
@@ -1423,6 +1429,137 @@
       </div>
     </div>
 
+    <!-- ═══ DÉPENSES & ABONNEMENTS (annonce) ═══════════
+         Aucune donnée réelle ici : la section n'existe pas encore, la page
+         annonce l'intention du module. L'aperçu est une illustration figée,
+         explicitement signalée comme telle. -->
+    <div class="page" id="page-depenses">
+      <div class="page-header">
+        <div>
+          <div class="page-title">Dépenses &amp; abonnements</div>
+          <div class="page-subtitle">Un module en préparation, hors du PEA</div>
+        </div>
+      </div>
+
+      <div class="tease-hero">
+        <div class="tease-badge">En préparation</div>
+        <div class="tease-title">Savoir ce que vous investissez, c'est bien. Savoir ce qui part avant, c'est mieux.</div>
+        <p class="tease-lead">
+          Capital Board suit votre portefeuille. Le prochain module s'occupe de l'autre moitié :
+          vos dépenses du quotidien et surtout vos abonnements — ces prélèvements qui reviennent
+          chaque mois et qu'on finit par ne plus voir passer.
+        </p>
+      </div>
+
+      <div class="tease-grid">
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-6.2-8.6"/><polyline points="21 3 21 9 15 9"/></svg></div>
+          <div class="tease-card-title">Vos abonnements, repérés</div>
+          <div class="tease-card-desc">
+            Les prélèvements qui reviennent sont détectés et regroupés. Vous voyez enfin
+            ce qu'ils vous coûtent sur une année entière, pas juste ce mois-ci.
+          </div>
+        </div>
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.21 15.89A10 10 0 1 1 8 2.83"/><path d="M22 12A10 10 0 0 0 12 2v10z"/></svg></div>
+          <div class="tease-card-title">Chaque dépense à sa place</div>
+          <div class="tease-card-desc">
+            Courses, restaurants, transport, loisirs : chaque opération est rangée dans son poste,
+            avec la répartition du mois et l'évolution dans le temps.
+          </div>
+        </div>
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"/><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg></div>
+          <div class="tease-card-title">Ce qu'il reste à investir</div>
+          <div class="tease-card-desc">
+            Une fois les charges passées, le module en déduit votre capacité d'épargne —
+            et la rapproche de ce que vous versez réellement sur votre PEA.
+          </div>
+        </div>
+        <div class="tease-card">
+          <div class="tease-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+          <div class="tease-card-title">En lecture seule</div>
+          <div class="tease-card-desc">
+            Le rattachement d'un compte passerait par un prestataire agréé, en consultation
+            uniquement. Aucun mouvement d'argent ne serait possible depuis Capital Board.
+          </div>
+        </div>
+      </div>
+
+      <div class="tease-mock">
+        <div class="tease-mock-head">
+          <div class="card-title" style="margin-bottom:0">Aperçu</div>
+          <div class="tease-mock-label">Illustration — chiffres fictifs</div>
+        </div>
+        <div class="tease-mock-cols">
+          <div>
+            <div class="tease-bar-row">
+              <div class="tease-bar-top"><span>Courses</span><span class="tease-bar-amount">412 €</span></div>
+              <div class="tease-bar-track"><div class="tease-bar-fill" style="width:82%;background:#4ade80"></div></div>
+            </div>
+            <div class="tease-bar-row">
+              <div class="tease-bar-top"><span>Restaurants &amp; bars</span><span class="tease-bar-amount">268 €</span></div>
+              <div class="tease-bar-track"><div class="tease-bar-fill" style="width:54%;background:#fb923c"></div></div>
+            </div>
+            <div class="tease-bar-row">
+              <div class="tease-bar-top"><span>Abonnements</span><span class="tease-bar-amount">147 €</span></div>
+              <div class="tease-bar-track"><div class="tease-bar-fill" style="width:30%;background:#818cf8"></div></div>
+            </div>
+            <div class="tease-bar-row">
+              <div class="tease-bar-top"><span>Transport</span><span class="tease-bar-amount">96 €</span></div>
+              <div class="tease-bar-track"><div class="tease-bar-fill" style="width:19%;background:#60a5fa"></div></div>
+            </div>
+            <div class="tease-bar-row" style="margin-bottom:0">
+              <div class="tease-bar-top"><span>Loisirs</span><span class="tease-bar-amount">61 €</span></div>
+              <div class="tease-bar-track"><div class="tease-bar-fill" style="width:12%;background:#c084fc"></div></div>
+            </div>
+          </div>
+          <div>
+            <div class="tease-sub-row">
+              <div class="tease-sub-chip">ST</div>
+              <div class="tease-sub-name">Streaming vidéo<div class="tease-sub-freq">Tous les 14 du mois</div></div>
+              <div class="tease-sub-amount">13,49 €</div>
+            </div>
+            <div class="tease-sub-row">
+              <div class="tease-sub-chip">FO</div>
+              <div class="tease-sub-name">Forfait mobile<div class="tease-sub-freq">Tous les 5 du mois</div></div>
+              <div class="tease-sub-amount">19,99 €</div>
+            </div>
+            <div class="tease-sub-row">
+              <div class="tease-sub-chip">SA</div>
+              <div class="tease-sub-name">Salle de sport<div class="tease-sub-freq">Tous les 2 du mois</div></div>
+              <div class="tease-sub-amount">29,90 €</div>
+            </div>
+            <div class="tease-sub-row">
+              <div class="tease-sub-chip">ST</div>
+              <div class="tease-sub-name">Stockage en ligne<div class="tease-sub-freq">Tous les 21 du mois</div></div>
+              <div class="tease-sub-amount">2,99 €</div>
+            </div>
+            <div class="tease-sub-row" style="border-top:1px solid var(--border2);margin-top:4px">
+              <div class="tease-sub-name" style="color:var(--text2);font-size:12px">Soit sur un an</div>
+              <div class="tease-sub-amount" style="color:#f5b731">799 €</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="tease-foot">
+        <div class="tease-foot-text">
+          Le module n'est pas encore disponible, et aucune date n'est annoncée.
+          Vous voulez qu'il fasse quelque chose en particulier ? Dites-le nous.
+        </div>
+        <!-- Le clic est délégué à l'entrée de menu : showPage() marque
+             `event.currentTarget` comme actif, un bouton s'y substituerait et
+             laisserait le menu sans section sélectionnée. -->
+        <button class="btn-primary" onclick="document.getElementById('nav-idees').click()" style="font-size:13px;padding:10px 18px;white-space:nowrap">Proposer une idée</button>
+      </div>
+
+      <p class="tease-note">
+        Aucun compte bancaire n'est rattaché à Capital Board aujourd'hui, et les chiffres
+        de cette page sont inventés pour l'exemple.
+      </p>
+    </div>
+
     <!-- ═══ CALENDRIER DES RÉSULTATS ═══════════════════ -->
     <div class="page" id="page-earnings">
       <div class="page-header">
@@ -1981,7 +2118,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260731e"></script>
+<script src="js/app.js?v=20260807a"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

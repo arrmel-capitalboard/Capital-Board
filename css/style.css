@@ -3382,3 +3382,166 @@ body.has-demo-banner { padding-top: 40px; }
   .idea-mine-row { flex-direction: column; gap: 8px; }
   .idea-mine-right { width: 100%; justify-content: space-between; }
 }
+
+/* ═══════════════════════════════════════════════════════════
+   DÉPENSES & ABONNEMENTS — page d'annonce
+   Section encore en préparation : la page ne montre aucune donnée
+   réelle, seulement l'intention du module et un aperçu illustratif.
+   ═══════════════════════════════════════════════════════════ */
+
+.tease-hero {
+  position: relative; overflow: hidden;
+  background: radial-gradient(120% 140% at 0% 0%, rgba(124,109,245,0.16), transparent 58%), var(--s1);
+  border: 1px solid var(--border2);
+  border-radius: 18px;
+  padding: 30px 32px;
+  margin-bottom: 16px;
+}
+/* Filet d'accent en haut de carte, comme sur les tuiles du portefeuille. */
+.tease-hero::before {
+  content: ''; position: absolute; top: 0; left: 0; right: 0; height: 2px;
+  background: linear-gradient(90deg, #7c6df5, #00cec9 45%, transparent 85%);
+}
+
+.tease-badge {
+  display: inline-flex; align-items: center; gap: 7px;
+  background: rgba(245,183,49,0.10);
+  border: 1px solid rgba(245,183,49,0.28);
+  color: #f5b731;
+  border-radius: 999px; padding: 4px 11px;
+  font-size: 11px; font-weight: 700; letter-spacing: 0.04em;
+  text-transform: uppercase;
+  margin-bottom: 14px;
+}
+.tease-badge::before {
+  content: ''; width: 6px; height: 6px; border-radius: 50%;
+  background: #f5b731; box-shadow: 0 0 9px #f5b731;
+}
+
+.tease-title {
+  font-size: 24px; font-weight: 800; letter-spacing: -0.5px;
+  line-height: 1.25; margin-bottom: 10px; max-width: 620px;
+}
+.tease-lead {
+  font-size: 14px; color: var(--text2); line-height: 1.7;
+  max-width: 640px;
+}
+
+.tease-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+  gap: 14px; margin-bottom: 16px;
+}
+
+.tease-card {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 20px;
+  transition: transform 0.2s ease, border-color 0.2s ease;
+}
+.tease-card:hover { transform: translateY(-2px); border-color: var(--border2); }
+
+.tease-ico {
+  width: 34px; height: 34px; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  margin-bottom: 12px;
+  background: rgba(124,109,245,0.12);
+}
+.tease-card-title { font-size: 14px; font-weight: 700; margin-bottom: 6px; }
+.tease-card-desc { font-size: 12.5px; color: var(--text2); line-height: 1.65; }
+
+/* ─── Aperçu illustratif ─── */
+
+.tease-mock {
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: 16px;
+  padding: 20px;
+  margin-bottom: 16px;
+}
+.tease-mock-head {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; margin-bottom: 16px; flex-wrap: wrap;
+}
+.tease-mock-label {
+  font-size: 10px; text-transform: uppercase; letter-spacing: 1.5px;
+  color: var(--text3); font-weight: 600;
+}
+.tease-mock-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 26px; }
+
+.tease-bar-row { margin-bottom: 12px; }
+.tease-bar-top {
+  display: flex; justify-content: space-between; align-items: baseline;
+  font-size: 12.5px; margin-bottom: 6px;
+}
+.tease-bar-amount { color: var(--text2); font-variant-numeric: tabular-nums; }
+.tease-bar-track {
+  height: 7px; border-radius: 999px;
+  background: rgba(255,255,255,0.05); overflow: hidden;
+}
+.tease-bar-fill { height: 100%; border-radius: 999px; }
+
+.tease-sub-row {
+  display: flex; align-items: center; gap: 11px;
+  padding: 9px 0;
+  border-top: 1px solid var(--border);
+}
+.tease-sub-row:first-of-type { border-top: none; }
+.tease-sub-chip {
+  width: 28px; height: 28px; border-radius: 9px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--s3); color: var(--text2);
+  font-size: 11px; font-weight: 700;
+}
+.tease-sub-name { flex: 1; min-width: 0; font-size: 13px; }
+.tease-sub-freq { font-size: 11px; color: var(--text3); }
+.tease-sub-amount {
+  font-size: 13px; font-weight: 600; font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+/* ─── Pied de page : rappel de statut + renvoi vers la boîte à idées ─── */
+
+.tease-foot {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 16px; flex-wrap: wrap;
+  background: var(--s1);
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 18px 20px;
+}
+.tease-foot-text { font-size: 13px; color: var(--text2); line-height: 1.6; }
+.tease-note {
+  font-size: 11.5px; color: var(--text3); line-height: 1.6;
+  margin-top: 14px; text-align: center;
+}
+
+/* Badge « Bientôt » des entrées de menu. */
+.nav-soon {
+  background: rgba(245,183,49,0.12);
+  border: 1px solid rgba(245,183,49,0.3);
+  color: #f5b731;
+  font-size: 9px; font-weight: 700; letter-spacing: 0.04em;
+  padding: 1px 6px; border-radius: 999px;
+  margin-left: 6px; text-transform: uppercase;
+}
+/* Sidebar repliée : le libellé disparaît, le badge doit suivre. */
+.sidebar.collapsed .nav-soon { display: none; }
+
+@media (max-width: 900px) {
+  /* Deux colonnes d'aperçu ne tiennent plus : les barres deviendraient
+     illisibles avant même le seuil mobile. */
+  .tease-mock-cols { grid-template-columns: 1fr; gap: 22px; }
+}
+
+@media (max-width: 640px) {
+  .tease-hero { padding: 22px 18px; border-radius: 16px; }
+  .tease-title { font-size: 19px; }
+  .tease-lead { font-size: 13px; }
+  .tease-grid { grid-template-columns: 1fr; gap: 12px; }
+  .tease-card { padding: 16px; }
+  .tease-mock { padding: 16px; }
+  .tease-foot { flex-direction: column; align-items: stretch; padding: 16px; }
+  .tease-foot .btn-primary, .tease-foot .btn-outline { width: 100%; justify-content: center; }
+}
