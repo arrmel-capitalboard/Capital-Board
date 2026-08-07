@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260807i';
+const APP_VERSION = '20260807j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3219,7 +3219,7 @@ window.setAvatarHue = async function(deg) {
 };
 
 // ─── Feature flags (config/app.features) ───
-const FLAGGABLE = ['watchlist','dividendes','performance','benchmark','projections','earnings','recap','alertes','actualites','favoris','idees','depenses','cto','crypto','fiscalite'];
+const FLAGGABLE = ['watchlist','dividendes','performance','benchmark','projections','earnings','recap','alertes','actualites','favoris','idees','depenses','cto','crypto','fiscalite','av','per','livrets','immo','or','nonco'];
 let _featureFlags = {};
 function _isFeatureOn(key) { return _featureFlags[key] !== false; }
 function applyFeatureFlags(features) {
@@ -3245,6 +3245,8 @@ function applyFeatureFlags(features) {
 // restent accessibles à l'admin via PEA_TABS.
 const SECTION_LABELS = {
   portfolio: 'Mon PEA', cto: 'Mon CTO', crypto: 'Ma crypto', depenses: 'Dépenses & abonnements',
+  av: 'Assurance-vie', per: 'PER', livrets: 'Livrets & épargne',
+  immo: 'Immobilier & SCPI', or: 'Or & métaux', nonco: 'Crowdfunding & non coté',
   actualites: 'Actualités', favoris: 'Contenus favoris', notifications: 'Notifications', idees: 'Boîte à idées', support: 'Support',
   fiscalite: 'Récap fiscal',
   admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord', facebook: 'Facebook', linkedin: 'LinkedIn',
@@ -3256,7 +3258,7 @@ const ADMIN_ONLY_KEYS = ['admin']; // rendus uniquement pour l'admin
 // remanié : une config enregistrée par l'admin prime sur DEFAULT_NAV, et sans
 // ce garde-fou un remaniement restait invisible tant que personne n'avait
 // rouvert l'éditeur pour réenregistrer le menu.
-const NAV_LAYOUT_VERSION = 3;
+const NAV_LAYOUT_VERSION = 4;
 
 // Organisation sauvegardée, ou null si elle date d'avant le dernier remaniement
 // — auquel cas DEFAULT_NAV reprend la main. Réenregistrer le menu depuis
@@ -3272,7 +3274,9 @@ const DEFAULT_NAV = [
   // Tout ce qui concerne le PEA tient dans une seule catégorie : le suivi et
   // son analyse répondent à la même question, les séparer obligeait à passer
   // d'un bloc à l'autre pour une même ligne.
-  { title: 'Mes comptes',    items: ['portfolio', 'cto', 'crypto', 'depenses'] },
+  // Ordre de lecture : les enveloppes investies d'abord, puis l'épargne
+  // disponible, les actifs non cotés, et le budget en dernier.
+  { title: 'Mes comptes',    items: ['portfolio', 'cto', 'av', 'per', 'crypto', 'livrets', 'immo', 'or', 'nonco', 'depenses'] },
   // 'notifications' reste dans SECTION_LABELS sans figurer ici : l'entrée est
   // retirée du menu, mais l'admin peut la remettre depuis l'éditeur.
   { title: 'Outils',         items: ['actualites', 'favoris', 'fiscalite', 'idees', 'support'] },
