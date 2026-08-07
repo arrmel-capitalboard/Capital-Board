@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260807g';
+const APP_VERSION = '20260807h';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3546,8 +3546,44 @@ function _statSet(el, value, format) {
   _pxCount(el, prev, value, format);
 }
 
+// Deux lignes désignent la même valeur. Le ticker fait foi quand il existe,
+// l'ISIN sinon ; le libellé ne sert que pour les titres saisis sans aucun des
+// deux, où il est le seul identifiant disponible.
+function _posKey(row) {
+  if (row.ticker) return 'T:' + String(row.ticker).toUpperCase();
+  if (row.isin)   return 'I:' + String(row.isin).toUpperCase();
+  return 'N:' + String(row.name || '').trim().toUpperCase();
+}
+function _samePosition(a, b) { return _posKey(a) === _posKey(b); }
+
+// Rattrapage des portefeuilles où « Ajouter une position » avait créé une
+// seconde ligne pour une valeur déjà détenue : les quantités s'additionnent et
+// le prix de revient devient leur moyenne pondérée. Rien n'est perdu, le
+// journal des transactions garde le détail de chaque achat.
+function _mergeDuplicatePositions(data) {
+  const out = [], seen = {};
+  let merged = 0;
+  data.forEach(row => {
+    const key = _posKey(row);
+    const prev = seen[key];
+    if (!prev) { seen[key] = row; out.push(row); return; }
+    const total = (prev.qty || 0) + (row.qty || 0);
+    if (total > 0) {
+      prev.buyPrice = Math.round((((prev.qty || 0) * (prev.buyPrice || 0) + (row.qty || 0) * (row.buyPrice || 0)) / total) * 10000) / 10000;
+      prev.qty      = Math.round(total * 10000) / 10000;
+    }
+    if (row.buyDate && (!prev.buyDate || row.buyDate < prev.buyDate)) prev.buyDate = row.buyDate;
+    merged++;
+  });
+  return merged ? out : null;
+}
+
 function renderPortfolio() {
-  const data = getPortfolio(currentUser);
+  let data = getPortfolio(currentUser);
+  // Fusion des doublons hérités, une fois pour toutes : sans elle, une valeur
+  // achetée deux fois resterait à vendre en deux opérations.
+  const deduped = _mergeDuplicatePositions(data);
+  if (deduped) { data = deduped; savePortfolio(currentUser, data); }
   const tbody = document.getElementById('portfolio-tbody');
   const empty = document.getElementById('empty-state');
 
@@ -4751,21 +4787,41 @@ function confirmAdd() {
   }
 
   const data = getPortfolio(currentUser);
-  data.push({
-    name:         foundName || document.getElementById('modal-ticker').value,
-    ticker:       foundTicker || '',
-    isin:         foundISIN || TICKER_TO_ISIN[foundTicker] || null,
-    qty:          qty,
-    buyPrice:     buyPrice,
-    buyDate:      buyDate,
-    currentPrice: foundPrice,
-    quoteType:    foundQuoteType || 'EQUITY',
-    pe:           foundPE,
-    beta:         foundBeta,
-    dividendYield:foundDivYield,
-    hasDividend:  foundHasDividend,
-    addedAt:      new Date().toISOString()
-  });
+
+  // Une société tient sur une seule ligne. Un second achat du même titre
+  // rejoint donc la position existante au prix moyen pondéré, comme le fait
+  // déjà le bouton Acheter d'une ligne. Deux lignes séparées obligeaient à
+  // solder la position en deux ventes.
+  const existing = data.find(r => _samePosition(r, {
+    ticker: foundTicker || '',
+    isin: foundISIN || TICKER_TO_ISIN[foundTicker] || null,
+    name: foundName || '',
+  }));
+  if (existing) {
+    const newQty = existing.qty + qty;
+    existing.buyPrice = Math.round(((existing.qty * existing.buyPrice + qty * buyPrice) / newQty) * 10000) / 10000;
+    existing.qty      = Math.round(newQty * 10000) / 10000;
+    // La date de la position reste celle du premier achat : c'est elle qui
+    // date l'entrée sur la valeur.
+    if (buyDate && (!existing.buyDate || buyDate < existing.buyDate)) existing.buyDate = buyDate;
+    existing.currentPrice = foundPrice;
+  } else {
+    data.push({
+      name:         foundName || document.getElementById('modal-ticker').value,
+      ticker:       foundTicker || '',
+      isin:         foundISIN || TICKER_TO_ISIN[foundTicker] || null,
+      qty:          qty,
+      buyPrice:     buyPrice,
+      buyDate:      buyDate,
+      currentPrice: foundPrice,
+      quoteType:    foundQuoteType || 'EQUITY',
+      pe:           foundPE,
+      beta:         foundBeta,
+      dividendYield:foundDivYield,
+      hasDividend:  foundHasDividend,
+      addedAt:      new Date().toISOString()
+    });
+  }
   // Log transaction for portfolio history
   logTransaction(currentUser, { type:'buy', ticker: foundTicker||'', name: foundName||'', qty, price: buyPrice, date: buyDate, fees: _readFees('modal-fees') });
   savePortfolio(currentUser, data);
