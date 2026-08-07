@@ -11811,11 +11811,11 @@ function renderActivite() {
   ev.sort((a,b) => (b.date||'').localeCompare(a.date||'') || (b.id||0)-(a.id||0));
 
   const CFG = {
-    buy:          { tag:'ACHAT',       bg:'rgba(124,109,245,.15)', col:'#a99bff', sign:-1 },
-    sell:         { tag:'VENTE',       bg:'rgba(255,93,120,.14)',  col:'#ff5d78', sign:+1 },
-    dividend:     { tag:'DIVIDENDE',   bg:'rgba(245,183,49,.14)',  col:'#f5b731', sign:+1 },
-    distribution: { tag:'ATTRIBUTION', bg:'rgba(124,109,245,.15)', col:'#a99bff', sign:+1 },
-    versement:    { tag:'VERSEMENT',   bg:'rgba(0,224,158,.14)',   col:'#00e09e', sign:+1 },
+    buy:          { tag:'ACHAT',       bg:'rgba(124,109,245,.15)', col:'#a99bff', iconBg:'#7c6df5', iconCol:'#fff',    sign:-1 },
+    sell:         { tag:'VENTE',       bg:'rgba(255,93,120,.14)',  col:'#ff5d78', iconBg:'#ff4d6a', iconCol:'#fff',    sign:+1 },
+    dividend:     { tag:'DIVIDENDE',   bg:'rgba(245,183,49,.14)',  col:'#f5b731', iconBg:'#f5b731', iconCol:'#04060b', sign:+1 },
+    distribution: { tag:'ATTRIBUTION', bg:'rgba(124,109,245,.15)', col:'#a99bff', iconBg:'#7c6df5', iconCol:'#fff',    sign:+1 },
+    versement:    { tag:'VERSEMENT',   bg:'rgba(0,224,158,.14)',   col:'#00e09e', iconBg:'#00e09e', iconCol:'#04060b', sign:+1 },
   };
   const ICO = {
     buy:  '<path d="M12 19V5"/><path d="m5 12 7-7 7 7"/>',
@@ -11862,7 +11862,7 @@ function renderActivite() {
     }
 
     return `<div class="act-item">` +
-      `<div class="act-ico" style="background:${c.bg}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${c.col}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICO[e.type]||''}</svg></div>` +
+      `<div class="act-ico" style="background:${c.iconBg}"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="${c.iconCol}" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">${ICO[e.type]||''}</svg></div>` +
       `<div class="act-main"><div class="act-title">${title}<span class="act-tag" style="background:${c.bg};color:${c.col}">${c.tag}</span></div><div class="act-sub">${sub}</div></div>` +
       `<div class="act-amt" style="color:${amtCol}">${signed}</div>` +
       `<div class="act-actions">${actions}</div>` +
