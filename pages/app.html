@@ -2255,6 +2255,15 @@
       <input type="date" class="form-input" id="modal-buy-date" style="color-scheme:dark">
     </div>
 
+    <!-- Facultatif : le total de l'avis d'opéré, courtage + TTF confondus. Ces
+         frais quittent réellement le compte espèces, sans quoi le solde
+         affiché reste au-dessus du solde réel, ordre après ordre. -->
+    <div class="form-group">
+      <label class="form-label">Frais &amp; taxes (€) <span style="color:var(--text3);font-weight:400">— facultatif</span></label>
+      <input type="number" class="form-input" id="modal-fees" placeholder="0.00" min="0" step="any">
+      <div class="form-hint" style="font-size:11px;color:var(--text3);margin-top:5px">Courtage et TTF réunis, tels qu'ils figurent sur l'avis d'opéré.</div>
+    </div>
+
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeModal()">Annuler</button>
       <button class="btn-primary" id="btn-confirm" onclick="confirmAdd()" disabled>Ajouter</button>
@@ -2292,6 +2301,12 @@
     <div class="form-group" id="edit-sell-price-group" style="display:none">
       <label class="form-label">Prix de vente (EUR)</label>
       <input type="number" class="form-input" id="edit-sell-price" placeholder="150.00" min="0" step="any">
+    </div>
+    <!-- Frais retenus sur l'ordre : ajoutés à ce que coûte un achat, retirés de
+         ce que rapporte une vente. Voir #modal-fees. -->
+    <div class="form-group">
+      <label class="form-label">Frais &amp; taxes (€) <span style="color:var(--text3);font-weight:400">— facultatif</span></label>
+      <input type="number" class="form-input" id="edit-fees" placeholder="0.00" min="0" step="any">
     </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeEditModal()">Annuler</button>
@@ -2439,7 +2454,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260807f"></script>
+<script src="js/app.js?v=20260807g"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260807f';
+const APP_VERSION = '20260807g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -676,6 +676,23 @@ async function deleteAllUserData(uid) {
 }
 
 // logTransaction reste synchrone
+// Frais et taxes retenus sur un ordre (courtage + TTF). Champ facultatif :
+// absent des transactions enregistrées avant son introduction, d'où le repli
+// systématique à 0 partout où il est lu.
+function _readFees(inputId) {
+  const el = document.getElementById(inputId);
+  const v = el ? parseFloat(el.value) : 0;
+  return (isFinite(v) && v > 0) ? Math.round(v * 100) / 100 : 0;
+}
+function _txFees(tx) {
+  const v = parseFloat(tx && tx.fees);
+  return isFinite(v) && v > 0 ? v : 0;
+}
+// Total des frais d'un journal : toujours sortant, à l'achat comme à la vente.
+function _totalFees(txs) {
+  return (txs || []).reduce((s, tx) => s + _txFees(tx), 0);
+}
+
 function logTransaction(user, tx) {
   const txs = getTransactions(user);
   txs.push({ ...tx, id: Date.now() });
@@ -3677,7 +3694,7 @@ function renderPortfolio() {
     if (tx.type === 'dividend') totalDividendes += tx.qty * tx.price;
     if (tx.type === 'distribution') totalDistributions += tx.qty * tx.price;
   });
-  const cash = totalVersements - totalAchats + totalVentes + totalDividendes + totalDistributions;
+  const cash = totalVersements - totalAchats + totalVentes + totalDividendes + totalDistributions - _totalFees(txs);
   const cashEl = document.getElementById('stat-cash');
   _statSet(cashEl, cash);
   cashEl.style.color = cash >= 0 ? 'var(--positive)' : 'var(--negative)';
@@ -3923,6 +3940,7 @@ function setEditTab(tab) {
   var btn = document.getElementById('btn-edit-confirm');
   var today = new Date().toISOString().slice(0,10);
   document.getElementById('edit-date').value = today;
+  document.getElementById('edit-fees').value = '';
   if (tab === 'buy') {
     document.getElementById('edit-qty-label').textContent = 'Quantite a acheter';
     document.getElementById('edit-price-group').style.display = 'block';
@@ -3954,15 +3972,18 @@ function confirmEdit() {
     var newQty = row.qty + qty;
     row.buyPrice = Math.round(((row.qty * row.buyPrice + qty * price) / newQty) * 10000) / 10000;
     row.qty      = Math.round(newQty * 10000) / 10000;
-    logTransaction(currentUser, { type:'buy', ticker: row.ticker, name: row.name, qty, price, date: txDate });
+    logTransaction(currentUser, { type:'buy', ticker: row.ticker, name: row.name, qty, price, date: txDate, fees: _readFees('edit-fees') });
   } else {
     if (qty > row.qty) { alert('Quantite superieure a la position.'); return; }
     var sellPrice = parseFloat(document.getElementById('edit-sell-price').value);
     if (!sellPrice || sellPrice <= 0) { alert('Prix de vente invalide.'); return; }
     ensureBuyTxExists(currentUser, row);
     // Calculate realized P&L for this sell
-    var realizedPnl = (sellPrice - row.buyPrice) * qty;
-    logTransaction(currentUser, { type:'sell', ticker: row.ticker, name: row.name, qty, price: sellPrice, date: txDate, buyPrice: row.buyPrice, realizedPnl: Math.round(realizedPnl * 100) / 100 });
+    // Les frais sont retenus sur le produit de la vente : la plus-value
+    // realisee doit s'entendre nette, sinon elle annonce un gain jamais encaisse.
+    var sellFees = _readFees('edit-fees');
+    var realizedPnl = (sellPrice - row.buyPrice) * qty - sellFees;
+    logTransaction(currentUser, { type:'sell', ticker: row.ticker, name: row.name, qty, price: sellPrice, date: txDate, buyPrice: row.buyPrice, fees: sellFees, realizedPnl: Math.round(realizedPnl * 100) / 100 });
     if (qty === row.qty) {
       data.splice(editRowIndex, 1);
       savePortfolio(currentUser, data);
@@ -4165,6 +4186,7 @@ function openModal() {
   document.getElementById('modal-ticker').value = '';
   document.getElementById('modal-qty').value = '';
   document.getElementById('modal-buy-price').value = '';
+  document.getElementById('modal-fees').value = '';
   document.getElementById('search-result').classList.remove('visible');
   document.getElementById('res-logo').innerHTML = '';
   document.getElementById('search-status').innerHTML = '';
@@ -4745,7 +4767,7 @@ function confirmAdd() {
     addedAt:      new Date().toISOString()
   });
   // Log transaction for portfolio history
-  logTransaction(currentUser, { type:'buy', ticker: foundTicker||'', name: foundName||'', qty, price: buyPrice, date: buyDate });
+  logTransaction(currentUser, { type:'buy', ticker: foundTicker||'', name: foundName||'', qty, price: buyPrice, date: buyDate, fees: _readFees('modal-fees') });
   savePortfolio(currentUser, data);
   closeModal();
   renderPortfolio();
@@ -10205,7 +10227,7 @@ function initTrophees() {
     if (tx.type === 'dividend') totalDividendes += tx.qty * tx.price;
     if (tx.type === 'distribution') totalDistributions += tx.qty * tx.price;
   });
-  const cash = Math.max(0, totalVersements - totalAchats + totalVentes + totalDividendes + totalDistributions);
+  const cash = Math.max(0, totalVersements - totalAchats + totalVentes + totalDividendes + totalDistributions - _totalFees(txs));
 
   // Patrimoine total = titres + espèces
   const patrimoine = totalVal + cash;
@@ -11740,7 +11762,7 @@ function renderActivite() {
 
   const ev = [];
   txs.forEach(t => ev.push({ kind:'tx', id:t.id, type:t.type, date:t.date||'',
-    ticker:t.ticker, name:t.name, qty:t.qty, price:t.price }));
+    ticker:t.ticker, name:t.name, qty:t.qty, price:t.price, fees:_txFees(t) }));
   vers.forEach(v => ev.push({ kind:'versement', id:v.id, type:'versement', date:v.date||'',
     name:v.label || 'Versement', amount:v.amount }));
 
@@ -11784,7 +11806,10 @@ function renderActivite() {
     let sub;
     if (e.kind === 'versement')        sub = fmtD(e.date);
     else if (e.type === 'distribution') sub = fmtD(e.date) + ' · rompus';
-    else                                sub = fmtD(e.date) + ' · ' + e.qty + ' × ' + Number(e.price).toFixed(2) + ' €';
+    else {
+      sub = fmtD(e.date) + ' · ' + e.qty + ' × ' + Number(e.price).toFixed(2) + ' €';
+      if (e.fees) sub += ' · ' + e.fees.toFixed(2) + ' € de frais';
+    }
 
     let actions;
     if (e.type === 'distribution') {
