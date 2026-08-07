@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260807h';
+const APP_VERSION = '20260807i';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3436,6 +3436,18 @@ function _runPageHook(id) {
   if (id === 'idees')       renderIdeasPage();
   if (id === 'earnings')    renderEarningsCalendar();
   if (id === 'admin')       renderAdminPage();
+  // Ces rendus étaient ajoutés plus bas en enveloppant showPage() et
+  // showPageMobile(). Une troisième porte d'entrée est apparue avec les
+  // sous-onglets du PEA, qui ne passait pas par ces enveloppes : les pages
+  // Dividendes, Performance et Benchmark restaient vides. Tout est ici
+  // désormais, une seule liste pour les trois chemins.
+  if (id === 'watchlist')     renderWatchlist();
+  if (id === 'notifications') renderNotificationsPage();
+  if (id === 'benchmark')     initBenchmark();
+  if (id === 'projections')   initProjections();
+  if (id === 'bilan')         initBilan();
+  if (id === 'dividendes')    initDividendes();
+  if (id === 'performance')   initPerformance();
 }
 
 // Affiche la barre de sous-onglets quand la page active appartient au PEA, et
@@ -9116,19 +9128,6 @@ renderPortfolio = function() {
   setTimeout(initStatCardsScroll, 300);
 };
 
-// Initialize watchlist on page show
-const _origShowPage = showPage;
-showPage = function(id) {
-  _origShowPage(id);
-  if (id === 'watchlist')     renderWatchlist();
-  if (id === 'notifications') renderNotificationsPage();
-};
-const _origShowPageMobile = showPageMobile;
-showPageMobile = function(id) {
-  _origShowPageMobile(id);
-  if (id === 'watchlist')     renderWatchlist();
-  if (id === 'notifications') renderNotificationsPage();
-};
 // ═══════════════════════════════════════════════════
 //  BASE 100
 // ═══════════════════════════════════════════════════
@@ -11163,25 +11162,6 @@ function confirmDividende() {
   initDividendes();
   try { renderActivite(); } catch (_) {}
 }
-
-const _origShowPageAnalytique = showPage;
-showPage = function(id) {
-  _origShowPageAnalytique(id);
-  if (id === 'benchmark')    initBenchmark();
-  if (id === 'projections')  initProjections();
-  if (id === 'bilan')        initBilan();
-  if (id === 'dividendes')   initDividendes();
-  if (id === 'performance')  initPerformance();
-};
-const _origShowPageMobileAnalytique = showPageMobile;
-showPageMobile = function(id) {
-  _origShowPageMobileAnalytique(id);
-  if (id === 'benchmark')    initBenchmark();
-  if (id === 'projections')  initProjections();
-  if (id === 'bilan')        initBilan();
-  if (id === 'dividendes')   initDividendes();
-  if (id === 'performance')  initPerformance();
-};
 
 // ─── PERFORMANCE PAGE ─────────────────────────────────
 let perfAnnualChart = null;
