@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260810b';
+const APP_VERSION = '20260810c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -10789,6 +10789,13 @@ function initDividendes() {
       <div class="stat-change">Chargement…</div>
     </div>`;
 
+  // Le défilement démarre avec les cartes, pas avec les données. Lancé depuis le
+  // `.then` de la chaîne Yahoo, il attendait l'historique de chaque action — et
+  // le moindre fetch en échec partait dans le `.catch`, laissant le bandeau
+  // définitivement figé. La boucle relit largeurs et positions à chaque frame :
+  // elle tolère très bien de tourner avant que le contenu soit à jour.
+  startDivKpisAutoScroll();
+
   // Fetch async puis render
   Promise.all(actions.map(async r => {
     const history  = await fetchDivHistory(r.ticker);
@@ -10870,8 +10877,6 @@ function initDividendes() {
         <span style="font-size:13px;font-weight:600;color:var(--text1)">${nextRows[0].r.name || nextRows[0].r.ticker}</span>
       </div>
       <div class="stat-value" style="font-size:16px;color:var(--gold)">${nextRows[0].nextEstim}</div>`;
-
-    startDivKpisAutoScroll();
 
     // ── Projection dividendes annuels ────────────────────────────────────────
     const projEl = document.getElementById('div-projection-content');
