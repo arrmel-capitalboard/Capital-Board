@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260810b">
+<link rel="stylesheet" href="css/style.css?v=20260810d">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -375,20 +375,32 @@
   </header>
 
   <!-- ─── MOBILE BOTTOM NAV ───────────────────────── -->
+  <!-- Deux niveaux : les destinations principales, puis les vues de l'enveloppe
+       ouverte. Dividendes et Watchlist ont quitté ce premier niveau le jour où
+       elles sont devenues des sous-onglets du PEA — elles vivent maintenant
+       dans le second, atteignable en touchant « Mon PEA ». -->
   <nav class="mobile-nav">
-    <div class="mobile-nav-inner">
+    <div class="mobile-nav-inner" id="mnav-root">
       <button class="mobile-nav-item active" data-mob="portfolio" onclick="showPageMobile('portfolio')">
-        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span>Portefeuille
+        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span>Mon PEA
       </button>
-      <button class="mobile-nav-item" data-mob="dividendes" onclick="showPageMobile('dividendes')">
-        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/></svg></span>Dividendes
+      <button class="mobile-nav-item" data-mob="actualites" onclick="showPageMobile('actualites')">
+        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b8dee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 10h6"/><path d="M7 14h10"/></svg></span>Actualités
       </button>
-      <button class="mobile-nav-item" data-mob="watchlist" onclick="showPageMobile('watchlist')">
-        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#5b8dee" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></span>Watchlist
+      <button class="mobile-nav-item" data-mob="favoris" onclick="showPageMobile('favoris')">
+        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 17.27 5.18 3.13-1.37-5.89L20.5 10.6l-6.02-.52L12 4.5 9.52 10.08 3.5 10.6l4.69 3.91-1.37 5.89z"/></svg></span>Favoris
       </button>
       <button class="mobile-nav-item" onclick="openMobileDrawer()">
-        <span>⋯</span>Plus
+        <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><circle cx="5" cy="12" r="1.3"/><circle cx="12" cy="12" r="1.3"/><circle cx="19" cy="12" r="1.3"/></svg></span>Plus
       </button>
+    </div>
+    <!-- Rangée remplie par _renderMnavPea() : elle suit PEA_TABS et les
+         sections qu'un admin a pu désactiver. -->
+    <div class="mobile-nav-inner mnav-sub" id="mnav-pea" hidden>
+      <button type="button" class="mnav-back" onclick="mobileNavBack()" aria-label="Revenir aux onglets principaux">
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18 9 12l6-6"/></svg>
+      </button>
+      <div class="mnav-subrow" id="mnav-pea-row"></div>
     </div>
   </nav>
 
@@ -2856,7 +2868,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260810c"></script>
+<script src="js/app.js?v=20260810d"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

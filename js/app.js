@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260810c';
+const APP_VERSION = '20260810d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3145,8 +3145,12 @@ window.closeMobileDrawer = function() {
 
 // Sync active states across mobile nav + drawer
 function syncMobileNav(id) {
+  // Les dix vues du PEA n'ont pas d'entrée propre dans la barre : c'est « Mon
+  // PEA » qui reste marquée. Sans ça, revenir au premier niveau depuis
+  // Dividendes n'allumait plus aucun onglet.
+  const navKey = PEA_TABS.includes(id) ? 'portfolio' : id;
   document.querySelectorAll('.mobile-nav-item[data-mob]').forEach(b => {
-    b.classList.toggle('active', b.dataset.mob === id);
+    b.classList.toggle('active', b.dataset.mob === navKey);
   });
   document.querySelectorAll('.mobile-drawer-item[data-mob]').forEach(b => {
     b.classList.toggle('active', b.dataset.mob === id);
@@ -3454,6 +3458,68 @@ function _runPageHook(id) {
   if (id === 'performance')   initPerformance();
 }
 
+// Libellés courts des vues du PEA pour la barre mobile : « Calendrier
+// résultats » ne tient pas dans une pilule au pouce.
+const PEA_TAB_LABELS = {
+  portfolio: 'Portefeuille', activite: 'Activité',   dividendes: 'Dividendes',
+  watchlist: 'Watchlist',    performance: 'Performance', benchmark: 'Benchmark',
+  projections: 'Projections', earnings: 'Résultats', recap: 'Récap',
+  alertes: 'Alertes',
+};
+
+// La barre mobile a deux niveaux : les destinations principales, et les vues de
+// l'enveloppe ouverte. Le niveau affiché ne se déduit pas de la page courante —
+// le bouton retour montre le premier niveau sans quitter la vue qu'on lit.
+let _mnavLevel = 'root';
+
+function _renderMnavPea(id) {
+  const row = document.getElementById('mnav-pea-row');
+  if (!row) return;
+  row.innerHTML = PEA_TABS
+    .filter(k => !(FLAGGABLE.includes(k) && !_isFeatureOn(k)))
+    .map(k => '<button type="button" class="mnav-subtab' + (k === id ? ' active' : '') + '"'
+      + ' onclick="showPeaTab(\'' + k + '\')"'
+      + (k === id ? ' aria-current="page"' : '')
+      + '>' + PEA_TAB_LABELS[k] + '</button>')
+    .join('');
+  // Dix vues ne tiennent pas dans la largeur : la rangée défile, et l'onglet
+  // actif doit être visible sans que l'utilisateur ait à le chercher.
+  const on = row.querySelector('.mnav-subtab.active');
+  if (on && on.scrollIntoView) on.scrollIntoView({ block: 'nearest', inline: 'center' });
+}
+
+function _applyMnavLevel() {
+  const root = document.getElementById('mnav-root');
+  const pea  = document.getElementById('mnav-pea');
+  if (!root || !pea) return;
+  const sub = _mnavLevel === 'pea';
+  root.hidden = sub;
+  pea.hidden  = !sub;
+  // Une entrée dont la section est coupée par l'admin ne doit pas rester dans
+  // la barre : elle mènerait à une page que showPageMobile() refuse d'ouvrir.
+  root.querySelectorAll('.mobile-nav-item[data-mob]').forEach(b => {
+    const k = b.dataset.mob;
+    b.style.display = (FLAGGABLE.includes(k) && !_isFeatureOn(k)) ? 'none' : '';
+  });
+}
+
+// Retour au premier niveau. La page affichée ne change pas : on remonte dans la
+// navigation, on ne quitte pas ce qu'on est en train de lire.
+function mobileNavBack() {
+  _mnavLevel = 'root';
+  _applyMnavLevel();
+}
+
+// Appelé par les trois fonctions de navigation, et par elles seules : entrer
+// dans le second niveau est la conséquence d'une action. L'app s'ouvre sur le
+// portefeuille — une vue du PEA — via la classe `active` posée dans le HTML,
+// donc le premier écran montre bien les destinations principales.
+function _syncMobileNavLevel(id) {
+  _mnavLevel = PEA_TABS.includes(id) ? 'pea' : 'root';
+  if (_mnavLevel === 'pea') _renderMnavPea(id);
+  _applyMnavLevel();
+}
+
 // Affiche la barre de sous-onglets quand la page active appartient au PEA, et
 // y marque l'onglet courant. Un onglet dont la section est désactivée par
 // l'admin disparaît de la barre.
@@ -3469,6 +3535,10 @@ function _syncPeaTabs(id) {
     btn.classList.toggle('active', key === id);
     btn.setAttribute('aria-current', key === id ? 'page' : 'false');
   });
+  // `applyFeatureFlags()` repasse aussi par ici : on rafraîchit la rangée du
+  // second niveau si elle est ouverte, sans jamais changer de niveau — ce
+  // n'est pas une navigation.
+  if (_mnavLevel === 'pea') _renderMnavPea(id);
 }
 
 // Bascule d'un sous-onglet à l'autre. L'entrée « Mon PEA » du menu garde son
@@ -3479,9 +3549,8 @@ function showPeaTab(id) {
   if (!page) return;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   page.classList.add('active');
-  document.querySelectorAll('.mobile-nav-item').forEach(b => {
-    b.classList.toggle('active', b.dataset.mob === id);
-  });
+  syncMobileNav(id);
+  _syncMobileNavLevel(id);
   _syncPeaTabs(id);
   _runPageHook(id);
 }
@@ -3492,10 +3561,8 @@ function showPage(id) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
   event.currentTarget.classList.add('active');
-  // Sync mobile nav
-  document.querySelectorAll('.mobile-nav-item').forEach(b => {
-    b.classList.toggle('active', b.dataset.mob === id);
-  });
+  syncMobileNav(id);
+  _syncMobileNavLevel(id);
   _syncPeaTabs(id);
   _runPageHook(id);
 }
@@ -3529,6 +3596,7 @@ function showPageMobile(id) {
     const onclick = n.getAttribute('onclick') || '';
     if (onclick.includes("'" + navKey + "'")) n.classList.add('active');
   });
+  _syncMobileNavLevel(id);
   _syncPeaTabs(id);
   _runPageHook(id);
 }

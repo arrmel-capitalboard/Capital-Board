@@ -2072,18 +2072,63 @@ body.sb-collapsed .main { margin-left: 58px; }
 .mobile-header-btn:hover { background: var(--s3); color: var(--text); }
 
 /* ─── MOBILE BOTTOM NAV ─── */
+/* Barre flottante : détachée des bords, elle laisse le contenu défiler dessous,
+   et rapproche les cibles du centre de l'écran où va le pouce. Le fond n'est
+   plus porté par la barre mais par la pilule intérieure — d'où le
+   `pointer-events` qui rend les marges latérales traversantes. */
 .mobile-nav {
   display: none;
   position: fixed; bottom: 0; left: 0; right: 0;
-  background: rgba(10,12,20,0.95);
-  backdrop-filter: blur(20px);
-  border-top: 1px solid var(--border);
   z-index: 200;
-  padding: 8px 4px calc(8px + env(safe-area-inset-bottom, 0px));
+  padding: 0 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  pointer-events: none;
+  /* La règle hors media pose un fond et un filet sur toute la largeur : ils
+     trahiraient la barre flottante en la raccrochant au bord de l'écran. */
+  background: none;
+  border-top: none;
+  backdrop-filter: none;
 }
 .mobile-nav-inner {
   display: flex; justify-content: space-around; align-items: center;
+  pointer-events: auto;
+  /* `var(--s1)` et non un noir en dur : la barre était illisible en thème clair. */
+  background: var(--s1);
+  border: 1px solid var(--border2);
+  border-radius: 22px;
+  padding: 5px 5px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.42), 0 2px 6px rgba(0,0,0,0.24);
 }
+
+/* ─── Second niveau : les vues de l'enveloppe ouverte ─── */
+.mnav-sub { justify-content: flex-start; gap: 6px; padding: 5px 8px 5px 5px; }
+.mnav-back {
+  flex: 0 0 auto; width: 34px; height: 34px; padding: 0;
+  display: flex; align-items: center; justify-content: center;
+  border-radius: 50%; cursor: pointer;
+  background: var(--s3); border: 1px solid var(--border2); color: var(--text);
+  -webkit-tap-highlight-color: transparent;
+  transition: transform 0.15s, background 0.15s;
+}
+.mnav-back:active { transform: scale(0.92); background: var(--s4); }
+.mnav-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Dix vues ne tiennent pas dans la largeur : la rangée défile, sans barre —
+   même motif que les bandeaux de chiffres. */
+.mnav-subrow {
+  flex: 1 1 auto; min-width: 0;
+  display: flex; gap: 6px; overflow-x: auto;
+  scrollbar-width: none; -ms-overflow-style: none;
+  -webkit-overflow-scrolling: touch; scroll-behavior: smooth;
+}
+.mnav-subrow::-webkit-scrollbar { display: none; }
+.mnav-subtab {
+  flex: 0 0 auto; padding: 7px 13px; border-radius: 18px; cursor: pointer;
+  background: none; border: 1px solid transparent; color: var(--text2);
+  font-family: var(--sans); font-size: 11.5px; font-weight: 600; white-space: nowrap;
+  -webkit-tap-highlight-color: transparent;
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.mnav-subtab.active { background: var(--accent-d); border-color: rgba(124,109,245,0.38); color: var(--accent); }
+.mnav-subtab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .mobile-nav-item {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
   padding: 6px 10px; border-radius: 10px;
