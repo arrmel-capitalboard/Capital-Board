@@ -2099,36 +2099,6 @@ body.sb-collapsed .main { margin-left: 58px; }
   box-shadow: 0 10px 30px rgba(0,0,0,0.42), 0 2px 6px rgba(0,0,0,0.24);
 }
 
-/* ─── Second niveau : les vues de l'enveloppe ouverte ─── */
-.mnav-sub { justify-content: flex-start; gap: 6px; padding: 5px 8px 5px 5px; }
-.mnav-back {
-  flex: 0 0 auto; width: 34px; height: 34px; padding: 0;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 50%; cursor: pointer;
-  background: var(--s3); border: 1px solid var(--border2); color: var(--text);
-  -webkit-tap-highlight-color: transparent;
-  transition: transform 0.15s, background 0.15s;
-}
-.mnav-back:active { transform: scale(0.92); background: var(--s4); }
-.mnav-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Dix vues ne tiennent pas dans la largeur : la rangée défile, sans barre —
-   même motif que les bandeaux de chiffres. */
-.mnav-subrow {
-  flex: 1 1 auto; min-width: 0;
-  display: flex; gap: 6px; overflow-x: auto;
-  scrollbar-width: none; -ms-overflow-style: none;
-  -webkit-overflow-scrolling: touch; scroll-behavior: smooth;
-}
-.mnav-subrow::-webkit-scrollbar { display: none; }
-.mnav-subtab {
-  flex: 0 0 auto; padding: 7px 13px; border-radius: 18px; cursor: pointer;
-  background: none; border: 1px solid transparent; color: var(--text2);
-  font-family: var(--sans); font-size: 11.5px; font-weight: 600; white-space: nowrap;
-  -webkit-tap-highlight-color: transparent;
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.mnav-subtab.active { background: var(--accent-d); border-color: rgba(124,109,245,0.38); color: var(--accent); }
-.mnav-subtab:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 .mobile-nav-item {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
   padding: 6px 10px; border-radius: 10px;
@@ -2166,19 +2136,37 @@ body.sb-collapsed .main { margin-left: 58px; }
   width: 36px; height: 4px; border-radius: 2px;
   background: var(--border2); margin: 0 auto 16px;
 }
+/* Grille plutôt que liste : les seize entrées tiennent alors dans un écran, là
+   où la liste en imposait le défilement. Les titres de section prennent une
+   ligne entière, les entrées se rangent en cases sous chacun d'eux. */
+.mobile-drawer {
+  display: grid; grid-template-columns: repeat(3, 1fr);
+  gap: 8px; padding-left: 14px; padding-right: 14px;
+}
+/* Le bloc dynamique est un intermédiaire de rendu, pas un groupe visuel : il
+   s'efface pour que ses entrées rejoignent la grille du tiroir. */
+#mobile-nav-dynamic { display: contents; }
+.mobile-drawer-handle { grid-column: 1 / -1; }
 .mobile-drawer-item {
-  display: flex; align-items: center; gap: 14px;
-  padding: 14px 20px; cursor: pointer; color: var(--text2);
-  font-size: 14px; font-weight: 500; transition: background 0.12s;
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 7px; text-align: center;
+  padding: 13px 6px; cursor: pointer; color: var(--text2);
+  font-size: 11px; font-weight: 600; line-height: 1.25;
+  background: var(--s2); border: 1px solid var(--border); border-radius: 12px;
+  transition: background 0.12s, border-color 0.12s;
   -webkit-tap-highlight-color: transparent;
 }
-.mobile-drawer-item:hover, .mobile-drawer-item:active { background: rgba(255,255,255,0.03); }
-.mobile-drawer-item.active { color: var(--accent); }
-.mobile-drawer-icon { font-size: 18px; width: 24px; text-align: center; }
+.mobile-drawer-item:hover, .mobile-drawer-item:active { background: var(--s3); border-color: var(--border2); }
+.mobile-drawer-item.active { color: var(--accent); border-color: rgba(124,109,245,0.4); background: var(--accent-d); }
+.mobile-drawer-icon { font-size: 18px; width: 24px; height: 20px; text-align: center; }
+/* Le badge « Bientôt » passe sous le libellé : à côté, il doublait la largeur
+   de la case et cassait l'alignement de la grille. */
+.mobile-drawer-item .nav-soon { font-size: 8px; padding: 1px 5px; }
 .mobile-drawer-section {
+  grid-column: 1 / -1;
   font-size: 9px; font-weight: 600; color: var(--text3);
   text-transform: uppercase; letter-spacing: 2px;
-  padding: 8px 20px 4px; font-family: var(--mono);
+  padding: 10px 2px 0; font-family: var(--mono);
 }
 
 .perf-jour-cell { font-weight: 600; font-size: 12px; font-family: var(--mono); }
@@ -3714,7 +3702,14 @@ body.has-demo-banner { padding-top: 40px; }
   /* Bord à bord : la barre défile jusqu'aux bords de l'écran, sinon le
      dernier onglet semble coupé par une marge et non par le débordement.
      Les valeurs suivent le padding horizontal de .main à chaque palier. */
-  .pea-tabs { margin: 0 -14px 14px; padding: 0 14px 2px; }
+  /* Les vues du PEA se naviguent d'ici, la barre du bas ne les porte plus :
+     elles s'ancrent sous l'en-tête fixe pour rester à portée pendant la
+     lecture, au lieu de sortir du champ au premier défilement. */
+  .pea-tabs {
+    position: sticky; top: 56px; z-index: 120;
+    background: var(--bg);
+    margin: 0 -14px 14px; padding: 7px 14px 2px;
+  }
   .pea-tab { padding: 8px 11px 10px; font-size: 12.5px; }
   .pea-tab.active::after { left: 8px; right: 8px; }
 }
