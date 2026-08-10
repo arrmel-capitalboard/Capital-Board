@@ -64,7 +64,12 @@
 
 *, *::before, *::after { margin:0; padding:0; box-sizing:border-box; -webkit-font-smoothing:antialiased; }
 html { scroll-behavior: smooth; }
-body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; }
+/* `clip` et non `hidden` : les deux coupent le débordement horizontal de la
+   même façon, mais `hidden` fait du body un conteneur de défilement, ce qui
+   neutralise `position: sticky` sur tous ses descendants — les sous-onglets du
+   PEA ne tenaient pas sous l'en-tête. La déclaration `hidden` reste en repli
+   pour les navigateurs qui ignorent `clip`. */
+body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; overflow-x: clip; }
 
 /* Barres de défilement. Les règles -webkit- sont isolées dans @supports :
    Firefox ne connaît pas ::-webkit-scrollbar et signalait « sélecteur

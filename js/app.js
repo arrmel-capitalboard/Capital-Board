@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260810f';
+const APP_VERSION = '20260810g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3458,6 +3458,15 @@ function _runPageHook(id) {
   if (id === 'performance')   initPerformance();
 }
 
+// Changer de page sans remonter laissait l'utilisateur au milieu de la
+// nouvelle : en arrivant du tiroir sur « Mon PEA », la barre de sous-onglets
+// était déjà passée au-dessus de l'écran et semblait absente.
+function _scrollToTop() {
+  window.scrollTo(0, 0);
+  const main = document.querySelector('.main');
+  if (main && main.scrollTop) main.scrollTop = 0;
+}
+
 // Affiche la barre de sous-onglets quand la page active appartient au PEA, et
 // y marque l'onglet courant. Un onglet dont la section est désactivée par
 // l'admin disparaît de la barre.
@@ -3485,6 +3494,7 @@ function showPeaTab(id) {
   page.classList.add('active');
   syncMobileNav(id);
   _syncPeaTabs(id);
+  _scrollToTop();
   _runPageHook(id);
 }
 
@@ -3496,6 +3506,7 @@ function showPage(id) {
   event.currentTarget.classList.add('active');
   syncMobileNav(id);
   _syncPeaTabs(id);
+  _scrollToTop();
   _runPageHook(id);
 }
 
@@ -3529,6 +3540,7 @@ function showPageMobile(id) {
     if (onclick.includes("'" + navKey + "'")) n.classList.add('active');
   });
   _syncPeaTabs(id);
+  _scrollToTop();
   _runPageHook(id);
 }
 
