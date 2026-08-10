@@ -2186,6 +2186,10 @@ body.sb-collapsed .main { margin-left: 58px; }
 .drawer-sub { display: contents; }
 .drawer-sub[hidden] { display: none; }
 .mobile-drawer.sub-open > *:not(.mobile-drawer-handle):not(.drawer-sub) { display: none; }
+/* Reprise explicite de l'ID : `#mobile-nav-dynamic { display: contents }` pèse
+   plus lourd que la règle ci-dessus, et la grille des sections restait affichée
+   sous le second niveau — le menu semblait ne rien faire au toucher. */
+.mobile-drawer.sub-open > #mobile-nav-dynamic { display: none; }
 /* Une entrée qui ouvre un second niveau ne mène pas à une page : le chevron
    le dit avant le toucher. */
 .mobile-drawer-item.has-sub { position: relative; }
