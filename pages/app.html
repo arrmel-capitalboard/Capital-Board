@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260810g">
+<link rel="stylesheet" href="css/style.css?v=20260810h">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -504,6 +504,10 @@
       <div class="mobile-drawer-item" onclick="doLogout()" style="color:var(--negative)">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.36 6.64a9 9 0 1 1-12.73 0"/><line x1="12" y1="2" x2="12" y2="12"/></svg></span>Déconnexion
       </div>
+      <!-- Second niveau : les vues de l'enveloppe ouverte, rempli par
+           _drawerOpenSub(). Il prend la place de la grille sans fermer le
+           menu, et le bouton du haut ramène à la liste complète. -->
+      <div class="drawer-sub" id="drawer-sub" hidden></div>
     </div>
   </div>
 
@@ -2859,7 +2863,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260810g"></script>
+<script src="js/app.js?v=20260810h"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

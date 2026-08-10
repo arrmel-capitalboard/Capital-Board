@@ -2180,6 +2180,33 @@ body.sb-collapsed .main { margin-left: 58px; }
   padding: 10px 2px 0; font-family: var(--mono);
 }
 
+/* ─── Second niveau du tiroir ─── */
+/* Le conteneur s'efface pour que ses cases rejoignent la grille du tiroir ;
+   quand le second niveau est ouvert, c'est la grille racine qui disparaît. */
+.drawer-sub { display: contents; }
+.drawer-sub[hidden] { display: none; }
+.mobile-drawer.sub-open > *:not(.mobile-drawer-handle):not(.drawer-sub) { display: none; }
+/* Une entrée qui ouvre un second niveau ne mène pas à une page : le chevron
+   le dit avant le toucher. */
+.mobile-drawer-item.has-sub { position: relative; }
+.mobile-drawer-item.has-sub::after {
+  content: ''; position: absolute; top: 9px; right: 9px;
+  width: 5px; height: 5px; border-right: 1.6px solid var(--text3); border-top: 1.6px solid var(--text3);
+  transform: rotate(45deg);
+}
+.drawer-back {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; gap: 7px;
+  padding: 10px 12px; margin-bottom: 2px; cursor: pointer;
+  background: var(--s2); border: 1px solid var(--border); border-radius: 10px;
+  color: var(--text2); font-family: var(--sans); font-size: 12px; font-weight: 600;
+  -webkit-tap-highlight-color: transparent;
+}
+.drawer-back:active { background: var(--s3); }
+.drawer-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+/* Les vues n'ont pas d'icône : la case se resserre autour de son libellé. */
+.mobile-drawer-item.drawer-view { padding: 15px 6px; font-size: 11.5px; }
+
 .perf-jour-cell { font-weight: 600; font-size: 12px; font-family: var(--mono); }
 .perf-pos { color: var(--positive); }
 .perf-neg { color: var(--negative); }

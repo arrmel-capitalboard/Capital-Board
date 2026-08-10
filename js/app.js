@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260810g';
+const APP_VERSION = '20260810h';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3137,11 +3137,78 @@ document.getElementById('reg-pass2').addEventListener('keydown', e => { if (e.ke
 
 // Mobile drawer
 window.openMobileDrawer = function() {
+  _drawerShowRoot();
+  _markDrawerParents();
   document.getElementById('mobile-drawer-overlay').classList.add('open');
 };
 window.closeMobileDrawer = function() {
   document.getElementById('mobile-drawer-overlay').classList.remove('open');
+  // Sans ça, la réouverture suivante repartirait sur le sous-niveau.
+  _drawerShowRoot();
 };
+
+// ─── Second niveau du tiroir ─────────────────────────────────────────────
+// « Mon PEA » ouvre ses dix vues sans quitter le menu : la grille laisse place
+// à celle des vues, et un bouton ramène à la liste complète. Naviguer d'abord
+// puis chercher les sous-onglets en haut de la page obligeait à sortir du menu
+// pour y revenir.
+
+// Les entrées qui mènent à un second niveau plutôt qu'à une page. Une seule
+// aujourd'hui ; le jour où le CTO aura ses vues, il suffira de l'ajouter ici.
+const DRAWER_SUBMENUS = { portfolio: { title: 'Mon PEA', tabs: () => PEA_TABS } };
+
+function _drawerShowRoot() {
+  const dr = document.querySelector('.mobile-drawer');
+  const sub = document.getElementById('drawer-sub');
+  if (dr) dr.classList.remove('sub-open');
+  if (sub) sub.hidden = true;
+}
+
+// Le chevron n'est posé qu'ici : les entrées du tiroir sont rendues à partir de
+// la configuration du menu, qui ne sait rien des sous-niveaux.
+function _markDrawerParents() {
+  document.querySelectorAll('.mobile-drawer-item[data-mob]').forEach(el => {
+    el.classList.toggle('has-sub', Object.prototype.hasOwnProperty.call(DRAWER_SUBMENUS, el.dataset.mob));
+  });
+}
+
+function _drawerOpenSub(key) {
+  const cfg = DRAWER_SUBMENUS[key];
+  const dr  = document.querySelector('.mobile-drawer');
+  const sub = document.getElementById('drawer-sub');
+  if (!cfg || !dr || !sub) return;
+
+  const active = (document.querySelector('.page.active') || {}).id || '';
+  const current = active.replace('page-', '');
+  sub.innerHTML =
+    '<button type="button" class="drawer-back" onclick="_drawerShowRoot()">'
+    + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18 9 12l6-6"/></svg>'
+    + 'Toutes les sections</button>'
+    + '<div class="mobile-drawer-section">' + cfg.title + '</div>'
+    + cfg.tabs()
+        .filter(k => !(FLAGGABLE.includes(k) && !_isFeatureOn(k)))
+        .map(k => '<div class="mobile-drawer-item drawer-view' + (k === current ? ' active' : '') + '"'
+          + ' onclick="showPeaTab(\'' + k + '\');closeMobileDrawer()">'
+          + PEA_TAB_LABELS[k] + '</div>')
+        .join('');
+
+  dr.classList.add('sub-open');
+  sub.hidden = false;
+  dr.scrollTop = 0;
+}
+window._drawerShowRoot = _drawerShowRoot;
+
+// Interception en phase de capture : l'entrée « Mon PEA » porte un `onclick`
+// écrit par le rendu du menu, qu'on ne peut pas réécrire proprement. Arrêter
+// l'événement avant qu'il n'atteigne sa cible empêche ce handler de partir.
+document.addEventListener('click', e => {
+  const item = e.target.closest && e.target.closest('.mobile-drawer-item[data-mob]');
+  if (!item || !item.closest('.mobile-drawer')) return;
+  if (!DRAWER_SUBMENUS[item.dataset.mob]) return;
+  e.preventDefault();
+  e.stopPropagation();
+  _drawerOpenSub(item.dataset.mob);
+}, true);
 
 // Sync active states across mobile nav + drawer
 function syncMobileNav(id) {
@@ -3429,6 +3496,15 @@ function applyNavLayout(nav) {
 // fait foi pour la barre de sous-onglets.
 const PEA_TABS = ['portfolio', 'activite', 'dividendes', 'watchlist', 'performance',
                   'benchmark', 'projections', 'earnings', 'recap', 'alertes'];
+
+// Libellés du second niveau du tiroir. Plus courts que ceux de la barre du
+// haut : « Calendrier résultats » déborde d'une case de grille.
+const PEA_TAB_LABELS = {
+  portfolio: 'Portefeuille',  activite: 'Activité',    dividendes: 'Dividendes',
+  watchlist: 'Watchlist',     performance: 'Performance', benchmark: 'Benchmark',
+  projections: 'Projections', earnings: 'Résultats',   recap: 'Récap du jour',
+  alertes: 'Alertes prix',
+};
 
 // Rendu différé propre à une page. Extrait des trois fonctions de navigation
 // qui en avaient chacune une copie.
