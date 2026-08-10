@@ -2983,6 +2983,39 @@ body.has-demo-banner { padding-top: 40px; }
   .fav-car-card { flex-basis: 150px; }
 }
 
+/* ── Flux interrompu ─────────────────────────────────────────────────────
+   Prend toute la place de la liste quand la dernière collecte est trop
+   ancienne pour être montrée. Volontairement calme : c'est une attente, pas
+   une erreur, et l'utilisateur n'a rien à réparer. */
+.feed-down {
+  display: flex; flex-direction: column; align-items: center; text-align: center;
+  padding: 58px 24px 54px;
+  background: var(--s2); border: 1px solid var(--border); border-radius: 16px;
+}
+.feed-down-icon {
+  width: 58px; height: 58px; margin-bottom: 18px; flex: 0 0 auto;
+  display: flex; align-items: center; justify-content: center;
+  /* `--accent-d` plutôt qu'un violet en dur : l'accent se change dans les
+     réglages, et le thème clair a sa propre opacité. */
+  border-radius: 50%; color: var(--accent);
+  background: var(--accent-d);
+  box-shadow: 0 0 0 9px var(--accent-d);
+}
+.feed-down-title { font-size: 15.5px; font-weight: 700; color: var(--text); margin-bottom: 9px; }
+.feed-down-text {
+  margin: 0; max-width: 430px;
+  font-size: 13px; line-height: 1.65; color: var(--text2);
+}
+.feed-down-meta { margin-top: 18px; font-size: 11.5px; color: var(--text3); }
+
+@media (max-width: 768px) {
+  .feed-down { padding: 42px 18px 40px; border-radius: 14px; }
+  .feed-down-icon { width: 50px; height: 50px; margin-bottom: 15px; box-shadow: 0 0 0 7px var(--accent-d); }
+  .feed-down-title { font-size: 14.5px; }
+  .feed-down-text { font-size: 12.5px; }
+  .feed-down-meta { margin-top: 15px; }
+}
+
 /* Mention de non-affiliation, en pied de la page Contenus favoris. */
 .fav-note {
   margin: 26px 0 0; padding-top: 16px; border-top: 1px solid var(--border);

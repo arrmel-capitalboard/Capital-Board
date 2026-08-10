@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260810a';
+const APP_VERSION = '20260810b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -13247,6 +13247,12 @@ function _newsCard(n, proxyImg) {
     + '</div></a>';
 }
 
+// Les vignettes Meta sont signées et meurent en quelques jours. Passé ce délai,
+// une collecte figée (`stale`) n'a plus une seule image qui réponde — le proxy
+// renvoie 404 partout — et ses publications ont cessé d'être « les dernières ».
+// Plutôt qu'un mur de cartes périmées, la page annonce l'interruption.
+const FAV_STALE_MAX_AGE = 3 * 24 * 60 * 60 * 1000;
+
 // Les deux pages de flux (Actualités marchés, Contenus favoris) partagent le
 // même contrat côté Worker — { items, updatedAt, stale } — donc le même rendu.
 const FEED_PAGES = {
@@ -13257,23 +13263,36 @@ const FEED_PAGES = {
   },
   favoris: {
     path: '/favoris', list: 'fav-list', sub: 'fav-updated', fn: 'renderFavoris',
-    proxyImg: true, layout: 'carousel',
+    proxyImg: true, layout: 'carousel', staleMax: FAV_STALE_MAX_AGE, note: 'fav-note',
     empty: 'Aucun contenu pour le moment.',
     error: 'Contenus indisponibles pour l\'instant.',
     unconfigured: 'Les comptes suivis ne sont pas encore configurés.',
   },
 };
 
-// Les URL de vignettes Meta sont signées et meurent en quelques jours. Passé ce
-// délai, une collecte figée (`stale`) n'a plus une seule image qui réponde : le
-// proxy renvoie 404 partout et la page n'aligne que des cadres vides. Au-delà du
-// seuil on rend donc des cartes texte, cohérentes et lisibles.
-const FAV_IMG_MAX_AGE = 3 * 24 * 60 * 60 * 1000;
+// Écran d'interruption : la collecte dépend d'une API tierce, et rien de ce que
+// l'utilisateur peut faire ne la ramène. On l'annonce sans l'inquiéter, plutôt
+// que d'aligner des publications périmées en les présentant comme les dernières.
+function _feedDown(updatedAt) {
+  return '<div class="feed-down">'
+    + '<div class="feed-down-icon">'
+    +   '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round">'
+    +     '<rect x="2" y="2" width="20" height="20" rx="5"/><circle cx="12" cy="12" r="4"/>'
+    +     '<line x1="17.5" y1="6.5" x2="17.51" y2="6.5"/><line x1="3.5" y1="20.5" x2="20.5" y2="3.5"/>'
+    +   '</svg>'
+    + '</div>'
+    + '<div class="feed-down-title">Contenus temporairement indisponibles</div>'
+    + '<p class="feed-down-text">La collecte des publications est interrompue, le temps d\'une intervention '
+    +   'chez notre fournisseur. Vos comptes suivis sont conservés : le fil se remplira de nouveau '
+    +   'automatiquement, sans rien à faire de votre part.</p>'
+    + (updatedAt ? '<div class="feed-down-meta">Dernière collecte ' + _escapeHtmlChat(_relTime(new Date(updatedAt))) + '</div>' : '')
+    + '</div>';
+}
 
 // Rendu « carrousel par compte » : une rangée défilante par source, les comptes
 // classés du plus récemment actif au plus ancien. Sépare visuellement les
 // sources, ce qu'une liste unique ne fait pas.
-function _feedCarousel(items, proxyImg, sansImg) {
+function _feedCarousel(items, proxyImg) {
   const parCompte = new Map();
   items.forEach(i => {
     if (!parCompte.has(i.source)) parCompte.set(i.source, []);
@@ -13291,7 +13310,7 @@ function _feedCarousel(items, proxyImg, sansImg) {
       : '';
 
     // Photo de profil : portée par les items, absente des sources sans Graph API.
-    let ava = sansImg ? '' : (posts.find(p => /^https:\/\//i.test(p.avatar || '')) || {}).avatar || '';
+    let ava = (posts.find(p => /^https:\/\//i.test(p.avatar || '')) || {}).avatar || '';
     if (ava) ava = proxyImg ? WORKER_URL + '/fav-img?url=' + encodeURIComponent(ava) : ava.replace(/"/g, '%22');
     const avaImg = ava
       ? '<img class="fav-car-avatar" src="' + _safeUrl(ava) + '" alt="" loading="lazy" onerror="this.remove()">'
@@ -13300,7 +13319,7 @@ function _feedCarousel(items, proxyImg, sansImg) {
     const cartes = posts.map(p => {
       const dt   = p.ts ? new Date(p.ts) : null;
       const href = /^https:\/\//i.test(p.link) ? p.link.replace(/"/g, '%22') : '#';
-      let img = sansImg || !/^https:\/\//i.test(p.img || '') ? '' : p.img;
+      let img = /^https:\/\//i.test(p.img || '') ? p.img : '';
       if (img) img = proxyImg ? WORKER_URL + '/fav-img?url=' + encodeURIComponent(img) : img.replace(/"/g, '%22');
       // La vignette est posée deux fois : en fond (floutée par le CSS) pour
       // combler le cadre, et par-dessus en entier. Même URL donc même
@@ -13423,18 +13442,31 @@ function _paintFeed(key) {
   const cache = _newsCache[key];
   const list  = document.getElementById(cfg.list);
   const sub   = document.getElementById(cfg.sub);
+  // Mention de non-affiliation : elle parle des comptes affichés, donc elle n'a
+  // plus d'objet quand il n'y en a aucun à l'écran.
+  const note  = cfg.note ? document.getElementById(cfg.note) : null;
   if (!list || !cache) return;
 
   if (!cache.items.length) {
     list.innerHTML = '<div class="news-empty">'
       + (cache.unconfigured ? (cfg.unconfigured || cfg.empty) : cfg.empty) + '</div>';
     if (sub) sub.textContent = '';
+    if (note) note.style.display = 'none';
     return;
   }
 
-  const sansImg = !!cache.stale && Date.now() - cache.updatedAt > FAV_IMG_MAX_AGE;
+  // Collecte figée depuis trop longtemps : ses publications ne sont plus « les
+  // dernières » et leurs vignettes signées ont expiré. On le dit franchement.
+  if (cfg.staleMax && cache.stale && Date.now() - cache.updatedAt > cfg.staleMax) {
+    list.innerHTML = _feedDown(cache.updatedAt);
+    if (sub) sub.textContent = '';
+    if (note) note.style.display = 'none';
+    return;
+  }
+
+  if (note) note.style.display = '';
   list.innerHTML = cfg.layout === 'carousel'
-    ? _feedCarousel(cache.items, !!cfg.proxyImg, sansImg)
+    ? _feedCarousel(cache.items, !!cfg.proxyImg)
     : cache.items.map(i => _newsCard(i, !!cfg.proxyImg)).join('');
   if (cfg.layout === 'carousel') _favCarInit(list);
   if (sub) {
