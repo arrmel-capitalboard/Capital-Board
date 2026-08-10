@@ -2080,7 +2080,11 @@ body.sb-collapsed .main { margin-left: 58px; }
   display: none;
   position: fixed; bottom: 0; left: 0; right: 0;
   z-index: 200;
-  padding: 0 12px calc(10px + env(safe-area-inset-bottom, 0px));
+  /* La page n'est pas en `viewport-fit=cover`, donc `env(safe-area-inset-bottom)`
+     vaut zéro et ne réservait rien : la barre tombait dans la zone de gestes
+     d'iOS, où toucher « Crypto » revenait à l'écran d'accueil. D'où le plancher
+     fixe, que `max()` laisse grandir si la valeur système devient disponible. */
+  padding: 0 12px calc(8px + max(20px, env(safe-area-inset-bottom, 0px)));
   pointer-events: none;
   /* La règle hors media pose un fond et un filet sur toute la largeur : ils
      trahiraient la barre flottante en la raccrochant au bord de l'écran. */
@@ -2126,7 +2130,9 @@ body.sb-collapsed .main { margin-left: 58px; }
   width: 100%; background: var(--s1);
   border-radius: 20px 20px 0 0;
   border-top: 1px solid var(--border2);
-  padding: 12px 0 calc(20px + env(safe-area-inset-bottom, 0px));
+  /* Même réserve que la barre : la dernière rangée de cases ne doit pas tomber
+     dans la zone de gestes du téléphone. */
+  padding: 12px 0 calc(16px + max(20px, env(safe-area-inset-bottom, 0px)));
   max-height: 75vh; overflow-y: auto;
   transform: translateY(100%);
   transition: transform 0.35s cubic-bezier(0.16,1,0.3,1);
@@ -2236,7 +2242,7 @@ body.sb-collapsed .main { margin-left: 58px; }
   /* Layout principal */
   .main {
     margin-left: 0 !important;
-    padding: 72px 14px calc(80px + env(safe-area-inset-bottom, 0px));
+    padding: 72px 14px calc(96px + max(20px, env(safe-area-inset-bottom, 0px)));
   }
 
   /* Grilles */
@@ -2773,7 +2779,7 @@ body.has-demo-banner { padding-top: 40px; }
 /* Très petit écran */
 @media (max-width: 380px) {
   .stats-grid { grid-template-columns: 1fr !important; }
-  .main { padding: 72px 10px calc(80px + env(safe-area-inset-bottom, 0px)); }
+  .main { padding: 72px 10px calc(96px + max(20px, env(safe-area-inset-bottom, 0px))); }
   .mobile-nav-item { padding: 6px 6px; min-width: 44px; font-size: 9px; }
 }
 
