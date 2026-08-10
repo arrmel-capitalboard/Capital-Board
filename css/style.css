@@ -2208,8 +2208,9 @@ body.sb-collapsed .main { margin-left: 58px; }
 }
 .drawer-back:active { background: var(--s3); }
 .drawer-back:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
-/* Les vues n'ont pas d'icône : la case se resserre autour de son libellé. */
-.mobile-drawer-item.drawer-view { padding: 15px 6px; font-size: 11.5px; }
+/* Les vues portent leur icône comme les autres entrées : rien à ajuster,
+   sinon un libellé un cheveu plus large, ceux du PEA étant plus longs. */
+.mobile-drawer-item.drawer-view { font-size: 11px; }
 
 .perf-jour-cell { font-weight: 600; font-size: 12px; font-family: var(--mono); }
 .perf-pos { color: var(--positive); }

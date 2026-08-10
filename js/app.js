@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260810i';
+const APP_VERSION = '20260810j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3189,6 +3189,7 @@ function _drawerOpenSub(key) {
         .filter(k => !(FLAGGABLE.includes(k) && !_isFeatureOn(k)))
         .map(k => '<div class="mobile-drawer-item drawer-view' + (k === current ? ' active' : '') + '"'
           + ' onclick="showPeaTab(\'' + k + '\');closeMobileDrawer()">'
+          + '<span class="mobile-drawer-icon">' + (PEA_TAB_ICONS[k] || '') + '</span>'
           + PEA_TAB_LABELS[k] + '</div>')
         .join('');
 
@@ -3504,6 +3505,28 @@ const PEA_TAB_LABELS = {
   watchlist: 'Watchlist',     performance: 'Performance', benchmark: 'Benchmark',
   projections: 'Projections', earnings: 'Résultats',   recap: 'Récap du jour',
   alertes: 'Alertes prix',
+};
+
+// Icônes des mêmes vues. Les onglets du haut sont en texte seul : il a fallu
+// les dessiner ici pour que le menu garde une grille homogène. Mêmes tracés à
+// 16 px et mêmes teintes que les entrées voisines — le portefeuille reprend le
+// violet de « Mon PEA », les dividendes le cyan qu'ils avaient dans l'ancienne
+// barre du bas, les alertes le rouge des notifications.
+const _peaIcon = (color, body) =>
+  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="' + color
+  + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>';
+
+const PEA_TAB_ICONS = {
+  portfolio:   _peaIcon('#7c6df5', '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>'),
+  activite:    _peaIcon('#5b8dee', '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/>'),
+  dividendes:  _peaIcon('#00cec9', '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/>'),
+  watchlist:   _peaIcon('#5b8dee', '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'),
+  performance: _peaIcon('#00e09e', '<path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>'),
+  benchmark:   _peaIcon('#a29bfe', '<path d="M3 21V10"/><path d="M9.5 21V4"/><path d="M16 21v-8"/><path d="M22 21V7"/>'),
+  projections: _peaIcon('#f5b731', '<path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/>'),
+  earnings:    _peaIcon('#ff9f43', '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/>'),
+  recap:       _peaIcon('#00cec9', '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 14h8"/><path d="M8 17h5"/>'),
+  alertes:     _peaIcon('#ff4d6a', '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>'),
 };
 
 // Rendu différé propre à une page. Extrait des trois fonctions de navigation
