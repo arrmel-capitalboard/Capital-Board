@@ -2886,6 +2886,11 @@ body.has-demo-banner { padding-top: 40px; }
 .fav-car-wrap { position: relative; }
 
 .fav-car-row {
+  /* `flex-start` et pas l'étirement par défaut : une vignette qui n'a pas encore
+     été chargée (`loading="lazy"`, donc hors écran) garde son cadre et imposait
+     sa hauteur aux cartes visibles dont l'image, elle, avait échoué — d'où des
+     rangées de cadres vides. Chaque carte tient maintenant sa propre hauteur. */
+  align-items: flex-start;
   display: flex; gap: 12px; overflow-x: auto; padding-bottom: 2px;
   scroll-snap-type: x mandatory; -webkit-overflow-scrolling: touch;
   /* Défilement piloté par les flèches : la barre native ferait doublon. */
@@ -2945,6 +2950,11 @@ body.has-demo-banner { padding-top: 40px; }
   font-size: 12.5px; font-weight: 600; line-height: 1.4; color: var(--text); margin-bottom: 6px;
   display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden;
 }
+/* Sans vignette (URL Meta expirée, ou collecte trop ancienne pour qu'elles
+   répondent encore), la carte se réduit au texte : la légende y prend la place
+   du cadre, plutôt que de laisser un rectangle vide. */
+.fav-car-noimg { min-height: 96px; }
+.fav-car-noimg .fav-car-title { -webkit-line-clamp: 5; }
 .fav-car-card:hover .fav-car-title { color: var(--accent); }
 
 @media (prefers-reduced-motion: reduce) {
@@ -2959,6 +2969,8 @@ body.has-demo-banner { padding-top: 40px; }
   .fav-car-card { flex-basis: 168px; border-radius: 11px; }
   .fav-car-body { padding: 9px 10px 11px; }
   .fav-car-title { font-size: 12px; }
+  .fav-car-noimg { min-height: 88px; }
+  .fav-car-noimg .fav-car-title { -webkit-line-clamp: 4; }
   /* Le défilement horizontal doit dépasser les marges de la page, sinon la
      rangée semble s'arrêter au bord et on ne devine pas qu'elle continue. */
   .fav-car-row { margin: 0 -16px; padding: 0 16px 8px; }

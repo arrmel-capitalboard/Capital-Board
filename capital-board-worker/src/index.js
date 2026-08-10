@@ -238,6 +238,30 @@ async function fetchIgAccount(env, handle) {
   }).filter(i => i.link);
 }
 
+// Sonde de /admin/health : un seul appel Meta, sur le premier handle configuré.
+// La santé des Contenus favoris tient à une seule question — le jeton de Page
+// répond-il encore. Quand il meurt, `refreshFavoris` ne collecte plus rien, le
+// cache de secours est resservi tel quel et la page peut rester des semaines sur
+// une collecte figée dont les vignettes signées ont expiré, sans que rien ne le
+// signale ailleurs que dans les logs.
+async function probeIgGraph(env) {
+  if (!hasIgGraph(env)) return { ok: false, error: 'non configuré' };
+  const handle = parseFavHandles(env.FAVORIS_IG_HANDLES)[0];
+  const fields = `business_discovery.username(${handle}){username}`;
+  const url = `https://graph.facebook.com/${IG_GRAPH_VERSION}/${encodeURIComponent(env.IG_USER_ID)}`
+    + `?fields=${encodeURIComponent(fields)}&access_token=${encodeURIComponent(env.IG_GRAPH_TOKEN)}`;
+
+  const r = await fetch(url, { signal: AbortSignal.timeout(7000) });
+  const data = await r.json().catch(() => null);
+  if (data && data.business_discovery) return { ok: true };
+  const e = (data && data.error) || {};
+  return {
+    ok: false,
+    error: (e.message || ('HTTP ' + r.status))
+      + (e.code ? ` (code ${e.code}${e.error_subcode ? '/' + e.error_subcode : ''})` : ''),
+  };
+}
+
 async function buildFavorisGraph(env) {
   if (!hasIgGraph(env)) return [];
   const lists = await Promise.all(
@@ -1346,6 +1370,13 @@ export default {
         try { await getAccessToken(env); out.google = 'ok'; } catch (_) { out.google = 'ko'; }
         out.email = env.RESEND_API_KEY ? 'ok' : 'ko';
         try { await getYahooCreds(env); out.yahoo = 'ok'; } catch (_) { out.yahoo = 'ko'; }
+        // Le message de Meta est renvoyé tel quel : « jeton expiré » et « compte
+        // repassé en perso » se soignent différemment, un simple KO ne suffit pas.
+        try {
+          const ig = await probeIgGraph(env);
+          out.instagram = ig.ok ? 'ok' : 'ko';
+          if (!ig.ok) out.instagramError = ig.error;
+        } catch (e) { out.instagram = 'ko'; out.instagramError = e.message; }
         return json({ ok: true, services: out });
       }
 

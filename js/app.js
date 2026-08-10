@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260807j';
+const APP_VERSION = '20260810a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -13264,10 +13264,16 @@ const FEED_PAGES = {
   },
 };
 
+// Les URL de vignettes Meta sont signées et meurent en quelques jours. Passé ce
+// délai, une collecte figée (`stale`) n'a plus une seule image qui réponde : le
+// proxy renvoie 404 partout et la page n'aligne que des cadres vides. Au-delà du
+// seuil on rend donc des cartes texte, cohérentes et lisibles.
+const FAV_IMG_MAX_AGE = 3 * 24 * 60 * 60 * 1000;
+
 // Rendu « carrousel par compte » : une rangée défilante par source, les comptes
 // classés du plus récemment actif au plus ancien. Sépare visuellement les
 // sources, ce qu'une liste unique ne fait pas.
-function _feedCarousel(items, proxyImg) {
+function _feedCarousel(items, proxyImg, sansImg) {
   const parCompte = new Map();
   items.forEach(i => {
     if (!parCompte.has(i.source)) parCompte.set(i.source, []);
@@ -13285,7 +13291,7 @@ function _feedCarousel(items, proxyImg) {
       : '';
 
     // Photo de profil : portée par les items, absente des sources sans Graph API.
-    let ava = (posts.find(p => /^https:\/\//i.test(p.avatar || '')) || {}).avatar || '';
+    let ava = sansImg ? '' : (posts.find(p => /^https:\/\//i.test(p.avatar || '')) || {}).avatar || '';
     if (ava) ava = proxyImg ? WORKER_URL + '/fav-img?url=' + encodeURIComponent(ava) : ava.replace(/"/g, '%22');
     const avaImg = ava
       ? '<img class="fav-car-avatar" src="' + _safeUrl(ava) + '" alt="" loading="lazy" onerror="this.remove()">'
@@ -13294,14 +13300,17 @@ function _feedCarousel(items, proxyImg) {
     const cartes = posts.map(p => {
       const dt   = p.ts ? new Date(p.ts) : null;
       const href = /^https:\/\//i.test(p.link) ? p.link.replace(/"/g, '%22') : '#';
-      let img = /^https:\/\//i.test(p.img || '') ? p.img : '';
+      let img = sansImg || !/^https:\/\//i.test(p.img || '') ? '' : p.img;
       if (img) img = proxyImg ? WORKER_URL + '/fav-img?url=' + encodeURIComponent(img) : img.replace(/"/g, '%22');
       // La vignette est posée deux fois : en fond (floutée par le CSS) pour
       // combler le cadre, et par-dessus en entier. Même URL donc même
       // téléchargement, le navigateur ne la charge qu'une fois.
-      return '<a class="fav-car-card" href="' + _safeUrl(href) + '" target="_blank" rel="noopener noreferrer">'
+      // En cas d'échec, la carte est marquée : le cadre disparaît *et* le titre
+      // se déplie, sinon il reste une carte à moitié vide.
+      return '<a class="fav-car-card' + (img ? '' : ' fav-car-noimg') + '" href="' + _safeUrl(href) + '" target="_blank" rel="noopener noreferrer">'
         + (img ? '<div class="fav-car-media" style="background-image:url(&quot;' + img + '&quot;)">'
-               +   '<img src="' + _safeUrl(img) + '" alt="" loading="lazy" onerror="this.parentNode.remove()">'
+               +   '<img src="' + _safeUrl(img) + '" alt="" loading="lazy"'
+               +     ' onerror="this.closest(\'.fav-car-card\').classList.add(\'fav-car-noimg\');this.parentNode.remove()">'
                + '</div>' : '')
         + '<div class="fav-car-body">'
         +   '<div class="fav-car-title">' + _escapeHtmlChat(p.title) + '</div>'
@@ -13423,8 +13432,9 @@ function _paintFeed(key) {
     return;
   }
 
+  const sansImg = !!cache.stale && Date.now() - cache.updatedAt > FAV_IMG_MAX_AGE;
   list.innerHTML = cfg.layout === 'carousel'
-    ? _feedCarousel(cache.items, !!cfg.proxyImg)
+    ? _feedCarousel(cache.items, !!cfg.proxyImg, sansImg)
     : cache.items.map(i => _newsCard(i, !!cfg.proxyImg)).join('');
   if (cfg.layout === 'carousel') _favCarInit(list);
   if (sub) {
@@ -14658,7 +14668,14 @@ async function adminCheckHealth(silent) {
       'Google / FCM ' + dot(s.google),
       'Email (Resend) ' + dot(s.email),
       'Cours (Yahoo) ' + dot(s.yahoo),
+      'Favoris (Instagram) ' + dot(s.instagram),
     ].map(x => '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>' + x.split(' <')[0] + '</span><span>' + x.slice(x.indexOf('<')) + '</span></div>').join('');
+    // Le motif de l'échec Meta vaut mieux qu'un point rouge : c'est lui qui dit
+    // s'il faut régénérer le jeton ou retirer un compte de la liste.
+    if (s.instagram !== 'ok' && s.instagramError) {
+      box.innerHTML += '<div style="padding:7px 0;font-size:12px;color:var(--text3)">'
+        + _escapeHtmlChat(s.instagramError) + '</div>';
+    }
     const auto = document.getElementById('admin-health-auto');
     if (auto) auto.textContent = '· mis à jour à ' + new Date().toLocaleTimeString('fr-FR');
   } catch (e) { box.textContent = 'Worker injoignable.'; }
