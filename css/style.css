@@ -55,6 +55,11 @@
   --positive-d: rgba(0,224,158,0.08);
   --negative-d: rgba(255,77,106,0.08);
   --accent-d:   rgba(124,109,245,0.08);
+  /* Fond des tuiles de logo : clair, parce qu'un logo de marque est presque
+     toujours dessiné pour du blanc. Sur fond sombre, les logos noirs
+     disparaissaient purement et simplement. */
+  --logo-bg:     #eef1f7;
+  --logo-border: rgba(255,255,255,0.12);
   --mono:     'JetBrains Mono', monospace;
   --display:  'Switzer', sans-serif;
   --sans:     'Switzer', sans-serif;
@@ -962,17 +967,13 @@ tr:hover td { background: rgba(255,255,255,0.018); }
   font-size: 9px; font-weight: 700; color: var(--accent);
   font-family: var(--mono); flex-shrink: 0;
 }
-.ticker-icon.logo-wrap { background: var(--s2); border-color: var(--border); padding: 3px; overflow: hidden; }
-.asi-icon.logo-wrap    { background: var(--s2); border-color: var(--border); padding: 2px; overflow: hidden; }
-.rc-icon.logo-wrap     { background: var(--s2); border-color: var(--border); padding: 4px; overflow: hidden; }
-
-/* Page Avantages : elle affiche surtout des sociétés non détenues, dont les
-   logos de marque sont souvent noirs sur fond transparent — ADP, Legrand,
-   Ubisoft disparaissaient complètement sur la tuile sombre. */
-#page-avantages .ticker-icon.logo-wrap {
-  background: #eef1f7;
-  border-color: rgba(255,255,255,0.12);
-}
+/* Tuile de logo en fond clair partout : beaucoup de logos de marque sont
+   noirs sur fond transparent (ADP, Legrand, Ubisoft, Hermès…) et
+   disparaissaient sur la tuile sombre. Le clair est la teinte pour laquelle
+   ces logos sont dessinés. */
+.ticker-icon.logo-wrap { background: var(--logo-bg); border-color: var(--logo-border); padding: 3px; overflow: hidden; }
+.asi-icon.logo-wrap    { background: var(--logo-bg); border-color: var(--logo-border); padding: 2px; overflow: hidden; }
+.rc-icon.logo-wrap     { background: var(--logo-bg); border-color: var(--logo-border); padding: 4px; overflow: hidden; }
 
 .ticker-name { font-size: 13px; font-weight: 600; letter-spacing: -0.1px; }
 .ticker-sym  { font-size: 10px; color: var(--text2); font-family: var(--mono); margin-top: 2px; }

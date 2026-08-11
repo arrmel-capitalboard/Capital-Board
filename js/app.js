@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811m';
+const APP_VERSION = '20260811n';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4280,7 +4280,7 @@ function renderDropdown(ddId, suggestions, onSelect) {
   _ddCallback = onSelect;
   dd.innerHTML = suggestions.map((s, i) => {
     const logoStr = LOGO_CACHE[s.symbol]
-      ? '<img src="' + _safeUrl(LOGO_CACHE[s.symbol]) + '" style="width:22px;height:22px;border-radius:5px;object-fit:contain;background:var(--s3)" onerror="this.style.display=\'none\'">'
+      ? '<img src="' + _safeUrl(LOGO_CACHE[s.symbol]) + '" style="width:22px;height:22px;border-radius:5px;object-fit:contain;background:var(--logo-bg);padding:1px" onerror="this.style.display=\'none\'">'
       : '<div style="width:22px;height:22px;border-radius:5px;background:var(--s3);display:grid;place-items:center;font-size:8px;font-weight:700;color:var(--accent);font-family:var(--mono)">' + s.symbol.replace(/\.[A-Z]+$/, '').slice(0,3) + '</div>';
     // Prix depuis cache si disponible
     const cached = getCachedPrice(s.symbol);
@@ -4768,8 +4768,8 @@ function logoHtmlModal(ticker) {
   if (!url) {
     return '<div style="' + base + 'background:var(--s3);border:1px solid var(--border2);font-size:10px;font-weight:700;color:var(--accent);font-family:var(--mono)">' + abbr + '</div>';
   }
-  const onErr = 'this.parentNode.innerHTML=\x22' + abbr + '\x22;this.parentNode.style.fontSize=\x2210px\x22';
-  return '<div style="' + base + 'background:var(--s3);border:1px solid var(--border2);overflow:hidden">' +
+  const onErr = 'this.parentNode.innerHTML=\x22' + abbr + '\x22;this.parentNode.style.background=\x22var(--s3)\x22;this.parentNode.style.color=\x22var(--accent)\x22;this.parentNode.style.fontSize=\x2210px\x22';
+  return '<div style="' + base + 'background:var(--logo-bg);border:1px solid var(--logo-border);overflow:hidden">' +
     '<img src="' + _safeUrl(url) + '" style="width:32px;height:32px;object-fit:contain" onerror="' + onErr + '">' +
     '</div>';
 }
