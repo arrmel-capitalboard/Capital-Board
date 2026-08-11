@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260812e';
+const APP_VERSION = '20260812f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -8885,11 +8885,12 @@ async function loadWlChart(i, ticker, period) {
     const closes = (quote && quote.close) || [];
     const opens  = (quote && quote.open)  || [];
 
-    const pts = [], labels = [];
+    const pts = [], labels = [], stamps = [];
     const isIntraday = interval === '5m'; // 5J (15m) n'est pas intraday : affiche perf 5 jours
     for (let k = 0; k < ts.length; k++) {
       if (closes[k] == null) continue;
       pts.push(closes[k]);
+      stamps.push(ts[k]);
       const dt = new Date(ts[k] * 1000);
       labels.push((interval === '5m' || interval === '15m')
         ? dt.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
@@ -8940,6 +8941,20 @@ async function loadWlChart(i, ticker, period) {
     const isUp      = pts.length >= 2 ? pts[pts.length - 1] >= pts[0] : true;
     const lineColor = isUp ? '#00e09e' : '#ff4d6a';
 
+    // Avant ouverture et après clôture : tracé gris, ces cotations n'ayant ni
+    // la même liquidité ni la même valeur d'information que la séance.
+    // Yahoo donne les bornes de la séance ; toutes les places n'ont pas de
+    // séance étendue — Euronext annonce hasPrePostMarketData: false et des
+    // bornes de durée nulle, il n'y a donc simplement rien à tracer en gris.
+    const regular = (meta.currentTradingPeriod && meta.currentTradingPeriod.regular) || null;
+    const hasExt  = !!(regular && meta.hasPrePostMarketData
+      && stamps.some(t => t < regular.start || t >= regular.end));
+    const EXT_COLOR = '#6b7488';
+    const outside = idx => {
+      const t = stamps[idx];
+      return t != null && regular && (t < regular.start || t >= regular.end);
+    };
+
     if (elPrice) elPrice.textContent = livePriceEur != null ? livePriceEur.toFixed(2) + ' €' : '—';
     if (elChange && displayPct != null) {
       elChange.textContent = (displayPct >= 0 ? '+' : '') + displayPct.toFixed(2) + ' % sur la période';
@@ -8959,6 +8974,10 @@ async function loadWlChart(i, ticker, period) {
         datasets: [{
           data: pts,
           borderColor: lineColor,
+          // Un segment est gris dès que l'une de ses extrémités est hors séance.
+          segment: hasExt ? {
+            borderColor: c => (outside(c.p0DataIndex) || outside(c.p1DataIndex)) ? EXT_COLOR : lineColor,
+          } : undefined,
           borderWidth: 2,
           pointRadius: 0,
           pointHoverRadius: 4,
