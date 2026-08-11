@@ -357,7 +357,15 @@ async function sendFcmPush(uid, title, body, type = 'daily_recap') {
     const roleSnap = await db.doc(`roles/${uid}`).get();
     const token = roleSnap.exists ? roleSnap.data().fcmToken : null;
     if (!token) { console.log(`  — Pas de token FCM pour ${uid}, push ignoré`); return; }
-    await messaging.send({ token, notification: { title, body }, data: { type } });
+    // DATA-ONLY, jamais de champ `notification` : sur le web, un payload
+    // `notification` est affiché d'office par le navigateur ET réaffiché par
+    // onBackgroundMessage dans le service worker — d'où la notification en
+    // double tous les soirs. En data-only, seul le service worker affiche.
+    await messaging.send({
+      token,
+      data: { title: String(title || ''), body: String(body || ''), type },
+      webpush: { headers: { Urgency: 'high' } },
+    });
     console.log(`  Push FCM envoyé à ${uid}`);
   } catch(e) {
     console.warn(`   Push FCM échoué pour ${uid}:`, e.message);

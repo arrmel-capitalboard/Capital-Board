@@ -82,7 +82,13 @@ async function sendFcmPush(uid, title, body) {
     const roleSnap = await db.doc(`roles/${uid}`).get();
     const token = roleSnap.exists ? roleSnap.data().fcmToken : null;
     if (!token) { console.log(`  — Pas de token FCM pour ${uid}`); return; }
-    await messaging.send({ token, notification: { title, body }, data: { type: 'earnings' } });
+    // DATA-ONLY : un champ `notification` serait affiché par le navigateur puis
+    // réaffiché par le service worker, donc deux fois.
+    await messaging.send({
+      token,
+      data: { title: String(title || ''), body: String(body || ''), type: 'earnings' },
+      webpush: { headers: { Urgency: 'high' } },
+    });
     console.log(`  Push envoyé à ${uid}`);
   } catch(e) {
     console.warn(`  Push échoué pour ${uid}:`, e.message);
