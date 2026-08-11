@@ -36,13 +36,9 @@ id = "994d84c5a364477e869b4fb12605a57d"
 # Firebase Storage exigerait le plan Blaze ; R2 rend le meme service sur le
 # palier gratuit. Bucket a creer une fois :
 #   wrangler r2 bucket create capital-board-support
-# Decommenter APRES avoir cree le bucket, sinon le deploiement echoue avec
-# « R2 bucket not found » et bloque toute mise a jour du Worker :
-#   wrangler r2 bucket create capital-board-support
-# Sans ce binding, /support-upload repond 503 et le reste du Worker fonctionne.
-# [[r2_buckets]]
-# binding = "SUPPORT_FILES"
-# bucket_name = "capital-board-support"
+[[r2_buckets]]
+binding = "SUPPORT_FILES"
+bucket_name = "capital-board-support"
 
 # Workers AI : chatbot d'aide (POST /chat). Modèle Llama gratuit sous quota.
 # Base de connaissance = capital-board-worker/src/kb.js (généré par
