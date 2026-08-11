@@ -75,6 +75,9 @@ jobs:
               'minShares':  min_shares,
               'count':      count,
               'verifiedAt': (row.get('last_verified_at') or '').strip(),
+              # Sert au logo : l'app en tire le domaine, faute de quoi les
+              # sociétés non détenues s'affichent en pastille de trois lettres.
+              'site':       (row.get('official_website') or '').strip(),
               'clubUrl':    (row.get('shareholder_club_url') or '').strip(),
               'pageUrl':    (row.get('french_page') or '').strip(),
             })

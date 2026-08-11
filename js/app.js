@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811k';
+const APP_VERSION = '20260811l';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -11248,6 +11248,24 @@ const PERK_KINDS = {
 };
 const PERK_KIND_ORDER = ['dividende', 'actions', 'club', 'ag'];
 
+// Les logos ne sont récupérés que pour le portefeuille et la watchlist : les
+// sociétés qu'on ne détient pas s'affichaient en pastille de trois lettres.
+Object.assign(FALLBACK_DOMAINS, {
+  'SK.PA': 'groupeseb.com',        'SW.PA': 'sodexo.com',
+  'RF.PA': 'eurazeo.com',          'ITP.PA': 'interparfums.fr',
+  'GET.PA': 'getlinkgroup.com',    'CDA.PA': 'compagniedesalpes.com',
+  'MLCMB.PA': 'compagniedumontblanc.fr', 'AC.PA': 'accor.com',
+  'RCO.PA': 'remy-cointreau.com',  'SAF.PA': 'safran-group.com',
+  'RI.PA': 'pernod-ricard.com',    'AF.PA': 'airfranceklm.com',
+  'CA.PA': 'carrefour.com',        'ADP.PA': 'parisaeroport.fr',
+  'BB.PA': 'bic.com',              'LR.PA': 'legrand.com',
+  'UBI.PA': 'ubisoft.com',         'EL.PA': 'essilorluxottica.com',
+  'VIV.PA': 'vivendi.com',         'AKE.PA': 'arkema.com',
+  'ALO.PA': 'alstom.com',          'OVH.PA': 'ovhcloud.com',
+  'FDJU.PA': 'fdj.fr',             'PUB.PA': 'publicisgroupe.com',
+  'KER.PA': 'kering.com',          'CAP.PA': 'capgemini.com',
+});
+
 // `years` = durée de nominatif exigée par la prime de fidélité, absent si la
 // société n'en propose pas. Les agrégateurs se contredisent beaucoup sur ces
 // chiffres — chaque entrée a été recoupée à sa source, et celles qui n'ont pas
@@ -11576,6 +11594,23 @@ function initAvantages() {
   const dir     = (_avantagesDir && _avantagesDir.companies) || [];
   const dirRest = dir.filter(c => !known.has(String(c.ticker).toUpperCase()));
   const dirHeld = dirRest.filter(c => pf.some(r => String(r.ticker).toUpperCase() === String(c.ticker).toUpperCase()));
+
+  // Amorce du cache de logos : sans ça, seules les sociétés détenues en ont un.
+  // Même convention que fetchLogo() — favicon Google à partir du domaine.
+  let warmed = false;
+  const warmLogo = (ticker, site) => {
+    if (!ticker || LOGO_CACHE[ticker]) return;
+    let domain = FALLBACK_DOMAINS[ticker] || null;
+    if (!domain && site) {
+      try { domain = new URL(site).hostname.replace(/^www\./, ''); } catch (_) { domain = null; }
+    }
+    if (!domain) return;
+    LOGO_CACHE[ticker] = 'https://www.google.com/s2/favicons?domain=' + domain + '&sz=128';
+    warmed = true;
+  };
+  SHAREHOLDER_PERKS.forEach(e => warmLogo(e.ticker, null));
+  dir.forEach(c => warmLogo(c.ticker, c.site));
+  if (warmed) { try { saveLogoCache(); } catch (_) {} }
 
   const yearOpts = (sel) => {
     let out = `<option value="">Je ne suis pas au nominatif</option>`;

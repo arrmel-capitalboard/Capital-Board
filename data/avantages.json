@@ -11,6 +11,7 @@
       "minShares": 1,
       "count": 10,
       "verifiedAt": "2026-05-15",
+      "site": "https://www.axa.com/fr/investisseurs",
       "clubUrl": "https://www.axa.com/fr/investisseurs/cercle-des-actionnaires",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/axa"
     },
@@ -22,6 +23,7 @@
       "minShares": 50,
       "count": 8,
       "verifiedAt": "2026-05-15",
+      "site": "https://group.accor.com/fr-FR",
       "clubUrl": "https://group.accor.com/fr-FR/finance",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/accor"
     },
@@ -33,6 +35,7 @@
       "minShares": 5,
       "count": 7,
       "verifiedAt": "2026-05-15",
+      "site": "https://www.airfranceklm.com",
       "clubUrl": "https://www.airfranceklm.com/en/finance/shareholders/shareholders-club/air-france-klm-shareholdersclub",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/air-france-klm"
     },
@@ -44,6 +47,7 @@
       "minShares": 1,
       "count": 5,
       "verifiedAt": "2026-07-17",
+      "site": "https://www.airliquide.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/air-liquide"
     },
@@ -55,6 +59,7 @@
       "minShares": 1,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.airbus.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/airbus"
     },
@@ -66,6 +71,7 @@
       "minShares": 1,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.alstom.com",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/alstom"
     },
@@ -77,6 +83,7 @@
       "minShares": 5,
       "count": 2,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.arkema.com",
       "clubUrl": "https://www.arkema.com/global/fr/investor-relations/individual-shareholder/shareholders-club/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/arkema"
     },
@@ -88,6 +95,7 @@
       "minShares": 1,
       "count": 6,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.generali.com",
       "clubUrl": "https://www.generali.com/investors/shareholders-club",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/generali"
     },
@@ -99,6 +107,7 @@
       "minShares": 200,
       "count": 10,
       "verifiedAt": "2026-05-15",
+      "site": "https://invest.bnpparibas/fr",
       "clubUrl": "https://cercle-actionnaires.bnpparibas/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/bnp-paribas"
     },
@@ -110,6 +119,7 @@
       "minShares": 0,
       "count": 8,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.santander.com/",
       "clubUrl": "https://www.santander.com/es/accionistas-e-inversores/yo-soy-accionista/informacion-general",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/banco-santander"
     },
@@ -121,6 +131,7 @@
       "minShares": 1,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.berkshirehathaway.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/berkshire-hathaway"
     },
@@ -132,6 +143,7 @@
       "minShares": 1,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.bouygues.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/bouygues"
     },
@@ -143,6 +155,7 @@
       "minShares": 1,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.capgemini.com/fr-fr/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/capgemini"
     },
@@ -154,6 +167,7 @@
       "minShares": 100,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.carnivalcorp.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/carnival-corporation"
     },
@@ -165,6 +179,7 @@
       "minShares": 1,
       "count": 7,
       "verifiedAt": "2026-05-15",
+      "site": "https://www.carrefour.com/fr/finance",
       "clubUrl": "https://www.clubactionnaires.carrefour.com/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/carrefour"
     },
@@ -176,6 +191,7 @@
       "minShares": 1,
       "count": 5,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.compagniedesalpes.com",
       "clubUrl": "https://espace-actionnaires.compagniedesalpes.com/node/6",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/compagnie-des-alpes"
     },
@@ -187,6 +203,7 @@
       "minShares": 50,
       "count": 5,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.credit-agricole.com",
       "clubUrl": "https://www.credit-agricole.com/finance/actionnaires-individuels/club-des-actionnaires",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/credit-agricole"
     },
@@ -198,6 +215,7 @@
       "minShares": 1,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.danone.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/danone"
     },
@@ -209,6 +227,7 @@
       "minShares": 0,
       "count": 5,
       "verifiedAt": "2026-07-31",
+      "site": "https://investor.3ds.com/fr",
       "clubUrl": "https://investor.3ds.com/fr",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/dassault-systemes"
     },
@@ -220,6 +239,7 @@
       "minShares": 1,
       "count": 2,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.edenred.com/fr",
       "clubUrl": "https://www.edenred.com/fr/investisseurs-actionnaires/e-club-actionnaires",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/edenred"
     },
@@ -231,6 +251,7 @@
       "minShares": 1,
       "count": 8,
       "verifiedAt": "2026-05-15",
+      "site": "https://www.engie.com/finance",
       "clubUrl": "https://clubactionnaires.engie.com/fr/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/engie"
     },
@@ -242,6 +263,7 @@
       "minShares": 1,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.essilorluxottica.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/essilorluxottica"
     },
@@ -253,6 +275,7 @@
       "minShares": 1,
       "count": 4,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.fdjunited.com",
       "clubUrl": "https://www.fdjunited.com/fr/actionnaires-individuels/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/fdj-united"
     },
@@ -264,6 +287,7 @@
       "minShares": 1,
       "count": 7,
       "verifiedAt": "2026-07-17",
+      "site": "https://finance.hermes.com/fr/",
       "clubUrl": "https://finance.hermes.com/fr/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/hermes"
     },
@@ -275,6 +299,7 @@
       "minShares": 1,
       "count": 3,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.iberdrola.com/",
       "clubUrl": "https://www.iberdrola.com/accionistas-inversores/accionistas/club-accionista",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/iberdrola"
     },
@@ -286,6 +311,7 @@
       "minShares": 1000,
       "count": 7,
       "verifiedAt": "2026-07-31",
+      "site": "https://group.intesasanpaolo.com/en/",
       "clubUrl": "https://www.intesasanpaolo.com/it/common/landing/club-azionisti.html",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/intesa-sanpaolo"
     },
@@ -297,6 +323,7 @@
       "minShares": 250,
       "count": 6,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.jungfrau.ch",
       "clubUrl": "https://www.jungfrau.ch/en-gb/corporate/investor-relations/jungfraubahn-holding-ag/shareholder-information/shareholders-club/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/jungfraubahn-holding"
     },
@@ -308,6 +335,7 @@
       "minShares": 0,
       "count": 2,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.kering.com/fr/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/kering"
     },
@@ -319,6 +347,7 @@
       "minShares": 1,
       "count": 8,
       "verifiedAt": "2026-07-17",
+      "site": "https://www.loreal.com",
       "clubUrl": "https://www.loreal-finance.com/fr/actionnaires-individuels",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/loreal"
     },
@@ -330,6 +359,7 @@
       "minShares": 1,
       "count": 10,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.lvmh.fr",
       "clubUrl": "https://www.clublvmh-actionnaires.fr",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/lvmh"
     },
@@ -341,6 +371,7 @@
       "minShares": 1,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.legrand.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/legrand"
     },
@@ -352,6 +383,7 @@
       "minShares": 1000,
       "count": 5,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.mapfre.com/",
       "clubUrl": "https://www.mapfre.com/en/shareholders-loyalty-plan/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/mapfre"
     },
@@ -363,6 +395,7 @@
       "minShares": 0,
       "count": 7,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.michelin.com/finance/",
       "clubUrl": "https://www.michelin.com/finance/actionnaire-individuel/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/michelin"
     },
@@ -374,6 +407,7 @@
       "minShares": 100,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.nclhltd.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/norwegian-cruise-line"
     },
@@ -385,6 +419,7 @@
       "minShares": 25,
       "count": 3,
       "verifiedAt": "2026-07-31",
+      "site": "https://corporate.ovhcloud.com",
       "clubUrl": "https://corporate.ovhcloud.com/asia/investor-relations/retail-shareholders-and-employees/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/ovhcloud"
     },
@@ -396,6 +431,7 @@
       "minShares": 1,
       "count": 8,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.orange.com",
       "clubUrl": "https://investisseurs-individuels.orange.com/fr/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/orange"
     },
@@ -407,6 +443,7 @@
       "minShares": 24,
       "count": 3,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.pernod-ricard.com/",
       "clubUrl": "https://club-premium.pernod-ricard.com/fr",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/pernod-ricard"
     },
@@ -418,6 +455,7 @@
       "minShares": 1,
       "count": 5,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.publicisgroupe.com",
       "clubUrl": "https://www.publicisgroupe.com/fr/investisseurs/actionnaires/message-du-president",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/publicis"
     },
@@ -429,6 +467,7 @@
       "minShares": 1,
       "count": 8,
       "verifiedAt": "2026-05-15",
+      "site": "https://www.renaultgroup.com",
       "clubUrl": "https://www.renaultgroup.com/en/finance/shareholders/shareholders-club/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/renault"
     },
@@ -440,6 +479,7 @@
       "minShares": 1,
       "count": 3,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.repsol.com/",
       "clubUrl": "https://www.repsol.com/es/accionistas-inversores/club-accionistas/index.cshtml",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/repsol"
     },
@@ -451,6 +491,7 @@
       "minShares": 100,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.royalcaribbeangroup.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/royal-caribbean"
     },
@@ -462,6 +503,7 @@
       "minShares": 0,
       "count": 2,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.remy-cointreau.com",
       "clubUrl": "https://www.remy-cointreau.com/fr/finance/actionnaires/page/2025/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/remy-cointreau"
     },
@@ -473,6 +515,7 @@
       "minShares": 1,
       "count": 3,
       "verifiedAt": "2026-06-09",
+      "site": "https://www.safran-group.com/fr",
       "clubUrl": "https://www.safran-group.com/fr/finance/actionnaires-individuels",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/safran"
     },
@@ -484,6 +527,7 @@
       "minShares": 1,
       "count": 6,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.saint-gobain.com/",
       "clubUrl": "https://www.saint-gobain.com/fr/finance/actionnaires-individuels/club-des-actionnaires",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/saint-gobain"
     },
@@ -495,6 +539,7 @@
       "minShares": 0,
       "count": 6,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.sanofi.com/fr/investisseurs",
       "clubUrl": "https://www.sanofi.com/fr/investisseurs/actionnaires-prives",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/sanofi"
     },
@@ -506,6 +551,7 @@
       "minShares": 1,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.se.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/schneider-electric"
     },
@@ -517,6 +563,7 @@
       "minShares": 100,
       "count": 10,
       "verifiedAt": "2026-05-15",
+      "site": "https://investors.societegenerale.com/fr",
       "clubUrl": "https://monespaceactionnaire.societegenerale.com/club-offer",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/societe-generale"
     },
@@ -528,6 +575,7 @@
       "minShares": 1,
       "count": 5,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.telefonica.com/",
       "clubUrl": "https://www.telefonica.com/es/zona-accionistas/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/telefonica"
     },
@@ -539,6 +587,7 @@
       "minShares": 0,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.tp.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/teleperformance"
     },
@@ -550,6 +599,7 @@
       "minShares": 0,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.thalesgroup.com/fr",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/thales"
     },
@@ -561,6 +611,7 @@
       "minShares": 0,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.coca-colacompany.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/coca-cola"
     },
@@ -572,6 +623,7 @@
       "minShares": 50,
       "count": 8,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.totalenergies.com",
       "clubUrl": "https://e-cercle.totalenergies.com/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/totalenergies"
     },
@@ -583,6 +635,7 @@
       "minShares": 1,
       "count": 8,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.veolia.com/fr/groupe/finance/actionnaires",
       "clubUrl": "https://www.veolia.com/fr/groupe/finance/actionnaires",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/veolia"
     },
@@ -594,6 +647,7 @@
       "minShares": 1,
       "count": 9,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.vinci.com",
       "clubUrl": "https://actionnaires.vinci.com/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/vinci"
     },
@@ -605,6 +659,7 @@
       "minShares": 1,
       "count": 2,
       "verifiedAt": "2026-07-29",
+      "site": "https://www.vivendi.com",
       "clubUrl": "https://www.vivendi.com/actionnaires-investisseurs/actionnaires-individuels/club-des-actionnaires/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/vivendi"
     },
@@ -616,6 +671,7 @@
       "minShares": 64,
       "count": 1,
       "verifiedAt": "2026-07-31",
+      "site": "https://www.whitbread.co.uk",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/whitbread"
     }
