@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811a';
+const APP_VERSION = '20260811b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -11155,8 +11155,8 @@ function startKpisAutoScroll(elId) {
   if (el._kpisRaf) cancelAnimationFrame(el._kpisRaf);
   if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
   if (!el._kpisState) {
-    // `pos` garde la position en flottant : à 33 px/s on avance d'un demi-pixel
-    // par frame, et plusieurs navigateurs mobiles arrondissent `scrollLeft` à
+    // `pos` garde la position en flottant : on avance de moins d'un pixel par
+    // frame, et plusieurs navigateurs mobiles arrondissent `scrollLeft` à
     // l'entier en lecture. Relire l'élément à chaque frame ramenait donc à 0 et
     // le bandeau ne bougeait jamais.
     el._kpisState = { paused: false, pos: 0, dir: 1, hold: 0 };
@@ -11179,10 +11179,12 @@ function startKpisAutoScroll(elId) {
     const max = el.scrollWidth - el.clientWidth;
     if (max <= 1) { st.pos = 0; return; }  // desktop : les 4 cartes tiennent
     if (st.hold > 0) { st.hold -= dt; return; }
-    st.pos += st.dir * dt * 33 / 1000; // 33px/s ≈ portfolio
+    // 55 px/s : à 33 px/s une carte mettait ~4,7 s à passer, le bandeau avait
+    // l'air immobile pendant les premières secondes.
+    st.pos += st.dir * dt * 55 / 1000;
     // Aller-retour plutôt que retour sec au début : pas de saut visuel.
-    if (st.pos >= max) { st.pos = max; st.dir = -1; st.hold = 1200; }
-    else if (st.pos <= 0) { st.pos = 0; st.dir = 1; st.hold = 1200; }
+    if (st.pos >= max) { st.pos = max; st.dir = -1; st.hold = 900; }
+    else if (st.pos <= 0) { st.pos = 0; st.dir = 1; st.hold = 900; }
     el.scrollLeft = st.pos;
   };
   el._kpisRaf = requestAnimationFrame(step);
