@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260812f';
+const APP_VERSION = '20260812g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4940,7 +4940,7 @@ async function fetchPrice(query) {
       resLogoEl.innerHTML = logoHtmlModal(foundTicker);
       if (!LOGO_CACHE[foundTicker]) fetchLogo(foundTicker, foundName).then(() => { resLogoEl.innerHTML = logoHtmlModal(foundTicker); });
       statusEl.innerHTML = ''; resultEl.classList.add('visible');
-      document.getElementById('btn-confirm').disabled = false;
+      _applyPeaVerdict();
       if (!document.getElementById('modal-buy-price').value) document.getElementById('modal-buy-price').value = foundPrice.toFixed(2);
       return;
     }
@@ -4981,7 +4981,7 @@ async function fetchPrice(query) {
 
     statusEl.innerHTML = '';
     resultEl.classList.add('visible');
-    document.getElementById('btn-confirm').disabled = false;
+    _applyPeaVerdict();
 
     if (!document.getElementById('modal-buy-price').value) {
       document.getElementById('modal-buy-price').value = foundPrice.toFixed(2);
@@ -4991,6 +4991,95 @@ async function fetchPrice(query) {
     statusEl.innerHTML = '<div class="status-error">⚠ ' + (err.message || 'Erreur inconnue.') + '</div>';
     console.error(err);
   }
+}
+
+
+// ─── ÉLIGIBILITÉ PEA ──────────────────────────────────────────
+// Le PEA n'accepte que des titres de sociétés ayant leur siège dans l'Espace
+// économique européen. Aucune API ne publie cette éligibilité : on la déduit
+// de la place de cotation, ce qui couvre l'immense majorité des cas.
+//
+// Les ETF sont le point délicat. Un ETF n'est éligible que s'il investit au
+// moins 75 % en actions de l'EEE — condition que les ETF « monde » ou
+// « Nasdaq » remplissent par un échange de flux, pas par leurs actifs. La
+// place ne suffit donc pas : IWDA.AS, coté à Amsterdam, n'est pas éligible,
+// alors que CW8.PA, coté à Paris, l'est. La cote de Paris est le meilleur
+// indice disponible, sans être une garantie — d'où un simple avertissement
+// plutôt qu'un refus sur les ETF français inconnus.
+const PEA_VENUES = {
+  '.PA': 'Euronext Paris', '.AS': 'Euronext Amsterdam', '.BR': 'Euronext Bruxelles',
+  '.LS': 'Euronext Lisbonne', '.DE': 'Xetra', '.F': 'Francfort', '.MI': 'Borsa Italiana',
+  '.MC': 'Madrid', '.VI': 'Vienne', '.HE': 'Helsinki', '.ST': 'Stockholm',
+  '.CO': 'Copenhague', '.OL': 'Oslo', '.IR': 'Euronext Dublin', '.AT': 'Athènes',
+  '.WA': 'Varsovie', '.PR': 'Prague', '.BD': 'Budapest', '.RG': 'Riga',
+  '.TL': 'Tallinn', '.VS': 'Vilnius', '.IC': 'Reykjavik',
+};
+const PEA_BLOCKED = {
+  '.L': 'Londres', '.SW': 'Suisse', '.VX': 'Suisse', '.TO': 'Toronto', '.V': 'Vancouver',
+  '.HK': 'Hong Kong', '.T': 'Tokyo', '.AX': 'Australie', '.NZ': 'Nouvelle-Zélande',
+  '.SA': 'Brésil', '.MX': 'Mexique', '.SS': 'Shanghai', '.SZ': 'Shenzhen',
+  '.KS': 'Séoul', '.KQ': 'Séoul', '.TW': 'Taïwan', '.NS': 'Inde', '.BO': 'Inde',
+  '.JO': 'Johannesburg', '.TA': 'Tel-Aviv', '.IS': 'Istanbul', '.ME': 'Moscou',
+};
+
+// ETF cotés à Paris dont l'éligibilité PEA est établie : évite un
+// avertissement inutile sur les supports les plus courants.
+const PEA_KNOWN_ETFS = new Set([
+  'CW8.PA', 'EWLD.PA', 'MWRD.PA', 'WPEA.PA', 'ESE.PA', 'ESEE.PA', 'PE500.PA',
+  'ETZ.PA', 'RS2K.PA', 'PCEU.PA', 'PANX.PA', 'PAEEM.PA', 'PUST.PA', 'BNKE.PA',
+]);
+
+function _tickerSuffix(ticker) {
+  const m = String(ticker || '').match(/(\.[A-Za-z]+)$/);
+  return m ? m[1].toUpperCase() : '';
+}
+
+// { level: 'ok' | 'warn' | 'block', msg }
+function peaEligibility(ticker, name, quoteType) {
+  const suffix = _tickerSuffix(ticker);
+  const isEtf  = quoteType === 'ETF' || quoteType === 'MUTUALFUND' || (typeof isETF === 'function' && isETF(ticker));
+
+  if (!suffix) {
+    return { level: 'block', msg: 'Titre coté aux États-Unis : jamais éligible au PEA.' };
+  }
+  if (PEA_BLOCKED[suffix]) {
+    return { level: 'block', msg: 'Place de cotation : ' + PEA_BLOCKED[suffix] + '. Hors Espace économique européen, donc inéligible au PEA.' };
+  }
+  if (!PEA_VENUES[suffix]) {
+    return { level: 'block', msg: "Place de cotation inconnue (" + suffix + "). Le PEA n'accepte que les places de l'Espace économique européen." };
+  }
+  if (isEtf) {
+    if (suffix !== '.PA') {
+      return { level: 'block', msg: 'ETF coté hors de Paris (' + PEA_VENUES[suffix] + '). La plupart ne sont pas éligibles au PEA — cherchez sa version cotée à Paris.' };
+    }
+    // Gamme estampillée PEA, ou ETF français dont l'éligibilité est établie.
+    if (/\bPEA\b/i.test(String(name || '')) || PEA_KNOWN_ETFS.has(String(ticker).toUpperCase())) {
+      return { level: 'ok', msg: '' };
+    }
+    return { level: 'warn', msg: "ETF coté à Paris : souvent éligible au PEA, mais pas toujours. Vérifiez son DIC avant d'acheter." };
+  }
+  return { level: 'ok', msg: '' };
+}
+
+// Verdict affiché sous le résultat de recherche : mieux vaut le dire avant
+// que l'utilisateur ne saisisse quantité, prix et date pour rien.
+function _applyPeaVerdict() {
+  const btn  = document.getElementById('btn-confirm');
+  const info = document.getElementById('res-info');
+  const elig = peaEligibility(foundTicker, foundName, foundQuoteType);
+  if (btn) btn.disabled = elig.level === 'block';
+  let note = document.getElementById('res-pea-note');
+  if (!note && info && info.parentNode) {
+    note = document.createElement('div');
+    note.id = 'res-pea-note';
+    note.style.cssText = 'font-size:11px;line-height:1.5;margin-top:8px';
+    info.parentNode.appendChild(note);
+  }
+  if (!note) return;
+  if (elig.level === 'ok') { note.textContent = ''; note.style.display = 'none'; return; }
+  note.style.display = '';
+  note.style.color = elig.level === 'block' ? 'var(--negative)' : 'var(--gold)';
+  note.textContent = (elig.level === 'block' ? 'Non éligible au PEA — ' : 'À vérifier — ') + elig.msg;
 }
 
 function confirmAdd() {
@@ -5005,6 +5094,12 @@ function confirmAdd() {
     alert("Veuillez renseigner la date d'achat.");
     return;
   }
+
+  // Dernier verrou : le bouton est déjà désactivé pour un titre inéligible,
+  // mais rien n'empêche d'atteindre cette fonction autrement.
+  const elig = peaEligibility(foundTicker, foundName, foundQuoteType);
+  if (elig.level === 'block') { alert('Titre non éligible au PEA.\n\n' + elig.msg); return; }
+  if (elig.level === 'warn' && !confirm(elig.msg + '\n\nL\'ajouter quand même ?')) return;
 
   const data = getPortfolio(currentUser);
 
