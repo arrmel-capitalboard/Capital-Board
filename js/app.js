@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260812g';
+const APP_VERSION = '20260812h';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -7110,7 +7110,22 @@ function importCSV(event) {
       else if (row.type === 'versement' && row.price > 0) { row.qty = 0; pendingImportRows.push(row); }
     }
 
-    if (!pendingImportRows.length) { alert('Aucune transaction valide détectée dans le CSV.\n\nColonnes attendues : date, type (achat/vente), ticker, nom, quantité, prix'); return; }
+    // Un CSV de courtier peut contenir des titres qui n'ont rien à faire dans
+    // un PEA : même contrôle qu'à l'ajout manuel, sinon la porte reste ouverte.
+    const rejected = [];
+    pendingImportRows = pendingImportRows.filter(r => {
+      if (r.type === 'versement' || !r.ticker) return true;
+      const e = peaEligibility(r.ticker, r.name, null);
+      if (e.level === 'block') { rejected.push({ ticker: r.ticker, msg: e.msg }); return false; }
+      return true;
+    });
+    if (rejected.length) {
+      const seen = new Set(), lignes = [];
+      rejected.forEach(r => { if (!seen.has(r.ticker)) { seen.add(r.ticker); lignes.push('• ' + r.ticker + ' — ' + r.msg); } });
+      alert('Lignes écartées, non éligibles au PEA :\n\n' + lignes.join('\n'));
+    }
+
+    if (!pendingImportRows.length) { alert('Aucune transaction éligible au PEA dans ce CSV.\n\nColonnes attendues : date, type (achat/vente), ticker, nom, quantité, prix'); return; }
 
     // Show preview modal
     const tbody = document.getElementById('csv-preview-tbody');
