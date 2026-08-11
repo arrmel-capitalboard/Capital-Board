@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811f';
+const APP_VERSION = '20260811g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -376,7 +376,7 @@ async function loadAllUserData(uid) {
   // Enregistrer l'email pour la recherche par email (gestion des rôles)
   const _u = fbAuth.currentUser;
   if (_u) setFirestoreDoc(firestoreDoc(db, 'users', uid), { email: _u.email }, { merge: true }).catch(() => {});
-  const cols = ['portfolio', 'transactions', 'versements', 'watchlist', 'dailyValues', 'alerts', 'notifHistory', 'trCohort', 'divIgnored'];
+  const cols = ['portfolio', 'transactions', 'versements', 'watchlist', 'dailyValues', 'alerts', 'notifHistory', 'trCohort', 'divIgnored', 'nominatif'];
   await Promise.all(cols.map(async col => {
     try {
       const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', col));
@@ -466,6 +466,12 @@ function getDivIgnored(user)  { return _localCache[(user||currentUser) + '_divIg
 function saveDivIgnored(user, data) { _fsWrite(user||currentUser, 'divIgnored', data); }
 function _divKey(ticker, date) { return (ticker || '') + '|' + (date || ''); }
 function isDivIgnored(ticker, date) { return getDivIgnored().includes(_divKey(ticker, date)); }
+
+// nominatif : lignes que l'utilisateur déclare détenir au nominatif, avec
+// l'année d'inscription. Aucune API ne le sait — ni Yahoo ni le courtier — et
+// c'est pourtant la condition de toutes les primes de fidélité.
+function getNominatif(user)  { return _localCache[(user||currentUser) + '_nominatif'] || []; }
+function saveNominatif(user, data) { _fsWrite(user||currentUser, 'nominatif', data); }
 
 function getAlerts(user)       { return _localCache[(user||currentUser) + '_alerts']       || []; }
 function getNotifHistory(user) { return _localCache[(user||currentUser) + '_notifHistory']  || []; }
@@ -645,7 +651,7 @@ async function deleteAllUserData(uid) {
   // Docs sous users/{uid}/data
   const dataDocs = [
     'portfolio', 'transactions', 'versements', 'watchlist',
-    'dailyValues', 'alerts', 'notifHistory', 'trCohort', 'divIgnored',
+    'dailyValues', 'alerts', 'notifHistory', 'trCohort', 'divIgnored', 'nominatif',
     'settings', 'recap', 'weeklyRecap', 'fcmTokens'
   ];
 
@@ -3291,7 +3297,7 @@ window.setAvatarHue = async function(deg) {
 };
 
 // ─── Feature flags (config/app.features) ───
-const FLAGGABLE = ['watchlist','dividendes','performance','benchmark','projections','earnings','recap','alertes','actualites','favoris','idees','depenses','cto','crypto','fiscalite','av','per','livrets','immo','or','nonco'];
+const FLAGGABLE = ['watchlist','dividendes','avantages','performance','benchmark','projections','earnings','recap','alertes','actualites','favoris','idees','depenses','cto','crypto','fiscalite','av','per','livrets','immo','or','nonco'];
 let _featureFlags = {};
 function _isFeatureOn(key) { return _featureFlags[key] !== false; }
 function applyFeatureFlags(features) {
@@ -3495,13 +3501,14 @@ function applyNavLayout(nav) {
 
 // Les dix vues du PEA, regroupées derrière une seule entrée de menu. L'ordre
 // fait foi pour la barre de sous-onglets.
-const PEA_TABS = ['portfolio', 'activite', 'dividendes', 'watchlist', 'performance',
+const PEA_TABS = ['portfolio', 'activite', 'dividendes', 'avantages', 'watchlist', 'performance',
                   'benchmark', 'projections', 'earnings', 'recap', 'alertes'];
 
 // Libellés du second niveau du tiroir. Plus courts que ceux de la barre du
 // haut : « Calendrier résultats » déborde d'une case de grille.
 const PEA_TAB_LABELS = {
   portfolio: 'Portefeuille',  activite: 'Activité',    dividendes: 'Dividendes',
+  avantages: 'Avantages',
   watchlist: 'Watchlist',     performance: 'Performance', benchmark: 'Benchmark',
   projections: 'Projections', earnings: 'Résultats',   recap: 'Récap du jour',
   alertes: 'Alertes prix',
@@ -3520,6 +3527,7 @@ const PEA_TAB_ICONS = {
   portfolio:   _peaIcon('#7c6df5', '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>'),
   activite:    _peaIcon('#5b8dee', '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/>'),
   dividendes:  _peaIcon('#00cec9', '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/>'),
+  avantages:   _peaIcon('#a99bff', '<path d="M20 12v9H4v-9"/><rect x="2" y="7" width="20" height="5" rx="1"/><path d="M12 21V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>'),
   watchlist:   _peaIcon('#5b8dee', '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'),
   performance: _peaIcon('#00e09e', '<path d="M3 3v18h18"/><path d="M7 15l4-5 3 3 5-7"/>'),
   benchmark:   _peaIcon('#a29bfe', '<path d="M3 21V10"/><path d="M9.5 21V4"/><path d="M16 21v-8"/><path d="M22 21V7"/>'),
@@ -3554,6 +3562,7 @@ function _runPageHook(id) {
   if (id === 'projections')   initProjections();
   if (id === 'bilan')         initBilan();
   if (id === 'dividendes')    initDividendes();
+  if (id === 'avantages')     initAvantages();
   if (id === 'performance')   initPerformance();
 }
 
@@ -11212,6 +11221,203 @@ function renderDivHistory(histEl) {
 function toggleDivHistory() {
   _divShowAll = !_divShowAll;
   renderDivHistory(document.getElementById('div-history'));
+}
+
+// ═══════════════════════════════════════════════════════════════════════
+// AVANTAGES ACTIONNAIRES
+// Certaines sociétés récompensent la détention longue : dividende majoré de
+// 10 %, actions gratuites majorées. Aucune API ne publie ces programmes — ni
+// Yahoo ni le courtier — ils sont donc tenus à la main ici, chaque entrée
+// portant sa source pour être revérifiable.
+//
+// Deux règles valent pour tout le monde et viennent du code de commerce
+// (art. L232-14) : la majoration ne peut dépasser 10 %, et elle ne porte que
+// sur la fraction du capital détenue en deçà de 0,5 %.
+// ═══════════════════════════════════════════════════════════════════════
+const PERKS_CHECKED_AT = '11 août 2026';
+const SHAREHOLDER_PERKS = [
+  {
+    ticker: 'AI.PA', name: 'Air Liquide', years: 2, official: true,
+    source: 'https://www.airliquide.com/help/loyalty-bonus',
+    perks: [
+      { label: 'Dividende majoré +10 %', rate: 0.10 },
+      { label: 'Actions gratuites majorées +10 %', note: 'Attribution périodique — la dernière date de juin 2026' },
+    ],
+  },
+  {
+    ticker: 'OR.PA', name: "L'Oréal", years: 2, official: true,
+    source: 'https://www.loreal-finance.com/fr/prime-de-fidelite-et-nominatif',
+    perks: [{ label: 'Dividende majoré +10 %', rate: 0.10 }],
+  },
+  {
+    ticker: 'ENGI.PA', name: 'Engie', years: 2, official: true,
+    source: 'https://www.engie.com/en/investors/dividend-and-loyalty-bonus/',
+    perks: [{ label: 'Dividende majoré +10 %', rate: 0.10, note: 'Les titres logés dans un PEA y donnent droit' }],
+  },
+  {
+    ticker: 'SK.PA', name: 'Groupe SEB', years: 2, official: true,
+    source: 'https://www.groupeseb.com/fr/webzine/parcours-boursier-et-dividende',
+    perks: [{ label: 'Dividende majoré +10 %', rate: 0.10 }],
+  },
+  {
+    ticker: 'SW.PA', name: 'Sodexo', years: 4, official: true,
+    source: 'https://www.sodexo.com/fr/investors/shareholders/benefits-registered-shareholder',
+    perks: [{ label: 'Dividende majoré +10 %', rate: 0.10, note: 'Quatre ans de détention exigés, deux fois plus qu\'ailleurs' }],
+  },
+  {
+    ticker: 'RF.PA', name: 'Eurazeo', years: 2, official: false,
+    source: 'https://www.moneyvox.fr/forums/fil/liste-de-valeurs-offrant-une-prime-de-fidelite-en-nominatif-administre.26980/',
+    perks: [{ label: 'Dividende majoré +10 %', rate: 0.10, note: 'En place depuis 2023' }],
+  },
+];
+
+function _perkFor(ticker) {
+  const t = String(ticker || '').toUpperCase();
+  return SHAREHOLDER_PERKS.find(p => p.ticker.toUpperCase() === t) || null;
+}
+
+// Première année de versement majoré. Les statuts comptent en années civiles
+// PLEINES : inscrit en cours d'année Y, les deux années comptées sont Y+1 et
+// Y+2, et la majoration tombe avec le dividende versé en Y+3.
+function _perkFirstYear(entry, sinceYear) { return sinceYear + entry.years + 1; }
+
+function _nominatifEntry(ticker) {
+  return getNominatif().find(x => x.ticker === ticker) || null;
+}
+
+window.setNominatifYear = function (ticker, value) {
+  const arr  = getNominatif().filter(x => x.ticker !== ticker);
+  const year = parseInt(value, 10);
+  if (year) arr.push({ ticker, year });
+  saveNominatif(currentUser, arr);
+  initAvantages();
+};
+
+// Dividende annuel estimé d'une ligne, pour chiffrer ce que la prime rapporte.
+// Le rendement Yahoo est une fraction (0.02 = 2 %).
+function _estAnnualDiv(r) {
+  if (!r || !r.dividendYield || !r.currentPrice || !r.qty) return null;
+  return r.dividendYield * r.qty * r.currentPrice;
+}
+
+function initAvantages() {
+  const el = document.getElementById('avantages-content');
+  if (!el) return;
+  const pf     = getPortfolio(currentUser);
+  const nowY   = new Date().getFullYear();
+  const held   = SHAREHOLDER_PERKS
+    .map(entry => ({ entry, row: pf.find(r => String(r.ticker).toUpperCase() === entry.ticker) }))
+    .filter(x => x.row);
+  const others = SHAREHOLDER_PERKS.filter(entry => !held.some(h => h.entry.ticker === entry.ticker));
+
+  const yearOpts = (sel) => {
+    let out = `<option value="">Je ne suis pas au nominatif</option>`;
+    for (let y = nowY; y >= nowY - 12; y--) {
+      out += `<option value="${y}"${sel === y ? ' selected' : ''}>Au nominatif depuis ${y}</option>`;
+    }
+    return out;
+  };
+
+  const sourceLink = (entry) => `
+    <a href="${entry.source}" target="_blank" rel="noopener noreferrer"
+       style="font-size:10px;color:var(--text3);text-decoration:none;border-bottom:1px dotted var(--text3)">
+      ${entry.official ? 'Source société' : 'Source non officielle — à confirmer'}
+    </a>`;
+
+  const heldHtml = held.map(({ entry, row }) => {
+    const nom     = _nominatifEntry(entry.ticker);
+    const since   = nom ? nom.year : null;
+    const firstY  = since ? _perkFirstYear(entry, since) : null;
+    const acquise = firstY !== null && nowY >= firstY;
+    const badge   = since === null
+      ? '<span style="background:var(--s3);color:var(--text3);font-size:10px;padding:3px 9px;border-radius:5px">Statut à renseigner</span>'
+      : acquise
+      ? '<span style="background:rgba(0,224,158,0.14);color:var(--positive);font-size:10px;font-weight:600;padding:3px 9px;border-radius:5px">Prime acquise</span>'
+      : `<span style="background:rgba(245,183,49,0.12);color:var(--gold);font-size:10px;font-weight:600;padding:3px 9px;border-radius:5px">Acquise en ${firstY}</span>`;
+
+    const annualDiv = _estAnnualDiv(row);
+    const rate      = (entry.perks.find(p => p.rate) || {}).rate || 0;
+    const gain      = annualDiv && rate ? annualDiv * rate : null;
+
+    return `
+      <div class="section-card" style="margin-bottom:14px">
+        <div style="display:flex;align-items:center;gap:11px;margin-bottom:14px;flex-wrap:wrap">
+          ${logoHtml(entry.ticker, 30, 'ticker-icon')}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:14px;font-weight:700;color:var(--text1)">${entry.name}</div>
+            <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${row.qty} action(s) · ${entry.ticker}</div>
+          </div>
+          ${badge}
+        </div>
+        <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px">
+          ${entry.perks.map(p => `
+            <div style="display:flex;align-items:flex-start;gap:8px">
+              <span style="color:var(--positive);font-size:12px;line-height:1.5">✓</span>
+              <div>
+                <div style="font-size:12px;color:var(--text1);font-weight:600">${p.label}</div>
+                ${p.note ? `<div style="font-size:11px;color:var(--text3);margin-top:1px">${p.note}</div>` : ''}
+              </div>
+            </div>`).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.5">
+          Conditions : titres inscrits au nominatif pendant ${entry.years} années civiles pleines,
+          dans la limite de 0,5 % du capital.
+        </div>
+        <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          <select onchange="setNominatifYear('${entry.ticker}', this.value)"
+                  style="background:var(--s2);border:1px solid var(--border);color:var(--text1);border-radius:8px;padding:7px 10px;font-size:12px;font-family:var(--sans);cursor:pointer">
+            ${yearOpts(since)}
+          </select>
+          ${gain !== null && since !== null
+            ? `<div style="font-size:12px;font-family:var(--mono);color:${acquise ? 'var(--positive)' : 'var(--text3)'}">
+                 ${acquise ? '+' : 'à terme +'}${gain.toFixed(2)} € / an</div>`
+            : (gain !== null
+              ? `<div style="font-size:11px;color:var(--text3)">Vaudrait +${gain.toFixed(2)} € par an</div>`
+              : '')}
+          <div style="margin-left:auto">${sourceLink(entry)}</div>
+        </div>
+      </div>`;
+  }).join('');
+
+  const othersHtml = others.map(entry => `
+    <div style="display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--border)">
+      ${logoHtml(entry.ticker, 24, 'ticker-icon')}
+      <div style="flex:1;min-width:0">
+        <div style="font-size:12px;font-weight:600;color:var(--text1)">${entry.name}</div>
+        <div style="font-size:11px;color:var(--text3)">${entry.perks.map(p => p.label).join(' · ')} — ${entry.years} ans au nominatif</div>
+      </div>
+      ${sourceLink(entry)}
+    </div>`).join('');
+
+  el.innerHTML = `
+    <div class="section-card" style="margin-bottom:18px">
+      <div class="section-title" style="margin-bottom:10px">Comment ça marche</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.65">
+        Quelques sociétés versent <b style="color:var(--text1)">10 % de dividende en plus</b> aux actionnaires
+        qui gardent leurs titres longtemps. La condition est toujours la même : détenir les actions
+        <b style="color:var(--text1)">au nominatif</b> — inscrites à votre nom, chez la société ou chez votre
+        courtier — et non en compte ordinaire. Le nominatif administré reste logeable dans un PEA.
+        <br><br>
+        Votre courtier ne transmet pas cette information : indiquez ci-dessous depuis quand vous êtes
+        au nominatif, ligne par ligne, et Capital Board calcule la date à laquelle la prime tombe.
+      </div>
+    </div>
+
+    <div style="font-size:13px;font-weight:700;color:var(--text1);margin:0 0 12px">Vos lignes concernées</div>
+    ${held.length
+      ? heldHtml
+      : `<div class="section-card" style="margin-bottom:18px;color:var(--text3);font-size:12px">
+           Aucune de vos lignes ne figure au registre des avantages actionnaires.
+         </div>`}
+
+    <div class="section-card">
+      <div class="section-title" style="margin-bottom:4px">Sociétés qui en proposent</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">
+        Registre tenu à la main, vérifié le ${PERKS_CHECKED_AT}. Un programme peut changer sans préavis :
+        vérifiez auprès de la société avant de passer au nominatif.
+      </div>
+      ${othersHtml || '<div style="font-size:12px;color:var(--text3);padding-top:10px">Vous les détenez toutes.</div>'}
+    </div>`;
 }
 
 // Auto-scroll horizontal des KPIs (mobile, RAF pour fluidité iOS Safari)
