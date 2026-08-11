@@ -1323,6 +1323,15 @@ tr:hover td { background: rgba(255,255,255,0.018); }
   margin-bottom: 18px;
   overflow: hidden;
 }
+/* Titre de la carte : sans lui, la carte ouvrait sur un pourcentage sans dire
+   de quoi il parlait. */
+.portf-chart-title {
+  padding: 16px 20px 0;
+  font-size: 11px; font-weight: 700; letter-spacing: .8px; text-transform: uppercase;
+  color: var(--text3); font-family: var(--mono);
+}
+.portf-chart-title + .portf-chart-header { padding-top: 6px; }
+
 .portf-chart-header {
   display: flex;
   align-items: baseline;

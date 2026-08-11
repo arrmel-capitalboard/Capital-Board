@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260812i';
+const APP_VERSION = '20260812j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -612,7 +612,17 @@ async function importAllUserData(event) {
 
   // Application
   try {
-    if (Array.isArray(payload.portfolio))    savePortfolio(uid, payload.portfolio);
+    if (Array.isArray(payload.portfolio)) {
+      // Une sauvegarde peut avoir été bricolée à la main, ou dater d'avant le
+      // contrôle d'éligibilité : on la filtre comme le reste.
+      const horsPea = payload.portfolio.filter(r => r && r.ticker
+        && peaEligibility(r.ticker, r.name, r.quoteType).level === 'block');
+      if (horsPea.length) {
+        alert('Lignes non éligibles au PEA, écartées de la restauration :' + String.fromCharCode(10, 10)
+          + horsPea.map(r => '• ' + r.ticker).join(String.fromCharCode(10)));
+      }
+      savePortfolio(uid, payload.portfolio.filter(r => !horsPea.includes(r)));
+    }
     if (Array.isArray(payload.transactions)) saveTransactions(uid, payload.transactions);
     if (Array.isArray(payload.versements))   saveVersements(uid, payload.versements);
     if (Array.isArray(payload.watchlist))    saveWatchlist(uid, payload.watchlist);
