@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811z';
+const APP_VERSION = '20260812a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -13828,7 +13828,7 @@ async function renderAdminUsers() {
     // heartbeat de 30s), PAS sur le booléen p.online qui reste figé à true si
     // l'onglet meurt sans déclencher beforeunload (fréquent sur mobile/PWA).
     presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; u.online = !!(u.lastSeen && (Date.now() - u.lastSeen.getTime()) < 70000);
-      u.pwaNow = p.pwa === true; u.pwaEver = p.pwaEver === true;
+      u.pwaNow = p.pwa === true; u.pwaEver = p.pwaEver === true; u.pwaKnown = Object.prototype.hasOwnProperty.call(p, 'pwa');
       u.pwaAt = p.pwaAt && p.pwaAt.toDate ? p.pwaAt.toDate() : null; });
     threadsSnap.forEach(d => { const u = get(d.id), t = d.data(); u.name = t.userName; u.email = t.userEmail; });
 
@@ -13872,12 +13872,16 @@ async function renderAdminUsers() {
       // PWA : aucune API ne dit « installée ». On sait seulement si la session
       // tourne depuis l'icône. Plein si c'est le cas maintenant, estompé si ça
       // l'a été un jour, rien si jamais.
+      // Quatre états distincts, badge toujours affiché : sans lui, « navigateur »
+      // et « pas encore d'information » se ressemblaient trop.
       const _pwaStyle = 'font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:5px;font-family:var(--mono);';
       const pwaBadge = u.pwaNow
         ? '<span title="Session en cours depuis l&#39;app installée" style="' + _pwaStyle + 'background:rgba(0,224,158,.14);color:#00e09e">PWA</span>'
-        : (u.pwaEver
-          ? '<span title="A déjà ouvert l&#39;app installée' + (u.pwaAt ? ' — vu ' + _relTime(u.pwaAt) : '') + '" style="' + _pwaStyle + 'background:rgba(255,255,255,.05);color:var(--text3)">PWA</span>'
-          : '');
+        : u.pwaEver
+          ? '<span title="A déjà ouvert l&#39;app installée' + (u.pwaAt ? ' — vu ' + _relTime(u.pwaAt) : '') + ', navigateur en ce moment" style="' + _pwaStyle + 'background:rgba(0,224,158,.06);color:rgba(0,224,158,.55)">PWA</span>'
+          : u.pwaKnown
+            ? '<span title="Toujours vu dans un navigateur, jamais depuis une app installée" style="' + _pwaStyle + 'background:rgba(255,255,255,.05);color:var(--text3)">WEB</span>'
+            : '<span title="Inconnu — cet utilisateur ne s&#39;est pas reconnecté depuis la mise en place de la mesure" style="' + _pwaStyle + 'background:rgba(255,255,255,.03);color:var(--text3);opacity:.6">?</span>';
       const safeLabel = label.replace(/'/g, '');
       const resetBtn = (self || u.uid === ADMIN_UID) ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px" onclick="adminResetPassword(\'' + u.uid + '\',\'' + safeLabel + '\')">Reset mdp</button>';
       const delBtn = (self || u.uid === ADMIN_UID) ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px;border-color:rgba(255,93,120,.3);color:#ff5d78" onclick="adminDeleteUser(\'' + u.uid + '\',\'' + safeLabel + '\')">Effacer (RGPD)</button>';
