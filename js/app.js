@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811x';
+const APP_VERSION = '20260811y';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -13526,14 +13526,33 @@ function _subscribeThreadDoc(uid) {
   }, () => {});
 }
 
+// L'app tourne-t-elle depuis l'icône installée plutôt que dans un onglet ?
+// C'est la seule mesure fiable côté web : aucune API ne dit « installée »,
+// `getInstalledRelatedApps()` ne vaut que pour une app native associée. On
+// observe donc l'usage, ce qui est de toute façon la question intéressante.
+function _isStandaloneDisplay() {
+  try {
+    return (window.matchMedia && (
+        window.matchMedia('(display-mode: standalone)').matches ||
+        window.matchMedia('(display-mode: fullscreen)').matches ||
+        window.matchMedia('(display-mode: minimal-ui)').matches))
+      || window.navigator.standalone === true
+      || document.referrer.startsWith('android-app://');
+  } catch (e) { return false; }
+}
+
 // Heartbeat presence : écrit online + lastSeen toutes les 30s.
 function _startPresenceHeartbeat() {
   if (window.IS_DEMO || !db || !currentUser) return;
   if (_presenceHeartbeat) clearInterval(_presenceHeartbeat);
+  const pwa = _isStandaloneDisplay();
   const ping = () => {
     if (!currentUser) { if (_presenceHeartbeat) { clearInterval(_presenceHeartbeat); _presenceHeartbeat = null; } return; }
-    setFirestoreDoc(firestoreDoc(db, "presence", currentUser),
-      { online: true, lastSeen: serverTimestamp() }, { merge: true }).catch(() => {});
+    // `pwa` décrit la session en cours ; `pwaEver` ne retombe jamais à faux,
+    // sans quoi une simple visite depuis un onglet effacerait l'information.
+    const data = { online: true, lastSeen: serverTimestamp(), pwa };
+    if (pwa) { data.pwaEver = true; data.pwaAt = serverTimestamp(); }
+    setFirestoreDoc(firestoreDoc(db, "presence", currentUser), data, { merge: true }).catch(() => {});
   };
   ping();
   _presenceHeartbeat = setInterval(ping, 30000);
@@ -13808,7 +13827,9 @@ async function renderAdminUsers() {
     // Online fiable : basé sur la fraîcheur de lastSeen (< 70s = ~2× le
     // heartbeat de 30s), PAS sur le booléen p.online qui reste figé à true si
     // l'onglet meurt sans déclencher beforeunload (fréquent sur mobile/PWA).
-    presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; u.online = !!(u.lastSeen && (Date.now() - u.lastSeen.getTime()) < 70000); });
+    presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; u.online = !!(u.lastSeen && (Date.now() - u.lastSeen.getTime()) < 70000);
+      u.pwaNow = p.pwa === true; u.pwaEver = p.pwaEver === true;
+      u.pwaAt = p.pwaAt && p.pwaAt.toDate ? p.pwaAt.toDate() : null; });
     threadsSnap.forEach(d => { const u = get(d.id), t = d.data(); u.name = t.userName; u.email = t.userEmail; });
 
     // Ne garder que les comptes réellement présents dans Firebase Auth : masque
@@ -13848,6 +13869,15 @@ async function renderAdminUsers() {
       const verifBadge = u.emailVerified === false
         ? '<span title="Email jamais vérifié — suppression automatique 7 jours après l\'inscription" style="font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:5px;font-family:var(--mono);background:rgba(245,183,49,.14);color:#f5b731">MAIL NON VÉRIFIÉ' + (daysLeft !== null ? ' · ' + (daysLeft > 0 ? 'J-' + daysLeft : 'PURGE') : '') + '</span>'
         : '';
+      // PWA : aucune API ne dit « installée ». On sait seulement si la session
+      // tourne depuis l'icône. Plein si c'est le cas maintenant, estompé si ça
+      // l'a été un jour, rien si jamais.
+      const _pwaStyle = 'font-size:9px;font-weight:700;letter-spacing:.5px;padding:2px 7px;border-radius:5px;font-family:var(--mono);';
+      const pwaBadge = u.pwaNow
+        ? '<span title="Session en cours depuis l&#39;app installée" style="' + _pwaStyle + 'background:rgba(0,224,158,.14);color:#00e09e">PWA</span>'
+        : (u.pwaEver
+          ? '<span title="A déjà ouvert l&#39;app installée' + (u.pwaAt ? ' — vu ' + _relTime(u.pwaAt) : '') + '" style="' + _pwaStyle + 'background:rgba(255,255,255,.05);color:var(--text3)">PWA</span>'
+          : '');
       const safeLabel = label.replace(/'/g, '');
       const resetBtn = (self || u.uid === ADMIN_UID) ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px" onclick="adminResetPassword(\'' + u.uid + '\',\'' + safeLabel + '\')">Reset mdp</button>';
       const delBtn = (self || u.uid === ADMIN_UID) ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px;border-color:rgba(255,93,120,.3);color:#ff5d78" onclick="adminDeleteUser(\'' + u.uid + '\',\'' + safeLabel + '\')">Effacer (RGPD)</button>';
@@ -13856,7 +13886,7 @@ async function renderAdminUsers() {
         '<div style="flex:1;min-width:0">' +
           '<div style="font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:7px">' + label +
             (u.lastSeen ? '<span title="Dernière connexion" style="font-size:10px;font-weight:600;color:var(--text2);font-family:var(--mono);padding:1px 6px;background:rgba(255,255,255,.05);border-radius:5px">' + _relTimeShort(u.lastSeen) + '</span>' : '') +
-            roleBadge + verifBadge + '</div>' +
+            roleBadge + verifBadge + pwaBadge + '</div>' +
           '<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + sub + '</div>' +
         '</div>' +
         '<div style="display:flex;gap:6px;flex-shrink:0">' + resetBtn + delBtn + '</div>' +
