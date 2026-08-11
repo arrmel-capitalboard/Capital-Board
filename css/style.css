@@ -3841,3 +3841,69 @@ body.has-demo-banner { padding-top: 40px; }
   .adm-user-actions { flex: 1 1 100%; justify-content: flex-end; }
   .adm-user-actions .pf-btn { flex: 1; text-align: center; }
 }
+
+/* ═══════════════════════════════════════════════════
+   AJOUT RAPIDE — MOBILE, PAGE MON PEA
+   Un bouton + ancré au-dessus de la barre de navigation, qui déplie deux
+   actions. Masqué sur desktop, où les boutons d'en-tête suffisent.
+   ═══════════════════════════════════════════════════ */
+#pea-fab { display: none; }
+
+@media (max-width: 768px) {
+  #pea-fab.on { display: block; }
+
+  .pea-fab-veil {
+    position: fixed; inset: 0; z-index: 190;
+    background: rgba(4, 6, 11, 0.55);
+    opacity: 0; pointer-events: none; transition: opacity .18s ease;
+  }
+  #pea-fab.open .pea-fab-veil { opacity: 1; pointer-events: auto; }
+
+  /* La barre mesure ~58px plus la zone sûre des téléphones sans bouton. */
+  .pea-fab-main {
+    position: fixed; right: 16px; z-index: 205;
+    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
+    width: 52px; height: 52px; border-radius: 50%;
+    border: none; cursor: pointer; color: #fff;
+    background: linear-gradient(135deg, var(--accent), #6b5ee8);
+    box-shadow: 0 8px 24px rgba(124, 109, 245, .45);
+    display: grid; place-items: center;
+    transition: transform .2s ease, box-shadow .2s ease;
+  }
+  .pea-fab-main:active { transform: scale(.94); }
+  #pea-fab.open .pea-fab-main { transform: rotate(45deg); }
+
+  .pea-fab-actions {
+    position: fixed; right: 16px; z-index: 205;
+    bottom: calc(132px + env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+    opacity: 0; pointer-events: none;
+    transform: translateY(8px) scale(.96);
+    transform-origin: bottom right;
+    transition: opacity .18s ease, transform .18s ease;
+  }
+  #pea-fab.open .pea-fab-actions { opacity: 1; pointer-events: auto; transform: none; }
+
+  .pea-fab-action {
+    display: flex; align-items: center; gap: 10px;
+    background: none; border: none; padding: 0; cursor: pointer;
+    font-family: var(--sans);
+  }
+  .pea-fab-label {
+    background: var(--s2); border: 1px solid var(--border2);
+    color: var(--text); font-size: 12.5px; font-weight: 600;
+    padding: 8px 13px; border-radius: 999px;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
+    white-space: nowrap;
+  }
+  .pea-fab-ico {
+    width: 42px; height: 42px; border-radius: 50%;
+    background: var(--s3); border: 1px solid var(--border2);
+    color: var(--accent); display: grid; place-items: center; flex-shrink: 0;
+    box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .pea-fab-veil, .pea-fab-main, .pea-fab-actions { transition: none; }
+}

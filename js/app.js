@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260812j';
+const APP_VERSION = '20260812k';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3578,7 +3578,25 @@ function _scrollToTop() {
 // Affiche la barre de sous-onglets quand la page active appartient au PEA, et
 // y marque l'onglet courant. Un onglet dont la section est désactivée par
 // l'admin disparaît de la barre.
+// Bouton d'ajout rapide : présent sur la seule page Mon PEA, en mobile.
+// Le repli à chaque changement de page évite de le retrouver ouvert ailleurs.
+window.togglePeaFab = function (force) {
+  const el = document.getElementById('pea-fab');
+  if (!el) return;
+  const open = force === undefined ? !el.classList.contains('open') : !!force;
+  el.classList.toggle('open', open);
+  el.setAttribute('aria-hidden', open ? 'false' : 'true');
+};
+
+function _syncPeaFab(id) {
+  const el = document.getElementById('pea-fab');
+  if (!el) return;
+  el.classList.toggle('on', id === 'portfolio');
+  if (id !== 'portfolio') togglePeaFab(false);
+}
+
 function _syncPeaTabs(id) {
+  _syncPeaFab(id);
   const bar = document.getElementById('pea-tabs');
   if (!bar) return;
   const inPea = PEA_TABS.includes(id);
