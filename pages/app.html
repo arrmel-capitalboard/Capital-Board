@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260811n">
+<link rel="stylesheet" href="css/style.css?v=20260811q">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -656,7 +656,6 @@
       <button type="button" class="pea-tab" data-tab="dividendes" onclick="showPeaTab('dividendes')">Dividendes</button>
       <button type="button" class="pea-tab" data-tab="avantages"  onclick="showPeaTab('avantages')">Avantages</button>
       <button type="button" class="pea-tab" data-tab="watchlist"  onclick="showPeaTab('watchlist')">Watchlist</button>
-      <button type="button" class="pea-tab" data-tab="performance" onclick="showPeaTab('performance')">Performance</button>
       <button type="button" class="pea-tab" data-tab="benchmark"  onclick="showPeaTab('benchmark')">Benchmark</button>
       <button type="button" class="pea-tab" data-tab="projections" onclick="showPeaTab('projections')">Projections</button>
       <button type="button" class="pea-tab" data-tab="earnings"   onclick="showPeaTab('earnings')">Calendrier résultats</button>
@@ -1047,122 +1046,6 @@
             style="background:var(--accent);border:none;color:#fff;border-radius:8px;padding:6px 13px;cursor:pointer;font-size:12px;font-weight:600">
             + Saisir un dividende reçu
           </button>
-        </div>
-      </div>
-    </div>
-
-    <!-- ══════════════════════════════════════════════
-         PERFORMANCE PAGE
-         ══════════════════════════════════════════════ -->
-    <div class="page" id="page-performance">
-      <div class="page-header">
-        <div>
-          <div class="page-title">Performance</div>
-          <div class="page-subtitle">Rendement TWR annuel via CSV Broker</div>
-        </div>
-      </div>
-
-      <!-- Barre d'outils -->
-      <div style="display:flex;gap:6px;flex-wrap:wrap;align-items:center;margin-bottom:18px">
-
-        <!-- Broker + import -->
-        <div style="display:flex;align-items:center;gap:0;border:1px solid var(--s3);border-radius:10px;background:var(--s2);position:relative">
-          <!-- Broker : dropdown custom (Boursorama dispo, autres bientôt) -->
-          <div class="broker-dd" id="broker-dd">
-            <button type="button" class="broker-dd-toggle" onclick="toggleBrokerDD(event)">
-              <img class="broker-logo" id="broker-logo" src="https://www.google.com/s2/favicons?domain=boursorama.com&sz=64" alt="">
-              <span id="broker-current">Boursorama</span>
-              <svg class="broker-caret" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg>
-            </button>
-            <div class="broker-dd-menu" id="broker-dd-menu">
-              <button type="button" class="broker-opt" onclick="selectBroker('boursorama','Boursorama','boursorama.com')">
-                <img class="broker-logo" src="https://www.google.com/s2/favicons?domain=boursorama.com&sz=64" alt="">
-                <span class="broker-opt-name">Boursorama</span>
-                <svg class="broker-check" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
-              </button>
-              <button type="button" class="broker-opt disabled" disabled>
-                <img class="broker-logo" src="https://www.google.com/s2/favicons?domain=fortuneo.fr&sz=64" alt="">
-                <span class="broker-opt-name">Fortuneo</span>
-                <span class="broker-soon">Dispo bientôt</span>
-              </button>
-              <button type="button" class="broker-opt disabled" disabled>
-                <img class="broker-logo" src="https://www.google.com/s2/favicons?domain=traderepublic.com&sz=64" alt="">
-                <span class="broker-opt-name">Trade Republic</span>
-                <span class="broker-soon">Dispo bientôt</span>
-              </button>
-            </div>
-          </div>
-          <div style="width:1px;height:18px;background:var(--s3)"></div>
-          <button onclick="onImportCSVClick()" id="btn-import-csv"
-            style="font-size:11px;padding:7px 12px;background:transparent;color:var(--text1);border:none;cursor:pointer;white-space:nowrap;display:flex;align-items:center;gap:5px">
-            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>
-            Importer CSV
-          </button>
-        </div>
-
-        <input type="file" id="input-daily-csv" accept=".csv" style="display:none" onchange="importDailyValuesCSV(event)">
-
-        <!-- Vider -->
-        <button onclick="confirmClearDaily()" id="btn-clear-daily" class="perf-action-btn perf-btn-danger">
-          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="1 4 1 10 7 10"/><path d="M3.51 15a9 9 0 1 0 .49-4.5"/></svg>
-          <span id="btn-clear-label">Réinitialiser</span>
-        </button>
-
-        <span id="daily-status" style="font-size:11px;color:var(--text3)"></span>
-        <div id="csv-import-success"></div>
-
-        <!-- Exports -->
-        <div style="display:flex;align-items:center;gap:0;border:1px solid var(--s3);border-radius:10px;overflow:hidden;background:var(--s2);margin-left:auto">
-          <button onclick="exportVersementsCSV()" class="perf-export-btn">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Versements
-          </button>
-          <div style="width:1px;height:18px;background:var(--s3)"></div>
-          <button onclick="exportTransactionsCSV()" class="perf-export-btn">
-            <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-            Transactions
-          </button>
-        </div>
-
-      </div>
-
-      <!-- Info : décalage CSV Boursorama -->
-      <div style="display:flex;gap:8px;align-items:flex-start;background:var(--s2);border:1px solid var(--s3);border-radius:10px;padding:10px 12px;margin-bottom:18px;font-size:11px;color:var(--text2);line-height:1.5">
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="var(--accent)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0;margin-top:1px"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
-        <span>L'export CSV de Boursorama a <strong>1 jour de retard</strong> : la valorisation la plus récente est celle de la veille. Exemple : un import le mardi soir ne contient les données que jusqu'au lundi. Seul l'import du <strong>samedi</strong> est à jour (clôture du vendredi).</span>
-      </div>
-
-      <!-- KPI résumé -->
-      <div class="stats-scroll-wrap">
-        <div class="stats-grid" style="grid-template-columns:repeat(auto-fit,minmax(180px,1fr))" id="perf-kpis"></div>
-      </div>
-
-      <!-- Graphique barres -->
-      <div class="section-card" style="margin-bottom:18px">
-        <div class="section-title">Performance par année</div>
-        <div style="position:relative;height:320px">
-          <canvas id="chart-perf-annual"></canvas>
-          <div id="perf-chart-empty" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;color:var(--text3);font-size:13px;text-align:center">
-            Aucune donnée — merci d'importer un CSV.
-          </div>
-        </div>
-      </div>
-
-      <!-- Tableau détaillé -->
-      <div class="section-card">
-        <div class="section-title">Détail annuel</div>
-        <div style="overflow-x:auto">
-          <table>
-            <thead>
-              <tr>
-                <th style="text-align:left">Année</th>
-                <th>Investi</th>
-                <th>Gain</th>
-                <th>Perf %</th>
-              </tr>
-            </thead>
-            <tbody id="perf-tbody"></tbody>
-          </table>
         </div>
       </div>
     </div>
@@ -2877,7 +2760,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260811n"></script>
+<script src="js/app.js?v=20260811q"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
