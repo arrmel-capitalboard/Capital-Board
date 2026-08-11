@@ -2254,13 +2254,23 @@ body.sb-collapsed .main { margin-left: 58px; }
      disparaît de la ligne. Pour qu'un nom long ne s'empile pas sur huit
      lignes, la colonne du titre prend toute la place laissée par les colonnes
      chiffrées, réduites à leur contenu. */
-  #page-portfolio .ticker-cell { gap: 9px; align-items: center; }
-  #page-portfolio .ticker-name { font-size: 12.5px; line-height: 1.35; }
+  #page-portfolio .ticker-cell { gap: 7px; align-items: center; }
+  #page-portfolio .ticker-name { font-size: 12px; line-height: 1.3; }
   #page-portfolio .ticker-sym { display: none !important; }
-  #page-portfolio table td:first-child { width: auto; }
+
+  /* Le nom ne disposait que d'environ 90px : le logo, les marges de cellule et
+     les colonnes chiffrées mangeaient le reste, d'où un mot par ligne. On leur
+     reprend chacun quelques pixels et la colonne du titre absorbe le gain. */
+  #page-portfolio th:first-child,
+  #page-portfolio td:first-child { padding-left: 10px !important; width: auto; }
+  #page-portfolio th:last-child,
+  #page-portfolio td:last-child { padding-right: 6px !important; }
+  #page-portfolio th, #page-portfolio td { padding-left: 6px; padding-right: 6px; }
+  #page-portfolio .ticker-icon { width: 26px; height: 26px; border-radius: 7px; }
   #page-portfolio table td.c-valcell,
-  #page-portfolio table td.c-day { width: 1%; white-space: nowrap; font-size: 12px; }
-  #page-portfolio table td.mono { font-size: 12px; }
+  #page-portfolio table td.c-day { width: 1%; white-space: nowrap; font-size: 11.5px; }
+  #page-portfolio table td.mono { font-size: 11.5px; }
+  #page-portfolio .btn-voir-plus { padding: 4px 6px; }
 
   /* Boutons mobile only */
   .show-mobile-inline { display: inline-flex !important; }
