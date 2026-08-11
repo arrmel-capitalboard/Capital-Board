@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811g';
+const APP_VERSION = '20260811h';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -11235,39 +11235,96 @@ function toggleDivHistory() {
 // sur la fraction du capital détenue en deçà de 0,5 %.
 // ═══════════════════════════════════════════════════════════════════════
 const PERKS_CHECKED_AT = '11 août 2026';
+
+// Trois familles d'avantages, qui n'obéissent pas aux mêmes règles : la prime
+// de fidélité exige le nominatif et de la durée, l'attribution d'actions
+// gratuites ne demande rien, le club actionnaires demande un nombre d'actions.
+const PERK_KINDS = {
+  dividende: { label: 'Dividende majoré', color: 'var(--positive)' },
+  actions:   { label: 'Actions gratuites', color: 'var(--gold)' },
+  club:      { label: 'Club actionnaires', color: '#a99bff' },
+};
+
+// `years` = durée de nominatif exigée par la prime de fidélité, absent si la
+// société n'en propose pas. Les agrégateurs se contredisent beaucoup sur ces
+// chiffres — chaque entrée a été recoupée à sa source, et celles qui n'ont pas
+// de source société sont marquées comme telles dans l'écran.
 const SHAREHOLDER_PERKS = [
   {
     ticker: 'AI.PA', name: 'Air Liquide', years: 2, official: true,
     source: 'https://www.airliquide.com/help/loyalty-bonus',
     perks: [
-      { label: 'Dividende majoré +10 %', rate: 0.10 },
-      { label: 'Actions gratuites majorées +10 %', note: 'Attribution périodique — la dernière date de juin 2026' },
+      { kind: 'dividende', label: 'Dividende majoré +10 %', rate: 0.10 },
+      { kind: 'actions', label: 'Actions gratuites majorées +10 %', note: 'Attribution périodique — la dernière date de juin 2026' },
     ],
   },
   {
     ticker: 'OR.PA', name: "L'Oréal", years: 2, official: true,
-    source: 'https://www.loreal-finance.com/fr/prime-de-fidelite-et-nominatif',
-    perks: [{ label: 'Dividende majoré +10 %', rate: 0.10 }],
+    source: 'https://www.loreal-finance.com/eng/loyalty-bonus-and-registered-shares',
+    perks: [{ kind: 'dividende', label: 'Dividende majoré +10 %', rate: 0.10 }],
   },
   {
     ticker: 'ENGI.PA', name: 'Engie', years: 2, official: true,
     source: 'https://www.engie.com/en/investors/dividend-and-loyalty-bonus/',
-    perks: [{ label: 'Dividende majoré +10 %', rate: 0.10, note: 'Les titres logés dans un PEA y donnent droit' }],
+    perks: [{ kind: 'dividende', label: 'Dividende majoré +10 %', rate: 0.10, note: 'Les titres logés dans un PEA y donnent droit' }],
   },
   {
     ticker: 'SK.PA', name: 'Groupe SEB', years: 2, official: true,
     source: 'https://www.groupeseb.com/fr/webzine/parcours-boursier-et-dividende',
-    perks: [{ label: 'Dividende majoré +10 %', rate: 0.10 }],
+    perks: [
+      { kind: 'dividende', label: 'Dividende majoré +10 %', rate: 0.10 },
+      { kind: 'club', label: 'Catalogue produits à prix réduit', note: 'Réservé aux actionnaires au nominatif' },
+    ],
   },
   {
     ticker: 'SW.PA', name: 'Sodexo', years: 4, official: true,
     source: 'https://www.sodexo.com/fr/investors/shareholders/benefits-registered-shareholder',
-    perks: [{ label: 'Dividende majoré +10 %', rate: 0.10, note: 'Quatre ans de détention exigés, deux fois plus qu\'ailleurs' }],
+    perks: [{ kind: 'dividende', label: 'Dividende majoré +10 %', rate: 0.10, note: 'Quatre ans de détention exigés, deux fois plus qu\'ailleurs' }],
   },
   {
     ticker: 'RF.PA', name: 'Eurazeo', years: 2, official: false,
     source: 'https://www.moneyvox.fr/forums/fil/liste-de-valeurs-offrant-une-prime-de-fidelite-en-nominatif-administre.26980/',
-    perks: [{ label: 'Dividende majoré +10 %', rate: 0.10, note: 'En place depuis 2023' }],
+    perks: [{ kind: 'dividende', label: 'Dividende majoré +10 %', rate: 0.10, note: 'En place depuis 2023' }],
+  },
+  {
+    ticker: 'ITP.PA', name: 'Interparfums', official: true,
+    source: 'https://www.interparfums-finance.fr/en/publications/press-release/bonus-share-award-1-new-share-for-every-10-held/',
+    perks: [{
+      kind: 'actions', label: 'Attribution d\'actions gratuites, tous les ans',
+      note: '27ᵉ année consécutive en 2026, au rythme d\'une action nouvelle pour vingt détenues. Aucune condition de nominatif ; les rompus sont vendus et reversés.',
+    }],
+  },
+  {
+    ticker: 'GET.PA', name: 'Getlink', official: true,
+    source: 'https://www.getlinkgroup.com/content/uploads/2026/04/guide-actionnaire-2026-fr-interactif-vf1.pdf',
+    perks: [{
+      kind: 'club', label: '−30 % sur les traversées Eurotunnel', minShares: 750,
+      note: '750 actions au nominatif pur depuis plus de trois mois, pour six trajets simples par an',
+    }],
+  },
+  {
+    ticker: 'CDA.PA', name: 'Compagnie des Alpes', official: true,
+    source: 'https://espace-actionnaires.compagniedesalpes.com/rejoindre-le-club',
+    perks: [
+      { kind: 'club', label: 'Club actionnaires dès 1 action', note: 'Réunions, reportages et invitations' },
+      { kind: 'club', label: 'Bons stations de ski et parcs', minShares: 400, note: 'Dès 400 actions au nominatif détenues deux ans : La Plagne, Tignes, Val d\'Isère, Parc Astérix, Futuroscope, Walibi' },
+    ],
+  },
+  {
+    ticker: 'MC.PA', name: 'LVMH', official: false,
+    source: 'https://clubsactionnaires.fr/entreprises/lvmh',
+    perks: [{
+      kind: 'club', label: 'Club actionnaires dès 1 action', minShares: 1,
+      note: 'Tarifs réduits sur les champagnes, vins et spiritueux du groupe, visites privées. Porteur accepté, nominatif non exigé.',
+    }],
+  },
+  {
+    ticker: 'DG.PA', name: 'Vinci', official: true,
+    source: 'https://www.vinci.com/en/finance/shareholders/club',
+    perks: [{
+      kind: 'club', label: 'Club actionnaires dès 1 action', minShares: 1,
+      note: 'Une trentaine de visites de chantiers et de sites par an. Vinci ne verse pas de dividende majoré.',
+    }],
   },
 ];
 
@@ -11324,12 +11381,37 @@ function initAvantages() {
       ${entry.official ? 'Source société' : 'Source non officielle — à confirmer'}
     </a>`;
 
+  const kindTag = (kind) => {
+    const k = PERK_KINDS[kind] || PERK_KINDS.club;
+    return `<span style="font-size:9px;font-weight:700;letter-spacing:0.4px;text-transform:uppercase;color:${k.color};border:1px solid ${k.color};opacity:0.85;border-radius:4px;padding:1px 6px;white-space:nowrap">${k.label}</span>`;
+  };
+
+  // Le nombre d'actions détenues décide de l'accès aux avantages de club.
+  const perkLine = (p, qty) => {
+    const short = qty !== null && p.minShares && qty < p.minShares;
+    return `
+      <div style="display:flex;align-items:flex-start;gap:8px">
+        <span style="color:${short ? 'var(--text3)' : 'var(--positive)'};font-size:12px;line-height:1.5">${short ? '·' : '✓'}</span>
+        <div style="min-width:0">
+          <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+            <span style="font-size:12px;color:var(--text1);font-weight:600">${p.label}</span>
+            ${kindTag(p.kind)}
+            ${short ? `<span style="font-size:10px;color:var(--gold)">il vous en manque ${p.minShares - qty}</span>` : ''}
+          </div>
+          ${p.note ? `<div style="font-size:11px;color:var(--text3);margin-top:2px;line-height:1.5">${p.note}</div>` : ''}
+        </div>
+      </div>`;
+  };
+
   const heldHtml = held.map(({ entry, row }) => {
-    const nom     = _nominatifEntry(entry.ticker);
-    const since   = nom ? nom.year : null;
-    const firstY  = since ? _perkFirstYear(entry, since) : null;
-    const acquise = firstY !== null && nowY >= firstY;
-    const badge   = since === null
+    const hasPrime = !!entry.years;
+    const nom      = _nominatifEntry(entry.ticker);
+    const since    = nom ? nom.year : null;
+    const firstY   = (hasPrime && since) ? _perkFirstYear(entry, since) : null;
+    const acquise  = firstY !== null && nowY >= firstY;
+    const badge    = !hasPrime
+      ? ''
+      : since === null
       ? '<span style="background:var(--s3);color:var(--text3);font-size:10px;padding:3px 9px;border-radius:5px">Statut à renseigner</span>'
       : acquise
       ? '<span style="background:rgba(0,224,158,0.14);color:var(--positive);font-size:10px;font-weight:600;padding:3px 9px;border-radius:5px">Prime acquise</span>'
@@ -11349,57 +11431,66 @@ function initAvantages() {
           </div>
           ${badge}
         </div>
-        <div style="display:flex;flex-direction:column;gap:7px;margin-bottom:14px">
-          ${entry.perks.map(p => `
-            <div style="display:flex;align-items:flex-start;gap:8px">
-              <span style="color:var(--positive);font-size:12px;line-height:1.5">✓</span>
-              <div>
-                <div style="font-size:12px;color:var(--text1);font-weight:600">${p.label}</div>
-                ${p.note ? `<div style="font-size:11px;color:var(--text3);margin-top:1px">${p.note}</div>` : ''}
-              </div>
-            </div>`).join('')}
+        <div style="display:flex;flex-direction:column;gap:10px;margin-bottom:14px">
+          ${entry.perks.map(p => perkLine(p, row.qty)).join('')}
         </div>
+        ${hasPrime ? `
         <div style="font-size:11px;color:var(--text3);margin-bottom:12px;line-height:1.5">
-          Conditions : titres inscrits au nominatif pendant ${entry.years} années civiles pleines,
+          Prime de fidélité : titres inscrits au nominatif pendant ${entry.years} années civiles pleines,
           dans la limite de 0,5 % du capital.
-        </div>
+        </div>` : ''}
         <div style="display:flex;align-items:center;gap:12px;flex-wrap:wrap">
+          ${hasPrime ? `
           <select onchange="setNominatifYear('${entry.ticker}', this.value)"
                   style="background:var(--s2);border:1px solid var(--border);color:var(--text1);border-radius:8px;padding:7px 10px;font-size:12px;font-family:var(--sans);cursor:pointer">
             ${yearOpts(since)}
-          </select>
-          ${gain !== null && since !== null
-            ? `<div style="font-size:12px;font-family:var(--mono);color:${acquise ? 'var(--positive)' : 'var(--text3)'}">
-                 ${acquise ? '+' : 'à terme +'}${gain.toFixed(2)} € / an</div>`
-            : (gain !== null
-              ? `<div style="font-size:11px;color:var(--text3)">Vaudrait +${gain.toFixed(2)} € par an</div>`
-              : '')}
+          </select>` : ''}
+          ${hasPrime && gain !== null
+            ? (since !== null
+              ? `<div style="font-size:12px;font-family:var(--mono);color:${acquise ? 'var(--positive)' : 'var(--text3)'}">
+                   ${acquise ? '+' : 'à terme +'}${gain.toFixed(2)} € / an</div>`
+              : `<div style="font-size:11px;color:var(--text3)">Vaudrait +${gain.toFixed(2)} € par an</div>`)
+            : ''}
           <div style="margin-left:auto">${sourceLink(entry)}</div>
         </div>
       </div>`;
   }).join('');
 
   const othersHtml = others.map(entry => `
-    <div style="display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--border)">
+    <div style="display:flex;align-items:flex-start;gap:11px;padding:12px 0;border-top:1px solid var(--border)">
       ${logoHtml(entry.ticker, 24, 'ticker-icon')}
       <div style="flex:1;min-width:0">
-        <div style="font-size:12px;font-weight:600;color:var(--text1)">${entry.name}</div>
-        <div style="font-size:11px;color:var(--text3)">${entry.perks.map(p => p.label).join(' · ')} — ${entry.years} ans au nominatif</div>
+        <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
+          <span style="font-size:12px;font-weight:600;color:var(--text1)">${entry.name}</span>
+          ${[...new Set(entry.perks.map(p => p.kind))].map(kindTag).join('')}
+        </div>
+        <div style="font-size:11px;color:var(--text3);margin-top:3px;line-height:1.5">
+          ${entry.perks.map(p => p.label).join(' · ')}${entry.years ? ` — ${entry.years} années au nominatif` : ''}
+        </div>
       </div>
-      ${sourceLink(entry)}
+      <div style="white-space:nowrap">${sourceLink(entry)}</div>
     </div>`).join('');
 
   el.innerHTML = `
     <div class="section-card" style="margin-bottom:18px">
       <div class="section-title" style="margin-bottom:10px">Comment ça marche</div>
       <div style="font-size:12px;color:var(--text2);line-height:1.65">
-        Quelques sociétés versent <b style="color:var(--text1)">10 % de dividende en plus</b> aux actionnaires
-        qui gardent leurs titres longtemps. La condition est toujours la même : détenir les actions
-        <b style="color:var(--text1)">au nominatif</b> — inscrites à votre nom, chez la société ou chez votre
-        courtier — et non en compte ordinaire. Le nominatif administré reste logeable dans un PEA.
+        Certaines sociétés donnent quelque chose en plus à leurs actionnaires. Trois familles, qui
+        n'obéissent pas aux mêmes règles :
         <br><br>
-        Votre courtier ne transmet pas cette information : indiquez ci-dessous depuis quand vous êtes
-        au nominatif, ligne par ligne, et Capital Board calcule la date à laquelle la prime tombe.
+        <b style="color:var(--positive)">Dividende majoré</b> — 10 % de dividende en plus, à condition de
+        détenir les actions <b style="color:var(--text1)">au nominatif</b> (inscrites à votre nom, chez la
+        société ou chez votre courtier) pendant deux à quatre années civiles pleines. Le nominatif
+        administré reste logeable dans un PEA.
+        <br>
+        <b style="color:var(--gold)">Actions gratuites</b> — la société vous en offre au prorata de ce que
+        vous détenez, en général sans condition de durée.
+        <br>
+        <b style="color:#a99bff">Club actionnaires</b> — réductions sur les produits, visites, événements.
+        Ce qui compte ici est le <b style="color:var(--text1)">nombre d'actions</b>, parfois une seule.
+        <br><br>
+        Votre courtier ne dit pas si vous êtes au nominatif : indiquez-le ci-dessous ligne par ligne, et
+        Capital Board calcule l'année où la prime tombe.
       </div>
     </div>
 
@@ -11412,9 +11503,10 @@ function initAvantages() {
 
     <div class="section-card">
       <div class="section-title" style="margin-bottom:4px">Sociétés qui en proposent</div>
-      <div style="font-size:11px;color:var(--text3);margin-bottom:6px">
-        Registre tenu à la main, vérifié le ${PERKS_CHECKED_AT}. Un programme peut changer sans préavis :
-        vérifiez auprès de la société avant de passer au nominatif.
+      <div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.5">
+        Registre tenu à la main, vérifié le ${PERKS_CHECKED_AT} — aucune API ne publie ces programmes.
+        Les agrégateurs se contredisent souvent : chaque ligne renvoie à sa source, et celles qui n'ont
+        pas de source société sont signalées. Un programme peut changer sans préavis.
       </div>
       ${othersHtml || '<div style="font-size:12px;color:var(--text3);padding-top:10px">Vous les détenez toutes.</div>'}
     </div>`;
