@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811d';
+const APP_VERSION = '20260811e';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -10880,7 +10880,7 @@ function initDividendes() {
   if (kpis) kpis.innerHTML = `
     <div class="stat-card" id="div-kpi-recus">
       <div class="stat-label" style="display:flex;align-items:center;gap:6px">${IC.gift}Dividendes reçus</div>
-      <div class="stat-value" style="color:var(--gold)">—</div>
+      <div class="stat-value" style="color:var(--positive)">—</div>
       <div class="stat-change pos">Chargement…</div>
     </div>
     <div class="stat-card">
@@ -10976,7 +10976,7 @@ function initDividendes() {
     const kpiNext    = document.getElementById('div-kpi-next');
     if (kpiRecus) kpiRecus.innerHTML = `
       <div class="stat-label" style="display:flex;align-items:center;gap:6px">${IC.gift}Dividendes reçus</div>
-      <div class="stat-value" style="color:var(--gold);font-size:26px">${totalRecuAuto.toFixed(2)} €</div>
+      <div class="stat-value" style="color:var(--positive);font-size:26px">${totalRecuAuto.toFixed(2)} €</div>
       ${totalVersionts > 0 ? `<div class="stat-change pos">${totalVersionts} versement(s) détecté(s)</div>` : ''}`;
     if (kpiHolding) kpiHolding.innerHTML = `
       <div class="stat-label" style="display:flex;align-items:center;gap:6px">${IC.calendar}Versements pendant détention</div>
@@ -11101,7 +11101,7 @@ function initDividendes() {
             </div></td>
             <td data-label="Détenu depuis" class="mono" style="font-size:11px;color:var(--text3)">${buyStr}</td>
             <td data-label="Quantité" class="mono">${r.qty}</td>
-            <td data-label="Total reçu" class="mono" style="color:var(--gold);font-weight:600">${totalRecu > 0 ? totalRecu.toFixed(2)+' €' : '—'}</td>
+            <td data-label="Total reçu" class="mono" style="color:${totalRecu > 0 ? 'var(--positive)' : 'var(--text3)'};font-weight:600">${totalRecu > 0 ? totalRecu.toFixed(2)+' €' : '—'}</td>
             <td data-label="Dernier div./action" class="mono" style="color:var(--text2)">${lastKnown ? lastKnown.amount.toFixed(2)+' €/action' : '—'}</td>
             <td data-label="Prochain estimé" style="font-size:11px;color:var(--text2)">${nextEstim !== '—' ? nextEstim : '—'}</td>
             <td data-label="Pendant détention">${holdingBadge}</td>
@@ -11182,7 +11182,7 @@ function renderDivHistory(histEl) {
       <td data-label="Action"><div style="display:flex;align-items:center;gap:6px">${logoHtml(e.ticker||'',20,'ticker-icon')}
         <div><span style="font-size:12px">${e.name||e.ticker}</span>
         ${e.label?`<div style="font-size:10px;color:var(--text3)">${e.label}</div>`:''}</div></div></td>
-      <td data-label="Montant total" class="mono" style="font-weight:600;color:var(--gold)">${e.amount.toFixed(2)} €</td>
+      <td data-label="Montant total" class="mono" style="font-weight:600;color:${e.source==='annoncé' ? 'var(--gold)' : (e.source==='référence' ? 'var(--text3)' : 'var(--positive)')}">${e.amount.toFixed(2)} €</td>
       <td data-label="Par action" class="mono" style="font-size:11px;color:var(--text3)">${e.perShare == null ? '—' : e.perShare.toFixed(3) + ' €/action'}</td>
       <td data-label="Période">${periodBadge}</td>
       <td data-label="Statut">${statutBadge}</td>
