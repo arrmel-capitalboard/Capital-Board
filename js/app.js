@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260813m';
+const APP_VERSION = '20260813n';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -10773,12 +10773,12 @@ function projNumStep(id, dir) {
 
 
 function initProjections() {
-  // Pre-fill base with current portfolio value
-  const pf = getPortfolio(currentUser);
-  const totalVal = pf.reduce((s, r) => s + r.qty * r.currentPrice, 0);
+  // Premier affichage : on part des données du compte. Ensuite on respecte ce
+  // que l'utilisateur a saisi — le bouton « Repartir de mes données » est là
+  // pour ça.
   const el = document.getElementById('proj-base');
-  if (el) el.value = totalVal.toFixed(2);
-  renderProjections();
+  if (el && el.value === '') projFillFromData();
+  else renderProjections();
 }
 
 // ═══════════════════════════════════════════════════
