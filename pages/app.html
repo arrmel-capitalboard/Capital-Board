@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260812z">
+<link rel="stylesheet" href="css/style.css?v=20260813a">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -772,7 +772,10 @@
           <span class="table-title">Mes titres</span>
           <div style="display:flex;gap:6px;align-items:center">
             <button class="btn-add btn-anim-preview" id="btn-anim-preview" onclick="previewRefreshAnim()" title="Rejoue les animations sans toucher aux données" style="display:none">▶ Aperçu anim</button>
-            <button class="btn-add" onclick="document.getElementById('csv-import-input').click()" style="background:rgba(245,183,49,0.08);border-color:rgba(245,183,49,0.2);color:var(--gold)"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Importer CSV</button>
+            <!-- L'import CSV cède la place à l'import assisté, encore à venir.
+                 Le champ fichier et importCSV() restent en place : la lecture de
+                 relevés s'appuiera dessus. -->
+            <button class="btn-add btn-ia" onclick="openImportIA()"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="M18.5 15.5l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9z"/></svg>Importer mon portefeuille<span class="ia-soon">bientôt</span></button>
             <input type="file" id="csv-import-input" accept=".csv" style="display:none" onchange="importCSV(event)">
             <button class="btn-add" onclick="openModal()">＋ Ajouter une ligne</button>
           </div>
@@ -2761,7 +2764,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260812z"></script>
+<script src="js/app.js?v=20260813a"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

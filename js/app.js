@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260812z';
+const APP_VERSION = '20260813a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4646,6 +4646,24 @@ function navigateDropdown(ddId, direction) {
   items[_ddActiveIdx]?.classList.add('active');
   items[_ddActiveIdx]?.scrollIntoView({ block: 'nearest' });
 }
+
+// Import assisté du portefeuille — annonce. La lecture de relevés n'est pas
+// encore branchée ; le bouton explique la promesse plutôt que d'ouvrir un
+// sélecteur de fichier qui ne saurait rien en faire.
+window.openImportIA = function () {
+  showConfirmModal({
+    icon: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#a99bff" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">'
+      + '<path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/>'
+      + '<path d="M18.5 15.5l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9z"/></svg>',
+    title: 'Importer mon portefeuille — bientôt',
+    body: "Déposez le relevé de votre courtier, en PDF ou en CSV, et l'analyse en "
+      + "reconstitue le portefeuille : chaque ligne, sa quantité, son prix de revient et sa date d'achat. "
+      + "Plus de saisie ligne par ligne, ni de colonnes à faire correspondre à la main.\n\n"
+      + "La fonction est en préparation. En attendant, ajoutez vos lignes avec le bouton voisin.",
+    okLabel: 'Compris',
+    infoOnly: true,
+  });
+};
 
 function openModal() {
   document.getElementById('modal-overlay').classList.add('open');

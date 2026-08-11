@@ -3975,3 +3975,17 @@ body.has-demo-banner { padding-top: 40px; }
   border-radius: 999px; font-size: 9px; font-weight: 800;
   font-family: var(--mono); display: grid; place-items: center;
 }
+
+/* Bouton d'import assisté : teinte violette de l'IA, mention « bientôt ». */
+.btn-add.btn-ia {
+  background: rgba(124,109,245,.10);
+  border-color: rgba(124,109,245,.28);
+  color: #a99bff;
+}
+.btn-add.btn-ia:hover { background: rgba(124,109,245,.16); }
+.ia-soon {
+  margin-left: 7px; font-size: 9px; font-weight: 800; letter-spacing: .4px;
+  text-transform: uppercase; font-family: var(--mono);
+  background: rgba(124,109,245,.18); color: #c3b9ff;
+  border-radius: 5px; padding: 2px 6px;
+}
