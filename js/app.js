@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811e';
+const APP_VERSION = '20260811f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -10147,7 +10147,7 @@ function computeBilanAnnuel() {
   versements.forEach(v => {
     if (!v.date) return;
     const y = new Date(v.date + 'T12:00:00').getFullYear();
-    if (!years[y]) years[y] = { apport: 0, dividendes: 0, realizedPnl: 0, achats: 0, ventes: 0 };
+    if (!years[y]) years[y] = { apport: 0, dividendes: 0, distributions: 0, realizedPnl: 0, achats: 0, ventes: 0 };
     years[y].apport += v.amount;
   });
 
@@ -10156,7 +10156,7 @@ function computeBilanAnnuel() {
     txs.filter(t => t.type === 'buy').forEach(t => {
       if (!t.date) return;
       const y = new Date(t.date + 'T12:00:00').getFullYear();
-      if (!years[y]) years[y] = { apport: 0, dividendes: 0, realizedPnl: 0, achats: 0, ventes: 0 };
+      if (!years[y]) years[y] = { apport: 0, dividendes: 0, distributions: 0, realizedPnl: 0, achats: 0, ventes: 0 };
       years[y].apport += t.qty * t.price;
     });
   }
@@ -10165,14 +10165,17 @@ function computeBilanAnnuel() {
   txs.forEach(t => {
     if (!t.date) return;
     const y = new Date(t.date + 'T12:00:00').getFullYear();
-    if (!years[y]) years[y] = { apport: 0, dividendes: 0, realizedPnl: 0, achats: 0, ventes: 0 };
+    if (!years[y]) years[y] = { apport: 0, dividendes: 0, distributions: 0, realizedPnl: 0, achats: 0, ventes: 0 };
     if (t.type === 'buy')  years[y].achats += t.qty * t.price;
     if (t.type === 'sell') {
       years[y].ventes += t.qty * t.price;
       if (t.realizedPnl != null) years[y].realizedPnl += t.realizedPnl;
     }
-    // Les rompus d'attribution gratuite sont du cash encaissé au même titre.
-    if (t.type === 'dividend' || t.type === 'distribution') years[y].dividendes += t.qty * t.price;
+    // Les rompus d'attribution gratuite sont du cash encaissé, mais pas une
+    // distribution de résultat : comptés à part pour ne pas gonfler le montant
+    // annoncé comme « dividendes ».
+    if (t.type === 'dividend')     years[y].dividendes    += t.qty * t.price;
+    if (t.type === 'distribution') years[y].distributions += t.qty * t.price;
   });
 
   const sortedYears = Object.keys(years).map(Number).sort();
@@ -10220,6 +10223,7 @@ function computeBilanAnnuel() {
       livretA:        parseFloat(livretA.toFixed(2)),
       realizedPnl:    realizedPnlAnnee, // PnL réalisé de l'année uniquement
       dividendes:     parseFloat(d.dividendes.toFixed(2)),
+      distributions:  parseFloat(d.distributions.toFixed(2)),
     };
   });
 }
@@ -10254,7 +10258,10 @@ function initBilan() {
           ? { label: 'Gains réalisés (' + y.year + ')', value: (y.realizedPnl >= 0 ? '+' : '') + y.realizedPnl.toFixed(2) + ' €', color: y.realizedPnl >= 0 ? 'var(--positive)' : 'var(--negative)' }
           : null,
         y.dividendes > 0
-          ? { label: 'Dividendes reçus (' + y.year + ')', value: y.dividendes.toFixed(2) + ' €', color: 'var(--gold)' }
+          ? { label: 'Dividendes reçus (' + y.year + ')', value: y.dividendes.toFixed(2) + ' €', color: 'var(--positive)' }
+          : null,
+        y.distributions > 0
+          ? { label: 'Attributions gratuites (' + y.year + ')', value: y.distributions.toFixed(2) + ' €', color: '#a99bff' }
           : null,
       ].filter(Boolean);
 
@@ -10966,8 +10973,12 @@ function initDividendes() {
 
     // Mettre à jour KPIs dynamiques
     const totalHolding   = rows.reduce((s, x) => s + x.duringHolding.length, 0);
-    const totalRecuAuto  = rows.reduce((s, x) => s + x.totalRecu, 0) + distribRecus;
-    const totalVersionts = rows.reduce((s, x) => s + x.allReceived.length, 0) + distribTxs.length;
+    // Les rompus d'attribution gratuite sont un produit de cession de droits,
+    // pas une distribution de résultat : les additionner aux dividendes gonflait
+    // le total (43,22 € affichés pour 7,40 € de dividendes réels). Ils gardent
+    // leur propre ligne sous le montant.
+    const totalRecuAuto  = rows.reduce((s, x) => s + x.totalRecu, 0);
+    const totalVersionts = rows.reduce((s, x) => s + x.allReceived.length, 0);
     // Tri sur la date ISO : `nextEstim` est déjà formaté en français, le trier
     // revenait à comparer « 08 juin 2026 » à « 18 mai 2026 » lettre par lettre.
     const nextRows = rows.filter(x => x.nextISO).sort((a, b) => a.nextISO.localeCompare(b.nextISO));
@@ -10977,6 +10988,7 @@ function initDividendes() {
     if (kpiRecus) kpiRecus.innerHTML = `
       <div class="stat-label" style="display:flex;align-items:center;gap:6px">${IC.gift}Dividendes reçus</div>
       <div class="stat-value" style="color:var(--positive);font-size:26px">${totalRecuAuto.toFixed(2)} €</div>
+      ${distribRecus > 0 ? `<div style="font-size:10px;color:#a99bff;font-family:var(--mono);margin-top:3px">+ ${distribRecus.toFixed(2)} € d'attributions</div>` : ''}
       ${totalVersionts > 0 ? `<div class="stat-change pos">${totalVersionts} versement(s) détecté(s)</div>` : ''}`;
     if (kpiHolding) kpiHolding.innerHTML = `
       <div class="stat-label" style="display:flex;align-items:center;gap:6px">${IC.calendar}Versements pendant détention</div>
