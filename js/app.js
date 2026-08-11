@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811v';
+const APP_VERSION = '20260811w';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -14647,8 +14647,12 @@ function renderSupportAdmin() {
     + '<div id="chat-threads"><div class="chat-empty">Chargement…</div></div></div>'
     + '<div class="chat-messages-pane" style="display:flex;flex-direction:column;height:100%">'
     + '<div id="chat-actions-bar" style="display:none;padding:8px 12px;border-bottom:1px solid var(--border);gap:6px;justify-content:flex-end"></div>'
-    + '<div class="chat-messages" id="chat-messages">' + _chatEmptyState(_CE_ICON_CHAT, "Aucune conversation ouverte", "Sélectionnez un ticket dans la liste de gauche pour afficher les messages.") + '</div>'
-    + _chatInputBarHtml("Répondre…", "chat-send", true)
+    + '<div class="chat-messages" id="chat-messages">' + _chatEmptyState(_CE_ICON_CHAT, "Aucune conversation ouverte",
+        "Sélectionnez un ticket à gauche, ou lancez-en un nouveau.",
+        '<button onclick="_openNewChatPrompt()" class="ce-action">Commencer un nouveau chat</button>') + '</div>'
+    // La barre de saisie n'a aucun sens sans destinataire : elle reste masquée
+    // jusqu'à l'ouverture d'un ticket, plutôt que de s'afficher désactivée.
+    + '<div id="chat-composer" style="display:none">' + _chatInputBarHtml("Répondre…", "chat-send", true) + '</div>'
     + '</div></div></div>';
   _subscribeAdminThreads();
 }
@@ -14694,11 +14698,12 @@ function _subscribeAdminThreads() {
 }
 
 // État vide illustré (icône + titre + sous-texte).
-function _chatEmptyState(iconSvg, title, sub) {
+function _chatEmptyState(iconSvg, title, sub, actionHtml) {
   return '<div class="chat-empty-rich">'
     + '<div class="ce-icon">' + iconSvg + '</div>'
     + '<div class="ce-title">' + title + '</div>'
     + (sub ? '<div class="ce-sub">' + sub + '</div>' : '')
+    + (actionHtml || '')
     + '</div>';
 }
 const _CE_ICON_CHAT = '<svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>';
@@ -14806,6 +14811,8 @@ window._openAdminThread = async function(uid) {
   const send = document.getElementById("chat-send");
   // Le bouton de pièce jointe suit le même sort que l'envoi : sans ces deux
   // lignes il restait désactivé même une fois un ticket ouvert.
+  const composer = document.getElementById("chat-composer");
+  if (composer) composer.style.display = "";
   const attach = document.getElementById("chat-attach");
   if (input) { input.disabled = closed; if (!closed) input.focus(); }
   if (send) send.disabled = closed;
