@@ -3895,11 +3895,13 @@ body.has-demo-banner { padding-top: 40px; }
   /* déplacé dans le conteneur de la feuille pendant l'ouverture */
   #pea-fab.open > .nav-add-badge { display: grid; }
   /* Une fois posé sur la feuille, le bouton grandit d'un cinquième : il devient
-     la cible de fermeture, et n'a plus à se faire discret sur un onglet.
+     la cible de fermeture, et n'a plus à se faire discret sur un onglet :
+     26px qui en paraissent 38, largement au-dessus des 44px recommandés une
+     fois la zone tactile comptée.
      L'agrandissement passe par `scale` et non par la largeur, pour ne pas
      fausser les coordonnées calculées avant le déplacement. */
   #pea-fab.open ~ .mobile-nav .nav-add-badge,
-  #pea-fab.open > .nav-add-badge { transform: rotate(45deg) scale(1.2); }
+  #pea-fab.open > .nav-add-badge { transform: rotate(45deg) scale(1.45); }
 
   .pea-fab-veil {
     position: fixed; inset: 0; z-index: 190;
