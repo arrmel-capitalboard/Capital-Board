@@ -2128,8 +2128,10 @@ body.sb-collapsed .main { margin-left: 58px; }
 
 /* Emplacement réservé au bouton d'ajout. Les entrées se partagent le reste à
    parts égales : sans cela, un libellé long comme « Patrimoine » décalait tout
-   vers la droite et le bouton, lui centré sur l'écran, mordait sur « PEA ». */
-.mobile-nav-slot { flex: 0 0 58px; }
+   vers la droite et le bouton, lui centré sur l'écran, mordait sur « PEA ».
+   82px pour un bouton de 50 : seize pixels de dégagement de chaque côté, la
+   pastille active de PEA ne venant plus le frôler. */
+.mobile-nav-slot { flex: 0 0 82px; }
 
 .mobile-nav-item {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
