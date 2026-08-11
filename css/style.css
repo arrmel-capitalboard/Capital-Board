@@ -2255,17 +2255,16 @@ body.sb-collapsed .main { margin-left: 58px; }
   .ticker-name .badge-action,
   .ticker-name .badge-etf { display: none; }
 
-  /* Un nom long — « BNP Paribas Easy Stoxx Europe 600 UCITS ETF EUR C » —
-     s'empilait sur huit lignes et étirait la ligne du tableau. On le borne à
-     deux lignes, la suite étant coupée ; le ticker reste sous le nom et le nom
-     complet est dans l'infobulle. */
-  #page-portfolio .ticker-cell { gap: 9px; align-items: flex-start; }
-  #page-portfolio .ticker-name {
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-    overflow: hidden; font-size: 12.5px; line-height: 1.3;
-  }
-  #page-portfolio .ticker-sym { display: block !important; font-size: 9.5px; }
-  /* Colonnes chiffrées : elles n'ont pas besoin de la moitié de l'écran. */
+  /* Le nom est affiché en entier : c'est lui qu'on lit, pas le ticker, qui
+     disparaît de la ligne. Pour qu'un nom long ne s'empile pas sur huit
+     lignes, la colonne du titre prend toute la place laissée par les colonnes
+     chiffrées, réduites à leur contenu. */
+  #page-portfolio .ticker-cell { gap: 9px; align-items: center; }
+  #page-portfolio .ticker-name { font-size: 12.5px; line-height: 1.35; }
+  #page-portfolio .ticker-sym { display: none !important; }
+  #page-portfolio table td:first-child { width: auto; }
+  #page-portfolio table td.c-valcell,
+  #page-portfolio table td.c-day { width: 1%; white-space: nowrap; font-size: 12px; }
   #page-portfolio table td.mono { font-size: 12px; }
 
   /* Boutons mobile only */
