@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260812d';
+const APP_VERSION = '20260812e';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -8393,10 +8393,21 @@ function generateSparkData(finalVal, points) {
 // ═══════════════════════════════════════════════════
 function filterTable() {
   const q = (document.getElementById('table-search').value || '').toLowerCase();
-  const rows = document.querySelectorAll('#portfolio-tbody tr');
-  rows.forEach(tr => {
-    const text = tr.textContent.toLowerCase();
-    tr.style.display = text.includes(q) ? '' : 'none';
+  // Ne toucher qu'aux lignes de titres : le tableau contient aussi la ligne de
+  // détail et la ligne de courbe, repliées. Les parcourir toutes les rendait
+  // visibles d'un coup, puisqu'une chaîne vide « correspond » à tout.
+  document.querySelectorAll('#portfolio-tbody tr[data-tk]').forEach(tr => {
+    const match = tr.textContent.toLowerCase().includes(q);
+    tr.style.display = match ? '' : 'none';
+    const idx    = (tr.id || '').replace('wl-row-pf', '');
+    const detail = document.getElementById('portfolio-detail-' + idx);
+    const chart  = document.getElementById('wl-chart-row-pf' + idx);
+    // Une ligne masquée emmène ses annexes ; une ligne visible garde l'état
+    // que l'utilisateur lui a donné.
+    if (!match) {
+      if (detail) detail.style.display = 'none';
+      if (chart)  chart.style.display  = 'none';
+    }
   });
 }
 
@@ -9306,7 +9317,9 @@ renderPortfolio = function() {
   // reglisser les lignes brouille le comptage des chiffres.
   const _pxStagger = !_pxSameComposition(_pxBefore);
   // Add stagger animations
-  const rows = document.querySelectorAll('#portfolio-tbody tr');
+  // Seules les lignes de titres sont déplaçables : rendre la ligne de courbe
+  // ou de détail glissable décalait les index au réordonnancement.
+  const rows = document.querySelectorAll('#portfolio-tbody tr[data-tk]');
   rows.forEach((tr, i) => {
     if (tr.classList.contains('mobile-detail-row')) return;
     if (_pxStagger) {
