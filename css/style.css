@@ -3871,24 +3871,26 @@ body.has-demo-banner { padding-top: 40px; }
    du contenu.
    ═══════════════════════════════════════════════════ */
 #pea-fab { display: none; }
-.nav-add { display: none !important; }
+.nav-add-badge { display: none; }
 
 @media (max-width: 768px) {
   #pea-fab.on { display: block; }
-  #pea-fab.on ~ .mobile-nav .nav-add,
-  .mobile-nav .nav-add.on { display: flex !important; }
 
-  .nav-add {
-    flex: 0 0 40px; color: #fff;
-  }
-  .nav-add span {
-    width: 32px; height: 32px; border-radius: 11px;
+  /* Le déclencheur est un badge accroché au coin de l'onglet : il n'occupe
+     aucune place dans la barre, qui garde ses cinq entrées et leur largeur.
+     La bordure reprend le fond de la barre pour le détacher de l'onglet. */
+  .mobile-nav-inner { position: relative; }
+  .nav-add-badge {
+    position: absolute; top: -7px; left: calc(40% - 15px);
+    width: 22px; height: 22px; border-radius: 50%;
     background: linear-gradient(135deg, var(--accent), #6b5ee8);
-    display: grid; place-items: center;
-    box-shadow: 0 3px 10px rgba(124,109,245,.4);
+    color: #fff; border: 2px solid var(--s1);
+    display: none; place-items: center; cursor: pointer; z-index: 3;
+    box-shadow: 0 2px 8px rgba(124,109,245,.5);
     transition: transform .2s;
   }
-  #pea-fab.open ~ .mobile-nav .nav-add span { transform: rotate(45deg); }
+  #pea-fab.on ~ .mobile-nav .nav-add-badge { display: grid; }
+  #pea-fab.open ~ .mobile-nav .nav-add-badge { transform: rotate(45deg); }
 
   .pea-fab-veil {
     position: fixed; inset: 0; z-index: 190;
@@ -3927,7 +3929,7 @@ body.has-demo-banner { padding-top: 40px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pea-fab-veil, .pea-sheet, .nav-add span { transition: none; }
+  .pea-fab-veil, .pea-sheet, .nav-add-badge { transition: none; }
 }
 }
 

@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260813c">
+<link rel="stylesheet" href="css/style.css?v=20260813e">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -405,6 +405,12 @@
 
   <nav class="mobile-nav">
     <div class="mobile-nav-inner">
+      <!-- Déclencheur d'ajout : posé sur le coin de l'onglet PEA, hors du
+           bouton pour rester du HTML valide. Les cinq entrées ayant la même
+           largeur, la deuxième occupe 20 % à 40 % de la barre : son coin haut
+           droit est donc à 40 %, quel que soit l'écran. -->
+      <span class="nav-add-badge" id="nav-add-btn" role="button" tabindex="0" aria-label="Ajouter"
+            onclick="togglePeaFab()"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
       <button class="mobile-nav-item" data-mob="patrimoine" onclick="showPageMobile('patrimoine')">
         <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V8l9-5 9 5v13"/><path d="M9 21v-7h6v7"/></svg></span>Patrimoine
       </button>
@@ -419,11 +425,6 @@
       </button>
       <button class="mobile-nav-item" onclick="openMobileDrawer()">
         <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg></span>Tout
-      </button>
-      <!-- Déclencheur d'ajout : une entrée de la barre, sans libellé, donc
-           sans hauteur supplémentaire. Masqué hors de la page Mon PEA. -->
-      <button class="mobile-nav-item nav-add" id="nav-add-btn" onclick="togglePeaFab()" aria-label="Ajouter">
-        <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
       </button>
     </div>
   </nav>
@@ -2779,7 +2780,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260813c"></script>
+<script src="js/app.js?v=20260813e"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
