@@ -44,6 +44,7 @@ const IC = {
   save:      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#00cec9" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><polyline points="17 21 17 13 7 13 7 21"/><polyline points="7 3 7 8 15 8"/></svg>',
   eye:       '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8892a8" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>',
   edit:      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>',
+  chartLine: '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg>',
   coin:      '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M15 9.5a3 3 0 0 0-2.5-1.5h-1a3 3 0 0 0 0 6h1a3 3 0 0 1 0 6h-1A3 3 0 0 1 9 18"/><line x1="12" y1="5" x2="12" y2="7"/><line x1="12" y1="17" x2="12" y2="19"/></svg>',
   warning:   '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>',
   dotGold:   '<svg width="8" height="8" viewBox="0 0 8 8"><circle cx="4" cy="4" r="3.5" fill="#f5b731"/></svg>',
@@ -3743,6 +3744,9 @@ function renderPortfolio() {
         : `<span style="color:var(--text3);font-size:11px">—</span>`;
 
       const tr = document.createElement('tr');
+      // Identifiant attendu par toggleWatchlistChart pour marquer la ligne
+      // ouverte, la courbe partageant son moteur avec la watchlist.
+      tr.id = 'wl-row-pf' + i;
       // Repères pour l'animation de refresh : on compare ces valeurs d'un
       // rendu à l'autre pour n'animer que ce qui a réellement bougé.
       tr.dataset.tk  = row.ticker || '';
@@ -3783,6 +3787,7 @@ function renderPortfolio() {
         <td class="c-day">${perfJourHtml}</td>
         <td style="text-align:right;padding-right:18px;white-space:nowrap">
           <div class="btn-portfolio-actions" style="display:inline-flex;gap:6px;align-items:center">
+            <button class="btn-edit" onclick="event.stopPropagation();toggleWatchlistChart('pf${i}','${row.ticker}')" title="Voir la courbe" style="display:inline-flex;align-items:center;justify-content:center">${IC.chartLine}</button>
             <button class="btn-edit" onclick="openEditModal(${i})" title="Modifier" style="display:inline-flex;align-items:center;justify-content:center">${IC.edit}</button>
             <button class="btn-del" onclick="deleteRow(${i})" title="Supprimer">✕</button>
           </div>
@@ -3804,6 +3809,7 @@ function renderPortfolio() {
               <span><label>+/- Value</label><span class="${isPos ? 'badge-pos' : 'badge-neg'}">${isPos ? '▲' : '▼'} ${fmt(Math.abs(pnl))} (${isPos ? '+' : ''}${pct.toFixed(2)}%)</span></span>
             </div>
             <div class="portfolio-detail-actions">
+              <button class="btn-edit" onclick="toggleWatchlistChart('pf${i}','${row.ticker}')" style="display:inline-flex;align-items:center;gap:5px">${IC.chartLine}Courbe</button>
               <button class="btn-edit" onclick="openEditModal(${i})" style="display:inline-flex;align-items:center;gap:5px">${IC.edit}Modifier</button>
               <button class="btn-del" onclick="deleteRow(${i})">✕ Supprimer</button>
             </div>
@@ -3811,6 +3817,33 @@ function renderPortfolio() {
         </td>
       `;
       tbody.appendChild(detailTr);
+
+      // Courbe de la ligne, repliée par défaut. Même moteur que la watchlist :
+      // mêmes classes, mêmes identifiants, seul l'index change.
+      const chartTr = document.createElement('tr');
+      chartTr.id = 'wl-chart-row-pf' + i;
+      chartTr.className = 'wl-chart-row';
+      chartTr.style.display = 'none';
+      chartTr.innerHTML =
+        '<td colspan="8">'
+        + '<div class="wl-chart-wrap">'
+        +   '<div class="wl-chart-header">'
+        +     '<div class="wl-chart-info">'
+        +       '<div class="wl-chart-price" id="wl-cprice-pf' + i + '">—</div>'
+        +       '<div class="wl-chart-change" id="wl-cchange-pf' + i + '"></div>'
+        +     '</div>'
+        +     '<div class="wl-period-bar" id="wl-pbar-pf' + i + '">'
+        +       ['1J','5J','1M','6M','AAJ','1A','5A','ALL'].map((p, pi) =>
+                  '<button class="wl-period-btn' + (pi === 2 ? ' active' : '') + '" onclick="event.stopPropagation();wlSetPeriod(&quot;pf' + i + '&quot;,&quot;' + row.ticker + '&quot;,&quot;' + p + '&quot;,this)">' + p + '</button>'
+                ).join('')
+        +     '</div>'
+        +   '</div>'
+        +   '<div class="wl-chart-canvas-wrap">'
+        +     '<div class="wl-chart-loading" id="wl-cloading-pf' + i + '">Chargement…</div>'
+        +     '<canvas id="wl-canvas-pf' + i + '" style="display:none"></canvas>'
+        +   '</div>'
+        + '</div></td>';
+      tbody.appendChild(chartTr);
     });
   }
 
@@ -8696,6 +8729,9 @@ const WL_PERIODS = {
   'ALL': { period1: 946886400,            interval: '1mo' },
 };
 
+// Sert la watchlist et le portefeuille : les identifiants du portefeuille sont
+// préfixés « pf » pour ne pas entrer en collision, les deux tableaux vivant
+// dans le même document.
 function toggleWatchlistChart(i, ticker) {
   const chartRow = document.getElementById('wl-chart-row-' + i);
   const dataRow  = document.getElementById('wl-row-' + i);
@@ -8703,10 +8739,10 @@ function toggleWatchlistChart(i, ticker) {
   const isOpen = chartRow.style.display !== 'none';
   if (isOpen) {
     chartRow.style.display = 'none';
-    dataRow.classList.remove('expanded');
+    if (dataRow) dataRow.classList.remove('expanded');
   } else {
     chartRow.style.display = '';
-    dataRow.classList.add('expanded');
+    if (dataRow) dataRow.classList.add('expanded');
     if (!_wlChartInstances[i]) {
       loadWlChart(i, ticker, '1M');
     }

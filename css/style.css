@@ -2505,6 +2505,14 @@ body.sb-collapsed .main { margin-left: 58px; }
     display: block; padding: 0 !important;
   }
   #page-watchlist table tr.wl-chart-row td::before { display: none; }
+  /* Le portefeuille réutilise la même courbe : sans ces règles, sa ligne de
+     graphique héritait de la mise en cartes des lignes de titres. */
+  #page-portfolio table tr.wl-chart-row {
+    display: block; padding: 0; margin-bottom: 8px;
+    background: transparent; border: none;
+  }
+  #page-portfolio table tr.wl-chart-row td { display: block; padding: 0 !important; }
+  #page-portfolio table tr.wl-chart-row td::before { display: none; }
 
   /* Page Récap — table en cartes empilées */
   #page-recap .section-card > div[style*="overflow-x"] { overflow-x: hidden !important; }
