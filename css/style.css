@@ -3862,12 +3862,14 @@ body.has-demo-banner { padding-top: 40px; }
   /* Hauteur réelle de la barre : 6 + (6 + icône 18 + 2 + libellé 12 + 6) + 6
      + 1 de bordure = 57px, plus la zone sûre. La maquette tablait sur 46, d'où
      un bouton qui plongeait jusque sur le libellé « Dépenses ».
-     Posé à 48px, il ne mord que les 9px hauts de la barre — au-dessus des
-     libellés, et dans le vide central, les quatre entrées ayant leurs centres
-     à 12,5 / 37,5 / 62,5 / 87,5 %. Elles ne bougent pas d'un pixel. */
+     Posé à 32px pour un diamètre de 50, son centre — donc le trait horizontal
+     du + — tombe pile sur le bord haut de la barre (32 + 25 = 57). Sa moitié
+     basse plonge dans la barre sans atteindre les libellés, qui occupent les
+     24px du bas, et se loge dans le vide central : les quatre entrées ont
+     leurs centres à 12,5 / 37,5 / 62,5 / 87,5 % et ne bougent pas d'un pixel. */
   .pea-fab-main {
     position: fixed; left: 50%; z-index: 205;
-    bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(32px + env(safe-area-inset-bottom, 0px));
     width: 50px; height: 50px; border-radius: 50%;
     border: none; cursor: pointer; color: #fff;
     background: linear-gradient(135deg, var(--accent), #6b5ee8);
@@ -3881,7 +3883,7 @@ body.has-demo-banner { padding-top: 40px; }
 
   .pea-fab-actions {
     position: fixed; left: 50%; z-index: 205;
-    bottom: calc(134px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(112px + env(safe-area-inset-bottom, 0px));
     display: flex; flex-direction: column; align-items: center; gap: 10px;
     opacity: 0; pointer-events: none;
     transform: translateX(-50%) translateY(8px) scale(.96);
