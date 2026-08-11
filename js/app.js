@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811b';
+const APP_VERSION = '20260811c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -10993,41 +10993,70 @@ function initDividendes() {
     if (projEl) {
       const oneYearAgo = new Date(); oneYearAgo.setFullYear(oneYearAgo.getFullYear() - 1);
       const oneYearAgoStr = oneYearAgo.toISOString().slice(0, 10);
-      const projRows = rows.map(({ r, history, lastKnown }) => {
+      const projYear      = new Date().getFullYear();
+      const yearPrefix    = String(projYear);
+      const projRows = rows.map(({ r, history, lastKnown, allReceived }) => {
         const nextEntry = history.find(d => d.next === true);
         const refDiv = nextEntry || lastKnown;
         if (!refDiv) return null;
         const freq = Math.max(history.filter(d => !d.next && d.date >= oneYearAgoStr).length, 1);
         const annual = refDiv.amount * r.qty * freq;
-        return { ticker: r.ticker, name: r.name, amount: refDiv.amount, qty: r.qty, freq, annual, announced: !!nextEntry };
+        // Réel = ce qui a été encaissé depuis le 1er janvier. Les attributions
+        // gratuites sont volontairement exclues : ce ne sont pas des dividendes,
+        // la projection ne les prévoit pas non plus.
+        const received = (allReceived || [])
+          .filter(e => (e.date || '').slice(0, 4) === yearPrefix)
+          .reduce((s, e) => s + e.qty * e.price, 0);
+        return { ticker: r.ticker, name: r.name, amount: refDiv.amount, qty: r.qty, freq, annual, received, announced: !!nextEntry };
       }).filter(Boolean).sort((a, b) => b.annual - a.annual);
 
-      const totalAnnual  = projRows.reduce((s, x) => s + x.annual, 0);
-      const totalMonthly = totalAnnual / 12;
-      const projYear     = new Date().getFullYear();
-      const maxAnnual    = Math.max(...projRows.map(x => x.annual), 1);
+      const totalAnnual   = projRows.reduce((s, x) => s + x.annual, 0);
+      const totalReceived = projRows.reduce((s, x) => s + x.received, 0);
+      const totalMonthly  = totalAnnual / 12;
+      const pctDone       = totalAnnual > 0 ? Math.round(totalReceived / totalAnnual * 100) : 0;
+      // Une ligne peut dépasser son estimation (dividende exceptionnel) : la
+      // barre doit rester dans le cadre.
+      const maxAnnual    = Math.max(...projRows.map(x => Math.max(x.annual, x.received)), 1);
+      const eur = v => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
 
       projEl.innerHTML = `
-        <div style="display:flex;gap:32px;margin-bottom:20px;flex-wrap:wrap">
+        <div style="display:flex;gap:32px;margin-bottom:16px;flex-wrap:wrap">
           <div>
             <div style="font-size:11px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">Annuel estimé<span style="background:rgba(245,183,49,0.12);color:var(--gold);border:1px solid rgba(245,183,49,0.25);border-radius:5px;padding:1px 7px;font-size:10px;letter-spacing:0.5px;font-weight:600;font-family:var(--mono)">${projYear}</span></div>
-            <div style="font-size:28px;font-weight:700;color:var(--gold);font-family:var(--mono)">${totalAnnual.toLocaleString('fr-FR', { minimumFractionDigits:2, maximumFractionDigits:2 })} €</div>
+            <div style="font-size:28px;font-weight:700;color:var(--gold);font-family:var(--mono)">${eur(totalAnnual)} €</div>
+          </div>
+          <div>
+            <div style="font-size:11px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px;display:flex;align-items:center;gap:6px;flex-wrap:wrap">Déjà reçu<span style="background:rgba(0,224,158,0.12);color:var(--positive);border:1px solid rgba(0,224,158,0.25);border-radius:5px;padding:1px 7px;font-size:10px;letter-spacing:0.5px;font-weight:600;font-family:var(--mono)">${projYear}</span></div>
+            <div style="font-size:28px;font-weight:700;color:var(--positive);font-family:var(--mono)">${eur(totalReceived)} €</div>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">${pctDone}&nbsp;% de l'estimation</div>
           </div>
           <div>
             <div style="font-size:11px;color:var(--text3);letter-spacing:1px;text-transform:uppercase;margin-bottom:4px">Mensuel moyen</div>
-            <div style="font-size:28px;font-weight:700;color:var(--positive);font-family:var(--mono)">${totalMonthly.toLocaleString('fr-FR', { minimumFractionDigits:2, maximumFractionDigits:2 })} €</div>
+            <div style="font-size:28px;font-weight:700;color:var(--text1);font-family:var(--mono)">${eur(totalMonthly)} €</div>
           </div>
         </div>
+        <div style="display:flex;align-items:center;gap:14px;margin-bottom:14px;font-size:10px;color:var(--text3);flex-wrap:wrap">
+          <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:14px;height:6px;border-radius:3px;background:var(--positive);display:inline-block"></span>Reçu ${projYear}</span>
+          <span style="display:inline-flex;align-items:center;gap:5px"><span style="width:14px;height:6px;border-radius:3px;background:var(--gold);opacity:0.35;display:inline-block"></span>Reste estimé</span>
+        </div>
         <div style="display:flex;flex-direction:column;gap:10px">
-          ${projRows.map(p => `
-            <div style="display:flex;align-items:center;gap:12px">
-              <div style="width:130px;display:flex;align-items:center;gap:7px;min-width:0">${logoHtml(p.ticker, 22, 'ticker-icon')}<span style="font-size:12px;font-weight:600;color:var(--text1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</span></div>
-              <div style="flex:1;background:var(--s2);border-radius:4px;height:6px;overflow:hidden">
-                <div style="width:${(p.annual / maxAnnual * 100).toFixed(1)}%;height:100%;background:var(--gold);border-radius:4px;transition:width 0.4s"></div>
+          ${projRows.map(p => {
+            const doneW = Math.min(p.received, maxAnnual) / maxAnnual * 100;
+            const restW = Math.max(p.annual - p.received, 0) / maxAnnual * 100;
+            return `
+            <div class="divproj-row" style="display:flex;align-items:center;gap:12px">
+              <div class="divproj-name" style="width:130px;display:flex;align-items:center;gap:7px;min-width:0">${logoHtml(p.ticker, 22, 'ticker-icon')}<span style="font-size:12px;font-weight:600;color:var(--text1);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">${p.name}</span></div>
+              <div style="flex:1;background:var(--s2);border-radius:4px;height:6px;overflow:hidden;display:flex">
+                <div style="width:${doneW.toFixed(1)}%;height:100%;background:var(--positive);transition:width 0.4s"></div>
+                <div style="width:${restW.toFixed(1)}%;height:100%;background:var(--gold);opacity:0.35;transition:width 0.4s"></div>
               </div>
-              <div style="font-family:var(--mono);font-size:12px;color:var(--gold);font-weight:600;width:70px;text-align:right">${p.annual.toFixed(2)} €</div>
-              <div style="font-size:10px;color:var(--text3);width:80px;text-align:right">${p.freq}×/an · ${p.amount.toFixed(2)}€/act${p.announced ? ' <span style="color:var(--gold)">·&nbsp;annoncé</span>' : ''}</div>
-            </div>`).join('')}
+              <div class="divproj-vals" style="width:78px;text-align:right;line-height:1.25">
+                <div style="font-family:var(--mono);font-size:12px;color:var(--gold);font-weight:600">${p.annual.toFixed(2)} €</div>
+                <div style="font-family:var(--mono);font-size:10px;color:${p.received > 0 ? 'var(--positive)' : 'var(--text3)'}">reçu ${p.received.toFixed(2)} €</div>
+              </div>
+              <div class="divproj-meta" style="font-size:10px;color:var(--text3);width:80px;text-align:right">${p.freq}×/an · ${p.amount.toFixed(2)}€/act${p.announced ? ' <span style="color:var(--gold)">·&nbsp;annoncé</span>' : ''}</div>
+            </div>`;
+          }).join('')}
         </div>`;
     }
 

@@ -2332,6 +2332,13 @@ body.sb-collapsed .main { margin-left: 58px; }
     grid-template-columns: unset !important;
   }
   .stats-grid::-webkit-scrollbar { display: none; }
+
+  /* Projection dividendes — colonnes fixes trop larges pour 390px : on rend la
+     barre lisible en coupant la fréquence (déjà visible dans le tableau). */
+  .divproj-name { width: 104px !important; }
+  .divproj-vals { width: 72px !important; }
+  .divproj-meta { display: none !important; }
+
   .stat-card {
     min-width: 148px !important;
     max-width: 148px !important;
