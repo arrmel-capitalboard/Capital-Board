@@ -2275,22 +2275,40 @@ body.sb-collapsed .main { margin-left: 58px; }
   #page-portfolio table tbody { display: block; width: 100%; }
   #page-portfolio table thead { display: none; }
 
-  /* Ligne de titre : nom sur toute la largeur, puis valeur à gauche,
-     performance du jour et chevron poussés à droite. */
+  /* Ligne de titre en grille explicite : le nom occupe la première rangée, le
+     montant et la performance du jour la seconde, le chevron tient la colonne
+     de droite sur les deux. En flex, la hauteur de la ligne ignorait le
+     sous-libellé de performance totale, qui se faisait rogner par la ligne
+     suivante ; ici chaque rangée est dimensionnée par son contenu. */
   #page-portfolio table tbody tr[data-tk] {
-    display: flex; flex-wrap: wrap; align-items: center;
-    gap: 4px 10px; padding: 10px 12px;
+    display: grid;
+    grid-template-columns: 1fr auto 34px;
+    grid-template-areas:
+      "nom nom  chevron"
+      "val jour chevron";
+    align-items: center; row-gap: 3px; column-gap: 8px;
+    padding: 11px 12px;
     border-bottom: 1px solid var(--border);
   }
   #page-portfolio table tbody tr[data-tk] > td {
     display: block; padding: 0 !important; border: none !important;
+    min-width: 0;
   }
-  #page-portfolio table tbody tr[data-tk] > td:first-child { flex: 1 1 100%; min-width: 0; }
-  #page-portfolio table tbody tr[data-tk] > td.c-valcell { flex: 1 1 auto; }
+  #page-portfolio table tbody tr[data-tk] > td:first-child { grid-area: nom; }
   #page-portfolio table tbody tr[data-tk] > td.c-day {
-    flex: 0 0 auto; margin-left: auto; text-align: right;
+    grid-area: jour; text-align: right;
   }
-  #page-portfolio table tbody tr[data-tk] > td:last-child { flex: 0 0 auto; }
+  #page-portfolio table tbody tr[data-tk] > td:last-child {
+    grid-area: chevron; justify-self: end;
+  }
+  /* Montant et performance totale côte à côte, alignés sous le nom plutôt que
+     sous le logo. */
+  #page-portfolio table tbody tr[data-tk] > td.c-valcell {
+    grid-area: val;
+    display: flex; align-items: baseline; gap: 8px;
+    padding-left: 33px !important;
+  }
+  #page-portfolio table tbody tr[data-tk] .perf-total-sub { margin-top: 0; }
   #page-portfolio .ticker-name { overflow-wrap: anywhere; }
 
   /* Graphique et panneau de détail : des blocs pleine largeur, plus des
