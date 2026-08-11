@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260813b">
+<link rel="stylesheet" href="css/style.css?v=20260813c">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -380,21 +380,27 @@
        PEA : elles se naviguent depuis #pea-tabs, en haut de la page. -->
   <!-- Ajout rapide (mobile, page Mon PEA) : versement ou nouvelle ligne.
        Affiché par _syncPeaFab() quand le portefeuille est la page active. -->
+  <!-- Ajout rapide (mobile, page Mon PEA). Le déclencheur vit DANS la barre :
+       rien ne flotte au-dessus du contenu, la feuille s'ouvre au ras de la
+       barre et s'arrête à son bord. -->
   <div id="pea-fab" aria-hidden="true">
     <div class="pea-fab-veil" onclick="togglePeaFab(false)"></div>
-    <div class="pea-fab-actions">
-      <button type="button" class="pea-fab-action" onclick="togglePeaFab(false);openVersementModal()">
-        <span class="pea-fab-label">Ajouter un versement</span>
-        <span class="pea-fab-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/></svg></span>
+    <div class="pea-sheet">
+      <button type="button" class="pea-sheet-row" onclick="togglePeaFab(false);openVersementModal()">
+        <span class="pea-sheet-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/></svg></span>
+        <span><span class="pea-sheet-t">Ajouter un versement</span><span class="pea-sheet-s">Alimenter le PEA</span></span>
       </button>
-      <button type="button" class="pea-fab-action" onclick="togglePeaFab(false);openModal()">
-        <span class="pea-fab-label">Ajouter une ligne</span>
-        <span class="pea-fab-ico"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></span>
+      <div class="pea-sheet-sep"></div>
+      <button type="button" class="pea-sheet-row" onclick="togglePeaFab(false);openModal()">
+        <span class="pea-sheet-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 3v18h18"/><path d="M7 14l4-4 3 3 5-6"/></svg></span>
+        <span><span class="pea-sheet-t">Ajouter une ligne</span><span class="pea-sheet-s">Acheter un titre</span></span>
+      </button>
+      <div class="pea-sheet-sep"></div>
+      <button type="button" class="pea-sheet-row" onclick="togglePeaFab(false);openImportIA()">
+        <span class="pea-sheet-ico"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="M18.5 15.5l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9z"/></svg></span>
+        <span><span class="pea-sheet-t">Importer mon portefeuille</span><span class="pea-sheet-s">Bientôt</span></span>
       </button>
     </div>
-    <button type="button" class="pea-fab-main" onclick="togglePeaFab()" aria-label="Ajouter">
-      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-    </button>
   </div>
 
   <nav class="mobile-nav">
@@ -413,6 +419,11 @@
       </button>
       <button class="mobile-nav-item" onclick="openMobileDrawer()">
         <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg></span>Tout
+      </button>
+      <!-- Déclencheur d'ajout : une entrée de la barre, sans libellé, donc
+           sans hauteur supplémentaire. Masqué hors de la page Mon PEA. -->
+      <button class="mobile-nav-item nav-add" id="nav-add-btn" onclick="togglePeaFab()" aria-label="Ajouter">
+        <span><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
       </button>
     </div>
   </nav>
@@ -2768,7 +2779,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260813b"></script>
+<script src="js/app.js?v=20260813c"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

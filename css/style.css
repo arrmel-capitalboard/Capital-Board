@@ -3866,73 +3866,69 @@ body.has-demo-banner { padding-top: 40px; }
 
 /* ═══════════════════════════════════════════════════
    AJOUT RAPIDE — MOBILE, PAGE MON PEA
-   Un bouton + ancré au-dessus de la barre de navigation, qui déplie deux
-   actions. Masqué sur desktop, où les boutons d'en-tête suffisent.
+   Le déclencheur est une entrée de la barre : il ne prend aucune hauteur, et
+   la feuille s'arrête au bord supérieur de la barre. Rien ne flotte au-dessus
+   du contenu.
    ═══════════════════════════════════════════════════ */
 #pea-fab { display: none; }
+.nav-add { display: none !important; }
 
 @media (max-width: 768px) {
   #pea-fab.on { display: block; }
+  #pea-fab.on ~ .mobile-nav .nav-add,
+  .mobile-nav .nav-add.on { display: flex !important; }
+
+  .nav-add {
+    flex: 0 0 40px; color: #fff;
+  }
+  .nav-add span {
+    width: 32px; height: 32px; border-radius: 11px;
+    background: linear-gradient(135deg, var(--accent), #6b5ee8);
+    display: grid; place-items: center;
+    box-shadow: 0 3px 10px rgba(124,109,245,.4);
+    transition: transform .2s;
+  }
+  #pea-fab.open ~ .mobile-nav .nav-add span { transform: rotate(45deg); }
 
   .pea-fab-veil {
     position: fixed; inset: 0; z-index: 190;
-    background: rgba(4, 6, 11, 0.55);
+    background: rgba(4, 6, 11, .58);
     opacity: 0; pointer-events: none; transition: opacity .18s ease;
   }
   #pea-fab.open .pea-fab-veil { opacity: 1; pointer-events: auto; }
 
-  /* La barre est une carte flottante : 8px de marge plus le plancher de 20px
-     qui protège la zone de gestes d'iOS, puis 57px de hauteur (5 + 6 + icône
-     20 + 3 + libellé 12 + 6 + 5). Son bord supérieur est donc à 85px du bas.
-     Le bouton se pose 12px au-dessus, sans jamais la toucher : les entrées
-     reprennent toute la largeur, et leur nombre n'a plus d'incidence. */
-  .pea-fab-main {
-    position: fixed; left: 50%; z-index: 205;
-    bottom: calc(77px + max(20px, env(safe-area-inset-bottom, 0px)));
-    width: 50px; height: 50px; border-radius: 50%;
-    border: none; cursor: pointer; color: #fff;
-    background: linear-gradient(135deg, var(--accent), #6b5ee8);
-    box-shadow: 0 8px 22px rgba(124, 109, 245, .45), 0 2px 8px rgba(0, 0, 0, .4);
-    display: grid; place-items: center;
-    transform: translateX(-50%);
-    transition: transform .2s ease, box-shadow .2s ease;
-  }
-  .pea-fab-main:active { transform: translateX(-50%) scale(.94); }
-  #pea-fab.open .pea-fab-main { transform: translateX(-50%) rotate(45deg); }
-
-  .pea-fab-actions {
-    position: fixed; left: 50%; z-index: 205;
-    bottom: calc(157px + max(20px, env(safe-area-inset-bottom, 0px)));
-    display: flex; flex-direction: column; align-items: center; gap: 10px;
+  /* Bord supérieur de la barre : 8px de marge + plancher de 20px + 57px de
+     carte = 85px. La feuille s'y arrête, sans jamais la recouvrir. */
+  .pea-sheet {
+    position: fixed; left: 10px; right: 10px; z-index: 205;
+    bottom: calc(65px + max(20px, env(safe-area-inset-bottom, 0px)));
+    background: var(--s1); border: 1px solid var(--border2); border-radius: 16px;
+    padding: 6px; box-shadow: 0 14px 36px rgba(0,0,0,.55);
     opacity: 0; pointer-events: none;
-    transform: translateX(-50%) translateY(8px) scale(.96);
-    transform-origin: bottom center;
-    transition: opacity .18s ease, transform .18s ease;
+    transform: translateY(12px) scale(.98);
+    transition: opacity .16s ease, transform .2s cubic-bezier(.32,.72,0,1);
   }
-  #pea-fab.open .pea-fab-actions { opacity: 1; pointer-events: auto; transform: translateX(-50%); }
+  #pea-fab.open .pea-sheet { opacity: 1; pointer-events: auto; transform: none; }
 
-  .pea-fab-action {
-    display: flex; align-items: center; gap: 10px; flex-direction: row-reverse;
-    background: none; border: none; padding: 0; cursor: pointer;
-    font-family: var(--sans);
+  .pea-sheet-row {
+    display: flex; align-items: center; gap: 11px; width: 100%;
+    padding: 10px 8px; border: none; background: none; border-radius: 10px;
+    cursor: pointer; text-align: left; font-family: var(--sans); color: var(--text);
   }
-  .pea-fab-label {
-    background: var(--s2); border: 1px solid var(--border2);
-    color: var(--text); font-size: 12.5px; font-weight: 600;
-    padding: 8px 13px; border-radius: 999px;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
-    white-space: nowrap;
-  }
-  .pea-fab-ico {
-    width: 42px; height: 42px; border-radius: 50%;
+  .pea-sheet-row:active { background: rgba(255,255,255,.04); }
+  .pea-sheet-ico {
+    width: 34px; height: 34px; border-radius: 10px; flex-shrink: 0;
     background: var(--s3); border: 1px solid var(--border2);
-    color: var(--accent); display: grid; place-items: center; flex-shrink: 0;
-    box-shadow: 0 4px 14px rgba(0, 0, 0, .35);
+    color: var(--accent); display: grid; place-items: center;
   }
+  .pea-sheet-t { display: block; font-size: 12.5px; font-weight: 650; }
+  .pea-sheet-s { display: block; font-size: 10px; color: var(--text3); margin-top: 1px; }
+  .pea-sheet-sep { height: 1px; background: var(--border); margin: 1px 8px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pea-fab-veil, .pea-fab-main, .pea-fab-actions { transition: none; }
+  .pea-fab-veil, .pea-sheet, .nav-add span { transition: none; }
+}
 }
 
 /* ═══════════════════════════════════════════════════
