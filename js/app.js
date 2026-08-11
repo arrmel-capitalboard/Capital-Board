@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260813a';
+const APP_VERSION = '20260813b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -8728,6 +8728,17 @@ function generateSparkData(finalVal, points) {
 // ═══════════════════════════════════════════════════
 // FEATURE 4: SEARCH / FILTER TABLE
 // ═══════════════════════════════════════════════════
+// Le champ de filtre est replié derrière une loupe : il ne se déploie qu'au
+// clic, et se referme vide pour ne pas laisser un filtre actif invisible.
+window.toggleTableSearch = function () {
+  const box = document.getElementById('portfolio-search');
+  const input = document.getElementById('table-search');
+  if (!box || !input) return;
+  const open = box.classList.toggle('open');
+  if (open) { input.focus(); }
+  else if (input.value) { input.value = ''; filterTable(); }
+};
+
 function filterTable() {
   const q = (document.getElementById('table-search').value || '').toLowerCase();
   // Ne toucher qu'aux lignes de titres : le tableau contient aussi la ligne de

@@ -3989,3 +3989,26 @@ body.has-demo-banner { padding-top: 40px; }
   background: rgba(124,109,245,.18); color: #c3b9ff;
   border-radius: 5px; padding: 2px 6px;
 }
+
+/* Filtre du tableau : une loupe, et le champ se déploie au clic. Il occupait
+   toute la largeur de la barre d'outils pour une fonction d'appoint. */
+.search-collapse { display: flex; align-items: center; gap: 6px; }
+.search-toggle {
+  width: 32px; height: 32px; flex-shrink: 0;
+  background: var(--s2); border: 1px solid var(--border2); border-radius: 9px;
+  color: var(--text3); cursor: pointer; display: grid; place-items: center;
+  transition: color .15s, border-color .15s, background .15s;
+}
+.search-toggle:hover { color: var(--text2); border-color: var(--border2); }
+.search-collapse.open .search-toggle { color: var(--accent); border-color: rgba(124,109,245,.4); }
+.search-collapse #table-search {
+  width: 0; padding: 0; border-width: 0; opacity: 0; min-width: 0;
+  transition: width .18s ease, opacity .15s ease, padding .18s ease;
+}
+.search-collapse.open #table-search {
+  width: 190px; padding: 8px 12px; border-width: 1px; opacity: 1;
+}
+@media (max-width: 768px) {
+  .search-collapse.open #table-search { width: 100%; }
+  .search-collapse.open { flex: 1; }
+}

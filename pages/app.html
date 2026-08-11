@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260813a">
+<link rel="stylesheet" href="css/style.css?v=20260813b">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -781,9 +781,13 @@
           </div>
         </div>
         <div class="toolbar" id="portfolio-toolbar">
-          <div style="position:relative;flex:1;min-width:140px;display:flex">
-            <span style="position:absolute;left:10px;top:50%;transform:translateY(-50%);display:flex;pointer-events:none"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="var(--text3)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg></span>
-            <input class="toolbar-input" id="table-search" placeholder="Filtrer…" oninput="filterTable()" style="flex:1;min-width:0;padding-left:32px">
+          <!-- Le champ prenait toute la largeur pour une fonction rarement
+               utilisée : il est replié derrière une loupe et se déploie au clic. -->
+          <div class="search-collapse" id="portfolio-search">
+            <button type="button" class="search-toggle" onclick="toggleTableSearch()" title="Filtrer" aria-label="Filtrer">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="7"/><line x1="20" y1="20" x2="16.65" y2="16.65"/></svg>
+            </button>
+            <input class="toolbar-input" id="table-search" placeholder="Filtrer…" oninput="filterTable()">
           </div>
           <select class="toolbar-select" id="table-sort" onchange="sortTable()">
             <option value="">Tri : ordre ajout</option>
@@ -2764,7 +2768,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260813a"></script>
+<script src="js/app.js?v=20260813b"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
