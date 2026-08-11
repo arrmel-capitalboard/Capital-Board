@@ -1,0 +1,101 @@
+name: Mise à jour avantages actionnaires
+
+on:
+  schedule:
+    - cron: '30 6 * * 1'  # Tous les lundis à 6h30 UTC, après les dividendes
+  workflow_dispatch:
+
+# Le workflow commite data/avantages.json : il lui faut l'ecriture.
+permissions:
+  contents: write
+
+jobs:
+  update-avantages:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: pip install requests
+
+      - name: Récupérer l'observatoire des clubs actionnaires
+        run: |
+          python3 << 'EOF'
+          import csv, io, json, os, datetime, requests
+
+          # L'Observatoire des clubs actionnaires publie son catalogue en CSV.
+          # C'est la seule source machine de ce genre : partout ailleurs, les
+          # avantages actionnaires sont enfouis dans des pages de relations
+          # investisseurs, société par société.
+          SRC = 'https://clubsactionnaires.fr/data/shareholder-clubs.csv'
+          CREDIT = 'https://clubsactionnaires.fr/observatoire'
+
+          # Le CSV donne le code Euronext ou local, pas le symbole Yahoo qu'on
+          # utilise partout dans l'app : c'est la place de cotation qui décide
+          # du suffixe.
+          SUFFIX = {
+            'CAC40': '.PA', 'CAC Next 20': '.PA', 'CAC Large 60': '.PA',
+            'CAC Small': '.PA', 'CAC Mid 60': '.PA', 'SBF 120': '.PA',
+            'IBEX 35': '.MC', 'FTSE MIB': '.MI', 'FTSE 100': '.L',
+            'SIX Swiss Exchange': '.SW', 'DAX': '.DE', 'AEX': '.AS',
+            'S&P 500': '', 'NASDAQ 100': '',
+          }
+
+          headers = {'User-Agent': 'Mozilla/5.0 (compatible; CapitalBoard/1.0)'}
+          r = requests.get(SRC, headers=headers, timeout=30)
+          r.raise_for_status()
+
+          rows = list(csv.DictReader(io.StringIO(r.text)))
+          out = []
+          skipped = 0
+          for row in rows:
+            try:
+              count = int(row.get('benefits_count') or 0)
+            except ValueError:
+              count = 0
+            # Une société sans avantage recensé n'a rien à dire à l'utilisateur.
+            if count <= 0:
+              continue
+            index = (row.get('stock_index') or '').strip()
+            code  = (row.get('ticker') or '').strip()
+            if not code or index not in SUFFIX:
+              skipped += 1
+              continue
+            try:
+              min_shares = int(row.get('minimum_shares') or 0)
+            except ValueError:
+              min_shares = 0
+            out.append({
+              'ticker':     code + SUFFIX[index],
+              'name':       (row.get('company_name') or '').strip(),
+              'index':      index,
+              'sector':     (row.get('sector_fr') or '').strip(),
+              'minShares':  min_shares,
+              'count':      count,
+              'verifiedAt': (row.get('last_verified_at') or '').strip(),
+              'clubUrl':    (row.get('shareholder_club_url') or '').strip(),
+              'pageUrl':    (row.get('french_page') or '').strip(),
+            })
+
+          out.sort(key=lambda c: c['name'].lower())
+          payload = {
+            'generated_at': datetime.date.today().isoformat(),
+            'source': CREDIT,
+            'credit': 'Clubs Actionnaires (2026), Observatoire des clubs actionnaires',
+            'companies': out,
+          }
+          os.makedirs('data', exist_ok=True)
+          with open('data/avantages.json', 'w', encoding='utf-8') as f:
+            json.dump(payload, f, ensure_ascii=False, indent=2)
+          print(f"✅ avantages.json généré : {len(out)} sociétés, {skipped} écartées (place inconnue)")
+          EOF
+
+      - name: Commit et push le fichier JSON
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/avantages.json
+          git diff --staged --quiet || git commit -m "chore: mise à jour avantages actionnaires $(date +'%Y-%m-%d')"
+          git push

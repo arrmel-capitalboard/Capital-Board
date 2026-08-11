@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811i';
+const APP_VERSION = '20260811j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -11520,7 +11520,30 @@ function _estAnnualDiv(r) {
   return r.dividendYield * r.qty * r.currentPrice;
 }
 
+// Répertoire externe, généré chaque lundi depuis l'Observatoire des clubs
+// actionnaires (.github/workflows/avantages.yml). Il donne la couverture — 56
+// sociétés, européennes et américaines comprises — là où le registre écrit à la
+// main donne le détail. Les deux se complètent, ils ne se remplacent pas.
+let _avantagesDir = null;
+let _avShowAllDir = false;
+window.toggleAvantagesDir = function () { _avShowAllDir = !_avShowAllDir; initAvantages(); };
+async function _loadAvantagesDir() {
+  if (_avantagesDir) return _avantagesDir;
+  try {
+    const res = await fetch('data/avantages.json');
+    if (!res.ok) throw new Error('HTTP ' + res.status);
+    _avantagesDir = await res.json();
+  } catch (e) {
+    console.warn('avantages.json non disponible:', e && e.message);
+    _avantagesDir = { companies: [] };
+  }
+  return _avantagesDir;
+}
+
 function initAvantages() {
+  // Le répertoire arrive après coup : on redessine sans bloquer le premier rendu.
+  if (!_avantagesDir) _loadAvantagesDir().then(() => initAvantages());
+
   const el = document.getElementById('avantages-content');
   if (!el) return;
   const pf     = getPortfolio(currentUser);
@@ -11529,6 +11552,14 @@ function initAvantages() {
     .map(entry => ({ entry, row: pf.find(r => String(r.ticker).toUpperCase() === entry.ticker) }))
     .filter(x => x.row);
   const others = SHAREHOLDER_PERKS.filter(entry => !held.some(h => h.entry.ticker === entry.ticker));
+
+  // Sociétés du répertoire externe absentes du registre détaillé : on ne connaît
+  // que le nombre d'avantages et le seuil, pas leur contenu — d'où le renvoi
+  // systématique vers la fiche source.
+  const known   = new Set(SHAREHOLDER_PERKS.map(e => e.ticker.toUpperCase()));
+  const dir     = (_avantagesDir && _avantagesDir.companies) || [];
+  const dirRest = dir.filter(c => !known.has(String(c.ticker).toUpperCase()));
+  const dirHeld = dirRest.filter(c => pf.some(r => String(r.ticker).toUpperCase() === String(c.ticker).toUpperCase()));
 
   const yearOpts = (sel) => {
     let out = `<option value="">Je ne suis pas au nominatif</option>`;
@@ -11685,6 +11716,26 @@ function initAvantages() {
            Aucune de vos lignes ne figure au registre des avantages actionnaires.
          </div>`}
 
+    ${dirHeld.length ? `
+    <div class="section-card" style="margin-bottom:18px">
+      <div class="section-title" style="margin-bottom:4px">Vos autres lignes, au répertoire</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:4px">
+        Recensées par l'Observatoire, mais pas encore détaillées ici : ouvrez la fiche pour le contenu exact.
+      </div>
+      ${dirHeld.map(c => `
+        <div style="display:flex;align-items:center;gap:11px;padding:11px 0;border-top:1px solid var(--border)">
+          ${logoHtml(c.ticker, 24, 'ticker-icon')}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:600;color:var(--text1)">${c.name}</div>
+            <div style="font-size:11px;color:var(--text3)">
+              ${c.count} avantage(s) recensé(s)${c.minShares > 1 ? ` · seuil ${c.minShares} actions` : ''}
+            </div>
+          </div>
+          <a href="${c.pageUrl || c.clubUrl}" target="_blank" rel="noopener noreferrer"
+             style="font-size:10px;color:var(--text3);text-decoration:none;border-bottom:1px dotted var(--text3);white-space:nowrap">Voir la fiche</a>
+        </div>`).join('')}
+    </div>` : ''}
+
     <div class="section-card">
       <div class="section-title" style="margin-bottom:4px">Sociétés qui en proposent (${SHAREHOLDER_PERKS.length})</div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.5">
@@ -11693,7 +11744,36 @@ function initAvantages() {
         pas de source société sont signalées. Un programme peut changer sans préavis.
       </div>
       ${othersHtml || '<div style="font-size:12px;color:var(--text3);padding-top:10px">Vous les détenez toutes.</div>'}
-    </div>`;
+    </div>
+
+    ${dirRest.length ? `
+    <div class="section-card" style="margin-top:18px">
+      <div class="section-title" style="margin-bottom:4px">Répertoire externe (${dirRest.length} autres sociétés)</div>
+      <div style="font-size:11px;color:var(--text3);margin-bottom:8px;line-height:1.5">
+        Sociétés recensées comme ayant un programme actionnaires, sans détail vérifié de notre côté —
+        d'où le simple décompte et le lien vers la fiche. Européennes et américaines comprises.
+        Source : <a href="${(_avantagesDir && _avantagesDir.source) || 'https://clubsactionnaires.fr/observatoire'}"
+          target="_blank" rel="noopener noreferrer" style="color:var(--text2)">Observatoire des clubs actionnaires</a>,
+        relevé du ${(_avantagesDir && _avantagesDir.generated_at) || '—'}. Données indicatives, non contractuelles.
+      </div>
+      ${(_avShowAllDir ? dirRest : dirRest.slice(0, 12)).map(c => `
+        <div style="display:flex;align-items:center;gap:11px;padding:10px 0;border-top:1px solid var(--border)">
+          ${logoHtml(c.ticker, 22, 'ticker-icon')}
+          <div style="flex:1;min-width:0">
+            <div style="font-size:12px;font-weight:600;color:var(--text1)">${c.name}</div>
+            <div style="font-size:11px;color:var(--text3)">
+              ${c.index} · ${c.count} avantage(s)${c.minShares > 1 ? ` · dès ${c.minShares} actions` : ''}
+            </div>
+          </div>
+          <a href="${c.pageUrl || c.clubUrl}" target="_blank" rel="noopener noreferrer"
+             style="font-size:10px;color:var(--text3);text-decoration:none;border-bottom:1px dotted var(--text3);white-space:nowrap">Fiche</a>
+        </div>`).join('')}
+      ${dirRest.length > 12 ? `
+        <button onclick="toggleAvantagesDir()"
+                style="margin-top:12px;background:var(--s3);border:none;border-radius:6px;padding:6px 14px;font-size:11px;color:var(--text2);cursor:pointer;font-family:var(--sans)">
+          ${_avShowAllDir ? '▲ Réduire' : `▼ Voir les ${dirRest.length - 12} autres`}
+        </button>` : ''}
+    </div>` : ''}`;
 }
 
 // Auto-scroll horizontal des KPIs (mobile, RAF pour fluidité iOS Safari)
