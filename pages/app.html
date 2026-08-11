@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260813l">
+<link rel="stylesheet" href="css/style.css?v=20260813m">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -973,72 +973,74 @@
 
     <!-- ══════════════════════════════════════════════
          PROJECTIONS PAGE
-         ══════════════════════════════════════════════ -->
     <div class="page" id="page-projections">
       <div class="page-header">
         <div>
           <div class="page-title">Projections</div>
-          <div class="page-subtitle">Simulation patrimoniale long terme avec intérêts composés</div>
+          <div class="page-subtitle">Ce que votre PEA peut devenir, et l'incertitude qui va avec</div>
         </div>
       </div>
 
+      <!-- Point de départ : rempli depuis les données réelles du compte, pas
+           depuis des valeurs inventées. Chaque champ reste modifiable. -->
       <div class="section-card" style="margin-bottom:18px">
-        <div class="section-title" style="margin-bottom:16px">Paramètres de simulation</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:14px;margin-bottom:18px">
-          <div>
-            <label style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:6px">Valeur actuelle (€)</label>
-            <div class="num-input-wrap">
-              <input type="number" id="proj-base" value="0" step="100" oninput="renderProjections()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;font-family:var(--mono);outline:none">
-              <span class="num-spin up"   onclick="projNumStep('proj-base',1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg></span>
-              <span class="num-spin down" onclick="projNumStep('proj-base',-1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
-            </div>
+        <div class="proj-head">
+          <div class="section-title" style="margin:0">Point de départ</div>
+          <button class="btn-add" id="proj-reset" onclick="projFillFromData()">↺ Repartir de mes données</button>
+        </div>
+        <div id="proj-origin" class="proj-origin"></div>
+        <div class="proj-inputs">
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Valeur actuelle (€)</label>
+            <input type="number" class="form-input" id="proj-base" min="0" step="any" oninput="renderProjections()">
           </div>
-          <div>
-            <label style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:6px">Apport mensuel (€)</label>
-            <div class="num-input-wrap">
-              <input type="number" id="proj-monthly" value="" step="50" placeholder="0" oninput="renderProjections()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;font-family:var(--mono);outline:none">
-              <span class="num-spin up"   onclick="projNumStep('proj-monthly',1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg></span>
-              <span class="num-spin down" onclick="projNumStep('proj-monthly',-1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
-            </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Apport mensuel (€)</label>
+            <input type="number" class="form-input" id="proj-monthly" min="0" step="any" oninput="renderProjections()">
           </div>
-          <div>
-            <label style="font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.7px;display:block;margin-bottom:6px">Rendement estimé (%)</label>
-            <div class="num-input-wrap">
-              <input type="number" id="proj-cagr" value="" placeholder="0" step="0.5" oninput="renderProjections()" style="width:100%;background:var(--s3);border:1px solid var(--border2);border-radius:8px;padding:9px 12px;color:var(--text);font-size:14px;font-family:var(--mono);outline:none">
-              <span class="num-spin up"   onclick="projNumStep('proj-cagr',1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="18 15 12 9 6 15"/></svg></span>
-              <span class="num-spin down" onclick="projNumStep('proj-cagr',-1)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="6 9 12 15 18 9"/></svg></span>
-            </div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Rendement central (% / an)</label>
+            <input type="number" class="form-input" id="proj-cagr" min="-20" max="30" step="0.1" oninput="renderProjections()">
           </div>
-          <div style="background:var(--s3);border:1px solid var(--border2);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;justify-content:center">
-            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.6px">Livret A benchmark</div>
-            <div style="font-size:18px;font-weight:700;color:var(--text2);font-family:var(--mono);margin-top:3px">2,5 % / an</div>
+          <div class="form-group" style="margin:0">
+            <label class="form-label">Écart des scénarios (± points)</label>
+            <input type="number" class="form-input" id="proj-spread" min="0" max="15" step="0.5" value="3" oninput="renderProjections()">
           </div>
         </div>
-        <div style="position:relative;height:320px">
+      </div>
+
+      <!-- Fourchette : trois trajectoires, la zone intermédiaire grisée. -->
+      <div class="section-card" style="margin-bottom:18px">
+        <div class="section-title">Fourchette à 10, 20 et 30 ans</div>
+        <div id="proj-range" class="proj-range"></div>
+        <div style="position:relative;height:300px;margin-top:18px">
           <canvas id="chart-projections"></canvas>
         </div>
+        <div class="proj-note" id="proj-note"></div>
       </div>
 
-      <div class="table-container">
-        <div class="table-header"><span class="table-title">Tableau des projections</span></div>
-        <table>
-          <thead><tr>
-            <th>Horizon</th>
-            <th>Patrimoine total</th>
-            <th>Apports cumulés</th>
-            <th>Plus-values</th>
-            <th>Ratio PV / Apports</th>
-            <th>Livret A équiv.</th>
-            <th>Avantage vs LA</th>
-          </tr></thead>
-          <tbody id="proj-tbody"></tbody>
-        </table>
+      <div class="section-card">
+        <div class="section-title">Tableau des projections</div>
+        <div style="overflow-x:auto">
+          <table>
+            <thead>
+              <tr>
+                <th style="text-align:left">Horizon</th>
+                <th>Défavorable</th>
+                <th>Central</th>
+                <th>Favorable</th>
+                <th class="hide-mobile">Apports cumulés</th>
+                <th class="hide-mobile">Plus-values (central)</th>
+                <th class="hide-mobile">Livret A</th>
+              </tr>
+            </thead>
+            <tbody id="proj-tbody"></tbody>
+          </table>
+        </div>
       </div>
     </div>
 
-    <!-- ══════════════════════════════════════════════
-         DIVIDENDES PAGE
-         ══════════════════════════════════════════════ -->
+    <!-- DIVIDENDES PAGE -->
     <div class="page" id="page-dividendes">
       <div class="page-header">
         <div>
@@ -2792,7 +2794,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260813l"></script>
+<script src="js/app.js?v=20260813m"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

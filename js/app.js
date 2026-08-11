@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260813l';
+const APP_VERSION = '20260813m';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -10563,21 +10563,195 @@ function initBase100() {
 // ═══════════════════════════════════════════════════
 let chartProj = null;
 
-function calcProjections(base, monthly, cagrPct) {
-  const mr = cagrPct / 100 / 12;
-  const livretMr = 0.025 / 12;
-  return [1, 5, 10, 15, 20, 25, 30, 35, 40].map(y => {
+// ═══════════════════════════════════════════════════════════════
+// PROJECTIONS
+// Deux partis pris, contre la version précédente qui donnait une courbe unique
+// à partir de trois champs vides :
+//   — le point de départ vient des données du compte, pas d'une saisie ;
+//   — le résultat est une fourchette, pas un nombre. Annoncer « 1 043 217 € dans
+//     trente ans » à partir d'un rendement supposé constant est une précision
+//     fausse : deux points de rendement en moins divisent le résultat par deux.
+// ═══════════════════════════════════════════════════════════════
+
+// Taux du Livret A depuis le 1er août 2026. La page tablait sur 2,5 %, ce qui
+// flattait l'épargne réglementée face au PEA.
+const LIVRET_A_RATE = 0.017;
+const PROJ_HORIZONS = [1, 3, 5, 10, 15, 20, 25, 30];
+
+// Ce que l'app sait déjà : valeur du PEA, rythme des versements, rendement
+// constaté. Sert au préremplissage et à la ligne d'explication sous les champs.
+function projDataDefaults() {
+  const pea = _peaTotals();
+  const versements = (getVersements(currentUser) || []).filter(v => v && v.date && v.amount > 0);
+  const now = new Date();
+
+  let monthly = 0, moisCouverts = 0;
+  if (versements.length) {
+    const dates = versements.map(v => new Date(v.date + 'T12:00:00')).sort((a, b) => a - b);
+    const premier = dates[0];
+    moisCouverts = Math.max(1, Math.round((now - premier) / (30.44 * 86400000)));
+    const total = versements.reduce((s, v) => s + v.amount, 0);
+    monthly = Math.round(total / moisCouverts);
+  }
+
+  // Rendement constaté : rapport entre la valeur atteinte et les sommes versées,
+  // ramené à l'année. Approximation assumée — elle ignore la date de chaque
+  // versement — mais elle vaut mieux qu'un taux sorti de nulle part. En deçà
+  // d'un an d'historique, elle n'a aucun sens : on prend alors 7 %, ordre de
+  // grandeur du rendement long terme des actions, dividendes réinvestis.
+  const annees = moisCouverts / 12;
+  let cagr = 7, cagrSource = 'défaut';
+  if (annees >= 1 && pea.versements > 0 && pea.total > 0) {
+    const r = (Math.pow(pea.total / pea.versements, 1 / annees) - 1) * 100;
+    if (isFinite(r) && r > -50 && r < 50) { cagr = Math.round(r * 10) / 10; cagrSource = 'constaté'; }
+  }
+  return { base: Math.round(pea.total), monthly, cagr, cagrSource, annees, nbVersements: versements.length };
+}
+
+window.projFillFromData = function () {
+  const d = projDataDefaults();
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.value = v; };
+  set('proj-base', d.base);
+  set('proj-monthly', d.monthly);
+  set('proj-cagr', d.cagr);
+  renderProjections();
+};
+
+// Une trajectoire : capital de départ capitalisé, plus les versements mensuels.
+function projSerie(base, monthly, tauxPct) {
+  const mr = tauxPct / 100 / 12;
+  return PROJ_HORIZONS.map(y => {
     const n = y * 12;
-    const grown = base * Math.pow(1 + cagrPct / 100, y);
-    const contrib = mr > 0 ? monthly * (Math.pow(1 + mr, n) - 1) / mr : monthly * n;
-    const total = parseFloat((grown + contrib).toFixed(2));
-    const apports = parseFloat((base + monthly * n).toFixed(2));
-    const plusValues = parseFloat((total - apports).toFixed(2));
-    const livretGrown = base * Math.pow(1 + 0.025, y);
-    const livretContrib = livretMr > 0 ? monthly * (Math.pow(1 + livretMr, n) - 1) / livretMr : monthly * n;
-    const livretA = parseFloat((livretGrown + livretContrib).toFixed(2));
-    return { years: y, total, apports, plusValues, livretA };
+    const grown = base * Math.pow(1 + tauxPct / 100, y);
+    const contrib = Math.abs(mr) > 1e-9 ? monthly * (Math.pow(1 + mr, n) - 1) / mr : monthly * n;
+    return +(grown + contrib).toFixed(2);
   });
+}
+
+function calcProjections(base, monthly, cagrPct, spreadPct) {
+  const bas  = projSerie(base, monthly, cagrPct - spreadPct);
+  const cen  = projSerie(base, monthly, cagrPct);
+  const haut = projSerie(base, monthly, cagrPct + spreadPct);
+  const livret = projSerie(base, monthly, LIVRET_A_RATE * 100);
+  return PROJ_HORIZONS.map((y, i) => ({
+    years: y,
+    bas: bas[i], central: cen[i], haut: haut[i],
+    apports: +(base + monthly * y * 12).toFixed(2),
+    plusValues: +(cen[i] - base - monthly * y * 12).toFixed(2),
+    livretA: livret[i],
+  }));
+}
+
+function renderProjections() {
+  const el = document.getElementById('proj-base');
+  if (!el) return;
+  // Premier affichage : les champs sont vides, on part des données du compte.
+  if (el.value === '') { projFillFromData(); return; }
+
+  const base    = parseFloat(el.value) || 0;
+  const monthly = parseFloat(document.getElementById('proj-monthly').value) || 0;
+  const cagr    = parseFloat(document.getElementById('proj-cagr').value) || 0;
+  const spread  = Math.max(0, parseFloat(document.getElementById('proj-spread').value) || 0);
+  const data    = calcProjections(base, monthly, cagr, spread);
+
+  // ── D'où viennent les chiffres ──
+  const d = projDataDefaults();
+  const origin = document.getElementById('proj-origin');
+  if (origin) {
+    const bits = [];
+    bits.push('Valeur du PEA : <b>' + fmtCompact(d.base) + '</b>');
+    if (d.nbVersements) {
+      bits.push('apport moyen constaté : <b>' + fmtCompact(d.monthly) + '/mois</b> sur '
+        + Math.round(d.annees * 12) + ' mois');
+    } else {
+      bits.push('aucun versement enregistré : l\'apport mensuel part de zéro');
+    }
+    bits.push(d.cagrSource === 'constaté'
+      ? 'rendement constaté : <b>' + d.cagr.toFixed(1) + ' %/an</b>'
+      : 'moins d\'un an d\'historique : rendement par défaut <b>7 %/an</b>');
+    origin.innerHTML = bits.join(' · ');
+  }
+
+  // ── Fourchette aux trois horizons ──
+  const range = document.getElementById('proj-range');
+  if (range) {
+    range.innerHTML = [10, 20, 30].map(y => {
+      const r = data.find(x => x.years === y);
+      if (!r) return '';
+      return '<div class="proj-card">'
+        + '<div class="proj-card-h">Dans ' + y + ' ans</div>'
+        + '<div class="proj-card-v">' + fmtCompact(r.central) + '</div>'
+        + '<div class="proj-card-r">' + fmtCompact(r.bas) + ' → ' + fmtCompact(r.haut) + '</div>'
+        + '<div class="proj-card-s">dont <b>' + fmtCompact(r.plusValues) + '</b> de plus-values</div>'
+        + '</div>';
+    }).join('');
+  }
+
+  const note = document.getElementById('proj-note');
+  if (note) {
+    note.innerHTML = 'Trois trajectoires à <b>' + (cagr - spread).toFixed(1) + ' %</b>, <b>'
+      + cagr.toFixed(1) + ' %</b> et <b>' + (cagr + spread).toFixed(1) + ' %</b> par an. '
+      + 'La zone grisée est l\'écart entre la plus basse et la plus haute : c\'est elle qui compte, '
+      + 'pas la ligne du milieu. À titre de comparaison, le Livret A rapporte '
+      + (LIVRET_A_RATE * 100).toFixed(2).replace('.', ',') + ' % depuis le 1er août 2026.';
+  }
+
+  // ── Graphique : bande entre les deux extrêmes ──
+  const ctx = document.getElementById('chart-projections');
+  if (ctx) {
+    if (chartProj) { chartProj.destroy(); chartProj = null; }
+    chartProj = new Chart(ctx, {
+      type: 'line',
+      data: {
+        labels: data.map(d2 => d2.years + ' ans'),
+        datasets: [
+          { label: 'Défavorable', data: data.map(d2 => d2.bas), borderColor: 'rgba(124,109,245,.35)',
+            backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 0, tension: .35 },
+          // `fill: '-1'` remplit jusqu'à la série précédente : c'est la bande.
+          { label: 'Favorable', data: data.map(d2 => d2.haut), borderColor: 'rgba(124,109,245,.35)',
+            backgroundColor: 'rgba(124,109,245,.12)', fill: '-1', borderWidth: 1.5, pointRadius: 0, tension: .35 },
+          { label: 'Central', data: data.map(d2 => d2.central), borderColor: '#7c6df5',
+            backgroundColor: 'transparent', borderWidth: 2.5, pointRadius: 3, tension: .35 },
+          { label: 'Apports cumulés', data: data.map(d2 => d2.apports), borderColor: '#f5b731',
+            backgroundColor: 'transparent', borderWidth: 2, pointRadius: 0, tension: .35, borderDash: [5, 3] },
+          { label: 'Livret A', data: data.map(d2 => d2.livretA), borderColor: 'rgba(255,255,255,.22)',
+            backgroundColor: 'transparent', borderWidth: 1.5, pointRadius: 0, tension: .35, borderDash: [3, 2] },
+        ],
+      },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { labels: { color: '#8892a8', font: { size: 11 }, usePointStyle: true, boxWidth: 8 } },
+          tooltip: {
+            backgroundColor: '#12141f', borderColor: 'rgba(255,255,255,.1)', borderWidth: 1,
+            titleColor: '#8892a8', bodyColor: '#edf0f7',
+            callbacks: { label: c => ' ' + c.dataset.label + ' : ' + fmtCompact(c.parsed.y) },
+          },
+        },
+        scales: {
+          x: { ticks: { color: '#495068', font: { size: 10 } }, grid: { color: 'rgba(255,255,255,.04)' } },
+          y: { ticks: { color: '#495068', font: { size: 10 }, callback: v => fmtCompact(v) },
+               grid: { color: 'rgba(255,255,255,.04)' } },
+        },
+      },
+    });
+  }
+
+  // ── Tableau ──
+  const tbody = document.getElementById('proj-tbody');
+  if (tbody) {
+    tbody.innerHTML = data.map(r => '<tr>'
+      + '<td style="font-weight:600">' + r.years + ' ans</td>'
+      + '<td class="mono" style="text-align:right;color:var(--text3)">' + fmtCompact(r.bas) + '</td>'
+      + '<td class="mono" style="text-align:right;font-weight:700">' + fmtCompact(r.central) + '</td>'
+      + '<td class="mono" style="text-align:right;color:var(--positive)">' + fmtCompact(r.haut) + '</td>'
+      + '<td class="mono hide-mobile" style="text-align:right;color:var(--gold)">' + fmtCompact(r.apports) + '</td>'
+      + '<td class="mono hide-mobile" style="text-align:right;color:' + (r.plusValues >= 0 ? 'var(--positive)' : 'var(--negative)') + '">'
+        + fmtCompact(r.plusValues) + '</td>'
+      + '<td class="mono hide-mobile" style="text-align:right;color:var(--text3)">' + fmtCompact(r.livretA) + '</td>'
+      + '</tr>').join('');
+  }
 }
 
 function fmtCompact(n) {
@@ -10597,63 +10771,6 @@ function projNumStep(id, dir) {
   renderProjections();
 }
 
-function renderProjections() {
-  const base    = parseFloat(document.getElementById('proj-base')?.value) || 0;
-  const monthly = parseFloat(document.getElementById('proj-monthly')?.value) || 0;
-  const cagr    = parseFloat(document.getElementById('proj-cagr')?.value)    || 0;
-  const data    = calcProjections(base, monthly, cagr);
-
-  // Chart
-  const ctx = document.getElementById('chart-projections');
-  if (ctx) {
-    if (chartProj) { chartProj.destroy(); chartProj = null; }
-    chartProj = new Chart(ctx, {
-      type: 'line',
-      data: {
-        labels: data.map(d => d.years + ' ans'),
-        datasets: [
-          { label: 'Patrimoine total', data: data.map(d => d.total),      borderColor: '#7c6df5', backgroundColor: 'rgba(124,109,245,0.08)', fill: true,  borderWidth: 2.5, pointRadius: 3, tension: 0.4 },
-          { label: 'Apports cumulés', data: data.map(d => d.apports),    borderColor: '#f5b731', backgroundColor: 'transparent',               fill: false, borderWidth: 2,   pointRadius: 2, tension: 0.4, borderDash: [5,3] },
-          { label: 'Plus-values',      data: data.map(d => d.plusValues), borderColor: '#00e09e', backgroundColor: 'transparent',               fill: false, borderWidth: 2,   pointRadius: 2, tension: 0.4 },
-          { label: 'Livret A',         data: data.map(d => d.livretA),    borderColor: 'rgba(255,255,255,0.2)', backgroundColor: 'transparent', fill: false, borderWidth: 1.5, pointRadius: 0, tension: 0.4, borderDash: [3,2] },
-        ]
-      },
-      options: {
-        responsive: true, maintainAspectRatio: false,
-        interaction: { mode: 'index', intersect: false },
-        plugins: {
-          legend: { labels: { color: '#8892a8', font: { size: 11 } } },
-          tooltip: {
-            backgroundColor: '#12141f', borderColor: 'rgba(255,255,255,0.1)', borderWidth: 1,
-            titleColor: '#8892a8', bodyColor: '#edf0f7',
-            callbacks: { label: ctx => ` ${ctx.dataset.label}: ${fmtCompact(ctx.parsed.y)}` }
-          }
-        },
-        scales: {
-          x: { grid: { color: 'rgba(255,255,255,0.03)' }, ticks: { color: '#495068', font: { size: 11 } } },
-          y: { grid: { color: 'rgba(255,255,255,0.04)' }, ticks: { color: '#495068', font: { size: 10 }, callback: v => fmtCompact(v) } }
-        }
-      }
-    });
-  }
-
-  // Table
-  const tbody = document.getElementById('proj-tbody');
-  if (!tbody) return;
-  tbody.innerHTML = data.map((d, i) => {
-    const avLA = (d.total - d.livretA);
-    const ratioPct = d.apports > 0 ? Math.round(d.plusValues / d.apports * 100) : 0;
-    return `<tr style="${i % 2 === 0 ? '' : 'background:var(--s2)'}">
-      <td style="font-weight:700;color:var(--accent)">${d.years} ans</td>
-      <td class="mono" style="font-weight:600">${fmtCompact(d.total)}</td>
-      <td class="mono" style="color:var(--gold)">${fmtCompact(d.apports)}</td>
-      <td class="mono" style="color:var(--positive);font-weight:600">${fmtCompact(d.plusValues)}</td>
-      <td class="mono" style="color:var(--text2)">${ratioPct}%</td>
-      <td class="mono" style="color:var(--text2)">${fmtCompact(d.livretA)}</td>
-      <td class="mono" style="color:${avLA >= 0 ? 'var(--positive)' : 'var(--negative)'};font-weight:600">${avLA >= 0 ? '+' : ''}${fmtCompact(avLA)}</td>
-    </tr>`;
-  }).join('');
-}
 
 function initProjections() {
   // Pre-fill base with current portfolio value
