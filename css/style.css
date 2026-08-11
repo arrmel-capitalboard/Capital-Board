@@ -3881,13 +3881,15 @@ body.has-demo-banner { padding-top: 40px; }
      La bordure reprend le fond de la barre pour le détacher de l'onglet. */
   .mobile-nav-inner { position: relative; }
   .nav-add-badge {
-    position: absolute; top: -7px; left: calc(40% - 15px);
-    width: 22px; height: 22px; border-radius: 50%;
+    position: absolute; top: -9px; left: calc(40% - 17px);
+    width: 26px; height: 26px; border-radius: 50%;
     background: linear-gradient(135deg, var(--accent), #6b5ee8);
     color: #fff; border: 2px solid var(--s1);
     display: none; place-items: center; cursor: pointer; z-index: 3;
     box-shadow: 0 2px 8px rgba(124,109,245,.5);
-    transition: transform .2s;
+    /* `top` et `left` s'animent : à l'ouverture, le bouton rejoint le coin de
+       la feuille, calculé en JS puisque sa hauteur dépend du nombre d'entrées. */
+    transition: transform .22s cubic-bezier(.32,.72,0,1), top .26s cubic-bezier(.32,.72,0,1), left .26s cubic-bezier(.32,.72,0,1);
   }
   #pea-fab.on ~ .mobile-nav .nav-add-badge { display: grid; }
   #pea-fab.open ~ .mobile-nav .nav-add-badge { transform: rotate(45deg); }

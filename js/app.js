@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260813f';
+const APP_VERSION = '20260813g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3600,7 +3600,34 @@ window.togglePeaFab = function (force) {
   const open = force === undefined ? !el.classList.contains('open') : !!force;
   el.classList.toggle('open', open);
   el.setAttribute('aria-hidden', open ? 'false' : 'true');
+  _movePeaBadge(open);
 };
+
+// À l'ouverture, le déclencheur quitte le coin de l'onglet pour celui de la
+// feuille. La hauteur de la feuille dépend du nombre d'entrées : ses
+// coordonnées se mesurent, elles ne peuvent pas s'écrire en CSS. Le passage en
+// position fixe se fait d'abord sur place, pour que le déplacement s'anime au
+// lieu de sauter.
+function _movePeaBadge(open) {
+  const badge = document.getElementById('nav-add-btn');
+  const sheet = document.querySelector('#pea-fab .pea-sheet');
+  if (!badge || !sheet) return;
+  if (!open) {
+    badge.style.position = ''; badge.style.left = ''; badge.style.top = ''; badge.style.zIndex = '';
+    return;
+  }
+  const from = badge.getBoundingClientRect();
+  badge.style.position = 'fixed';
+  badge.style.left = from.left + 'px';
+  badge.style.top  = from.top + 'px';
+  badge.style.zIndex = '210';
+  void badge.offsetWidth;                     // force le calcul avant transition
+  requestAnimationFrame(() => {
+    const r = sheet.getBoundingClientRect();
+    badge.style.left = (r.right - from.width / 2 - 6) + 'px';
+    badge.style.top  = (r.top - from.height / 2) + 'px';
+  });
+}
 
 function _syncPeaFab(id) {
   const el = document.getElementById('pea-fab');
