@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260812q';
+const APP_VERSION = '20260812r';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3328,6 +3328,7 @@ function applyFeatureFlags(features) {
 // plus : ils vivent dans la barre #pea-tabs, pas dans le menu. Leurs toggles
 // restent accessibles à l'admin via PEA_TABS.
 const SECTION_LABELS = {
+  patrimoine: 'Patrimoine',
   portfolio: 'PEA', cto: 'Mon CTO', crypto: 'Ma crypto', depenses: 'Dépenses & abonnements',
   av: 'Assurance-vie', per: 'PER', livrets: 'Livrets & épargne',
   immo: 'Immobilier & SCPI', or: 'Or & métaux', nonco: 'Crowdfunding & non coté',
@@ -3342,7 +3343,7 @@ const ADMIN_ONLY_KEYS = ['admin']; // rendus uniquement pour l'admin
 // remanié : une config enregistrée par l'admin prime sur DEFAULT_NAV, et sans
 // ce garde-fou un remaniement restait invisible tant que personne n'avait
 // rouvert l'éditeur pour réenregistrer le menu.
-const NAV_LAYOUT_VERSION = 4;
+const NAV_LAYOUT_VERSION = 5;
 
 // Organisation sauvegardée, ou null si elle date d'avant le dernier remaniement
 // — auquel cas DEFAULT_NAV reprend la main. Réenregistrer le menu depuis
@@ -3360,7 +3361,7 @@ const DEFAULT_NAV = [
   // d'un bloc à l'autre pour une même ligne.
   // Ordre de lecture : les enveloppes investies d'abord, puis l'épargne
   // disponible, les actifs non cotés, et le budget en dernier.
-  { title: 'Mes comptes',    items: ['portfolio', 'cto', 'av', 'per', 'crypto', 'livrets', 'immo', 'or', 'nonco', 'depenses'] },
+  { title: 'Mes comptes',    items: ['patrimoine', 'portfolio', 'cto', 'av', 'per', 'crypto', 'livrets', 'immo', 'or', 'nonco', 'depenses'] },
   { title: 'Outils',         items: ['actualites', 'favoris', 'fiscalite', 'idees', 'support'] },
   { title: 'Administration', items: ['admin'] },
   { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord', 'facebook', 'linkedin'] },
@@ -3564,6 +3565,7 @@ function _runPageHook(id) {
   if (id === 'bilan')         initBilan();
   if (id === 'dividendes')    initDividendes();
   if (id === 'avantages')     initAvantages();
+  if (id === 'patrimoine')    renderPatrimoine();
 }
 
 // Changer de page sans remonter laissait l'utilisateur au milieu de la
@@ -3768,6 +3770,116 @@ function _startPfChartTick() {
       chart.update('none');                // sans animation : la courbe avance
     });
   }, 60000);
+}
+
+// ═══════════════════════════════════════════════════════════════
+// PATRIMOINE — vue consolidée de toutes les enveloppes
+// Une seule est alimentée aujourd'hui, le PEA ; les autres attendent leur
+// module. La page est construite pour les accueillir : chaque enveloppe est une
+// entrée du même registre, il suffira de brancher son montant.
+// ═══════════════════════════════════════════════════════════════
+
+// Valeur du PEA : titres au cours du jour + solde espèces. Même calcul que la
+// page Mon PEA et que les trophées, repris ici pour ne pas diverger.
+function _peaTotals() {
+  const pf  = getPortfolio(currentUser);
+  const txs = getTransactions(currentUser);
+  const titres     = pf.reduce((s, r) => s + r.qty * r.currentPrice, 0);
+  const investi    = pf.reduce((s, r) => s + r.qty * r.buyPrice, 0);
+  const versements = getVersements(currentUser).reduce((s, v) => s + v.amount, 0);
+  let achats = 0, ventes = 0, divs = 0, distrib = 0;
+  txs.forEach(t => {
+    if (t.type === 'buy')          achats  += t.qty * t.price;
+    if (t.type === 'sell')         ventes  += t.qty * t.price;
+    if (t.type === 'dividend')     divs    += t.qty * t.price;
+    if (t.type === 'distribution') distrib += t.qty * t.price;
+  });
+  const cash = Math.max(0, versements - achats + ventes + divs + distrib - _totalFees(txs));
+  return { titres, cash, investi, versements, total: titres + cash, latent: titres - investi };
+}
+
+// Les enveloppes, dans l'ordre d'affichage. `value` renvoie null tant qu'aucun
+// module ne l'alimente : la page l'affiche alors comme à venir.
+const PATRIMOINE_ENVELOPPES = [
+  { key: 'portfolio', label: 'PEA',                     color: '#7c6df5', value: () => _peaTotals().total },
+  { key: 'cto',       label: 'Compte-titres',           color: '#5b8dee', value: () => null },
+  { key: 'av',        label: 'Assurance-vie',           color: '#00cec9', value: () => null },
+  { key: 'per',       label: 'PER',                     color: '#00e09e', value: () => null },
+  { key: 'crypto',    label: 'Crypto',                  color: '#f5b731', value: () => null },
+  { key: 'livrets',   label: 'Livrets & épargne',       color: '#ff9f43', value: () => null },
+  { key: 'immo',      label: 'Immobilier & SCPI',       color: '#a29bfe', value: () => null },
+  { key: 'or',        label: 'Or & métaux',             color: '#ffd166', value: () => null },
+  { key: 'nonco',     label: 'Crowdfunding & non coté', color: '#ff4d6a', value: () => null },
+];
+
+function renderPatrimoine() {
+  const el = document.getElementById('patrimoine-content');
+  if (!el) return;
+
+  const pea  = _peaTotals();
+  const rows = PATRIMOINE_ENVELOPPES.map(e => Object.assign({}, e, { montant: e.value() }));
+  const actives = rows.filter(r => r.montant !== null && r.montant > 0);
+  const total   = actives.reduce((s, r) => s + r.montant, 0);
+  const attente = rows.length - actives.length;
+
+  const eur = v => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
+  const part = v => total > 0 ? (v / total * 100) : 0;
+
+  // Répartition : une barre segmentée, lisible même avec une seule enveloppe.
+  const barre = actives.length
+    ? '<div style="display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--s2);margin:14px 0 10px">'
+      + actives.map(r => '<div title="' + r.label + '" style="width:' + part(r.montant).toFixed(1) + '%;background:' + r.color + '"></div>').join('')
+      + '</div><div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text3)">'
+      + actives.map(r => '<span style="display:inline-flex;align-items:center;gap:6px">'
+          + '<span style="width:8px;height:8px;border-radius:2px;background:' + r.color + '"></span>'
+          + r.label + ' <b style="color:var(--text2);font-family:var(--mono)">' + part(r.montant).toFixed(1) + ' %</b></span>').join('')
+      + '</div>'
+    : '';
+
+  const ligne = (r) => {
+    const dispo = r.montant !== null && r.montant > 0;
+    return '<div class="patri-row" onclick="showPage(&quot;' + r.key + '&quot;)">'
+      + '<span style="width:10px;height:10px;border-radius:3px;background:' + r.color + ';opacity:' + (dispo ? '1' : '.35') + ';flex-shrink:0"></span>'
+      + '<span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:' + (dispo ? 'var(--text)' : 'var(--text3)') + '">' + r.label + '</span>'
+      + (dispo
+        ? '<span style="text-align:right"><span style="display:block;font-family:var(--mono);font-size:13px;font-weight:700">' + eur(r.montant) + '</span>'
+          + '<span style="display:block;font-size:10.5px;color:var(--text3);font-family:var(--mono)">' + part(r.montant).toFixed(1) + ' % du total</span></span>'
+        : '<span style="font-size:10px;color:var(--text3);border:1px solid var(--border);border-radius:5px;padding:2px 8px;white-space:nowrap">à venir</span>')
+      + '</div>';
+  };
+
+  const latentCol = pea.latent >= 0 ? 'var(--positive)' : 'var(--negative)';
+  const latentPct = pea.investi > 0 ? (pea.latent / pea.investi * 100) : 0;
+
+  el.innerHTML =
+    '<div class="section-card" style="margin-bottom:18px">'
+    +   '<div style="font-size:11px;color:var(--text3);letter-spacing:1px;text-transform:uppercase">Patrimoine total</div>'
+    +   '<div style="font-size:34px;font-weight:800;font-family:var(--mono);margin-top:6px">' + eur(total) + '</div>'
+    +   '<div style="font-size:12px;color:' + latentCol + ';margin-top:2px">'
+    +     (pea.latent >= 0 ? '+' : '') + eur(pea.latent) + ' de plus-value latente'
+    +     (pea.investi > 0 ? ' · ' + (latentPct >= 0 ? '+' : '') + latentPct.toFixed(2) + ' %' : '')
+    +   '</div>' + barre
+    + '</div>'
+
+    + '<div class="section-card" style="margin-bottom:18px">'
+    +   '<div class="section-title">Par enveloppe</div>'
+    +   rows.map(ligne).join('')
+    +   (attente
+        ? '<div style="font-size:11px;color:var(--text3);margin-top:12px;line-height:1.55">'
+          + attente + ' enveloppes attendent leur module. Leur montant viendra s\'ajouter ici '
+          + 'automatiquement, sans rien à ressaisir.</div>'
+        : '')
+    + '</div>'
+
+    + '<div class="section-card">'
+    +   '<div class="section-title">Détail du PEA</div>'
+    +   '<div class="patri-grid">'
+    +     '<div><span>Titres</span><b>' + eur(pea.titres) + '</b></div>'
+    +     '<div><span>Espèces</span><b>' + eur(pea.cash) + '</b></div>'
+    +     '<div><span>Investi</span><b>' + eur(pea.investi) + '</b></div>'
+    +     '<div><span>Versements cumulés</span><b>' + eur(pea.versements) + '</b></div>'
+    +   '</div>'
+    + '</div>';
 }
 
 function renderPortfolio() {
