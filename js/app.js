@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811j';
+const APP_VERSION = '20260811k';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -11258,7 +11258,7 @@ const SHAREHOLDER_PERKS = [
     source: 'https://www.airliquide.com/help/loyalty-bonus',
     perks: [
       { kind: 'dividende', label: 'Dividende majoré +10 %', rate: 0.10 },
-      { kind: 'actions', label: 'Actions gratuites majorées +10 %', note: 'Attribution périodique — la dernière date de juin 2026' },
+      { kind: 'actions', label: 'Actions gratuites majorées +10 %', note: 'Attribution du 10 juin 2026 : une action gratuite pour dix détenues. Avec la prime, dix actions gratuites en font onze.' },
       { kind: 'ag', label: 'Cadeau en assemblée générale', note: 'Jeton de présence de 20 €', unverified: true },
     ],
   },
@@ -11298,7 +11298,7 @@ const SHAREHOLDER_PERKS = [
     source: 'https://www.interparfums-finance.fr/en/publications/press-release/bonus-share-award-1-new-share-for-every-10-held/',
     perks: [
       { kind: 'actions', label: 'Attribution d\'actions gratuites, tous les ans',
-        note: '27ᵉ année consécutive en 2026, au rythme d\'une action nouvelle pour vingt détenues. Aucune condition de nominatif ; les rompus sont vendus et reversés.' },
+        note: '27ᵉ année consécutive en 2026. Le ratio change chaque année : une action pour vingt en 2026, une pour dix en 2025. Aucune condition de nominatif ; les rompus sont vendus et reversés.' },
       { kind: 'ag', label: 'Cadeau en assemblée générale', note: 'Flacon de parfum', unverified: true },
     ],
   },
@@ -11458,6 +11458,22 @@ const SHAREHOLDER_PERKS = [
         note: 'Adhésion gratuite, mais le club ne propose plus d\'événement depuis plusieurs années' },
       { kind: 'ag', label: 'Cadeau en assemblée générale' },
     ],
+  },
+  {
+    ticker: 'RNO.PA', name: 'Renault', official: true,
+    source: 'https://www.renaultgroup.com/en/finance/shareholders/shareholders-club/',
+    perks: [{
+      kind: 'club', label: 'Club actionnaires dès 1 action', minShares: 1,
+      note: 'Visites d\'usines, présentation des nouveaux véhicules, rencontres avec les dirigeants',
+    }],
+  },
+  {
+    ticker: 'VIV.PA', name: 'Vivendi', official: true,
+    source: 'https://www.vivendi.com/actionnaires-investisseurs/actionnaires-individuels/club-des-actionnaires/',
+    perks: [{
+      kind: 'club', label: 'Club actionnaires dès 1 action', minShares: 1,
+      note: 'Spectacles et événements culturels selon la programmation, lettre aux actionnaires',
+    }],
   },
   {
     ticker: 'RMS.PA', name: 'Hermès', official: false,
@@ -11706,6 +11722,26 @@ function initAvantages() {
         <br><br>
         Votre courtier ne dit pas si vous êtes au nominatif : indiquez-le ci-dessous ligne par ligne, et
         Capital Board calcule l'année où la prime tombe.
+      </div>
+    </div>
+
+    <div class="section-card" style="margin-bottom:18px">
+      <div class="section-title" style="margin-bottom:10px">Nominatif : lequel, dans un PEA</div>
+      <div style="font-size:12px;color:var(--text2);line-height:1.65">
+        Il existe deux nominatifs, et un seul convient à un PEA.
+        <br><br>
+        <b style="color:var(--positive)">Nominatif administré</b> — vos titres restent chez votre courtier, qui
+        continue de les gérer, et ils <b style="color:var(--text1)">restent dans le PEA</b>. Vous êtes inscrit
+        chez la société, donc vous avez droit à la prime de fidélité. C'est celui qu'il vous faut.
+        <br>
+        <b style="color:var(--gold)">Nominatif pur</b> — vos titres sont tenus directement par la société.
+        Les droits de garde sont souvent offerts, mais le montage <b style="color:var(--text1)">s'accorde mal
+        avec un PEA</b>, à cause du compte espèces qui lui est rattaché. À réserver à un compte-titres
+        ordinaire.
+        <br><br>
+        Autre effet du nominatif, indépendant des primes : dans beaucoup de sociétés françaises, deux ans
+        d'inscription donnent un <b style="color:var(--text1)">droit de vote double</b>. Ça ne rapporte rien,
+        ça pèse en assemblée.
       </div>
     </div>
 
