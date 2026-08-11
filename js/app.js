@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260813j';
+const APP_VERSION = '20260813k';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -217,6 +217,24 @@ _splashWatchdog = setTimeout(() => {
     fcmMessaging = msgMod.getMessaging(fbApp);
   } catch(e) { console.warn('FCM unavailable:', e.message); }
 
+  // La démo n'a besoin ni d'Auth ni de Firestore : ses données viennent d'un
+  // fichier local. Elle démarre donc avant tout appel à Auth. Attendre
+  // getRedirectResult laissait l'écran vide quand le navigateur bloque ou
+  // ralentit l'accès au stockage — le cas d'une iframe sous Firefox, où le
+  // stockage est cloisonné : l'attente ne rendait jamais la main.
+  if (window.IS_DEMO) {
+    startApp({
+      uid: 'demo-user',
+      email: 'demo@capitalboard.fr',
+      displayName: 'Démo',
+      providerData: [{ providerId: 'password' }],
+      metadata: { creationTime: new Date().toISOString(), lastSignInTime: new Date().toISOString() },
+      emailVerified: true,
+      photoURL: null
+    });
+    return;
+  }
+
   // Google Sign-In : récupère le résultat du signInWithRedirect (iOS/PWA standalone).
   try {
     const redirectResult = await getRedirectResult(fbAuth);
@@ -240,17 +258,7 @@ _splashWatchdog = setTimeout(() => {
     if (errEl) errEl.textContent = 'Connexion Google impossible : ' + (e && (e.message || e.code) || 'erreur');
   }
 
-  if (window.IS_DEMO) {
-    startApp({
-      uid: 'demo-user',
-      email: 'demo@capitalboard.fr',
-      displayName: 'Démo',
-      providerData: [{ providerId: 'password' }],
-      metadata: { creationTime: new Date().toISOString(), lastSignInTime: new Date().toISOString() },
-      emailVerified: true,
-      photoURL: null
-    });
-  } else {
+  {
     auth.onAuthStateChanged(fbAuth, async user => {
       if (!user) { stopApp(); return; }
       // Gate vérification email — providers OAuth (Google) ont emailVerified=true direct
