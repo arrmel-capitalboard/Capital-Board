@@ -1,5 +1,9 @@
 rules_version = '2';
 
+// INUTILISE depuis le 2026-08-11 : les pieces jointes du support passent par
+// Cloudflare R2 (POST /support-upload du Worker), qui ne demande aucune
+// facturation. Ce fichier reste pour memoire.
+//
 // NON DEPLOYE au 2026-07-30 : le projet est sur le plan gratuit (Spark) et
 // Firebase Storage demande desormais le plan Blaze, donc un compte de
 // facturation. Ce fichier est pret le jour ou le projet basculera ; le deploiement

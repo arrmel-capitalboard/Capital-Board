@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811s';
+const APP_VERSION = '20260811t';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -14886,13 +14886,27 @@ function _renderChatMessages(msgs) {
       if (t) time = t.toLocaleTimeString("fr-FR", {hour:"2-digit",minute:"2-digit"});
     } catch(_) {}
 
-    // Contenu (texte ou image)
+    // Contenu (texte, image ou fichier)
     let body;
     if (m.type === "image" && m.imageUrl) {
       const _iu = _safeUrl(m.imageUrl);
       body = _iu
         ? '<a href="' + _iu + '" target="_blank" rel="noopener"><img src="' + _iu + '" alt="img" style="max-width:240px;max-height:240px;border-radius:8px;display:block"></a>'
         : '<span style="color:var(--text3);font-size:11px">[image non affichable]</span>';
+      if (m.text) body += '<div style="margin-top:6px">' + _escapeHtmlChat(m.text) + '</div>';
+    } else if (m.type === "file" && m.fileUrl) {
+      const _fu = _safeUrl(m.fileUrl);
+      const nm  = _escapeHtmlChat(m.fileName || 'fichier');
+      const ex  = String(m.fileName || '').split('.').pop().toLowerCase();
+      const tint = ex === 'pdf' ? '#ff6b6b' : (ex === 'csv' ? '#00cec9' : '#00e09e');
+      body = _fu
+        ? '<a href="' + _fu + '" target="_blank" rel="noopener" download style="display:flex;align-items:center;gap:10px;text-decoration:none;padding:9px 11px;border-radius:10px;background:rgba(255,255,255,0.05);border:1px solid var(--border);min-width:180px">'
+          + '<span style="width:30px;height:30px;border-radius:8px;background:' + tint + '22;color:' + tint + ';display:grid;place-items:center;font-size:9px;font-weight:800;font-family:var(--mono);flex-shrink:0">' + _escapeHtmlChat(ex.slice(0, 4).toUpperCase()) + '</span>'
+          + '<span style="min-width:0">'
+          + '<span style="display:block;font-size:12px;font-weight:600;color:var(--text1);word-break:break-all">' + nm + '</span>'
+          + '<span style="display:block;font-size:10px;color:var(--text3);margin-top:1px">' + _fmtFileSize(m.fileSize) + ' · Télécharger</span>'
+          + '</span></a>'
+        : '<span style="color:var(--text3);font-size:11px">[fichier non disponible]</span>';
       if (m.text) body += '<div style="margin-top:6px">' + _escapeHtmlChat(m.text) + '</div>';
     } else {
       body = _escapeHtmlChat(m.text || "");
@@ -14916,7 +14930,77 @@ function _renderChatMessages(msgs) {
   c.scrollTop = c.scrollHeight;
 }
 
-// Construit la barre input (emoji + image + texte + send).
+// ─── PIÈCES JOINTES DU SUPPORT ────────────────────────────
+// Le Worker refuse tout ce qui n'est pas dans cette liste : le filtre ci-dessous
+// n'évite qu'un aller-retour inutile. Les .csv et .xls remontent parfois en
+// type vide ou générique selon le système, d'où le repli sur l'extension.
+const SUPPORT_ACCEPT = '.png,.jpg,.jpeg,.webp,.gif,.pdf,.csv,.xls,.xlsx,image/*,application/pdf,text/csv,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+const SUPPORT_EXT_MIME = {
+  png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp', gif: 'image/gif',
+  pdf: 'application/pdf', csv: 'text/csv', xls: 'application/vnd.ms-excel',
+  xlsx: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+};
+const SUPPORT_MAX_BYTES = 10 * 1024 * 1024;
+
+function _fmtFileSize(n) {
+  if (!n) return '';
+  return n < 1024 * 1024 ? Math.max(1, Math.round(n / 1024)) + ' Ko'
+                         : (n / (1024 * 1024)).toFixed(1).replace('.', ',') + ' Mo';
+}
+
+window.sendSupportFile = async function(input) {
+  const file = input && input.files && input.files[0];
+  if (input) input.value = '';   // permet de renvoyer le même fichier
+  if (!file) return;
+
+  const ext  = (file.name.split('.').pop() || '').toLowerCase();
+  const type = SUPPORT_EXT_MIME[ext] || (file.type || '').split(';')[0];
+  if (!SUPPORT_EXT_MIME[ext]) {
+    _showChatToast({ icon: IC.warning, title: 'Format refusé', msg: 'Images, PDF, CSV, XLS et XLSX uniquement.' });
+    return;
+  }
+  if (file.size > SUPPORT_MAX_BYTES) {
+    _showChatToast({ icon: IC.warning, title: 'Fichier trop lourd', msg: 'Maximum 10 Mo (celui-ci fait ' + _fmtFileSize(file.size) + ').' });
+    return;
+  }
+
+  const targetUid = isAdmin() ? _activeSupportThread : currentUser;
+  if (!targetUid) return;
+  if (!isAdmin() && window._supportNoThread === true) {
+    _showChatToast({ icon: IC.warning, title: 'Ouvrez d\'abord un ticket', msg: 'Envoyez un message avant de joindre un fichier.' });
+    return;
+  }
+
+  const btn = document.querySelector('.chat-input-bar button[title="Joindre un fichier"]');
+  if (btn) btn.disabled = true;
+  try {
+    const idToken = await fbAuth.currentUser.getIdToken();
+    const res = await fetch(WORKER_URL + '/support-upload', {
+      method: 'POST',
+      headers: {
+        Authorization: 'Bearer ' + idToken,
+        'X-File-Name': encodeURIComponent(file.name),
+        'X-File-Type': type,
+        ...(isAdmin() ? { 'X-Target-Uid': targetUid } : {}),
+      },
+      body: file,
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out.error || ('HTTP ' + res.status));
+
+    const isImg = type.startsWith('image/');
+    await _sendSupportPayload(targetUid, isImg
+      ? { type: 'image', imageUrl: out.url, fileName: out.name, fileSize: out.size }
+      : { type: 'file', fileUrl: out.url, fileName: out.name, fileType: type, fileSize: out.size });
+  } catch (e) {
+    console.warn('[support] envoi du fichier:', e && e.message);
+    _showChatToast({ icon: IC.warning, title: 'Envoi impossible', msg: e && e.message ? e.message : 'Réessayez dans un instant.' });
+  } finally {
+    if (btn) btn.disabled = false;
+  }
+};
+
+// Construit la barre input (emoji + fichier + texte + send).
 function _chatInputBarHtml(placeholder, sendId, sendDisabled) {
   const emojis = ["😀","😂","😍","🤔","👍","👎","🙏","🎉","🔥","💯","✨","❤️","😢","😡","✅","❌","💡","💰","📈","📉","⭐","🚀","🤝","👀","🎯","🤷","🤯"];
   const panel = '<div id="emoji-panel" class="emoji-panel">'
@@ -14926,10 +15010,12 @@ function _chatInputBarHtml(placeholder, sendId, sendDisabled) {
     + panel
     + '<div class="chat-input-bar">'
     + '<button type="button" onclick="toggleEmojiPanel()" class="chat-tool-btn" title="Emoji">😀</button>'
-    // Bouton « joindre une image » retire le 2026-07-30 : l'envoi passait par
-    // Firebase Storage, jamais provisionne (le plan gratuit ne le permet plus),
-    // donc l'upload echouait a chaque fois. storage.rules est pret si le projet
-    // passe un jour en Blaze ; l'affichage des images recues reste en place.
+    // Le bouton avait été retiré le 2026-07-30 : l'envoi passait par Firebase
+    // Storage, que le plan gratuit ne provisionne plus. Les fichiers vont
+    // désormais sur R2 via le Worker, sans facturation.
+    + '<input type="file" id="chat-file" style="display:none" accept="' + SUPPORT_ACCEPT + '" onchange="sendSupportFile(this)">'
+    + '<button type="button" onclick="document.getElementById(\'chat-file\').click()" class="chat-tool-btn" title="Joindre un fichier"' + (sendDisabled ? " disabled" : "") + '>'
+    + '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>'
     + '<input id="chat-input" placeholder="' + placeholder + '" ' + (sendDisabled ? "disabled " : "") + 'oninput="signalTyping()" onkeydown="if(event.key===&quot;Enter&quot;)sendSupportMessage()">'
     + '<button ' + (sendId ? 'id="' + sendId + '" ' : '') + 'onclick="sendSupportMessage()" ' + (sendDisabled ? "disabled" : "") + '>Envoyer</button>'
     + '</div>';
@@ -14948,7 +15034,9 @@ async function _sendSupportPayload(targetUid, payload) {
   const threadRef = firestoreDoc(db, "supportThreads", targetUid);
   const existing = await getFirestoreDoc(threadRef);
   const prev = existing.exists() ? existing.data() : {};
-  const preview = payload.type === "image" ? "📎 Image" : (payload.text || "");
+  const preview = payload.type === "image" ? "📎 Image"
+    : payload.type === "file" ? ("📎 " + (payload.fileName || "Fichier"))
+    : (payload.text || "");
   const update = {
     lastMsg: preview,
     lastAt: serverTimestamp(),

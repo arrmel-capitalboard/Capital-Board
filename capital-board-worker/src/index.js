@@ -30,8 +30,57 @@ const CORS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   // Authorization : /username-available accepte le jeton du demandeur pour
   // s'exclure lui-meme du controle d'unicite.
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization',
+  // X-File-Name / X-File-Type / X-Target-Uid : metadonnees de /support-upload,
+  // le corps de la requete etant les octets bruts du fichier.
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-File-Name, X-File-Type, X-Target-Uid',
 };
+
+// ── Pieces jointes du support (R2) ─────────────────────────────────────────
+// Types acceptes cote serveur. La liste cliente n'est qu'un confort : c'est
+// ici que la decision fait foi.
+const SUPPORT_MIME = {
+  'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif',
+  'application/pdf': 'pdf',
+  'text/csv': 'csv', 'application/csv': 'csv',
+  'application/vnd.ms-excel': 'xls',
+  'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet': 'xlsx',
+};
+const SUPPORT_MAX_BYTES = 10 * 1024 * 1024;
+
+// Signature d'une cle R2. Les images doivent s'afficher dans une balise <img>,
+// qui ne peut porter aucun en-tete d'autorisation : l'URL se suffit donc a
+// elle-meme, mais reste inforgeable sans le secret. Le lien n'est ecrit que
+// dans le message Firestore, lisible du seul auteur et de l'admin.
+async function signSupportKey(key, env) {
+  const secret = env.SUPPORT_FILES_SECRET || '';
+  if (!secret) throw new Error('SUPPORT_FILES_SECRET manquant');
+  const k = await crypto.subtle.importKey('raw', new TextEncoder().encode(secret),
+    { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const mac = await crypto.subtle.sign('HMAC', k, new TextEncoder().encode(key));
+  return [...new Uint8Array(mac)].map(b => b.toString(16).padStart(2, '0')).join('').slice(0, 32);
+}
+
+// Comparaison a temps constant : une comparaison naive laisse mesurer le
+// prefixe correct d'une signature.
+function timingSafeEqual(a, b) {
+  if (typeof a !== 'string' || typeof b !== 'string' || a.length !== b.length) return false;
+  let diff = 0;
+  for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
+  return diff === 0;
+}
+
+// Nom de fichier assaini : on ne garde que de quoi rester lisible dans l'UI.
+// Le client l'encode pour tenir dans un en-tete HTTP, qui n'accepte que de
+// l'ASCII : sans ce decodage, « relevé 2026.pdf » deviendrait « relev%C3%A9 ».
+function safeFileName(raw) {
+  let name = String(raw || '');
+  try { name = decodeURIComponent(name); } catch { /* garde la valeur brute */ }
+  return (name || 'fichier')
+    .normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^A-Za-z0-9._-]/g, '_')
+    .replace(/_{2,}/g, '_')
+    .slice(-80) || 'fichier';
+}
 
 // Hôtes Yahoo Finance autorisés pour /yahoo (évite l'open proxy).
 const YAHOO_HOSTS = new Set([
@@ -1196,6 +1245,73 @@ export default {
       new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
     try {
+      // ── POST /support-upload ────────────────────────────────────────────
+      // Depot d'une piece jointe de ticket. Corps = octets bruts du fichier.
+      // Firebase Storage aurait fait l'affaire, mais il exige le plan Blaze :
+      // R2 rend le meme service sans facturation.
+      if (url.pathname === '/support-upload' && request.method === 'POST') {
+        if (!env.SUPPORT_FILES) return json({ error: 'stockage indisponible' }, 503);
+        const auth = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+        let user;
+        try { user = await verifyIdToken(auth, env); }
+        catch { return json({ error: 'non authentifié' }, 401); }
+        if (!user.emailVerified) return json({ error: 'email non vérifié' }, 403);
+
+        const type = (request.headers.get('X-File-Type') || '').toLowerCase().split(';')[0].trim();
+        const ext  = SUPPORT_MIME[type];
+        if (!ext) return json({ error: 'type de fichier refusé' }, 415);
+
+        const bytes = new Uint8Array(await request.arrayBuffer());
+        if (!bytes.length) return json({ error: 'fichier vide' }, 400);
+        if (bytes.length > SUPPORT_MAX_BYTES) return json({ error: 'fichier trop lourd' }, 413);
+
+        // L'admin depose dans le fil d'un membre quand il repond ; tout autre
+        // compte n'ecrit que sous son propre uid.
+        const asked = request.headers.get('X-Target-Uid') || '';
+        const isAdm = user.localId === env.ADMIN_UID;
+        const owner = (isAdm && /^[A-Za-z0-9]{6,64}$/.test(asked)) ? asked : user.localId;
+
+        const name = safeFileName(request.headers.get('X-File-Name'));
+        const key  = `support/${owner}/${Date.now()}-${crypto.randomUUID().slice(0, 8)}-${name}`;
+        await env.SUPPORT_FILES.put(key, bytes, {
+          httpMetadata: {
+            contentType: type,
+            // Un HTML deguise en CSV ne doit jamais s'executer sur le domaine :
+            // tout ce qui n'est pas une image se telecharge.
+            contentDisposition: type.startsWith('image/')
+              ? `inline; filename="${name}"`
+              : `attachment; filename="${name}"`,
+          },
+          customMetadata: { uploadedBy: user.localId, owner },
+        });
+        const sig = await signSupportKey(key, env);
+        return json({
+          url: `${url.origin}/support-file/${key}?s=${sig}`,
+          name, type, size: bytes.length, ext,
+        });
+      }
+
+      // ── GET /support-file/... ───────────────────────────────────────────
+      // Lecture d'une piece jointe. L'autorisation tient a la signature de la
+      // cle : une balise <img> ne peut pas porter d'en-tete Authorization.
+      if (url.pathname.startsWith('/support-file/') && request.method === 'GET') {
+        if (!env.SUPPORT_FILES) return new Response('stockage indisponible', { status: 503, headers: corsHeaders });
+        const key = decodeURIComponent(url.pathname.slice('/support-file/'.length));
+        if (!key.startsWith('support/')) return new Response('introuvable', { status: 404, headers: corsHeaders });
+        const expected = await signSupportKey(key, env);
+        if (!timingSafeEqual(url.searchParams.get('s') || '', expected)) {
+          return new Response('lien invalide', { status: 403, headers: corsHeaders });
+        }
+        const obj = await env.SUPPORT_FILES.get(key);
+        if (!obj) return new Response('introuvable', { status: 404, headers: corsHeaders });
+        const h = new Headers(corsHeaders);
+        obj.writeHttpMetadata(h);
+        h.set('etag', obj.httpEtag);
+        h.set('Cache-Control', 'private, max-age=86400');
+        h.set('X-Content-Type-Options', 'nosniff');
+        return new Response(obj.body, { headers: h });
+      }
+
       // ── POST /chat ──────────────────────────────────────────────────────
       // Chatbot d'aide basé sur la KB (contenu public du site) via Workers AI.
       if (url.pathname === '/chat' && request.method === 'POST') {
