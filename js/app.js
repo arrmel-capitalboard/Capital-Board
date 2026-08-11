@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811q';
+const APP_VERSION = '20260811r';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -216,7 +216,6 @@ _splashWatchdog = setTimeout(() => {
     fcmMessaging = msgMod.getMessaging(fbApp);
   } catch(e) { console.warn('FCM unavailable:', e.message); }
 
-
   // Google Sign-In : récupère le résultat du signInWithRedirect (iOS/PWA standalone).
   try {
     const redirectResult = await getRedirectResult(fbAuth);
@@ -339,7 +338,6 @@ const firebaseConfig = {
   appId: "1:719745213666:web:02a3276a6348df7fed6abb"
 };
 
-
 let currentUser = null;
 
 // ─── COUCHE DONNÉES FIRESTORE (cache synchrone + sync arrière-plan) ──────
@@ -361,7 +359,6 @@ async function loadAllUserData(uid) {
       _localCache[uid + '_watchlist']    = data.watchlist    || [];
       _localCache[uid + '_dailyValues']  = data.dailyValues  || [];
       _localCache[uid + '_alerts']       = data.alerts       || [];
-      _localCache[uid + '_notifHistory'] = data.notifHistory || [];
       _localCache[uid + '_trCohort']     = data.trCohort     || [];
       _localCache[uid + '_divIgnored']   = data.divIgnored   || [];
       _localCache[uid + '_settings']     = data.settings     || { pushRecap: false };
@@ -376,7 +373,7 @@ async function loadAllUserData(uid) {
   // Enregistrer l'email pour la recherche par email (gestion des rôles)
   const _u = fbAuth.currentUser;
   if (_u) setFirestoreDoc(firestoreDoc(db, 'users', uid), { email: _u.email }, { merge: true }).catch(() => {});
-  const cols = ['portfolio', 'transactions', 'versements', 'watchlist', 'dailyValues', 'alerts', 'notifHistory', 'trCohort', 'divIgnored', 'nominatif'];
+  const cols = ['portfolio', 'transactions', 'versements', 'watchlist', 'dailyValues', 'alerts', 'trCohort', 'divIgnored', 'nominatif'];
   await Promise.all(cols.map(async col => {
     try {
       const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', col));
@@ -474,9 +471,7 @@ function getNominatif(user)  { return _localCache[(user||currentUser) + '_nomina
 function saveNominatif(user, data) { _fsWrite(user||currentUser, 'nominatif', data); }
 
 function getAlerts(user)       { return _localCache[(user||currentUser) + '_alerts']       || []; }
-function getNotifHistory(user) { return _localCache[(user||currentUser) + '_notifHistory']  || []; }
 function saveAlerts(user, data)       { _fsWrite(user||currentUser, 'alerts',       data); }
-function saveNotifHistory(user, data) { _fsWrite(user||currentUser, 'notifHistory',  data); }
 
 // ─── LIAISON DISCORD ──────────────────────────────────────────────
 // Flux : l'utilisateur tape /link sur Discord → le bot crée
@@ -1485,7 +1480,6 @@ window.adminReenablePin = async function() {
 // Stockage: users/{uid}/data/security = { pinHash, pinSalt, enabled, createdAt }
 // Hash: SHA-256(salt + pin) via SubtleCrypto.
 
-
 async function _loadSecurity(uid) {
   try {
     const ref = firestoreDoc(db, 'users', uid, 'data', 'security');
@@ -1706,7 +1700,6 @@ async function _verifyPin(uid, pin) {
     return { valid: false, serverError: e.message || 'réseau' };
   }
 }
-
 
 // ─── MASQUER LE SOLDE (toggle œil) — floute tout texte chiffré avec € ou % ──
 const _EYE_OPEN_SVG = '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>';
@@ -2445,7 +2438,6 @@ async function startApp(user) {
     setTimeout(() => { preloadAll().catch(e => console.warn('Preload:', e)); }, 200);
     // Enregistrement auto des dividendes versés, sans avoir à ouvrir la page Dividendes.
     if (!window.IS_DEMO) setTimeout(() => { _autoLogDividends(); }, 1200);
-    _updateNotifBadge();
     if (!window.IS_DEMO && Notification.permission === 'granted') initPush(user.uid).catch(() => {});
     try { _initSupportBadge(); } catch(e) { console.warn('support badge:', e); }
     try { _ensureUserName(user); } catch(e) { console.warn('name setup:', e); }
@@ -2504,6 +2496,7 @@ window.openProfilModal = function() {
   try { window.refreshPinStatus && window.refreshPinStatus(); } catch(_) {}
   document.getElementById('profil-modal-overlay').classList.add('open');
   loadProfilePage(fbAuth.currentUser);
+  renderPushSettings();
 };
 window.closeProfilModal = function() {
   document.getElementById('profil-modal-overlay').classList.remove('open');
@@ -3324,7 +3317,7 @@ const SECTION_LABELS = {
   portfolio: 'Mon PEA', cto: 'Mon CTO', crypto: 'Ma crypto', depenses: 'Dépenses & abonnements',
   av: 'Assurance-vie', per: 'PER', livrets: 'Livrets & épargne',
   immo: 'Immobilier & SCPI', or: 'Or & métaux', nonco: 'Crowdfunding & non coté',
-  actualites: 'Actualités', favoris: 'Contenus favoris', notifications: 'Notifications', idees: 'Boîte à idées', support: 'Support',
+  actualites: 'Actualités', favoris: 'Contenus favoris', idees: 'Boîte à idées', support: 'Support',
   fiscalite: 'Récap fiscal',
   admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord', facebook: 'Facebook', linkedin: 'LinkedIn',
   paypal: 'Faire un don',
@@ -3354,8 +3347,6 @@ const DEFAULT_NAV = [
   // Ordre de lecture : les enveloppes investies d'abord, puis l'épargne
   // disponible, les actifs non cotés, et le budget en dernier.
   { title: 'Mes comptes',    items: ['portfolio', 'cto', 'av', 'per', 'crypto', 'livrets', 'immo', 'or', 'nonco', 'depenses'] },
-  // 'notifications' reste dans SECTION_LABELS sans figurer ici : l'entrée est
-  // retirée du menu, mais l'admin peut la remettre depuis l'éditeur.
   { title: 'Outils',         items: ['actualites', 'favoris', 'fiscalite', 'idees', 'support'] },
   { title: 'Administration', items: ['admin'] },
   { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord', 'facebook', 'linkedin'] },
@@ -3554,7 +3545,6 @@ function _runPageHook(id) {
   // Dividendes, Performance et Benchmark restaient vides. Tout est ici
   // désormais, une seule liste pour les trois chemins.
   if (id === 'watchlist')     renderWatchlist();
-  if (id === 'notifications') renderNotificationsPage();
   if (id === 'benchmark')     initBenchmark();
   if (id === 'projections')   initProjections();
   if (id === 'bilan')         initBilan();
@@ -4417,7 +4407,6 @@ async function selectPortfolioSuggestion(symbol, name) {
   document.getElementById('search-status').innerHTML = '<div class="status-loading"><span class="loading-spinner"></span> Récupération du cours…</div>';
   await fetchPrice(symbol);
 }
-
 
 // ─── YAHOO FINANCE ───────────────────────────────────
 function proxyUrl(url) {
@@ -5582,7 +5571,6 @@ function computeFundamentalScore(d) {
   };
 }
 
-
 function metricCard(label, value, sub, badge) {
   const badgeHtml = badge ? '<div class="metric-badge ' + badge.cls + '">' + badge.text + '</div>' : '';
   return '<div class="metric-card">' + badgeHtml +
@@ -6038,7 +6026,6 @@ function setPortfolioPeriod(p) {
 // Stores all buy/sell events so history can be reconstructed
 // even after positions are fully sold
 // getTransactions/saveTransactions → Firestore (définis dans couche données)
-
 
 // ─── VERSEMENTS (cash deposits) ─────────────────────
 // getVersements/saveVersements → Firestore (définis dans couche données)
@@ -9508,7 +9495,6 @@ async function preloadAll() {
   await Promise.allSettled(tasks);
 }
 
-
 //  Affiche une courbe par indice + PEA, normalisées en base 100.
 //  Sélecteur de période : 1J, 1S, 1M, 3M, 6M, YTD, 1A, 3A, 5A, 10A, Max.
 // ─────────────────────────────────────────────────────────────────
@@ -11981,7 +11967,6 @@ function confirmDividende() {
 //    - Générique  : Date,Valeur (séparateur , ou ;)
 // ─────────────────────────────────────────────────────────────────
 
-
 function showConfirmModal({ icon, title, body, onConfirm, onCancel, okLabel, cancelLabel, danger = false, infoOnly = false }) {
   const modal = document.getElementById('confirm-modal2');
   document.getElementById('confirm-modal2-icon').innerHTML = icon || '';
@@ -12421,7 +12406,6 @@ window._dismissChatToast = function() {
   if (_toastTimer) { clearTimeout(_toastTimer); _toastTimer = null; }
 };
 
-
 // ═══════════════════════════════════════════════════════════════
 // NOTIFICATIONS — FCM, alertes prix, historique
 // ═══════════════════════════════════════════════════════════════
@@ -12439,9 +12423,7 @@ async function initPush(uid) {
       _fcmMsgHandlerSet = true;
       onFCMMessage(fcmMessaging, payload => {
         const { title, body } = payload.data || payload.notification || {};
-        _logNotifHistory(payload.data?.type || 'push', title || 'Capital Board', body || '');
         _showChatToast({ icon: IC.bell, title: title || 'Capital Board', msg: body || '' });
-        renderNotificationsPage();
         if (payload.data?.type === 'daily_recap') _refreshRecap();
       });
     }
@@ -12513,29 +12495,9 @@ async function sendTestNotification() {
     try { new Notification(title, { body, icon: 'assets/logo.png' }); }
     catch(e2) { console.warn('Test notif:', e2.message); }
   }
-  _logNotifHistory('test', title, body);
   _showChatToast({ icon: IC.bell, title: 'Test envoyé', msg: 'Vérifiez vos notifications.' });
-  renderNotificationsPage();
+  renderPushSettings();
   if (btn) { btn.disabled = false; btn.innerHTML = IC.mail + ' Tester'; }
-}
-
-function _logNotifHistory(type, title, body) {
-  if (!currentUser) return;
-  const history = getNotifHistory(currentUser);
-  history.unshift({ id: Date.now(), type, title, body, timestamp: new Date().toISOString(), read: false });
-  if (history.length > 50) history.splice(50);
-  saveNotifHistory(currentUser, history);
-  _updateNotifBadge();
-}
-
-function _updateNotifBadge() {
-  const unread = currentUser ? getNotifHistory(currentUser).filter(n => !n.read).length : 0;
-  ['notif-nav-badge', 'notif-drawer-badge'].forEach(id => {
-    const el = document.getElementById(id);
-    if (!el) return;
-    el.style.display = unread > 0 ? 'inline' : 'none';
-    el.textContent = unread > 9 ? '9+' : String(unread);
-  });
 }
 
 function checkPriceAlerts() {
@@ -12559,25 +12521,18 @@ function checkPriceAlerts() {
       alert.active = false;
       const dir = alert.direction === 'above' ? '>=' : '<=';
       const body = alert.name + ' (' + alert.ticker + ') ' + dir + ' ' + alert.targetPrice + 'EUR — cours : ' + item.price.toFixed(2) + 'EUR';
-      _logNotifHistory('price_alert', 'Alerte prix declenchee', body);
       _showBrowserNotif('Alerte prix', body);
       changed = true;
     }
   });
-  if (changed) {
-    saveAlerts(currentUser, alerts);
-    if (document.getElementById('page-notifications')?.classList.contains('active')) renderNotificationsPage();
-  }
+  if (changed) saveAlerts(currentUser, alerts);
 }
 
-function renderNotificationsPage() {
-  renderAlertsList();
+// Réglages push du profil. Ils vivaient sur une page dédiée qui ne portait
+// que ces deux interrupteurs, deux boutons et un paragraphe.
+function renderPushSettings() {
   renderNotifSettings();
   updatePushBtn();
-  // Marquer les notifications comme lues à l'ouverture de la page
-  const h = getNotifHistory(currentUser);
-  if (h.some(n => !n.read)) { h.forEach(n => n.read = true); saveNotifHistory(currentUser, h); }
-  _updateNotifBadge();
   const hint = document.getElementById('ios-push-hint');
   if (hint) hint.style.display = _isIOSNonStandalone() ? 'flex' : 'none';
 }
@@ -13105,8 +13060,6 @@ window.generateRecapNow = async function() {
   const ntitle   = `Récap du jour : ${pctStr}`;
   const nbody    = 'Touchez pour voir le détail.';
   const shown    = await _showLocalNotif(ntitle, nbody);
-  _logNotifHistory('daily_recap', ntitle, nbody);
-  renderNotificationsPage();
 
   if (btn) { btn.disabled = false; btn.innerHTML = IC.zap + ' Générer maintenant'; }
   _showChatToast({
@@ -13334,37 +13287,6 @@ function renderAlertsList() {
       '</div>' +
     '</div>';
   }).join('');
-}
-
-function renderNotifHistory() {
-  const list = document.getElementById('notif-history-list');
-  const empty = document.getElementById('notif-history-empty');
-  if (!list) return;
-  const history = getNotifHistory(currentUser);
-  if (!history.length) { list.innerHTML = ''; if (empty) empty.style.display = 'block'; return; }
-  if (empty) empty.style.display = 'none';
-  let changed = false;
-  history.forEach(n => { if (!n.read) { n.read = true; changed = true; } });
-  if (changed) { saveNotifHistory(currentUser, history); _updateNotifBadge(); }
-  list.innerHTML = history.slice(0, 30).map(n => {
-    const d = new Date(n.timestamp);
-    const dateStr = d.toLocaleDateString('fr-FR', { day:'2-digit', month:'short' }) + ' ' + d.toLocaleTimeString('fr-FR', { hour:'2-digit', minute:'2-digit' });
-    const icon = n.type === 'price_alert' ? IC.target : n.type === 'dividend' ? IC.wallet : IC.message;
-    return '<div style="display:flex;align-items:flex-start;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">' +
-      '<span style="font-size:18px;flex-shrink:0">' + icon + '</span>' +
-      '<div style="flex:1;min-width:0">' +
-        '<div style="font-size:13px;font-weight:600;color:var(--text)">' + n.title + '</div>' +
-        '<div style="font-size:12px;color:var(--text2);margin-top:2px;word-break:break-word">' + n.body + '</div>' +
-        '<div style="font-size:11px;color:var(--text3);margin-top:4px">' + dateStr + '</div>' +
-      '</div>' +
-    '</div>';
-  }).join('');
-}
-
-function clearNotifHistory() {
-  saveNotifHistory(currentUser, []);
-  renderNotifHistory();
-  _updateNotifBadge();
 }
 
 function openAddAlertModal() {
@@ -15057,7 +14979,6 @@ window.sendSupportMessage = async function() {
   }
   catch(e) { console.error("send support:", e); alert("Erreur envoi"); input.value = text; }
 };
-
 
 window.insertEmoji = function(emo) {
   const input = document.getElementById("chat-input");
