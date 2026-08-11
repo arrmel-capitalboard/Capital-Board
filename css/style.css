@@ -2545,6 +2545,18 @@ body.sb-collapsed .main { margin-left: 58px; }
   #page-portfolio table tr.wl-chart-row td { display: block; padding: 0 !important; }
   #page-portfolio table tr.wl-chart-row td::before { display: none; }
 
+  /* La barre de périodes ne pouvait pas se replier : ses huit boutons imposaient
+     au bloc une largeur d'environ 410 px. La cellule du graphique étant en
+     display:block, cette largeur devenait celle du tableau, et les colonnes
+     chiffrées de TOUTES les lignes partaient hors écran dès qu'une courbe était
+     ouverte. Repliable, la barre ne réclame plus que la largeur d'un bouton. */
+  .wl-period-bar { flex-wrap: wrap; gap: 4px; }
+  .wl-period-btn { padding: 5px 9px; font-size: 10.5px; }
+  .wl-chart-wrap { padding: 14px 12px 16px; }
+  .wl-chart-price { font-size: 19px; }
+  #page-portfolio table tr.wl-chart-row td,
+  #page-watchlist table tr.wl-chart-row td { width: 100%; box-sizing: border-box; }
+
   /* Page Récap — table en cartes empilées */
   #page-recap .section-card > div[style*="overflow-x"] { overflow-x: hidden !important; }
   #page-recap table.recap-table { display: block; width: 100%; }
