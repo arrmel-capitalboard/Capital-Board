@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811y';
+const APP_VERSION = '20260811z';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -13881,15 +13881,15 @@ async function renderAdminUsers() {
       const safeLabel = label.replace(/'/g, '');
       const resetBtn = (self || u.uid === ADMIN_UID) ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px" onclick="adminResetPassword(\'' + u.uid + '\',\'' + safeLabel + '\')">Reset mdp</button>';
       const delBtn = (self || u.uid === ADMIN_UID) ? '' : '<button class="pf-btn ghost" style="font-size:10.5px;padding:6px 10px;border-color:rgba(255,93,120,.3);color:#ff5d78" onclick="adminDeleteUser(\'' + u.uid + '\',\'' + safeLabel + '\')">Effacer (RGPD)</button>';
-      return '<div style="display:flex;align-items:center;gap:12px;padding:11px 0;border-bottom:1px solid var(--border)">' +
+      return '<div class="adm-user-row">' +
         dot +
-        '<div style="flex:1;min-width:0">' +
-          '<div style="font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:7px">' + label +
+        '<div class="adm-user-main" style="flex:1;min-width:0">' +
+          '<div style="font-size:13px;font-weight:600;color:var(--text);display:flex;align-items:center;gap:7px;flex-wrap:wrap">' + label +
             (u.lastSeen ? '<span title="Dernière connexion" style="font-size:10px;font-weight:600;color:var(--text2);font-family:var(--mono);padding:1px 6px;background:rgba(255,255,255,.05);border-radius:5px">' + _relTimeShort(u.lastSeen) + '</span>' : '') +
             roleBadge + verifBadge + pwaBadge + '</div>' +
           '<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-top:2px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + sub + '</div>' +
         '</div>' +
-        '<div style="display:flex;gap:6px;flex-shrink:0">' + resetBtn + delBtn + '</div>' +
+        '<div class="adm-user-actions">' + resetBtn + delBtn + '</div>' +
       '</div>';
     };
 

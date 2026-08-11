@@ -3803,3 +3803,24 @@ body.has-demo-banner { padding-top: 40px; }
 @media (max-width: 380px) {
   .pea-tabs { margin: 0 -10px 12px; padding: 0 10px 2px; }
 }
+
+/* ═══════════════════════════════════════════════════
+   ADMIN — LISTE DES UTILISATEURS
+   ═══════════════════════════════════════════════════ */
+.adm-user-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 11px 0; border-bottom: 1px solid var(--border);
+}
+.adm-user-actions { display: flex; gap: 6px; flex-shrink: 0; }
+
+/* Sur mobile, les deux boutons mangeaient la moitié de la largeur : le nom
+   passait sur deux lignes et l'email était tronqué au tiers. Ils descendent
+   donc sous l'identité, qui récupère toute la largeur. */
+@media (max-width: 768px) {
+  .adm-user-row { flex-wrap: wrap; align-items: center; gap: 8px 10px; }
+  /* `auto` et non `100%` : la pastille de présence doit rester sur la même
+     ligne que l'identité, sinon elle se retrouve seule au-dessus. */
+  .adm-user-main { flex: 1 1 auto; min-width: 0; }
+  .adm-user-actions { flex: 1 1 100%; justify-content: flex-end; }
+  .adm-user-actions .pf-btn { flex: 1; text-align: center; }
+}
