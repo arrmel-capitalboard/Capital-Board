@@ -3891,8 +3891,11 @@ body.has-demo-banner { padding-top: 40px; }
        la feuille, calculé en JS puisque sa hauteur dépend du nombre d'entrées. */
     transition: transform .22s cubic-bezier(.32,.72,0,1), top .26s cubic-bezier(.32,.72,0,1), left .26s cubic-bezier(.32,.72,0,1);
   }
-  #pea-fab.on ~ .mobile-nav .nav-add-badge { display: grid; }
-  #pea-fab.open ~ .mobile-nav .nav-add-badge { transform: rotate(45deg); }
+  #pea-fab.on ~ .mobile-nav .nav-add-badge,
+  /* déplacé dans le conteneur de la feuille pendant l'ouverture */
+  #pea-fab.open > .nav-add-badge { display: grid; }
+  #pea-fab.open ~ .mobile-nav .nav-add-badge,
+  #pea-fab.open > .nav-add-badge { transform: rotate(45deg); }
 
   .pea-fab-veil {
     position: fixed; inset: 0; z-index: 190;

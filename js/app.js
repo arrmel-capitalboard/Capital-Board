@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260813g';
+const APP_VERSION = '20260813h';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3610,18 +3610,29 @@ window.togglePeaFab = function (force) {
 // lieu de sauter.
 function _movePeaBadge(open) {
   const badge = document.getElementById('nav-add-btn');
-  const sheet = document.querySelector('#pea-fab .pea-sheet');
-  if (!badge || !sheet) return;
+  const fab   = document.getElementById('pea-fab');
+  const sheet = fab && fab.querySelector('.pea-sheet');
+  const home  = document.querySelector('.mobile-nav-inner');
+  if (!badge || !sheet || !home) return;
+
   if (!open) {
     badge.style.position = ''; badge.style.left = ''; badge.style.top = ''; badge.style.zIndex = '';
+    if (badge.parentElement !== home) home.appendChild(badge);
     return;
   }
+
+  // La barre porte un z-index et forme donc son propre contexte d'empilement :
+  // depuis l'intérieur, le badge ne peut pas passer devant la feuille, quelle
+  // que soit sa valeur. Il déménage dans le conteneur de la feuille le temps de
+  // l'ouverture. Le passage en position fixe se fait sur les coordonnées
+  // relevées avant le déplacement, pour que rien ne saute.
   const from = badge.getBoundingClientRect();
   badge.style.position = 'fixed';
   badge.style.left = from.left + 'px';
   badge.style.top  = from.top + 'px';
   badge.style.zIndex = '210';
-  void badge.offsetWidth;                     // force le calcul avant transition
+  if (badge.parentElement !== fab) fab.appendChild(badge);
+  void badge.offsetWidth;                     // fige le point de départ
   requestAnimationFrame(() => {
     const r = sheet.getBoundingClientRect();
     badge.style.left = (r.right - from.width / 2 - 6) + 'px';
