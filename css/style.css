@@ -2701,7 +2701,20 @@ html.demo-mode #page-portfolio .show-mobile-inline { display: none !important; }
 /* Sans cet état, un bouton désactivé gardait son apparence normale : seul le
    curseur changeait, ce qui donnait l'impression d'un bouton cassé. */
 .chat-tool-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
-.chat-tool-btn svg { display: block; }
+
+/* `.chat-input-bar button` habille le bouton Envoyer et frappe tous les boutons
+   de la barre, avec une spécificité supérieure à `.chat-tool-btn` : ses
+   `padding: 10px 22px` réduisaient la zone de contenu d'un bouton rond de 36 px
+   à zéro, écrasant l'icône. L'emoji y survivait, étant du texte. */
+.chat-input-bar .chat-tool-btn {
+  padding: 0;
+  background: var(--s3);
+  color: var(--text);
+  border: 1px solid var(--border2);
+  box-shadow: none;
+}
+.chat-input-bar .chat-tool-btn:hover:not(:disabled) { background: var(--s2); border-color: var(--accent); box-shadow: none; }
+.chat-tool-btn svg { display: block; flex-shrink: 0; }
 .emoji-panel {
   display: none;
   position: relative;
