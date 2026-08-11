@@ -2696,8 +2696,12 @@ html.demo-mode #page-portfolio .show-mobile-inline { display: none !important; }
   font-size: 16px; color: var(--text);
   transition: background 0.15s, border-color 0.15s, transform 0.12s;
 }
-.chat-tool-btn:hover { background: var(--s2); border-color: var(--accent); transform: translateY(-1px); }
-.chat-tool-btn:active { transform: translateY(0); }
+.chat-tool-btn:hover:not(:disabled) { background: var(--s2); border-color: var(--accent); transform: translateY(-1px); }
+.chat-tool-btn:active:not(:disabled) { transform: translateY(0); }
+/* Sans cet état, un bouton désactivé gardait son apparence normale : seul le
+   curseur changeait, ce qui donnait l'impression d'un bouton cassé. */
+.chat-tool-btn:disabled { opacity: 0.4; cursor: not-allowed; transform: none; }
+.chat-tool-btn svg { display: block; }
 .emoji-panel {
   display: none;
   position: relative;

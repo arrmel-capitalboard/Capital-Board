@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811t';
+const APP_VERSION = '20260811u';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -14804,8 +14804,12 @@ window._openAdminThread = async function(uid) {
   }, () => {});
   const input = document.getElementById("chat-input");
   const send = document.getElementById("chat-send");
+  // Le bouton de pièce jointe suit le même sort que l'envoi : sans ces deux
+  // lignes il restait désactivé même une fois un ticket ouvert.
+  const attach = document.getElementById("chat-attach");
   if (input) { input.disabled = closed; if (!closed) input.focus(); }
   if (send) send.disabled = closed;
+  if (attach) attach.disabled = closed;
 
   const bar = document.getElementById("chat-actions-bar");
   if (bar) {
@@ -14971,7 +14975,7 @@ window.sendSupportFile = async function(input) {
     return;
   }
 
-  const btn = document.querySelector('.chat-input-bar button[title="Joindre un fichier"]');
+  const btn = document.getElementById('chat-attach');
   if (btn) btn.disabled = true;
   try {
     const idToken = await fbAuth.currentUser.getIdToken();
@@ -15014,7 +15018,7 @@ function _chatInputBarHtml(placeholder, sendId, sendDisabled) {
     // Storage, que le plan gratuit ne provisionne plus. Les fichiers vont
     // désormais sur R2 via le Worker, sans facturation.
     + '<input type="file" id="chat-file" style="display:none" accept="' + SUPPORT_ACCEPT + '" onchange="sendSupportFile(this)">'
-    + '<button type="button" onclick="document.getElementById(\'chat-file\').click()" class="chat-tool-btn" title="Joindre un fichier"' + (sendDisabled ? " disabled" : "") + '>'
+    + '<button type="button" id="chat-attach" onclick="document.getElementById(\'chat-file\').click()" class="chat-tool-btn" title="Joindre un fichier"' + (sendDisabled ? " disabled" : "") + '>'
     + '<svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.44 11.05l-9.19 9.19a6 6 0 0 1-8.49-8.49l9.19-9.19a4 4 0 0 1 5.66 5.66l-9.2 9.19a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg></button>'
     + '<input id="chat-input" placeholder="' + placeholder + '" ' + (sendDisabled ? "disabled " : "") + 'oninput="signalTyping()" onkeydown="if(event.key===&quot;Enter&quot;)sendSupportMessage()">'
     + '<button ' + (sendId ? 'id="' + sendId + '" ' : '') + 'onclick="sendSupportMessage()" ' + (sendDisabled ? "disabled" : "") + '>Envoyer</button>'
