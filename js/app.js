@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260812s';
+const APP_VERSION = '20260812t';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3303,7 +3303,7 @@ window.setAvatarHue = async function(deg) {
 };
 
 // ─── Feature flags (config/app.features) ───
-const FLAGGABLE = ['watchlist','dividendes','avantages','benchmark','projections','earnings','recap','alertes','actualites','favoris','idees','depenses','cto','crypto','fiscalite','av','per','livrets','immo','or','nonco'];
+const FLAGGABLE = ['watchlist','dividendes','avantages','benchmark','projections','earnings','recap','actualites','favoris','idees','depenses','cto','crypto','fiscalite','av','per','livrets','immo','or','nonco'];
 let _featureFlags = {};
 function _isFeatureOn(key) { return _featureFlags[key] !== false; }
 function applyFeatureFlags(features) {
@@ -3507,7 +3507,7 @@ function applyNavLayout(nav) {
 // Les dix vues du PEA, regroupées derrière une seule entrée de menu. L'ordre
 // fait foi pour la barre de sous-onglets.
 const PEA_TABS = ['portfolio', 'activite', 'dividendes', 'avantages', 'watchlist',
-                  'benchmark', 'projections', 'earnings', 'recap', 'alertes'];
+                  'benchmark', 'projections', 'earnings', 'recap'];
 
 // Libellés du second niveau du tiroir. Plus courts que ceux de la barre du
 // haut : « Calendrier résultats » déborde d'une case de grille.
@@ -3516,7 +3516,6 @@ const PEA_TAB_LABELS = {
   avantages: 'Avantages',
   watchlist: 'Watchlist',     benchmark: 'Benchmark',
   projections: 'Projections', earnings: 'Résultats',   recap: 'Récap du jour',
-  alertes: 'Alertes prix',
 };
 
 // Icônes des mêmes vues. Les onglets du haut sont en texte seul : il a fallu
@@ -3538,7 +3537,6 @@ const PEA_TAB_ICONS = {
   projections: _peaIcon('#f5b731', '<path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/>'),
   earnings:    _peaIcon('#ff9f43', '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/>'),
   recap:       _peaIcon('#00cec9', '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 14h8"/><path d="M8 17h5"/>'),
-  alertes:     _peaIcon('#ff4d6a', '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/>'),
 };
 
 // Rendu différé propre à une page. Extrait des trois fonctions de navigation
@@ -3549,7 +3547,6 @@ function _runPageHook(id) {
   if (id === 'recap')       renderRecapPage();
   if (id === 'actualites')  renderActualites();
   if (id === 'favoris')     renderFavoris();
-  if (id === 'alertes')     renderAlertsList();
   if (id === 'support')     renderSupportPage();
   if (id === 'idees')       renderIdeasPage();
   if (id === 'earnings')    renderEarningsCalendar();
@@ -3812,6 +3809,20 @@ const PATRIMOINE_ENVELOPPES = [
   { key: 'nonco',     label: 'Crowdfunding & non coté', color: '#ff4d6a', value: () => null },
 ];
 
+// Bouton cloche d'une ligne : ouvre la modale sur ce ticker, et affiche le
+// nombre d'alertes déjà posées. Remplace la page dédiée, supprimée.
+function _alertBtnHtml(ticker, size) {
+  const n = getAlerts(currentUser).filter(a => a.ticker === ticker).length;
+  const px = size || 13;
+  return '<button class="btn-edit alert-btn' + (n ? ' has-alert' : '') + '" title="'
+    + (n ? n + ' alerte(s) sur cette valeur' : 'Créer une alerte de prix')
+    + '" onclick="event.stopPropagation();openAddAlertModal(&quot;' + ticker + '&quot;)">'
+    + '<svg width="' + px + '" height="' + px + '" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+    + '<path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg>'
+    + (n ? '<span class="alert-count">' + n + '</span>' : '')
+    + '</button>';
+}
+
 let _patriChart = null;
 function renderPatrimoine() {
   const el = document.getElementById('patrimoine-content');
@@ -4031,6 +4042,7 @@ function renderPortfolio() {
         <td style="text-align:right;padding-right:18px;white-space:nowrap">
           <div class="btn-portfolio-actions" style="display:inline-flex;gap:6px;align-items:center">
             <button class="btn-edit" onclick="event.stopPropagation();toggleWatchlistChart('pf${i}','${row.ticker}')" title="Voir la courbe" style="display:inline-flex;align-items:center;justify-content:center">${IC.chartLine}</button>
+            ${_alertBtnHtml(row.ticker)}
             <button class="btn-edit" onclick="openEditModal(${i})" title="Modifier" style="display:inline-flex;align-items:center;justify-content:center">${IC.edit}</button>
             <button class="btn-del" onclick="deleteRow(${i})" title="Supprimer">✕</button>
           </div>
@@ -9048,7 +9060,8 @@ async function renderWatchlist() {
         '<td data-label="Variation jour" class="mono wl-daychg" style="text-align:right;color:var(--text2)">…</td>' +
         '<td data-label="30 jours" class="wl-spark" style="min-width:120px;width:120px;padding:0 8px"><div style="height:30px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:10px">…</div></td>' +
         '<td data-label="Depuis ajout" class="mono wl-since" style="text-align:right;color:var(--text2)" title="Depuis le ' + (w.addedAt ? w.addedAt.slice(0,10) : '?') + ' @ ' + (addedPrice ? addedPrice.toFixed(2) + ' €' : '?') + '">…</td>' +
-        '<td data-label="" style="text-align:right"><button class="btn-del" onclick="event.stopPropagation();removeFromWatchlist(' + i + ')" title="Retirer">✕</button></td>' +
+        '<td data-label="" style="text-align:right;white-space:nowrap">' + _alertBtnHtml(w.ticker)
+          + '<button class="btn-del" onclick="event.stopPropagation();removeFromWatchlist(' + i + ')" title="Retirer" style="margin-left:6px">✕</button></td>' +
       '</tr>' +
       '<tr id="wl-chart-row-' + i + '" class="wl-chart-row" style="display:none">' +
         '<td colspan="6">' +
@@ -13744,7 +13757,9 @@ function renderAlertsList() {
   }).join('');
 }
 
-function openAddAlertModal() {
+// Ouverte depuis une ligne de watchlist ou de portefeuille, avec son ticker
+// présélectionné. Sans argument, elle propose toutes les valeurs suivies.
+function openAddAlertModal(ticker) {
   const seen = new Set();
   const items = [];
   [...getPortfolio(currentUser), ...getWatchlist(currentUser)].forEach(r => {
@@ -13753,9 +13768,34 @@ function openAddAlertModal() {
   if (!items.length) { alert('Ajoutez des actions au portefeuille ou a la watchlist.'); return; }
   const sel = document.getElementById('alert-ticker-select');
   sel.innerHTML = items.map(i => '<option value="' + _attr(i.ticker) + '">' + _escapeHtmlChat(i.name) + ' (' + _escapeHtmlChat(i.ticker) + ')</option>').join('');
+  if (ticker && items.some(i => i.ticker === ticker)) sel.value = ticker;
   document.getElementById('alert-price').value = '';
   document.getElementById('alert-direction').value = 'below';
+  sel.onchange = () => renderAlertsForTicker(sel.value);
+  renderAlertsForTicker(sel.value);
   document.getElementById('alert-modal-overlay').classList.add('open');
+}
+
+// Alertes existantes de la valeur sélectionnée, listées dans la modale.
+function renderAlertsForTicker(ticker) {
+  const box = document.getElementById('alert-existing');
+  if (!box) return;
+  const alerts = getAlerts(currentUser);
+  const mine = alerts.map((a, i) => ({ a, i })).filter(x => x.a.ticker === ticker);
+  if (!mine.length) { box.innerHTML = ''; return; }
+  box.innerHTML =
+    '<div style="font-size:11px;color:var(--text3);margin:2px 0 6px">Alertes en place sur cette valeur</div>'
+    + mine.map(({ a, i }) => {
+      const dir = a.direction === 'above' ? '≥' : '≤';
+      const etat = a.triggeredAt
+        ? '<span style="color:var(--accent);font-size:10px">déclenchée</span>'
+        : '<span style="color:var(--positive);font-size:10px">active</span>';
+      return '<div style="display:flex;align-items:center;gap:8px;padding:7px 0;border-top:1px solid var(--border)">'
+        + '<span style="flex:1;font-size:12px;font-family:var(--mono)">' + dir + ' ' + a.targetPrice + ' €</span>'
+        + etat
+        + '<button onclick="deleteAlert(' + i + ')" style="background:none;border:1px solid rgba(255,77,106,.3);color:var(--negative);border-radius:6px;padding:3px 8px;font-size:11px;cursor:pointer">Suppr.</button>'
+        + '</div>';
+    }).join('');
 }
 
 function closeAlertModal() {
@@ -13774,13 +13814,19 @@ function confirmAddAlert() {
   saveAlerts(currentUser, alerts);
   closeAlertModal();
   renderAlertsList();
+  try { renderWatchlist(); } catch (_) {}
+  try { renderPortfolio(); } catch (_) {}
 }
 
 function deleteAlert(i) {
   const alerts = getAlerts(currentUser);
+  const ticker = alerts[i] && alerts[i].ticker;
   alerts.splice(i, 1);
   saveAlerts(currentUser, alerts);
   renderAlertsList();
+  if (ticker) renderAlertsForTicker(ticker);
+  try { renderWatchlist(); } catch (_) {}
+  try { renderPortfolio(); } catch (_) {}
 }
 
 function resetAlert(i) {
@@ -14170,7 +14216,7 @@ function _navEditorPeaTabs() {
   const labels = {
     portfolio: 'Mon PEA', activite: 'Activité', dividendes: 'Dividendes', watchlist: 'Watchlist',
     avantages: 'Avantages', benchmark: 'Benchmark', projections: 'Projections',
-    earnings: 'Calendrier résultats', recap: 'Récap du jour', alertes: 'Alertes prix',
+    earnings: 'Calendrier résultats', recap: 'Récap du jour',
   };
   const rows = PEA_TABS.map(key => {
     const flaggable = FLAGGABLE.includes(key);

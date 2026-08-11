@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260812s">
+<link rel="stylesheet" href="css/style.css?v=20260812t">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -676,7 +676,6 @@
       <button type="button" class="pea-tab" data-tab="projections" onclick="showPeaTab('projections')">Projections</button>
       <button type="button" class="pea-tab" data-tab="earnings"   onclick="showPeaTab('earnings')">Calendrier résultats</button>
       <button type="button" class="pea-tab" data-tab="recap"      onclick="showPeaTab('recap')">Récap du jour</button>
-      <button type="button" class="pea-tab" data-tab="alertes"    onclick="showPeaTab('alertes')">Alertes prix</button>
     </nav>
 
     <!-- PORTFOLIO PAGE -->
@@ -1336,19 +1335,6 @@
       </p>
     </div>
 
-    <div class="page" id="page-alertes">
-      <div class="page-header">
-        <div>
-          <div class="page-title">Alertes prix</div>
-          <div class="page-subtitle">Recevez une notification quand un cours atteint votre seuil</div>
-        </div>
-        <button class="btn-add" onclick="openAddAlertModal()" style="font-size:12px;padding:7px 14px">＋ Nouvelle alerte</button>
-      </div>
-      <div class="section-card">
-        <div id="alerts-list"></div>
-        <div id="alerts-empty" style="color:var(--text3);font-size:13px;text-align:center;padding:20px 0">Aucune alerte configurée</div>
-      </div>
-    </div>
 
     <!-- ═══ RÉCAP FISCAL (annonce) ═════════════════════
          Sujet sensible : la page insiste sur le fait qu'aucun chiffre n'est
@@ -2247,6 +2233,9 @@
       <label class="form-label">Prix cible (€)</label>
       <input type="number" class="form-input" id="alert-price" placeholder="150.00" min="0" step="any">
     </div>
+    <!-- Alertes déjà posées sur cette valeur : la page dédiée ayant disparu,
+         c'est ici qu'on les consulte et qu'on les supprime. -->
+    <div id="alert-existing"></div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeAlertModal()">Annuler</button>
       <button class="btn-primary" onclick="confirmAddAlert()">Créer l'alerte</button>
@@ -2769,7 +2758,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260812s"></script>
+<script src="js/app.js?v=20260812t"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

@@ -3951,3 +3951,14 @@ body.has-demo-banner { padding-top: 40px; }
 .patri-leg { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text3); }
 .patri-leg i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 .patri-leg b { color: var(--text2); font-family: var(--mono); font-weight: 700; }
+
+/* Bouton d'alerte d'une ligne : la pastille compte les alertes posées. */
+.alert-btn { position: relative; }
+.alert-btn.has-alert { color: var(--gold); border-color: rgba(245,183,49,.35); }
+.alert-count {
+  position: absolute; top: -5px; right: -5px;
+  min-width: 15px; height: 15px; padding: 0 3px;
+  background: var(--gold); color: #10121c;
+  border-radius: 999px; font-size: 9px; font-weight: 800;
+  font-family: var(--mono); display: grid; place-items: center;
+}
