@@ -809,9 +809,9 @@
       <h2>Essayez, sans créer de compte</h2>
       <p>Un portefeuille PEA d'exemple chargé en lecture seule. Naviguez, ouvrez les graphiques, explorez les dividendes et le récap IA — c'est l'application réelle.</p>
     </div>
-    <div class="demo-frame reveal">
+    <div class="demo-frame">
       <div class="demo-bar"><i></i><i></i><i></i><em>capitalboard.fr — démo</em></div>
-      <iframe class="demo-iframe" src="app.html?demo=1" loading="lazy" title="Démo interactive Capital Board" referrerpolicy="no-referrer"></iframe>
+      <iframe class="demo-iframe" src="app.html?demo=1" title="Démo interactive Capital Board" referrerpolicy="no-referrer"></iframe>
     </div>
     <div class="demo-cta">
       <a href="app.html?demo=1" class="btn btn-primary btn-lg" target="_blank" rel="noopener">Ouvrir la démo en plein écran →</a>
@@ -1231,6 +1231,11 @@
         });
       }, { threshold: 0.12, rootMargin: '0px 0px -8% 0px' });
       targets.forEach(el => io.observe(el));
+      // Filet de sécurité : un observateur qui ne se déclenche pas laissait le
+      // contenu invisible pour toujours — la démo est restée un rectangle vide
+      // à cause de ça. Au bout de trois secondes, tout ce qui n'a pas été
+      // révélé l'est d'office.
+      setTimeout(() => targets.forEach(el => el.classList.add('in')), 3000);
     }
   });
 </script>
