@@ -682,6 +682,17 @@
     margin-left: 12px; font-style: normal; font-size: 12px;
     color: var(--text3); font-family: 'JetBrains Mono', monospace;
   }
+  #demo .demo-notice {
+    display: flex; align-items: center; justify-content: center; gap: 14px; flex-wrap: wrap;
+    background: linear-gradient(90deg, #f5b731, #ff7139);
+    color: #1a0f00; font-size: 12.5px; font-weight: 600;
+    padding: 9px 16px; text-align: center;
+  }
+  #demo .demo-notice a {
+    color: #1a0f00; text-decoration: none; font-weight: 800;
+    background: rgba(0,0,0,.14); border-radius: 999px; padding: 3px 12px;
+  }
+  #demo .demo-notice a:hover { background: rgba(0,0,0,.25); }
   #demo .demo-iframe {
     display: block; width: 100%; height: 660px; border: 0; background: var(--bg);
   }
@@ -811,6 +822,12 @@
     </div>
     <div class="demo-frame">
       <div class="demo-bar"><i></i><i></i><i></i><em>capitalboard.fr — démo</em></div>
+      <!-- Avertissement porté par le cadre, pas par l'app : dans l'iframe, il
+           occuperait la première ligne de l'interface montrée au visiteur. -->
+      <div class="demo-notice">
+        <strong>Mode démo</strong> · Données fictives, modifications non sauvegardées
+        <a href="app.html?signup=1">Créer un compte</a>
+      </div>
       <iframe class="demo-iframe" src="app.html?demo=1" title="Démo interactive Capital Board" referrerpolicy="no-referrer"></iframe>
     </div>
     <div class="demo-cta">
