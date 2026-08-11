@@ -2268,8 +2268,20 @@ body.sb-collapsed .main { margin-left: 58px; }
   #page-portfolio th, #page-portfolio td { padding-left: 6px; padding-right: 6px; }
   #page-portfolio .ticker-icon { width: 26px; height: 26px; border-radius: 7px; }
   #page-portfolio table td.c-valcell,
-  #page-portfolio table td.c-day { width: 1%; white-space: nowrap; font-size: 11.5px; }
+  #page-portfolio table td.c-day { white-space: nowrap; font-size: 11.5px; }
   #page-portfolio table td.mono { font-size: 11.5px; }
+
+  /* Disposition fixe. En auto-layout, un nom long — « BNP Paribas Easy Stoxx
+     Europe 600 UCITS ETF EUR C » — imposait sa largeur max-content au tableau
+     entier, qui débordait de l'écran en emportant les colonnes chiffrées hors
+     champ. En fixe, le tableau ne dépasse jamais son conteneur : c'est le nom
+     qui passe à la ligne. Les largeurs viennent de la première rangée, donc des
+     th ; les colonnes .hide-mobile en display:none n'y participent pas. */
+  #page-portfolio table { table-layout: fixed; }
+  #page-portfolio table th:nth-child(5) { width: 88px; }
+  #page-portfolio table th#th-perf-jour { width: 56px; }
+  #page-portfolio table th:last-child   { width: 26px; }
+  #page-portfolio .ticker-name { overflow-wrap: anywhere; }
   #page-portfolio .btn-voir-plus { padding: 4px 6px; }
 
   /* Boutons mobile only */
@@ -2666,7 +2678,9 @@ html.demo-mode #login-screen { display: none !important; }
 /* Démo : tableau portefeuille complet et défilable horizontalement (on voit
    toutes les colonnes plutôt que l'accordéon mobile qui en masque). */
 html.demo-mode #page-portfolio .table-container { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
-html.demo-mode #page-portfolio table { min-width: max-content; }
+/* La démo montre toutes les colonnes dans un conteneur qui défile : elle a
+   besoin de l'auto-layout, contrairement à la vue mobile réelle. */
+html.demo-mode #page-portfolio table { min-width: max-content; table-layout: auto; }
 html.demo-mode #page-portfolio .hide-mobile { display: table-cell !important; }
 html.demo-mode #page-portfolio .ticker-sym { display: inline !important; }
 html.demo-mode #page-portfolio .btn-voir-plus,
