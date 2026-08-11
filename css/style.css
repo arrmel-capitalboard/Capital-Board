@@ -3867,13 +3867,15 @@ body.has-demo-banner { padding-top: 40px; }
      d'iOS, et haute de 57px (5 + 6 + icône 20 + 3 + libellé 12 + 6 + 5). Son
      bord supérieur est donc à 85px du bas, et non 57 comme le laissait croire
      la règle générique plus haut dans ce fichier.
-     Le bouton est posé de façon que son centre — le trait horizontal du + —
-     tombe sur ce bord : 85 - 25 = 60px. Le décalage suit la même expression
+     Aligner le trait du + sur ce bord donnerait 60px (85 - 25). On le remonte
+     de 8px : le bouton dépasse alors davantage, seul son tiers bas mordant la
+     carte. Revenir à l'alignement strict = remplacer 48px par 40px ci-dessous,
+     et 128px par 120px pour les actions. Le décalage suit la même expression
      que la barre, pour rester aligné si la zone sûre du téléphone est plus
      grande. Il reste dans le vide central, les quatre entrées ne bougeant pas. */
   .pea-fab-main {
     position: fixed; left: 50%; z-index: 205;
-    bottom: calc(40px + max(20px, env(safe-area-inset-bottom, 0px)));
+    bottom: calc(48px + max(20px, env(safe-area-inset-bottom, 0px)));
     width: 50px; height: 50px; border-radius: 50%;
     border: none; cursor: pointer; color: #fff;
     background: linear-gradient(135deg, var(--accent), #6b5ee8);
@@ -3887,7 +3889,7 @@ body.has-demo-banner { padding-top: 40px; }
 
   .pea-fab-actions {
     position: fixed; left: 50%; z-index: 205;
-    bottom: calc(120px + max(20px, env(safe-area-inset-bottom, 0px)));
+    bottom: calc(128px + max(20px, env(safe-area-inset-bottom, 0px)));
     display: flex; flex-direction: column; align-items: center; gap: 10px;
     opacity: 0; pointer-events: none;
     transform: translateX(-50%) translateY(8px) scale(.96);
