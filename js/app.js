@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260813e';
+const APP_VERSION = '20260813f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -691,10 +691,27 @@ async function deleteAllUserData(uid) {
 // Frais et taxes retenus sur un ordre (courtage + TTF). Champ facultatif :
 // absent des transactions enregistrées avant son introduction, d'où le repli
 // systématique à 0 partout où il est lu.
-function _readFees(inputId) {
+// Unité choisie pour les frais, par formulaire : montant ou pourcentage.
+const _feesUnit = { modal: 'eur', edit: 'eur' };
+
+window.setFeesUnit = function (form, unit) {
+  _feesUnit[form] = unit;
+  const box = document.getElementById(form + '-fees-switch');
+  if (box) box.querySelectorAll('.unit-opt').forEach(b => b.classList.toggle('active', b.dataset.unit === unit));
+  const input = document.getElementById(form + '-fees');
+  if (input) { input.placeholder = unit === 'pct' ? '0.50' : '0.00'; input.focus(); }
+};
+
+// Frais saisis. En pourcentage, ils portent sur le montant de l'ordre : c'est
+// ainsi que les courtiers les facturent, et l'avis d'opéré donne l'un ou
+// l'autre selon les établissements.
+function _readFees(inputId, montantOrdre) {
   const el = document.getElementById(inputId);
   const v = el ? parseFloat(el.value) : 0;
-  return (isFinite(v) && v > 0) ? Math.round(v * 100) / 100 : 0;
+  if (!isFinite(v) || v <= 0) return 0;
+  const form = inputId.startsWith('edit') ? 'edit' : 'modal';
+  const brut = _feesUnit[form] === 'pct' && montantOrdre ? (v / 100) * montantOrdre : v;
+  return Math.round(brut * 100) / 100;
 }
 function _txFees(tx) {
   const v = parseFloat(tx && tx.fees);
@@ -3335,7 +3352,6 @@ const SECTION_LABELS = {
   actualites: 'Actualités', favoris: 'Contenus favoris', idees: 'Boîte à idées', support: 'Support',
   fiscalite: 'Récap fiscal',
   admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord', facebook: 'Facebook', linkedin: 'LinkedIn',
-  paypal: 'Faire un don',
 };
 const ALL_SECTIONS = Object.keys(SECTION_LABELS);
 const ADMIN_ONLY_KEYS = ['admin']; // rendus uniquement pour l'admin
@@ -3343,7 +3359,7 @@ const ADMIN_ONLY_KEYS = ['admin']; // rendus uniquement pour l'admin
 // remanié : une config enregistrée par l'admin prime sur DEFAULT_NAV, et sans
 // ce garde-fou un remaniement restait invisible tant que personne n'avait
 // rouvert l'éditeur pour réenregistrer le menu.
-const NAV_LAYOUT_VERSION = 5;
+const NAV_LAYOUT_VERSION = 6;
 
 // Organisation sauvegardée, ou null si elle date d'avant le dernier remaniement
 // — auquel cas DEFAULT_NAV reprend la main. Réenregistrer le menu depuis
@@ -3365,7 +3381,6 @@ const DEFAULT_NAV = [
   { title: 'Outils',         items: ['actualites', 'favoris', 'fiscalite', 'idees', 'support'] },
   { title: 'Administration', items: ['admin'] },
   { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord', 'facebook', 'linkedin'] },
-  { title: 'Nous soutenir',  items: ['paypal'] },
 ];
 let _navNodes = null;   // cache des noeuds .nav-item par clé (sidebar desktop)
 let _mobNavNodes = null; // cache des noeuds .mobile-drawer-item par clé (drawer)
@@ -4439,7 +4454,7 @@ function confirmEdit() {
     var newQty = row.qty + qty;
     row.buyPrice = Math.round(((row.qty * row.buyPrice + qty * price) / newQty) * 10000) / 10000;
     row.qty      = Math.round(newQty * 10000) / 10000;
-    logTransaction(currentUser, { type:'buy', ticker: row.ticker, name: row.name, qty, price, date: txDate, fees: _readFees('edit-fees') });
+    logTransaction(currentUser, { type:'buy', ticker: row.ticker, name: row.name, qty, price, date: txDate, fees: _readFees('edit-fees', qty * price) });
   } else {
     if (qty > row.qty) { alert('Quantite superieure a la position.'); return; }
     var sellPrice = parseFloat(document.getElementById('edit-sell-price').value);
@@ -4448,7 +4463,7 @@ function confirmEdit() {
     // Calculate realized P&L for this sell
     // Les frais sont retenus sur le produit de la vente : la plus-value
     // realisee doit s'entendre nette, sinon elle annonce un gain jamais encaisse.
-    var sellFees = _readFees('edit-fees');
+    var sellFees = _readFees('edit-fees', qty * sellPrice);
     var realizedPnl = (sellPrice - row.buyPrice) * qty - sellFees;
     logTransaction(currentUser, { type:'sell', ticker: row.ticker, name: row.name, qty, price: sellPrice, date: txDate, buyPrice: row.buyPrice, fees: sellFees, realizedPnl: Math.round(realizedPnl * 100) / 100 });
     if (qty === row.qty) {
@@ -5366,7 +5381,7 @@ function confirmAdd() {
     });
   }
   // Log transaction for portfolio history
-  logTransaction(currentUser, { type:'buy', ticker: foundTicker||'', name: foundName||'', qty, price: buyPrice, date: buyDate, fees: _readFees('modal-fees') });
+  logTransaction(currentUser, { type:'buy', ticker: foundTicker||'', name: foundName||'', qty, price: buyPrice, date: buyDate, fees: _readFees('modal-fees', qty * buyPrice) });
   savePortfolio(currentUser, data);
   closeModal();
   renderPortfolio();

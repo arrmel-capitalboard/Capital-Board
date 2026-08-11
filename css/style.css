@@ -4010,3 +4010,16 @@ body.has-demo-banner { padding-top: 40px; }
   .search-collapse.open #table-search { width: 100%; }
   .search-collapse.open { flex: 1; }
 }
+
+/* Bascule d'unité des frais : montant ou pourcentage de l'ordre. */
+.unit-switch {
+  display: inline-flex; gap: 2px; padding: 2px;
+  background: var(--s3); border: 1px solid var(--border2); border-radius: 8px;
+}
+.unit-opt {
+  border: none; background: none; cursor: pointer;
+  color: var(--text3); font-family: var(--mono); font-size: 11px; font-weight: 700;
+  padding: 2px 9px; border-radius: 6px; line-height: 1.5;
+  transition: background .15s, color .15s;
+}
+.unit-opt.active { background: var(--accent); color: #fff; }
