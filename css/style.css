@@ -3859,17 +3859,16 @@ body.has-demo-banner { padding-top: 40px; }
   }
   #pea-fab.open .pea-fab-veil { opacity: 1; pointer-events: auto; }
 
-  /* Barre : 6px + contenu (icône 18 + 2 + libellé 10) + 6px ≈ 46px, plus la
-     zone sûre des téléphones sans bouton physique. Posé à 30px, le bouton la
-     chevauche sur 16px et paraît serti, l'anneau reprenant sa couleur de fond.
-     Il est centré, donc décalé de sa demi-largeur par translateX.
-     Les quatre entrées gardent leur position : réparties par espaces égaux,
-     leurs centres tombent à 12,5 / 37,5 / 62,5 / 87,5 %, si bien que le milieu
-     de l'écran est un vide — le bouton s'y loge sans rien recouvrir. */
+  /* Hauteur réelle de la barre : 6 + (6 + icône 18 + 2 + libellé 12 + 6) + 6
+     + 1 de bordure = 57px, plus la zone sûre. La maquette tablait sur 46, d'où
+     un bouton qui plongeait jusque sur le libellé « Dépenses ».
+     Posé à 48px, il ne mord que les 9px hauts de la barre — au-dessus des
+     libellés, et dans le vide central, les quatre entrées ayant leurs centres
+     à 12,5 / 37,5 / 62,5 / 87,5 %. Elles ne bougent pas d'un pixel. */
   .pea-fab-main {
     position: fixed; left: 50%; z-index: 205;
-    bottom: calc(30px + env(safe-area-inset-bottom, 0px));
-    width: 54px; height: 54px; border-radius: 50%;
+    bottom: calc(48px + env(safe-area-inset-bottom, 0px));
+    width: 50px; height: 50px; border-radius: 50%;
     border: none; cursor: pointer; color: #fff;
     background: linear-gradient(135deg, var(--accent), #6b5ee8);
     box-shadow: 0 0 0 5px var(--s1), 0 6px 18px rgba(124, 109, 245, .45);
@@ -3882,7 +3881,7 @@ body.has-demo-banner { padding-top: 40px; }
 
   .pea-fab-actions {
     position: fixed; left: 50%; z-index: 205;
-    bottom: calc(118px + env(safe-area-inset-bottom, 0px));
+    bottom: calc(134px + env(safe-area-inset-bottom, 0px));
     display: flex; flex-direction: column; align-items: center; gap: 10px;
     opacity: 0; pointer-events: none;
     transform: translateX(-50%) translateY(8px) scale(.96);
