@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811c';
+const APP_VERSION = '20260811d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -10944,7 +10944,7 @@ function initDividendes() {
     const nextEntry     = history.find(d => d.next === true);
     const nextEstim     = nextEntry ? new Date(nextEntry.date+'T12:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'}) : '—';
     const lastKnown     = history.find(d => !d.next) || null;
-    return { r, history, buyDate: firstBuy, allReceived, totalRecu, duringHolding, nextEstim, lastKnown };
+    return { r, history, buyDate: firstBuy, allReceived, totalRecu, duringHolding, nextEstim, nextISO: nextEntry ? nextEntry.date : null, lastKnown };
   })).then(rows => {
     // Dividendes auto-détectés Yahoo, date de versement passée (d.date <= today),
     // pas encore enregistrés → enregistrement AUTOMATIQUE (plus de confirmation manuelle).
@@ -10968,7 +10968,9 @@ function initDividendes() {
     const totalHolding   = rows.reduce((s, x) => s + x.duringHolding.length, 0);
     const totalRecuAuto  = rows.reduce((s, x) => s + x.totalRecu, 0) + distribRecus;
     const totalVersionts = rows.reduce((s, x) => s + x.allReceived.length, 0) + distribTxs.length;
-    const nextRows = rows.filter(x => x.nextEstim !== '—').sort((a, b) => a.nextEstim.localeCompare(b.nextEstim));
+    // Tri sur la date ISO : `nextEstim` est déjà formaté en français, le trier
+    // revenait à comparer « 08 juin 2026 » à « 18 mai 2026 » lettre par lettre.
+    const nextRows = rows.filter(x => x.nextISO).sort((a, b) => a.nextISO.localeCompare(b.nextISO));
     const kpiRecus   = document.getElementById('div-kpi-recus');
     const kpiHolding = document.getElementById('div-kpi-holding');
     const kpiNext    = document.getElementById('div-kpi-next');
@@ -10980,13 +10982,36 @@ function initDividendes() {
       <div class="stat-label" style="display:flex;align-items:center;gap:6px">${IC.calendar}Versements pendant détention</div>
       <div class="stat-value">${totalHolding}</div>
       <div class="stat-change">Depuis date d'achat</div>`;
-    if (kpiNext && nextRows.length) kpiNext.innerHTML = `
+    if (kpiNext) {
+      const fmtDay = iso => new Date(iso+'T12:00:00').toLocaleDateString('fr-FR',{day:'2-digit',month:'short',year:'numeric'});
+      let best = nextRows.length ? { x: nextRows[0], iso: nextRows[0].nextISO, announced: true } : null;
+      if (!best) {
+        // Yahoo n'annonce pas toujours la prochaine date. Plutôt que de laisser
+        // la carte sur « Chargement… » indéfiniment, on extrapole depuis le
+        // dernier versement connu et sa fréquence sur douze mois.
+        const y1 = new Date(); y1.setFullYear(y1.getFullYear() - 1);
+        const y1s = y1.toISOString().slice(0, 10);
+        const todayStr = new Date().toISOString().slice(0, 10);
+        best = rows.map(x => {
+          if (!x.lastKnown) return null;
+          const freq = Math.max(x.history.filter(d => !d.next && d.date >= y1s).length, 1);
+          const d = new Date(x.lastKnown.date + 'T12:00:00');
+          d.setMonth(d.getMonth() + Math.round(12 / freq));
+          const iso = d.toISOString().slice(0, 10);
+          return iso >= todayStr ? { x, iso, announced: false } : null;
+        }).filter(Boolean).sort((a, b) => a.iso.localeCompare(b.iso))[0] || null;
+      }
+      kpiNext.innerHTML = best ? `
       <div class="stat-label" style="display:flex;align-items:center;gap:6px">${IC.clock}Prochain versement</div>
       <div style="display:flex;align-items:center;gap:8px;margin:6px 0">
-        ${logoHtml(nextRows[0].r.ticker, 26, 'ticker-icon')}
-        <span style="font-size:13px;font-weight:600;color:var(--text1)">${nextRows[0].r.name || nextRows[0].r.ticker}</span>
+        ${logoHtml(best.x.r.ticker, 26, 'ticker-icon')}
+        <span style="font-size:13px;font-weight:600;color:var(--text1)">${best.x.r.name || best.x.r.ticker}</span>
       </div>
-      <div class="stat-value" style="font-size:16px;color:var(--gold)">${nextRows[0].nextEstim}</div>`;
+      <div class="stat-value" style="font-size:16px;color:var(--gold)">${fmtDay(best.iso)}${best.announced ? '' : '<span style="font-size:10px;color:var(--text3);font-family:var(--sans);font-weight:500"> · estimé</span>'}</div>` : `
+      <div class="stat-label" style="display:flex;align-items:center;gap:6px">${IC.clock}Prochain versement</div>
+      <div class="stat-value" style="font-size:16px">—</div>
+      <div class="stat-change">Aucune date annoncée</div>`;
+    }
 
     // ── Projection dividendes annuels ────────────────────────────────────────
     const projEl = document.getElementById('div-projection-content');
