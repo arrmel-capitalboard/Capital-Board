@@ -162,6 +162,65 @@ async function callMistral(prompt) {
   return (json?.choices?.[0]?.message?.content || '').trim();
 }
 
+// ─── GARDE-FOU : LIGNES INVENTÉES ────────────────────────────
+// Malgré des consignes explicites, le modèle ajoute parfois des lignes absentes
+// du portefeuille — des ETF plausibles pour un PEA (« Euro Inflation », « USD
+// Treasury Bond »), accompagnés d'une analyse crédible et fausse. Le prompt ne
+// suffit pas : chaque section est donc confrontée aux lignes réelles, et ce qui
+// ne correspond à rien est jeté.
+function _normLabel(s) {
+  return String(s || '')
+    .normalize('NFKD').replace(/[̀-ͯ]/g, '')
+    .toLowerCase().replace(/[^a-z0-9]+/g, ' ').trim();
+}
+
+// Une section est reconnue si elle cite le ticker, ou si le nom réel s'y
+// retrouve presque en entier. Compter deux mots communs ne suffit pas : les
+// noms d'ETF partagent tous « amundi », « ucits » ou « etf », si bien qu'un
+// « Amundi ETF Euro Inflation » inventé passait pour un « Amundi PEA
+// Nasdaq-100 » détenu.
+const _GENERIC_WORDS = new Set([
+  'etf', 'ucits', 'acc', 'dist', 'eur', 'usd', 'dr', 'the', 'and',
+  'index', 'fund', 'daily', 'swap', 'inc', 'sa', 'se', 'plc', 'nv',
+]);
+
+function _matchesKnownLine(sectionTitle, lines) {
+  const t = _normLabel(sectionTitle);
+  if (!t) return false;
+  return lines.some(l => {
+    const tick = _normLabel(String(l.ticker || '').split('.')[0]);
+    if (tick && tick.length >= 2 && t.includes(tick)) return true;
+    const words = _normLabel(l.name).split(' ').filter(w => w.length > 1);
+    const strong = words.filter(w => !_GENERIC_WORDS.has(w));
+    if (!strong.length) return false;
+    const hits = strong.filter(w => t.includes(w)).length;
+    // Le modèle est censé recopier le nom : on exige qu'il en reste l'essentiel.
+    return hits / strong.length >= 0.7;
+  });
+}
+
+// Garde l'intro, les sections d'une ligne détenue et les rubriques transverses.
+function stripUnknownLines(text, lines, keepTitles) {
+  const keep = (keepTitles || []).map(_normLabel);
+  const out = [];
+  let dropped = 0;
+  for (const raw of String(text || '').split('\n')) {
+    const line = raw.trimEnd();
+    if (!line.trim()) { out.push(line); continue; }
+    const idx = line.indexOf(':');
+    // Pas de « Titre: » → suite d'une section, conservée telle quelle.
+    if (idx === -1 || idx > 120) { out.push(line); continue; }
+    const title = line.slice(0, idx);
+    const nt = _normLabel(title);
+    if (keep.some(k => nt.startsWith(k))) { out.push(line); continue; }
+    if (_matchesKnownLine(title, lines)) { out.push(line); continue; }
+    dropped++;
+    console.warn('  Section hors portefeuille ecartee : ' + title.slice(0, 60));
+  }
+  if (dropped) console.warn('  ' + dropped + ' section(s) inventee(s) supprimee(s)');
+  return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
+}
+
 // ─── RAPPORT QUOTIDIEN ───────────────────────────────────────
 // 1) Tavily cherche l'actualité réelle de chaque ligne.
 // 2) Mistral rédige le rapport en s'appuyant UNIQUEMENT sur ces résultats.
@@ -200,6 +259,7 @@ Synthèse: <une phrase sur la tendance globale du jour>
 
 Règles de contenu :
 - Reprends EXACTEMENT le nom et la variation de chaque ligne fournie ci-dessus, dans le même ordre.
+- N'ajoute AUCUNE ligne absente de la liste : le rapport compte exactement ${lines.length} section(s) de ligne, ni plus ni moins.
 - Explication : si les résultats web expliquent réellement le mouvement (résultats financiers, annonce, actualité sectorielle, macro, indice suivi), donne-la. Sinon écris exactement : "Rien de notable, mouvement lié à la tendance de marché."
 - Ne mélange pas : soit une vraie explication, soit la phrase "Rien de notable" — jamais les deux.
 - Appuie-toi UNIQUEMENT sur les résultats web fournis. N'invente JAMAIS un événement, un chiffre ou une annonce absent de ces résultats.
@@ -207,7 +267,8 @@ Règles de contenu :
 
   try {
     const text = await callMistral(prompt);
-    return text || 'Analyse IA indisponible aujourd\'hui.';
+    if (!text) return 'Analyse IA indisponible aujourd\'hui.';
+    return stripUnknownLines(text, lines, ['synthese']) || 'Analyse IA indisponible aujourd\'hui.';
   } catch(e) {
     console.warn('Mistral error:', e.message);
     return 'Analyse IA indisponible aujourd\'hui.';
@@ -339,7 +400,9 @@ Règles :
 
   try {
     const text = await callMistral(prompt);
-    return text || 'Analyse IA indisponible cette semaine.';
+    if (!text) return 'Analyse IA indisponible cette semaine.';
+    return stripUnknownLines(text, lines, ['synthese marche', 'synthese', 'points d attention'])
+      || 'Analyse IA indisponible cette semaine.';
   } catch(e) {
     console.warn('Mistral error (hebdo):', e.message);
     return 'Analyse IA indisponible cette semaine.';
