@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811h';
+const APP_VERSION = '20260811i';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -11236,14 +11236,17 @@ function toggleDivHistory() {
 // ═══════════════════════════════════════════════════════════════════════
 const PERKS_CHECKED_AT = '11 août 2026';
 
-// Trois familles d'avantages, qui n'obéissent pas aux mêmes règles : la prime
+// Quatre familles d'avantages, qui n'obéissent pas aux mêmes règles : la prime
 // de fidélité exige le nominatif et de la durée, l'attribution d'actions
-// gratuites ne demande rien, le club actionnaires demande un nombre d'actions.
+// gratuites ne demande rien, le club actionnaires demande un nombre d'actions,
+// le cadeau d'assemblée exige d'être présent dans la salle.
 const PERK_KINDS = {
   dividende: { label: 'Dividende majoré', color: 'var(--positive)' },
   actions:   { label: 'Actions gratuites', color: 'var(--gold)' },
   club:      { label: 'Club actionnaires', color: '#a99bff' },
+  ag:        { label: 'Cadeau en AG', color: '#5b8dee' },
 };
+const PERK_KIND_ORDER = ['dividende', 'actions', 'club', 'ag'];
 
 // `years` = durée de nominatif exigée par la prime de fidélité, absent si la
 // société n'en propose pas. Les agrégateurs se contredisent beaucoup sur ces
@@ -11256,12 +11259,16 @@ const SHAREHOLDER_PERKS = [
     perks: [
       { kind: 'dividende', label: 'Dividende majoré +10 %', rate: 0.10 },
       { kind: 'actions', label: 'Actions gratuites majorées +10 %', note: 'Attribution périodique — la dernière date de juin 2026' },
+      { kind: 'ag', label: 'Cadeau en assemblée générale', note: 'Jeton de présence de 20 €', unverified: true },
     ],
   },
   {
     ticker: 'OR.PA', name: "L'Oréal", years: 2, official: true,
     source: 'https://www.loreal-finance.com/eng/loyalty-bonus-and-registered-shares',
-    perks: [{ kind: 'dividende', label: 'Dividende majoré +10 %', rate: 0.10 }],
+    perks: [
+      { kind: 'dividende', label: 'Dividende majoré +10 %', rate: 0.10 },
+      { kind: 'ag', label: 'Cadeau en assemblée générale', note: 'Produits cosmétiques du groupe', unverified: true },
+    ],
   },
   {
     ticker: 'ENGI.PA', name: 'Engie', years: 2, official: true,
@@ -11289,10 +11296,11 @@ const SHAREHOLDER_PERKS = [
   {
     ticker: 'ITP.PA', name: 'Interparfums', official: true,
     source: 'https://www.interparfums-finance.fr/en/publications/press-release/bonus-share-award-1-new-share-for-every-10-held/',
-    perks: [{
-      kind: 'actions', label: 'Attribution d\'actions gratuites, tous les ans',
-      note: '27ᵉ année consécutive en 2026, au rythme d\'une action nouvelle pour vingt détenues. Aucune condition de nominatif ; les rompus sont vendus et reversés.',
-    }],
+    perks: [
+      { kind: 'actions', label: 'Attribution d\'actions gratuites, tous les ans',
+        note: '27ᵉ année consécutive en 2026, au rythme d\'une action nouvelle pour vingt détenues. Aucune condition de nominatif ; les rompus sont vendus et reversés.' },
+      { kind: 'ag', label: 'Cadeau en assemblée générale', note: 'Flacon de parfum', unverified: true },
+    ],
   },
   {
     ticker: 'GET.PA', name: 'Getlink', official: true,
@@ -11313,18 +11321,173 @@ const SHAREHOLDER_PERKS = [
   {
     ticker: 'MC.PA', name: 'LVMH', official: false,
     source: 'https://clubsactionnaires.fr/entreprises/lvmh',
-    perks: [{
-      kind: 'club', label: 'Club actionnaires dès 1 action', minShares: 1,
-      note: 'Tarifs réduits sur les champagnes, vins et spiritueux du groupe, visites privées. Porteur accepté, nominatif non exigé.',
-    }],
+    perks: [
+      { kind: 'club', label: 'Club actionnaires dès 1 action', minShares: 1,
+        note: 'Tarifs réduits sur les champagnes, vins et spiritueux du groupe, visites privées. Porteur accepté, nominatif non exigé.' },
+      { kind: 'ag', label: 'Cadeau en assemblée générale', note: 'Champagne du groupe en 2025' },
+    ],
   },
   {
     ticker: 'DG.PA', name: 'Vinci', official: true,
     source: 'https://www.vinci.com/en/finance/shareholders/club',
+    perks: [
+      { kind: 'club', label: 'Club actionnaires dès 1 action', minShares: 1,
+        note: 'Une trentaine de visites de chantiers et de sites par an. Vinci ne verse pas de dividende majoré.' },
+      { kind: 'ag', label: 'Cadeau en assemblée générale' },
+    ],
+  },
+  {
+    ticker: 'MLCMB.PA', name: 'Compagnie du Mont-Blanc', official: true,
+    source: 'https://www.compagniedumontblanc.fr/fr/societe/espace-actionnaires/club-actionnaires/',
+    perks: [{
+      kind: 'club', label: '−50 % sur le forfait annuel Mont-Blanc Unlimited', minShares: 15,
+      note: 'Accès illimité aux remontées été comme hiver, avantage transférable à un proche nommément désigné',
+    }],
+  },
+  {
+    ticker: 'AC.PA', name: 'Accor', official: true,
+    source: 'https://group.accor.com/en/finance/individual-shareholders',
+    perks: [{
+      kind: 'club', label: 'Statut ALL Gold, jusqu\'à −7 % sur les séjours', minShares: 50,
+      note: '50 actions au porteur, ou une seule au nominatif. Accueil prioritaire et surclassement selon disponibilité.',
+    }],
+  },
+  {
+    ticker: 'RCO.PA', name: 'Rémy Cointreau', official: false,
+    source: 'https://club-actionnaire.com/avantages-detre-actionnaire-de-remy-cointreau-epa-rco/',
+    perks: [{
+      kind: 'club', label: 'Visites gratuites et −10 % à la boutique', minShares: 1,
+      note: 'Accès libre aux sites de production ouverts au public, sur présentation de la carte du club',
+    }],
+  },
+  {
+    ticker: 'CS.PA', name: 'AXA', official: true,
+    source: 'https://www.axa.com/fr/investisseurs/cercle-des-actionnaires',
+    perks: [{
+      kind: 'club', label: 'Cercle des actionnaires dès 1 action', minShares: 1,
+      note: 'Remises sur les grands crus d\'AXA Millésimes (Pichon-Longueville, Suduiraut), magazine, visites privées',
+    }],
+  },
+  {
+    ticker: 'SAF.PA', name: 'Safran', official: true,
+    source: 'https://www.safran-group.com/club-actionnaire-0',
     perks: [{
       kind: 'club', label: 'Club actionnaires dès 1 action', minShares: 1,
-      note: 'Une trentaine de visites de chantiers et de sites par an. Vinci ne verse pas de dividende majoré.',
+      note: 'Visites d\'usines du groupe, lettre et guide de l\'actionnaire',
     }],
+  },
+  {
+    ticker: 'SGO.PA', name: 'Saint-Gobain', official: true,
+    source: 'https://www.saint-gobain.com/sites/saint-gobain.com/files/conditions_generales_du_club.pdf',
+    perks: [
+      { kind: 'club', label: 'Club actionnaires dès 1 action', minShares: 1,
+        note: 'Porteur ou nominatif. Visites du showroom et de la Tour Saint-Gobain, inscriptions par tirage au sort.' },
+      { kind: 'ag', label: 'Cadeau en assemblée générale' },
+    ],
+  },
+  {
+    ticker: 'ORA.PA', name: 'Orange', official: true,
+    source: 'https://club-actionnaires.orange.com/page/conditions',
+    perks: [{
+      kind: 'club', label: 'Club des investisseurs individuels dès 1 action', minShares: 1,
+      note: 'Concerts et événements culturels ; soirées « After Hours Premium » à partir de 1 500 actions. Les remises de −15 % sur les forfaits Orange n\'existent plus.',
+    }],
+  },
+  {
+    ticker: 'BNP.PA', name: 'BNP Paribas', official: true,
+    source: 'https://cercle-actionnaires.bnpparibas/charte-du-cercle',
+    perks: [
+      { kind: 'club', label: 'Cercle des actionnaires', minShares: 200,
+        note: '200 actions au porteur ou au nominatif. Invitations tennis, cinéma, jazz, expositions.' },
+      { kind: 'ag', label: 'Cadeau en assemblée générale' },
+    ],
+  },
+  {
+    ticker: 'GLE.PA', name: 'Société Générale', official: true,
+    source: 'https://monespaceactionnaire.societegenerale.com/join-club',
+    perks: [{
+      kind: 'club', label: 'Club actionnaires', minShares: 100,
+      note: '100 actions au porteur, ou 50 au nominatif. Événements sportifs et culturels du mécénat, attribués par tirage au sort.',
+    }],
+  },
+  {
+    ticker: 'ACA.PA', name: 'Crédit Agricole S.A.', official: true,
+    source: 'https://clubactionnaires.credit-agricole.com/',
+    perks: [{
+      kind: 'club', label: 'Club actionnaires', minShares: 50,
+      note: '50 actions, porteur ou nominatif, hors PEE. Billets coupe-file (Chambord, quai Branly), remises sur les abonnements presse.',
+    }],
+  },
+  {
+    ticker: 'RI.PA', name: 'Pernod Ricard', official: false,
+    source: 'https://club-premium.pernod-ricard.com/frequently-asked-questions',
+    perks: [{
+      kind: 'club', label: 'Club Premium', minShares: 24,
+      note: 'Visites de Martell et de la Maison Perrier-Jouët, événements. Pas de remise sur les bouteilles.',
+    }],
+  },
+  {
+    ticker: 'AF.PA', name: 'Air France-KLM', official: true,
+    source: 'https://www.airfranceklm.com/en/finance/shareholders/shareholders-club/registration',
+    perks: [{
+      kind: 'club', label: 'Club des actionnaires', minShares: 5,
+      note: 'Réunions en région et tirages au sort pour des événements. Aucune réduction sur les vols.',
+    }],
+  },
+  {
+    ticker: 'TTE.PA', name: 'TotalEnergies', official: true,
+    source: 'https://e-cercle.totalenergies.com/page/reglement',
+    perks: [{
+      kind: 'club', label: 'Cercle des actionnaires',
+      note: 'Visites de sites, événements culturels, jeux-concours. Conditions d\'accès fixées par le règlement du Cercle. Pas de dividende majoré, contrairement à ce qu\'on lit souvent.',
+    }],
+  },
+  {
+    ticker: 'CA.PA', name: 'Carrefour', official: false,
+    source: 'https://www.clubactionnaires.carrefour.com/fr/security/register',
+    perks: [{
+      kind: 'club', label: 'Club actionnaires en sommeil', minShares: 100,
+      note: '1 action au nominatif ou 100 au porteur, mais plus d\'événement organisé depuis 2018',
+    }],
+  },
+  {
+    ticker: 'ADP.PA', name: 'Groupe ADP', official: false,
+    source: 'https://actionnaires.groupeadp.fr/club/fr/login',
+    perks: [
+      { kind: 'club', label: 'Club actionnaires dès 1 action', minShares: 1,
+        note: 'Adhésion gratuite, mais le club ne propose plus d\'événement depuis plusieurs années' },
+      { kind: 'ag', label: 'Cadeau en assemblée générale' },
+    ],
+  },
+  {
+    ticker: 'RMS.PA', name: 'Hermès', official: false,
+    source: 'https://pea.fr/guides/cadeaux-avantages-actionnaires-ag-guide-complet-2026/',
+    perks: [{ kind: 'ag', label: 'Cadeau en assemblée générale', note: 'Le plus généreux de la cote : jeux de bridge Cheval Natté en 2025' }],
+  },
+  {
+    ticker: 'BB.PA', name: 'Bic', official: false,
+    source: 'https://pea.fr/guides/cadeaux-avantages-actionnaires-ag-guide-complet-2026/',
+    perks: [{ kind: 'ag', label: 'Cadeau en assemblée générale', note: 'Rasoir, briquet et stylos' }],
+  },
+  {
+    ticker: 'LR.PA', name: 'Legrand', official: false,
+    source: 'https://pea.fr/guides/cadeaux-avantages-actionnaires-ag-guide-complet-2026/',
+    perks: [{ kind: 'ag', label: 'Cadeau en assemblée générale', note: 'Produit du catalogue' }],
+  },
+  {
+    ticker: 'UBI.PA', name: 'Ubisoft', official: false,
+    source: 'https://pea.fr/guides/cadeaux-avantages-actionnaires-ag-guide-complet-2026/',
+    perks: [{ kind: 'ag', label: 'Cadeau en assemblée générale', note: 'Figurine et goodies' }],
+  },
+  {
+    ticker: 'BN.PA', name: 'Danone', official: false,
+    source: 'https://pea.fr/guides/cadeaux-avantages-actionnaires-ag-guide-complet-2026/',
+    perks: [{ kind: 'ag', label: 'Cadeau en assemblée générale', note: 'Produit du groupe' }],
+  },
+  {
+    ticker: 'EL.PA', name: 'EssilorLuxottica', official: false,
+    source: 'https://pea.fr/guides/cadeaux-avantages-actionnaires-ag-guide-complet-2026/',
+    perks: [{ kind: 'ag', label: 'Cadeau en assemblée générale', note: 'Sac Oakley et bon Grand Optical' }],
   },
 ];
 
@@ -11396,6 +11559,7 @@ function initAvantages() {
           <div style="display:flex;align-items:center;gap:7px;flex-wrap:wrap">
             <span style="font-size:12px;color:var(--text1);font-weight:600">${p.label}</span>
             ${kindTag(p.kind)}
+            ${p.unverified ? '<span style="font-size:10px;color:var(--text3)" title="Relevé dans un guide, pas confirmé par la société">à confirmer</span>' : ''}
             ${short ? `<span style="font-size:10px;color:var(--gold)">il vous en manque ${p.minShares - qty}</span>` : ''}
           </div>
           ${p.note ? `<div style="font-size:11px;color:var(--text3);margin-top:2px;line-height:1.5">${p.note}</div>` : ''}
@@ -11456,7 +11620,7 @@ function initAvantages() {
       </div>`;
   }).join('');
 
-  const othersHtml = others.map(entry => `
+  const otherRow = (entry) => `
     <div style="display:flex;align-items:flex-start;gap:11px;padding:12px 0;border-top:1px solid var(--border)">
       ${logoHtml(entry.ticker, 24, 'ticker-icon')}
       <div style="flex:1;min-width:0">
@@ -11469,7 +11633,24 @@ function initAvantages() {
         </div>
       </div>
       <div style="white-space:nowrap">${sourceLink(entry)}</div>
-    </div>`).join('');
+    </div>`;
+
+  // Une liste de vingt-six sociétés à plat ne se lit pas : on la range par
+  // famille, chaque société tombant dans celle de son avantage principal.
+  const othersHtml = PERK_KIND_ORDER.map(kind => {
+    const group = others.filter(e => e.perks[0].kind === kind);
+    if (!group.length) return '';
+    const k = PERK_KINDS[kind];
+    return `
+      <div style="margin-top:18px">
+        <div style="display:flex;align-items:center;gap:8px;margin-bottom:2px">
+          <span style="width:8px;height:8px;border-radius:2px;background:${k.color};display:inline-block"></span>
+          <span style="font-size:12px;font-weight:700;color:var(--text1)">${k.label}</span>
+          <span style="font-size:11px;color:var(--text3)">${group.length}</span>
+        </div>
+        ${group.map(otherRow).join('')}
+      </div>`;
+  }).join('');
 
   el.innerHTML = `
     <div class="section-card" style="margin-bottom:18px">
@@ -11488,6 +11669,9 @@ function initAvantages() {
         <br>
         <b style="color:#a99bff">Club actionnaires</b> — réductions sur les produits, visites, événements.
         Ce qui compte ici est le <b style="color:var(--text1)">nombre d'actions</b>, parfois une seule.
+        <br>
+        <b style="color:#5b8dee">Cadeau en assemblée générale</b> — remis en séance, donc seulement si vous vous
+        déplacez. Il change chaque année.
         <br><br>
         Votre courtier ne dit pas si vous êtes au nominatif : indiquez-le ci-dessous ligne par ligne, et
         Capital Board calcule l'année où la prime tombe.
@@ -11502,7 +11686,7 @@ function initAvantages() {
          </div>`}
 
     <div class="section-card">
-      <div class="section-title" style="margin-bottom:4px">Sociétés qui en proposent</div>
+      <div class="section-title" style="margin-bottom:4px">Sociétés qui en proposent (${SHAREHOLDER_PERKS.length})</div>
       <div style="font-size:11px;color:var(--text3);margin-bottom:6px;line-height:1.5">
         Registre tenu à la main, vérifié le ${PERKS_CHECKED_AT} — aucune API ne publie ces programmes.
         Les agrégateurs se contredisent souvent : chaque ligne renvoie à sa source, et celles qui n'ont
