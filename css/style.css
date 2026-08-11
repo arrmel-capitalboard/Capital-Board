@@ -3943,3 +3943,11 @@ body.has-demo-banner { padding-top: 40px; }
 @media (max-width: 380px) {
   .patri-grid { grid-template-columns: 1fr; }
 }
+
+/* Camembert du patrimoine : hauteur fixe, sinon Chart.js s'étire à l'infini
+   dans un conteneur sans dimension. */
+.patri-donut-wrap { position: relative; height: 200px; margin: 16px 0 12px; }
+.patri-legend { display: flex; flex-wrap: wrap; gap: 10px 16px; justify-content: center; }
+.patri-leg { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px; color: var(--text3); }
+.patri-leg i { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
+.patri-leg b { color: var(--text2); font-family: var(--mono); font-weight: 700; }

@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260812r';
+const APP_VERSION = '20260812s';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3812,6 +3812,7 @@ const PATRIMOINE_ENVELOPPES = [
   { key: 'nonco',     label: 'Crowdfunding & non coté', color: '#ff4d6a', value: () => null },
 ];
 
+let _patriChart = null;
 function renderPatrimoine() {
   const el = document.getElementById('patrimoine-content');
   if (!el) return;
@@ -3825,14 +3826,13 @@ function renderPatrimoine() {
   const eur = v => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
   const part = v => total > 0 ? (v / total * 100) : 0;
 
-  // Répartition : une barre segmentée, lisible même avec une seule enveloppe.
-  const barre = actives.length
-    ? '<div style="display:flex;height:10px;border-radius:6px;overflow:hidden;background:var(--s2);margin:14px 0 10px">'
-      + actives.map(r => '<div title="' + r.label + '" style="width:' + part(r.montant).toFixed(1) + '%;background:' + r.color + '"></div>').join('')
-      + '</div><div style="display:flex;gap:14px;flex-wrap:wrap;font-size:11px;color:var(--text3)">'
-      + actives.map(r => '<span style="display:inline-flex;align-items:center;gap:6px">'
-          + '<span style="width:8px;height:8px;border-radius:2px;background:' + r.color + '"></span>'
-          + r.label + ' <b style="color:var(--text2);font-family:var(--mono)">' + part(r.montant).toFixed(1) + ' %</b></span>').join('')
+  // Répartition : camembert (anneau) plutôt qu'une barre — la part de chaque
+  // enveloppe se lit d'un coup d'œil, et le total tient au centre.
+  const donut = actives.length
+    ? '<div class="patri-donut-wrap"><canvas id="patri-donut"></canvas></div>'
+      + '<div class="patri-legend">'
+      + actives.map(r => '<span class="patri-leg"><i style="background:' + r.color + '"></i>'
+          + r.label + ' <b>' + part(r.montant).toFixed(1) + ' %</b></span>').join('')
       + '</div>'
     : '';
 
@@ -3858,7 +3858,7 @@ function renderPatrimoine() {
     +   '<div style="font-size:12px;color:' + latentCol + ';margin-top:2px">'
     +     (pea.latent >= 0 ? '+' : '') + eur(pea.latent) + ' de plus-value latente'
     +     (pea.investi > 0 ? ' · ' + (latentPct >= 0 ? '+' : '') + latentPct.toFixed(2) + ' %' : '')
-    +   '</div>' + barre
+    +   '</div>' + donut
     + '</div>'
 
     + '<div class="section-card" style="margin-bottom:18px">'
@@ -3880,6 +3880,55 @@ function renderPatrimoine() {
     +     '<div><span>Versements cumulés</span><b>' + eur(pea.versements) + '</b></div>'
     +   '</div>'
     + '</div>';
+
+  // Le camembert se construit après l'injection du HTML : son canvas doit
+  // exister. L'instance précédente est détruite, sinon Chart.js empile.
+  if (actives.length && window.Chart) {
+    const ctx = document.getElementById('patri-donut');
+    if (ctx) {
+      if (_patriChart) { _patriChart.destroy(); _patriChart = null; }
+      _patriChart = new Chart(ctx.getContext('2d'), {
+        type: 'doughnut',
+        data: {
+          labels: actives.map(r => r.label),
+          datasets: [{
+            data: actives.map(r => r.montant),
+            backgroundColor: actives.map(r => r.color),
+            borderColor: 'transparent', borderWidth: 0, hoverOffset: 6,
+          }],
+        },
+        options: {
+          responsive: true, maintainAspectRatio: false, cutout: '68%',
+          plugins: {
+            legend: { display: false },
+            tooltip: {
+              backgroundColor: '#10121c', borderColor: 'rgba(255,255,255,.06)', borderWidth: 1,
+              padding: 10, cornerRadius: 8,
+              callbacks: { label: c => ' ' + eur(c.parsed) + ' · ' + part(c.parsed).toFixed(1) + ' %' },
+            },
+          },
+        },
+        plugins: [{
+          id: 'patriCenter',
+          afterDraw(chart) {
+            const { ctx: c, chartArea } = chart;
+            if (!chartArea) return;
+            const x = (chartArea.left + chartArea.right) / 2;
+            const y = (chartArea.top + chartArea.bottom) / 2;
+            c.save();
+            c.textAlign = 'center'; c.textBaseline = 'middle';
+            c.fillStyle = '#8892a8';
+            c.font = "600 10px 'JetBrains Mono', monospace";
+            c.fillText('TOTAL', x, y - 12);
+            c.fillStyle = '#edf0f7';
+            c.font = "700 16px 'JetBrains Mono', monospace";
+            c.fillText(eur(total), x, y + 6);
+            c.restore();
+          },
+        }],
+      });
+    }
+  }
 }
 
 function renderPortfolio() {
