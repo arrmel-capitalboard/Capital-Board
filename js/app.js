@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811w';
+const APP_VERSION = '20260811x';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -13407,6 +13407,13 @@ window.showPromptModal = function({ title, body, placeholder, fields, okLabel, c
   wrap.className = "modal-overlay open";
   const fieldsHtml = useFields.map(f => {
     const lbl = f.label ? '<label style="display:block;font-size:11px;color:var(--text2);margin-bottom:4px;font-weight:600">' + _escapeHtmlChat(f.label) + (f.required ? ' *' : '') + '</label>' : '';
+    if (f.type === "select") {
+      const opts = (f.options || []).map(o =>
+        '<option value="' + _escapeHtmlChat(o.value) + '">' + _escapeHtmlChat(o.label) + '</option>').join("");
+      return lbl + '<select data-name="' + f.name + '" style="width:100%;padding:11px 13px;background:var(--s3);border:1px solid var(--border2);border-radius:9px;color:var(--text);font-size:13px;font-family:inherit;margin-bottom:12px">'
+        + (f.placeholder ? '<option value="">' + _escapeHtmlChat(f.placeholder) + '</option>' : '')
+        + opts + '</select>';
+    }
     if (f.type === "textarea") {
       return lbl + '<textarea data-name="' + f.name + '" placeholder="' + _escapeHtmlChat(f.placeholder || "") + '" rows="3" style="width:100%;padding:10px 12px;background:var(--s3);border:1px solid var(--border2);border-radius:8px;color:var(--text);font-size:13px;font-family:inherit;resize:vertical;margin-bottom:12px"></textarea>';
     }
@@ -14732,29 +14739,41 @@ function _renderAdminThreads(threads) {
   }).join("");
 }
 
-window._openNewChatPrompt = function() {
+window._openNewChatPrompt = async function() {
+  // Taper un UID Firebase de mémoire n'a jamais eu de sens : la liste des
+  // comptes est chargée depuis le Worker, seul habilité à interroger Auth
+  // (les règles Firestore interdisent à l'admin de lire les docs des autres).
+  let users = [];
+  try {
+    const r = await _adminAuthPost('/admin/list-auth-users', {});
+    if (r && r.ok && Array.isArray(r.users)) users = r.users;
+  } catch (_) {}
+  users = users
+    .filter(u => u && u.localId && u.localId !== ADMIN_UID)
+    .sort((a, b) => String(a.email || '').localeCompare(String(b.email || '')));
+
+  if (!users.length) {
+    alert("Liste des comptes indisponible. Réessayez dans un instant.");
+    return;
+  }
+
   showPromptModal({
     title: "Nouveau chat",
     body: "Initier une conversation avec un utilisateur.",
     okLabel: "Créer",
     fields: [
-      { name: "contact", label: "Email ou UID Firebase", placeholder: "email@exemple.com ou UID", type: "text", required: true },
+      { name: "contact", label: "Destinataire", placeholder: "Choisir un compte…", type: "select", required: true,
+        options: users.map(u => ({
+          value: u.localId,
+          label: (u.email || u.localId) + (u.emailVerified === false ? ' — non vérifié' : ''),
+        })) },
       { name: "reason",  label: "Raison du chat",         placeholder: "Ex : suivi inscription, retour bug…", type: "textarea", required: true },
     ],
     onConfirm: async (out) => {
-      const v = out.contact;
+      const uid = out.contact;
       const reason = out.reason;
-      let uid = v;
-      if (v.includes("@")) {
-        try {
-          const snap = await getDocs(firestoreQuery(firestoreCollection(db, "users"), firestoreWhere("email", "==", v)));
-          if (snap.empty) { alert("Aucun user avec cet email."); return; }
-          uid = snap.docs[0].id;
-        } catch(e) {
-          alert("Recherche email impossible. Tape directement l'UID.");
-          return;
-        }
-      }
+      const picked = users.find(u => u.localId === uid);
+      const v = (picked && picked.email) || "";
       try {
         const threadRef = firestoreDoc(db, "supportThreads", uid);
         const existing = await getFirestoreDoc(threadRef);
@@ -14764,7 +14783,7 @@ window._openNewChatPrompt = function() {
             lastAt: serverTimestamp(),
             lastFrom: "admin",
             unreadAdmin: 0, unreadUser: 1,
-            userEmail: v.includes("@") ? v : "",
+            userEmail: v,
             ticketId: _genTicketId(uid),
             reason: reason,
           });
