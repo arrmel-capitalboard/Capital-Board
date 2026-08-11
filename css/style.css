@@ -2126,13 +2126,6 @@ body.sb-collapsed .main { margin-left: 58px; }
   box-shadow: 0 10px 30px rgba(0,0,0,0.42), 0 2px 6px rgba(0,0,0,0.24);
 }
 
-/* Emplacement réservé au bouton d'ajout. Les entrées se partagent le reste à
-   parts égales : sans cela, un libellé long comme « Patrimoine » décalait tout
-   vers la droite et le bouton, lui centré sur l'écran, mordait sur « PEA ».
-   82px pour un bouton de 50 : seize pixels de dégagement de chaque côté, la
-   pastille active de PEA ne venant plus le frôler. */
-.mobile-nav-slot { flex: 0 0 82px; }
-
 .mobile-nav-item {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
   padding: 6px 4px; border-radius: 10px;
@@ -3878,27 +3871,18 @@ body.has-demo-banner { padding-top: 40px; }
   }
   #pea-fab.open .pea-fab-veil { opacity: 1; pointer-events: auto; }
 
-  /* Hauteur réelle de la barre : 6 + (6 + icône 18 + 2 + libellé 12 + 6) + 6
-     + 1 de bordure = 57px, plus la zone sûre. La maquette tablait sur 46, d'où
-     un bouton qui plongeait jusque sur le libellé « Dépenses ».
-     La barre n'est pas collée au bas de l'écran : c'est une carte flottante,
-     décalée de 8px plus le plancher de 20px qui protège la zone de gestes
-     d'iOS, et haute de 57px (5 + 6 + icône 20 + 3 + libellé 12 + 6 + 5). Son
-     bord supérieur est donc à 85px du bas, et non 57 comme le laissait croire
-     la règle générique plus haut dans ce fichier.
-     Aligner le trait du + sur ce bord donnerait 60px (85 - 25). On le remonte
-     de 8px : le bouton dépasse alors davantage, seul son tiers bas mordant la
-     carte. Revenir à l'alignement strict = remplacer 48px par 40px ci-dessous,
-     et 128px par 120px pour les actions. Le décalage suit la même expression
-     que la barre, pour rester aligné si la zone sûre du téléphone est plus
-     grande. Il reste dans le vide central, les quatre entrées ne bougeant pas. */
+  /* La barre est une carte flottante : 8px de marge plus le plancher de 20px
+     qui protège la zone de gestes d'iOS, puis 57px de hauteur (5 + 6 + icône
+     20 + 3 + libellé 12 + 6 + 5). Son bord supérieur est donc à 85px du bas.
+     Le bouton se pose 12px au-dessus, sans jamais la toucher : les entrées
+     reprennent toute la largeur, et leur nombre n'a plus d'incidence. */
   .pea-fab-main {
     position: fixed; left: 50%; z-index: 205;
-    bottom: calc(48px + max(20px, env(safe-area-inset-bottom, 0px)));
+    bottom: calc(77px + max(20px, env(safe-area-inset-bottom, 0px)));
     width: 50px; height: 50px; border-radius: 50%;
     border: none; cursor: pointer; color: #fff;
     background: linear-gradient(135deg, var(--accent), #6b5ee8);
-    box-shadow: 0 0 0 5px var(--s1), 0 6px 18px rgba(124, 109, 245, .45);
+    box-shadow: 0 8px 22px rgba(124, 109, 245, .45), 0 2px 8px rgba(0, 0, 0, .4);
     display: grid; place-items: center;
     transform: translateX(-50%);
     transition: transform .2s ease, box-shadow .2s ease;
@@ -3908,7 +3892,7 @@ body.has-demo-banner { padding-top: 40px; }
 
   .pea-fab-actions {
     position: fixed; left: 50%; z-index: 205;
-    bottom: calc(128px + max(20px, env(safe-area-inset-bottom, 0px)));
+    bottom: calc(157px + max(20px, env(safe-area-inset-bottom, 0px)));
     display: flex; flex-direction: column; align-items: center; gap: 10px;
     opacity: 0; pointer-events: none;
     transform: translateX(-50%) translateY(8px) scale(.96);
