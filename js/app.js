@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260812c';
+const APP_VERSION = '20260812d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3157,7 +3157,7 @@ window.closeMobileDrawer = function() {
 
 // Les entrées qui mènent à un second niveau plutôt qu'à une page. Une seule
 // aujourd'hui ; le jour où le CTO aura ses vues, il suffira de l'ajouter ici.
-const DRAWER_SUBMENUS = { portfolio: { title: 'Mon PEA', tabs: () => PEA_TABS } };
+const DRAWER_SUBMENUS = { portfolio: { title: 'PEA', tabs: () => PEA_TABS } };
 
 function _drawerShowRoot() {
   const dr = document.querySelector('.mobile-drawer');
@@ -3318,7 +3318,7 @@ function applyFeatureFlags(features) {
 // plus : ils vivent dans la barre #pea-tabs, pas dans le menu. Leurs toggles
 // restent accessibles à l'admin via PEA_TABS.
 const SECTION_LABELS = {
-  portfolio: 'Mon PEA', cto: 'Mon CTO', crypto: 'Ma crypto', depenses: 'Dépenses & abonnements',
+  portfolio: 'PEA', cto: 'Mon CTO', crypto: 'Ma crypto', depenses: 'Dépenses & abonnements',
   av: 'Assurance-vie', per: 'PER', livrets: 'Livrets & épargne',
   immo: 'Immobilier & SCPI', or: 'Or & métaux', nonco: 'Crowdfunding & non coté',
   actualites: 'Actualités', favoris: 'Contenus favoris', idees: 'Boîte à idées', support: 'Support',
@@ -3501,7 +3501,7 @@ const PEA_TABS = ['portfolio', 'activite', 'dividendes', 'avantages', 'watchlist
 // Libellés du second niveau du tiroir. Plus courts que ceux de la barre du
 // haut : « Calendrier résultats » déborde d'une case de grille.
 const PEA_TAB_LABELS = {
-  portfolio: 'Portefeuille',  activite: 'Activité',    dividendes: 'Dividendes',
+  portfolio: 'Mon PEA',       activite: 'Activité',    dividendes: 'Dividendes',
   avantages: 'Avantages',
   watchlist: 'Watchlist',     benchmark: 'Benchmark',
   projections: 'Projections', earnings: 'Résultats',   recap: 'Récap du jour',
@@ -3703,6 +3703,45 @@ function _mergeDuplicatePositions(data) {
   return merged ? out : null;
 }
 
+
+// ─── COURBES DU PORTEFEUILLE ──────────────────────────────────
+// renderPortfolio() vide le tableau à chaque rafraîchissement de cours, ce qui
+// détruisait la courbe ouverte. On mémorise donc les courbes dépliées pour
+// réinsérer le canvas d'origine après reconstruction : l'instance Chart.js
+// survit, rien n'est redessiné.
+const _pfOpenCharts = {};   // 'pf3' → { ticker, period }
+let _pfChartTicker = null;
+
+// Prolonge les courbes intraday d'un point par minute avec le dernier cours
+// connu, plutôt que de retélécharger et redessiner la série entière.
+function _startPfChartTick() {
+  if (_pfChartTicker) return;
+  _pfChartTicker = setInterval(() => {
+    const keys = Object.keys(_pfOpenCharts);
+    if (!keys.length) { clearInterval(_pfChartTicker); _pfChartTicker = null; return; }
+    const pf = getPortfolio(currentUser);
+    keys.forEach(key => {
+      const st = _pfOpenCharts[key];
+      // Seul l'intraday se prolonge : sur 1 mois ou plus, un point par minute
+      // n'a aucun sens.
+      if (!st || st.period !== '1J') return;
+      const chart = _wlChartInstances[key];
+      if (!chart) return;
+      const row = pf.find(r => String(r.ticker).toUpperCase() === String(st.ticker).toUpperCase());
+      const px  = row && row.currentPrice;
+      if (!px) return;
+      const label = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+      const labels = chart.data.labels, pts = chart.data.datasets[0].data;
+      if (labels[labels.length - 1] === label) {
+        pts[pts.length - 1] = px;          // même minute : on corrige le point
+      } else {
+        labels.push(label); pts.push(px);
+      }
+      chart.update('none');                // sans animation : la courbe avance
+    });
+  }, 60000);
+}
+
 function renderPortfolio() {
   let data = getPortfolio(currentUser);
   // Fusion des doublons hérités, une fois pour toutes : sans elle, une valeur
@@ -3711,6 +3750,14 @@ function renderPortfolio() {
   if (deduped) { data = deduped; savePortfolio(currentUser, data); }
   const tbody = document.getElementById('portfolio-tbody');
   const empty = document.getElementById('empty-state');
+
+  // Détacher les courbes ouvertes avant de vider : le noeud <canvas> conservé
+  // garde son instance Chart.js, donc son tracé.
+  const _preserved = {};
+  Object.keys(_pfOpenCharts).forEach(key => {
+    const wrap = document.querySelector('#wl-chart-row-' + key + ' .wl-chart-wrap');
+    if (wrap) { wrap.remove(); _preserved[key] = wrap; }
+  });
 
   tbody.innerHTML = '';
 
@@ -3824,6 +3871,23 @@ function renderPortfolio() {
       chartTr.id = 'wl-chart-row-pf' + i;
       chartTr.className = 'wl-chart-row';
       chartTr.style.display = 'none';
+      // Courbe déjà ouverte sur ce ticker : on remet le noeud d'origine, sans
+      // rien retélécharger ni redessiner. Si la ligne a changé de place et que
+      // le ticker ne correspond plus, on repart proprement.
+      const _pk = 'pf' + i, _keep = _preserved[_pk];
+      if (_keep) {
+        delete _preserved[_pk];
+        if (_pfOpenCharts[_pk] && _pfOpenCharts[_pk].ticker === row.ticker) {
+          chartTr.appendChild(document.createElement('td')).colSpan = 8;
+          chartTr.firstChild.appendChild(_keep);
+          chartTr.style.display = '';
+          tr.classList.add('expanded');
+          tbody.appendChild(chartTr);
+          return;
+        }
+        if (_wlChartInstances[_pk]) { _wlChartInstances[_pk].destroy(); delete _wlChartInstances[_pk]; }
+        delete _pfOpenCharts[_pk];
+      }
       chartTr.innerHTML =
         '<td colspan="8">'
         + '<div class="wl-chart-wrap">'
@@ -8719,8 +8783,8 @@ const _wlChartPeriodCache = {};
 const _WL_PERIOD_CACHE_TTL = 5 * 60 * 1000;
 
 const WL_PERIODS = {
-  '1J':  { range: '1d',  interval: '5m'  },
-  '5J':  { range: '5d',  interval: '15m' },
+  '1J':  { range: '1d',  interval: '5m',  prePost: true },
+  '5J':  { range: '5d',  interval: '15m', prePost: true },
   '1M':  { range: '1mo', interval: '1d'  },
   '6M':  { range: '6mo', interval: '1d'  },
   'AAJ': { range: 'ytd', interval: '1d'  },
@@ -8737,12 +8801,17 @@ function toggleWatchlistChart(i, ticker) {
   const dataRow  = document.getElementById('wl-row-' + i);
   if (!chartRow) return;
   const isOpen = chartRow.style.display !== 'none';
+  const isPf = String(i).startsWith('pf');
   if (isOpen) {
     chartRow.style.display = 'none';
     if (dataRow) dataRow.classList.remove('expanded');
+    if (isPf) delete _pfOpenCharts[i];
   } else {
     chartRow.style.display = '';
     if (dataRow) dataRow.classList.add('expanded');
+    // Mémorisé pour survivre au rafraîchissement des cours, qui reconstruit
+    // tout le tableau.
+    if (isPf) { _pfOpenCharts[i] = { ticker, period: '1M' }; _startPfChartTick(); }
     if (!_wlChartInstances[i]) {
       loadWlChart(i, ticker, '1M');
     }
@@ -8750,6 +8819,7 @@ function toggleWatchlistChart(i, ticker) {
 }
 
 function wlSetPeriod(i, ticker, period, btn) {
+  if (_pfOpenCharts[i]) _pfOpenCharts[i].period = period;
   const bar = document.getElementById('wl-pbar-' + i);
   if (bar) bar.querySelectorAll('.wl-period-btn').forEach(b => b.classList.remove('active'));
   if (btn) btn.classList.add('active');
@@ -8783,8 +8853,12 @@ async function loadWlChart(i, ticker, period) {
           + '&interval=' + interval + '&includePrePost=true&events=div%7Csplit%7Cearn&lang=fr-FR&region=FR';
       } else {
         const cb = Math.floor(Date.now() / 300000); // change toutes les 5 min → bypass proxy cache
+        // includePrePost : séances avant ouverture et après clôture. Utile sur
+        // les valeurs américaines ; Euronext ne cote pas hors 9h–17h30, Yahoo
+        // n'y renvoie donc rien de plus.
         url = 'https://query1.finance.yahoo.com/v8/finance/chart/'
-          + encodeURIComponent(yt) + '?interval=' + interval + '&range=' + periodDef.range + '&_=' + cb;
+          + encodeURIComponent(yt) + '?interval=' + interval + '&range=' + periodDef.range
+          + (periodDef.prePost ? '&includePrePost=true' : '') + '&_=' + cb;
       }
       raw = await fetchWithFallback(url);
       _wlChartPeriodCache[cacheKey] = { raw, ts: now };
@@ -13752,7 +13826,7 @@ function renderNavEditor() {
 // l'admin n'aurait plus aucun moyen d'en désactiver un.
 function _navEditorPeaTabs() {
   const labels = {
-    portfolio: 'Portefeuille', activite: 'Activité', dividendes: 'Dividendes', watchlist: 'Watchlist',
+    portfolio: 'Mon PEA', activite: 'Activité', dividendes: 'Dividendes', watchlist: 'Watchlist',
     avantages: 'Avantages', benchmark: 'Benchmark', projections: 'Projections',
     earnings: 'Calendrier résultats', recap: 'Récap du jour', alertes: 'Alertes prix',
   };
