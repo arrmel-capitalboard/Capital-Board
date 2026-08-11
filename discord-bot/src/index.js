@@ -52,6 +52,8 @@ client.once(Events.ClientReady, (c) => {
 // Rafraîchit le compteur de tickets dès qu'un salon est créé/supprimé.
 client.on(Events.ChannelCreate, () => ticketstats.push(client));
 client.on(Events.ChannelDelete, () => ticketstats.push(client));
+// Renommage : le site affiche le nom du salon de tickets, il doit suivre.
+client.on(Events.ChannelUpdate, () => ticketstats.push(client));
 
 client.on(Events.GuildMemberAdd, async (member) => {
   try { await member.roles.add(ROLE_VISITEUR); } catch {}

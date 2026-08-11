@@ -71,7 +71,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260811r';
+const APP_VERSION = '20260811s';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2440,6 +2440,9 @@ async function startApp(user) {
     if (!window.IS_DEMO) setTimeout(() => { _autoLogDividends(); }, 1200);
     if (!window.IS_DEMO && Notification.permission === 'granted') initPush(user.uid).catch(() => {});
     try { _initSupportBadge(); } catch(e) { console.warn('support badge:', e); }
+    // Nom du salon de tickets : chauffé ici pour que la modale Support
+    // l'affiche juste dès la première ouverture.
+    try { _loadDiscordTicketChan(); } catch(e) {}
     try { _ensureUserName(user); } catch(e) { console.warn('name setup:', e); }
     try { _enforcePasswordChange(user); } catch(e) { console.warn('pw change:', e); }
     // Menu custom + feature flags — organisation et sections désactivées
@@ -14446,10 +14449,29 @@ function renderSupportPage() {
 const DISCORD_INVITE_URL = "https://discord.gg/p73QMm4xDm";
 const DISCORD_LOGO_SVG = '<svg width="30" height="30" viewBox="0 0 24 24" fill="#fff"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.6 12.6 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.056c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028ZM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.333-.955 2.418-2.157 2.418Zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z"/></svg>';
 
+// Nom du salon de tickets, publié par le bot Discord dans config/discordStats.
+// Le lire ici évite de le figer dans le code : renommer le salon sur Discord
+// suffit, le site suit au chargement suivant. Aucun jeton Discord côté client.
+let _discordTicketChan = null;
+async function _loadDiscordTicketChan() {
+  if (_discordTicketChan || !db) return _discordTicketChan;
+  try {
+    const snap = await getFirestoreDoc(firestoreDoc(db, 'config', 'discordStats'));
+    const name = snap.exists() ? snap.data().ticketChannelName : null;
+    if (name) {
+      _discordTicketChan = name;
+      const el = document.getElementById('dsc-chan');
+      if (el) el.textContent = '#' + name;
+    }
+  } catch (e) { console.warn('[support] nom du salon Discord:', e && e.message); }
+  return _discordTicketChan;
+}
+
 function _showSupportDiscordReco() {
   // Modale dédiée (retirée à la fermeture) — CSS soigné, branding Discord.
   const prev = document.getElementById("discord-reco-modal");
   if (prev) prev.remove();
+  _loadDiscordTicketChan();
   const close = () => { const m = document.getElementById("discord-reco-modal"); if (m) m.remove(); };
   const wrap = document.createElement("div");
   wrap.id = "discord-reco-modal";
@@ -14472,7 +14494,7 @@ function _showSupportDiscordReco() {
     + '</div>'
     // corps
     + '<div style="padding:20px 24px 24px;text-align:center">'
-    + '<p style="font-size:13px;color:#a4abc0;line-height:1.65;margin:0 0 16px">Pour une réponse plus rapide, ouvrez un ticket sur notre Discord dans le salon <b style="color:#c9cef0">#ticket</b>. Vous pouvez aussi faire votre demande directement ici si vous préférez.</p>'
+    + '<p style="font-size:13px;color:#a4abc0;line-height:1.65;margin:0 0 16px">Pour une réponse plus rapide, ouvrez un ticket sur notre Discord dans le salon <b style="color:#c9cef0" id="dsc-chan">#' + (_discordTicketChan || '🎫・support-ticket') + '</b>. Vous pouvez aussi faire votre demande directement ici si vous préférez.</p>'
     + '<button class="dsc-btn-primary" id="dsc-open" style="width:100%;padding:12px;border:none;border-radius:11px;background:#5865F2;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:var(--sans);display:flex;align-items:center;justify-content:center;gap:8px;margin-bottom:9px"><svg width="18" height="18" viewBox="0 0 24 24" fill="#fff"><path d="M20.317 4.369a19.79 19.79 0 0 0-4.885-1.515.074.074 0 0 0-.079.037c-.211.375-.445.865-.608 1.25a18.27 18.27 0 0 0-5.487 0 12.6 12.6 0 0 0-.617-1.25.077.077 0 0 0-.079-.037A19.736 19.736 0 0 0 3.677 4.37a.07.07 0 0 0-.032.027C.533 9.046-.32 13.58.099 18.057a.082.082 0 0 0 .031.057 19.9 19.9 0 0 0 5.993 3.03.078.078 0 0 0 .084-.028c.462-.63.874-1.295 1.226-1.994a.076.076 0 0 0-.041-.106 13.1 13.1 0 0 1-1.872-.892.077.077 0 0 1-.008-.128c.126-.094.252-.192.372-.291a.074.074 0 0 1 .077-.01c3.928 1.793 8.18 1.793 12.062 0a.074.074 0 0 1 .078.009c.12.099.246.198.373.292a.077.077 0 0 1-.006.127 12.3 12.3 0 0 1-1.873.892.077.077 0 0 0-.041.107c.36.698.772 1.362 1.225 1.993a.076.076 0 0 0 .084.028 19.84 19.84 0 0 0 6.002-3.03.077.077 0 0 0 .032-.056c.5-5.177-.838-9.674-3.549-13.66a.061.061 0 0 0-.031-.028ZM8.02 15.331c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.333-.955 2.418-2.157 2.418Zm7.975 0c-1.183 0-2.157-1.085-2.157-2.419 0-1.333.955-2.419 2.157-2.419 1.211 0 2.176 1.096 2.157 2.42 0 1.333-.946 2.418-2.157 2.418Z"/></svg>Ouvrir Discord</button>'
     + '<button class="dsc-btn-ghost" id="dsc-stay" style="width:100%;padding:11px;border:1px solid #2a2b3d;border-radius:11px;background:transparent;color:#8892a8;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)">Continuer ici</button>'
     + '</div></div>';
