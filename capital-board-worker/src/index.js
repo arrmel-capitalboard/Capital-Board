@@ -1251,6 +1251,9 @@ export default {
       // R2 rend le meme service sans facturation.
       if (url.pathname === '/support-upload' && request.method === 'POST') {
         if (!env.SUPPORT_FILES) return json({ error: 'stockage indisponible' }, 503);
+        // Sans secret, les URL ne peuvent pas être signées : autant le dire que
+        // laisser remonter une erreur interne opaque.
+        if (!env.SUPPORT_FILES_SECRET) return json({ error: 'stockage non configuré' }, 503);
         const auth = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
         let user;
         try { user = await verifyIdToken(auth, env); }
