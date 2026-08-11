@@ -3859,33 +3859,37 @@ body.has-demo-banner { padding-top: 40px; }
   }
   #pea-fab.open .pea-fab-veil { opacity: 1; pointer-events: auto; }
 
-  /* La barre mesure ~58px plus la zone sûre des téléphones sans bouton. */
+  /* Barre : 6px + contenu (icône 18 + 2 + libellé 10) + 6px ≈ 46px, plus la
+     zone sûre des téléphones sans bouton physique. Le bouton chevauche ce bord
+     pour paraître serti dans la barre, l'anneau reprenant sa couleur de fond.
+     Il est centré, donc décalé de sa demi-largeur par translateX. */
   .pea-fab-main {
-    position: fixed; right: 16px; z-index: 205;
-    bottom: calc(70px + env(safe-area-inset-bottom, 0px));
-    width: 52px; height: 52px; border-radius: 50%;
+    position: fixed; left: 50%; z-index: 205;
+    bottom: calc(28px + env(safe-area-inset-bottom, 0px));
+    width: 54px; height: 54px; border-radius: 50%;
     border: none; cursor: pointer; color: #fff;
     background: linear-gradient(135deg, var(--accent), #6b5ee8);
-    box-shadow: 0 8px 24px rgba(124, 109, 245, .45);
+    box-shadow: 0 0 0 5px var(--s1), 0 6px 18px rgba(124, 109, 245, .45);
     display: grid; place-items: center;
+    transform: translateX(-50%);
     transition: transform .2s ease, box-shadow .2s ease;
   }
-  .pea-fab-main:active { transform: scale(.94); }
-  #pea-fab.open .pea-fab-main { transform: rotate(45deg); }
+  .pea-fab-main:active { transform: translateX(-50%) scale(.94); }
+  #pea-fab.open .pea-fab-main { transform: translateX(-50%) rotate(45deg); }
 
   .pea-fab-actions {
-    position: fixed; right: 16px; z-index: 205;
-    bottom: calc(132px + env(safe-area-inset-bottom, 0px));
-    display: flex; flex-direction: column; align-items: flex-end; gap: 10px;
+    position: fixed; left: 50%; z-index: 205;
+    bottom: calc(96px + env(safe-area-inset-bottom, 0px));
+    display: flex; flex-direction: column; align-items: center; gap: 10px;
     opacity: 0; pointer-events: none;
-    transform: translateY(8px) scale(.96);
-    transform-origin: bottom right;
+    transform: translateX(-50%) translateY(8px) scale(.96);
+    transform-origin: bottom center;
     transition: opacity .18s ease, transform .18s ease;
   }
-  #pea-fab.open .pea-fab-actions { opacity: 1; pointer-events: auto; transform: none; }
+  #pea-fab.open .pea-fab-actions { opacity: 1; pointer-events: auto; transform: translateX(-50%); }
 
   .pea-fab-action {
-    display: flex; align-items: center; gap: 10px;
+    display: flex; align-items: center; gap: 10px; flex-direction: row-reverse;
     background: none; border: none; padding: 0; cursor: pointer;
     font-family: var(--sans);
   }
