@@ -2258,31 +2258,48 @@ body.sb-collapsed .main { margin-left: 58px; }
   #page-portfolio .ticker-name { font-size: 12px; line-height: 1.3; }
   #page-portfolio .ticker-sym { display: none !important; }
 
-  /* Le nom ne disposait que d'environ 90px : le logo, les marges de cellule et
-     les colonnes chiffrées mangeaient le reste, d'où un mot par ligne. On leur
-     reprend chacun quelques pixels et la colonne du titre absorbe le gain. */
-  #page-portfolio th:first-child,
-  #page-portfolio td:first-child { padding-left: 10px !important; width: auto; }
-  #page-portfolio th:last-child,
-  #page-portfolio td:last-child { padding-right: 6px !important; }
-  #page-portfolio th, #page-portfolio td { padding-left: 6px; padding-right: 6px; }
   #page-portfolio .ticker-icon { width: 26px; height: 26px; border-radius: 7px; }
   #page-portfolio table td.c-valcell,
   #page-portfolio table td.c-day { white-space: nowrap; font-size: 11.5px; }
   #page-portfolio table td.mono { font-size: 11.5px; }
-
-  /* Disposition fixe. En auto-layout, un nom long — « BNP Paribas Easy Stoxx
-     Europe 600 UCITS ETF EUR C » — imposait sa largeur max-content au tableau
-     entier, qui débordait de l'écran en emportant les colonnes chiffrées hors
-     champ. En fixe, le tableau ne dépasse jamais son conteneur : c'est le nom
-     qui passe à la ligne. Les largeurs viennent de la première rangée, donc des
-     th ; les colonnes .hide-mobile en display:none n'y participent pas. */
-  #page-portfolio table { table-layout: fixed; }
-  #page-portfolio table th:nth-child(5) { width: 88px; }
-  #page-portfolio table th#th-perf-jour { width: 56px; }
-  #page-portfolio table th:last-child   { width: 26px; }
-  #page-portfolio .ticker-name { overflow-wrap: anywhere; }
   #page-portfolio .btn-voir-plus { padding: 4px 6px; }
+
+  /* Le portefeuille passe en lignes-blocs sous 768px, comme la watchlist et le
+     récap. Tant qu'il restait un vrai tableau, la largeur d'une colonne était
+     imposée à toutes les lignes à la fois : en auto-layout, un nom long
+     poussait les colonnes chiffrées hors de l'écran ; en table-layout:fixed,
+     c'étaient la ligne de graphique et le panneau « voir plus » qui se
+     retrouvaient enfermés dans la largeur de la première colonne. En blocs,
+     chaque ligne se dimensionne seule et rien ne peut dépasser. */
+  #page-portfolio table,
+  #page-portfolio table tbody { display: block; width: 100%; }
+  #page-portfolio table thead { display: none; }
+
+  /* Ligne de titre : nom sur toute la largeur, puis valeur à gauche,
+     performance du jour et chevron poussés à droite. */
+  #page-portfolio table tbody tr[data-tk] {
+    display: flex; flex-wrap: wrap; align-items: center;
+    gap: 4px 10px; padding: 10px 12px;
+    border-bottom: 1px solid var(--border);
+  }
+  #page-portfolio table tbody tr[data-tk] > td {
+    display: block; padding: 0 !important; border: none !important;
+  }
+  #page-portfolio table tbody tr[data-tk] > td:first-child { flex: 1 1 100%; min-width: 0; }
+  #page-portfolio table tbody tr[data-tk] > td.c-valcell { flex: 1 1 auto; }
+  #page-portfolio table tbody tr[data-tk] > td.c-day {
+    flex: 0 0 auto; margin-left: auto; text-align: right;
+  }
+  #page-portfolio table tbody tr[data-tk] > td:last-child { flex: 0 0 auto; }
+  #page-portfolio .ticker-name { overflow-wrap: anywhere; }
+
+  /* Graphique et panneau de détail : des blocs pleine largeur, plus des
+     cellules de tableau. */
+  #page-portfolio table tbody tr.wl-chart-row { display: block; width: 100%; }
+  #page-portfolio table tbody tr.wl-chart-row > td,
+  #page-portfolio table tbody tr.mobile-detail-row > td {
+    display: block; width: 100%; padding: 0 !important;
+  }
 
   /* Boutons mobile only */
   .show-mobile-inline { display: inline-flex !important; }
@@ -2291,7 +2308,8 @@ body.sb-collapsed .main { margin-left: 58px; }
 
   /* Portfolio accordéon mobile */
   .mobile-detail-row { display: none; }
-  .mobile-detail-row.open { display: table-row !important; }
+  /* En bloc, pas en table-row : le tbody n'est plus un tableau sur mobile. */
+  .mobile-detail-row.open { display: block !important; width: 100%; }
   .btn-voir-plus {
     display: inline-flex !important;
     align-items: center; justify-content: center;
@@ -2300,9 +2318,9 @@ body.sb-collapsed .main { margin-left: 58px; }
     background: var(--s2); color: var(--text2);
     font-size: 14px; cursor: pointer;
   }
-  #portfolio-tbody td:last-child {
-    padding-right: 18px !important;
-  }
+  /* Le chevron tenait sa marge droite de ce padding ; c'est désormais celui de
+     la ligne-bloc qui l'écarte du bord de l'écran. */
+  #portfolio-tbody td:last-child { padding-right: 0 !important; }
   .btn-portfolio-actions { display: none !important; }
   .portfolio-detail-content { padding: 10px 8px 14px; }
   .portfolio-detail-grid {
@@ -2557,15 +2575,9 @@ body.sb-collapsed .main { margin-left: 58px; }
   #page-portfolio table tr.wl-chart-row td { display: block; padding: 0 !important; }
   #page-portfolio table tr.wl-chart-row td::before { display: none; }
 
-  /* La barre de périodes ne pouvait pas se replier : ses huit boutons imposaient
-     au bloc une largeur d'environ 410 px. La cellule du graphique étant en
-     display:block, cette largeur devenait celle du tableau, et les colonnes
-     chiffrées de TOUTES les lignes partaient hors écran dès qu'une courbe était
-     ouverte. Repliable, la barre ne réclame plus que la largeur d'un bouton. */
-  .wl-period-bar { flex-wrap: wrap; gap: 4px; }
-  .wl-period-btn { padding: 5px 9px; font-size: 10.5px; }
-  .wl-chart-wrap { padding: 14px 12px 16px; }
-  .wl-chart-price { font-size: 19px; }
+  /* Les réglages mobiles du bloc graphique sont plus bas, juste après la
+     définition de base : déclarés ici, ils se faisaient écraser par elle, une
+     media query n'ajoutant aucune spécificité. */
   #page-portfolio table tr.wl-chart-row td,
   #page-watchlist table tr.wl-chart-row td { width: 100%; box-sizing: border-box; }
 
@@ -2678,9 +2690,18 @@ html.demo-mode #login-screen { display: none !important; }
 /* Démo : tableau portefeuille complet et défilable horizontalement (on voit
    toutes les colonnes plutôt que l'accordéon mobile qui en masque). */
 html.demo-mode #page-portfolio .table-container { overflow-x: auto !important; -webkit-overflow-scrolling: touch; }
-/* La démo montre toutes les colonnes dans un conteneur qui défile : elle a
-   besoin de l'auto-layout, contrairement à la vue mobile réelle. */
-html.demo-mode #page-portfolio table { min-width: max-content; table-layout: auto; }
+/* La démo montre toutes les colonnes dans un conteneur qui défile : elle garde
+   un vrai tableau, là où la vue mobile réelle empile des lignes-blocs. */
+html.demo-mode #page-portfolio table { display: table; min-width: max-content; }
+html.demo-mode #page-portfolio table thead { display: table-header-group; }
+html.demo-mode #page-portfolio table tbody { display: table-row-group; }
+html.demo-mode #page-portfolio table tbody tr[data-tk] {
+  display: table-row; padding: 0; gap: 0;
+}
+html.demo-mode #page-portfolio table tbody tr[data-tk] > td {
+  display: table-cell; padding: 14px 16px !important;
+  border-bottom: 1px solid var(--border) !important;
+}
 html.demo-mode #page-portfolio .hide-mobile { display: table-cell !important; }
 html.demo-mode #page-portfolio .ticker-sym { display: inline !important; }
 html.demo-mode #page-portfolio .btn-voir-plus,
@@ -2971,6 +2992,30 @@ body.has-demo-banner { padding-top: 40px; }
 .wl-chart-loading {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: var(--text3); font-size: 11px; font-family: var(--mono);
+}
+
+/* Version mobile du bloc graphique. Placée après les règles de base, sinon
+   celles-ci l'emportent : une media query ne change pas la spécificité, seul
+   l'ordre départage. La rangée flex de huit boutons réclamait environ 410px et
+   débordait de l'écran ; en grille de huit colonnes égales, elle prend la
+   largeur disponible et rien ne dépasse. */
+@media (max-width: 768px) {
+  .wl-chart-wrap { padding: 14px 12px 16px; }
+  .wl-chart-header { gap: 8px; }
+  .wl-chart-price { font-size: 19px; }
+  .wl-period-bar {
+    display: grid; grid-template-columns: repeat(8, minmax(0, 1fr));
+    gap: 3px; width: 100%;
+    /* Sur une tablette, huit boutons étirés sur 700px seraient ridicules. */
+    max-width: 400px; margin-left: auto;
+  }
+  /* Le libellé suit la largeur de l'écran : à taille fixe, huit boutons
+     débordaient encore sur un 320px. */
+  .wl-period-btn {
+    padding: 6px 1px; font-size: clamp(9px, 2.6vw, 11px);
+    text-align: center; overflow: hidden;
+  }
+  .wl-chart-canvas-wrap canvas { max-width: 100%; }
 }
 
 /* ═══ ACTUALITÉS MARCHÉS ═══════════════════════════════════════════ */
