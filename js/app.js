@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260812h';
+const APP_VERSION = '20260812i';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3794,6 +3794,13 @@ function renderPortfolio() {
       // Identifiant attendu par toggleWatchlistChart pour marquer la ligne
       // ouverte, la courbe partageant son moteur avec la watchlist.
       tr.id = 'wl-row-pf' + i;
+      // Cliquer la ligne déplie sa courbe. Les zones interactives gardent leur
+      // propre action : boutons, poignée de tri, bascule euro/pourcentage.
+      tr.style.cursor = 'pointer';
+      tr.addEventListener('click', (ev) => {
+        if (ev.target.closest('button, a, select, input, textarea, .perf-total-sub, .drag-handle')) return;
+        toggleWatchlistChart('pf' + i, row.ticker);
+      });
       // Repères pour l'animation de refresh : on compare ces valeurs d'un
       // rendu à l'autre pour n'animer que ce qui a réellement bougé.
       tr.dataset.tk  = row.ticker || '';
@@ -3898,7 +3905,7 @@ function renderPortfolio() {
         +     '</div>'
         +     '<div class="wl-period-bar" id="wl-pbar-pf' + i + '">'
         +       ['1J','5J','1M','6M','AAJ','1A','5A','ALL'].map((p, pi) =>
-                  '<button class="wl-period-btn' + (pi === 2 ? ' active' : '') + '" onclick="event.stopPropagation();wlSetPeriod(&quot;pf' + i + '&quot;,&quot;' + row.ticker + '&quot;,&quot;' + p + '&quot;,this)">' + p + '</button>'
+                  '<button class="wl-period-btn' + (pi === 0 ? ' active' : '') + '" onclick="event.stopPropagation();wlSetPeriod(&quot;pf' + i + '&quot;,&quot;' + row.ticker + '&quot;,&quot;' + p + '&quot;,this)">' + p + '</button>'
                 ).join('')
         +     '</div>'
         +   '</div>'
@@ -8933,8 +8940,12 @@ function toggleWatchlistChart(i, ticker) {
     // Mémorisé pour survivre au rafraîchissement des cours, qui reconstruit
     // tout le tableau.
     if (isPf) { _pfOpenCharts[i] = { ticker, period: '1M' }; _startPfChartTick(); }
+    // Le portefeuille s'ouvre sur la séance du jour : c'est ce qu'on regarde
+    // en premier sur une ligne détenue. La watchlist garde son mois.
+    const defPeriod = isPf ? '1J' : '1M';
+    if (isPf) _pfOpenCharts[i].period = defPeriod;
     if (!_wlChartInstances[i]) {
-      loadWlChart(i, ticker, '1M');
+      loadWlChart(i, ticker, defPeriod);
     }
   }
 }
