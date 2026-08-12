@@ -4142,3 +4142,115 @@ body.has-demo-banner { padding-top: 40px; }
   .proj-inputs { grid-template-columns: repeat(2, 1fr); }
   .proj-range  { grid-template-columns: 1fr; }
 }
+
+/* ═══════════════════════════════════════════════════
+   ONBOARDING — questionnaire de profil + visite guidée
+   (js/onboarding.js)
+   ═══════════════════════════════════════════════════ */
+
+.ob-overlay {
+  position: fixed; inset: 0; z-index: 100001;
+  display: flex; align-items: center; justify-content: center;
+  padding: 20px; background: rgba(0,0,0,.78); backdrop-filter: blur(6px);
+}
+.ob-card {
+  width: 100%; max-width: 460px; box-sizing: border-box;
+  background: #12141e; border: 1px solid var(--border2);
+  border-radius: 20px; padding: 24px 24px 20px;
+  box-shadow: 0 24px 60px -20px rgba(0,0,0,.8);
+  font-family: var(--sans, sans-serif);
+  max-height: calc(100dvh - 40px); overflow-y: auto;
+}
+.ob-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ob-step { font-size: 11px; font-family: var(--mono); color: var(--text3); letter-spacing: .4px; }
+.ob-skip {
+  background: none; border: none; color: var(--text3);
+  font-size: 12px; font-family: inherit; cursor: pointer; padding: 4px 2px;
+}
+.ob-skip:hover { color: var(--text2); text-decoration: underline; }
+.ob-bar { height: 3px; border-radius: 2px; background: var(--s3); margin: 12px 0 18px; overflow: hidden; }
+.ob-bar i { display: block; height: 100%; background: var(--accent); transition: width .25s ease; }
+.ob-title { font-size: 19px; font-weight: 800; color: var(--text); letter-spacing: -.3px; line-height: 1.3; margin: 0; }
+.ob-hint { font-size: 12.5px; color: var(--text2); line-height: 1.55; margin: 8px 0 0; }
+.ob-options { display: flex; flex-direction: column; gap: 8px; margin: 18px 0 4px; }
+.ob-opt {
+  display: flex; flex-direction: column; gap: 2px; text-align: left;
+  padding: 12px 14px; border-radius: 12px; cursor: pointer;
+  background: var(--s2); border: 1px solid var(--border2); color: var(--text);
+  font-family: inherit; font-size: 13.5px; font-weight: 600;
+  transition: background .15s, border-color .15s;
+}
+.ob-opt:hover { background: var(--s3); border-color: var(--border3); }
+.ob-opt.on { background: rgba(124,109,245,.14); border-color: rgba(124,109,245,.55); color: #fff; }
+.ob-opt-s { font-size: 11.5px; font-weight: 500; color: var(--text3); }
+.ob-opt.on .ob-opt-s { color: rgba(255,255,255,.6); }
+.ob-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
+.ob-foot-end { justify-content: center; }
+.ob-back {
+  background: var(--s2); border: 1px solid var(--border2); color: var(--text2);
+  padding: 10px 16px; border-radius: 11px; font-size: 13px; font-family: inherit;
+  font-weight: 600; cursor: pointer;
+}
+.ob-back:hover { color: var(--text); border-color: var(--border3); }
+.ob-next {
+  background: var(--accent); border: none; color: #fff;
+  padding: 11px 22px; border-radius: 11px; font-size: 13.5px; font-family: inherit;
+  font-weight: 700; cursor: pointer;
+}
+.ob-next:hover { filter: brightness(1.08); }
+.ob-next:disabled { opacity: .4; cursor: not-allowed; filter: none; }
+.ob-done { text-align: center; padding: 8px 0 0; }
+.ob-check {
+  width: 46px; height: 46px; margin: 0 auto 14px; border-radius: 50%;
+  display: grid; place-items: center; font-size: 22px; font-weight: 800;
+  background: rgba(0,224,158,.12); color: var(--positive);
+}
+
+/* ─── Visite guidée ─── */
+.ob-tour { position: fixed; inset: 0; z-index: 100002; }
+/* Le trou : un bloc transparent dont l'ombre portée assombrit tout le reste.
+   Pas de masque à recalculer, et la zone visée reste nette. */
+.ob-spot {
+  position: fixed; border-radius: 12px; pointer-events: none;
+  box-shadow: 0 0 0 9999px rgba(4,6,11,.80), 0 0 0 2px var(--accent) inset;
+  transition: left .22s ease, top .22s ease, width .22s ease, height .22s ease;
+}
+.ob-tip {
+  position: fixed; width: min(340px, calc(100vw - 24px)); box-sizing: border-box;
+  background: #12141e; border: 1px solid var(--border2); border-radius: 16px;
+  padding: 16px 18px 14px; box-shadow: 0 20px 50px -16px rgba(0,0,0,.85);
+  font-family: var(--sans, sans-serif);
+}
+.ob-tip-step { font-size: 10.5px; font-family: var(--mono); color: var(--text3); letter-spacing: .6px; margin-bottom: 6px; }
+.ob-tip-title { font-size: 15px; font-weight: 800; color: var(--text); letter-spacing: -.2px; margin-bottom: 6px; }
+.ob-tip-text { font-size: 12.5px; color: var(--text2); line-height: 1.6; }
+.ob-tip-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
+.ob-tip-nav { display: flex; gap: 8px; }
+.ob-tip-skip {
+  background: none; border: none; color: var(--text3);
+  font-size: 12px; font-family: inherit; cursor: pointer; padding: 4px 2px;
+}
+.ob-tip-skip:hover { color: var(--text2); text-decoration: underline; }
+.ob-tip-prev {
+  background: var(--s2); border: 1px solid var(--border2); color: var(--text2);
+  padding: 7px 12px; border-radius: 9px; font-size: 12px; font-family: inherit; font-weight: 600; cursor: pointer;
+}
+.ob-tip-next {
+  background: var(--accent); border: none; color: #fff;
+  padding: 8px 16px; border-radius: 9px; font-size: 12.5px; font-family: inherit; font-weight: 700; cursor: pointer;
+}
+.ob-tip-next:hover { filter: brightness(1.08); }
+
+@media (max-width: 640px) {
+  .ob-card { padding: 20px 18px 18px; border-radius: 18px; }
+  .ob-title { font-size: 17.5px; }
+  .ob-opt { padding: 13px 14px; }
+  /* Sur mobile la bulle est ancrée en bas : posée près de la cible, elle
+     recouvrait la barre de navigation, justement montrée à deux étapes. */
+  .ob-tip { left: 12px !important; right: 12px; width: auto; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .ob-spot { transition: none; }
+  .ob-bar i { transition: none; }
+}

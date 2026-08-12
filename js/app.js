@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260813z';
+const APP_VERSION = '20260814a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1628,8 +1628,20 @@ async function _ensureUserName(user) {
     snap = await getDocFromServer(ref);
   } catch (_) { return; } // pas de confirmation serveur → on ne bloque pas
   const d = snap.exists() ? (snap.data() || {}) : {};
-  if (d.firstName && d.lastName && d.username) { window._nameSetupDone = true; return; }
+  if (d.firstName && d.lastName && d.username) {
+    window._nameSetupDone = true;
+    _startOnboarding(user.uid);
+    return;
+  }
   showNameSetupModal(user);
+}
+
+// Questionnaire de profil puis visite guidée (js/onboarding.js). Lancé une
+// fois le nom connu : les deux modals se seraient sinon recouverts.
+function _startOnboarding(uid) {
+  if (window.IS_DEMO || !uid) return;
+  try { window.CBOnboarding && window.CBOnboarding.maybeStart(uid); }
+  catch (e) { console.warn('onboarding:', e); }
 }
 function showNameSetupModal(user) {
   let el = document.getElementById('name-setup-modal');
@@ -1692,6 +1704,8 @@ async function saveNameSetup(uid) {
       const nd = document.getElementById('user-name-display'); if (nd) nd.textContent = f;
       const av = document.getElementById('user-avatar'); if (av) av.textContent = (f[0] || '?').toUpperCase();
     } catch (_) {}
+    // Nouveau compte : le questionnaire enchaîne sur le nom, pas avant.
+    setTimeout(() => _startOnboarding(uid), 350);
   } catch (e) {
     console.error('[name] save:', e);
     if (btn) { btn.disabled = false; btn.textContent = 'Continuer'; }
@@ -14340,6 +14354,7 @@ async function renderAdminPage() {
   // Stats + liste utilisateurs
   renderAdminStats();
   renderAdminUsers();
+  renderAdminProfiles();
   adminLoadScheduled();
   _startHealthAuto();
 }
@@ -14697,11 +14712,13 @@ async function _doAdminDeleteUser(uid) {
     await Promise.all(msgs.docs.map(m => del(m.ref)));
   } catch (_) {}
   await del(firestoreDoc(db, 'supportThreads', uid));
-  // Rôle + présence
+  // Rôle + présence + réponses au questionnaire de bienvenue
   await del(firestoreDoc(db, 'roles', uid));
   await del(firestoreDoc(db, 'presence', uid));
+  await del(firestoreDoc(db, 'profiles', uid));
   _audit('rgpd_delete', 'uid=' + uid);
   renderAdminUsers();
+  renderAdminProfiles();
 }
 
 // ─── Réinitialisation mot de passe (admin) ───
@@ -14843,6 +14860,103 @@ async function renderAuditLog() {
     });
     box.innerHTML = rows.length ? rows.join('') : 'Aucune action enregistrée.';
   } catch (e) { box.innerHTML = 'Journal indisponible (droits Firestore ?).'; }
+}
+
+// ─── Profils des inscrits (questionnaire de bienvenue) ───
+// Deux lectures d'un même jeu de réponses : la répartition, qui dit qui sont
+// les inscrits dans l'ensemble, et le détail par compte, qui dit qui est qui.
+const _PROFIL_LIBELLES = {
+  experience: { debutant: 'Débute', '1a3': '1–3 ans', '3a10': '3–10 ans', plus10: '+10 ans' },
+  goal: { epargne: 'Faire fructifier', retraite: 'Retraite', revenus: 'Revenus', projet: 'Projet', apprendre: 'Apprendre' },
+  amount: { lt5k: '< 5 k€', '5k25k': '5–25 k€', '25k100k': '25–100 k€', gt100k: '> 100 k€', nsp: 'Sans réponse' },
+  expectation: { perf: 'Performances', central: 'Centraliser', dividendes: 'Dividendes', alertes: 'Alertes', budget: 'Budget' },
+  source: { bouche: 'Bouche-à-oreille', reseaux: 'Réseaux sociaux', recherche: 'Recherche web', discord: 'Discord', autre: 'Autre' },
+  wrappers: { pea: 'PEA', cto: 'CTO', av: 'Assurance-vie', per: 'PER', livrets: 'Livrets', crypto: 'Crypto', immo: 'Immobilier', or: 'Or', rien: 'Rien encore' },
+};
+const _profLib = (champ, v) => (_PROFIL_LIBELLES[champ] || {})[v] || v;
+
+async function renderAdminProfiles() {
+  if (!isAdmin()) return;
+  const box = document.getElementById('admin-profiles');
+  if (!box) return;
+  box.innerHTML = 'Chargement…';
+  const empty = { forEach() {} };
+  try {
+    const [profSnap, rolesSnap] = await Promise.all([
+      getDocs(firestoreCollection(db, 'profiles')).catch(() => empty),
+      getDocs(firestoreCollection(db, 'roles')).catch(() => empty),
+    ]);
+    const noms = {};
+    rolesSnap.forEach(d => { const r = d.data() || {}; noms[d.id] = ((r.firstName || '') + ' ' + (r.lastName || '')).trim() || (r.username ? '@' + r.username : ''); });
+
+    const profils = [];
+    profSnap.forEach(d => { const p = d.data() || {}; if (p.completedAt) profils.push({ uid: d.id, ...p }); });
+    if (!profils.length) { box.innerHTML = '<div style="font-size:12px;color:var(--text3)">Aucune réponse pour l\'instant.</div>'; return; }
+
+    // Répartition par question, du plus fréquent au moins fréquent.
+    const repartition = (champ, multi) => {
+      const n = {};
+      profils.forEach(p => {
+        const v = p[champ];
+        if (multi) (Array.isArray(v) ? v : []).forEach(x => { n[x] = (n[x] || 0) + 1; });
+        else if (v) n[v] = (n[v] || 0) + 1;
+      });
+      const total = profils.length;
+      const lignes = Object.entries(n).sort((a, b) => b[1] - a[1]).map(([v, c]) => {
+        const pct = Math.round((c / total) * 100);
+        return '<div style="display:flex;align-items:center;gap:8px;margin-bottom:5px">'
+          + '<div style="flex:1;min-width:0;font-size:11.5px;color:var(--text2);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">' + _profLib(champ, v) + '</div>'
+          + '<div style="width:96px;height:5px;border-radius:3px;background:var(--s3);overflow:hidden;flex-shrink:0"><i style="display:block;height:100%;width:' + pct + '%;background:var(--accent)"></i></div>'
+          + '<div style="width:44px;text-align:right;font-family:var(--mono);font-size:10.5px;color:var(--text3);flex-shrink:0">' + c + ' · ' + pct + '%</div>'
+          + '</div>';
+      });
+      return lignes.join('') || '<div style="font-size:11.5px;color:var(--text3)">—</div>';
+    };
+
+    const bloc = (titre, champ, multi) =>
+      '<div style="margin-bottom:14px">'
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin-bottom:7px">' + titre + '</div>'
+      + repartition(champ, multi)
+      + '</div>';
+
+    const detail = profils
+      .sort((a, b) => (b.completedAt || 0) - (a.completedAt || 0))
+      .map(p => {
+        const qui = noms[p.uid] || (p.uid.slice(0, 10) + '…');
+        const tags = [
+          _profLib('experience', p.experience),
+          _profLib('goal', p.goal),
+          _profLib('amount', p.amount),
+          _profLib('expectation', p.expectation),
+          _profLib('source', p.source),
+        ].filter(Boolean);
+        const enveloppes = (p.wrappers || []).map(w => _profLib('wrappers', w));
+        return '<div style="padding:9px 0;border-top:1px solid var(--border)">'
+          + '<div style="display:flex;align-items:center;justify-content:space-between;gap:10px">'
+          +   '<div style="font-size:12.5px;font-weight:600;color:var(--text)">' + _attr(qui) + '</div>'
+          +   '<div style="font-family:var(--mono);font-size:10px;color:var(--text3);white-space:nowrap">' + new Date(p.completedAt).toLocaleDateString('fr-FR') + '</div>'
+          + '</div>'
+          + '<div style="display:flex;flex-wrap:wrap;gap:5px;margin-top:6px">'
+          +   tags.map(t => '<span style="font-size:10.5px;padding:2px 7px;border-radius:5px;background:var(--s2);border:1px solid var(--border);color:var(--text2)">' + _attr(t) + '</span>').join('')
+          +   enveloppes.map(t => '<span style="font-size:10.5px;padding:2px 7px;border-radius:5px;background:rgba(91,141,238,.10);border:1px solid rgba(91,141,238,.22);color:var(--accent2)">' + _attr(t) + '</span>').join('')
+          + '</div>'
+          + '</div>';
+      }).join('');
+
+    box.innerHTML =
+      '<div style="font-size:11.5px;color:var(--text3);margin-bottom:12px">' + profils.length + ' réponse(s) complète(s)</div>'
+      + bloc('Expérience', 'experience')
+      + bloc('Objectif', 'goal')
+      + bloc('Enveloppes détenues', 'wrappers', true)
+      + bloc('Montant suivi', 'amount')
+      + bloc('Attente principale', 'expectation')
+      + bloc('Origine', 'source')
+      + '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin:18px 0 2px">Par compte</div>'
+      + detail;
+  } catch (e) {
+    console.error('[admin] profils:', e);
+    box.innerHTML = 'Profils indisponibles (droits Firestore ?).';
+  }
 }
 
 // ─── Tableau de stats ───
