@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814u';
+const APP_VERSION = '20260814v';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18437,8 +18437,50 @@ function _livInterets(l) {
   const net  = _livType_(l && l.type).fisc ? brut * (1 - LIV_PFU) : brut;
   return { brut, net };
 }
+
+/**
+ * Quinzaines révolues depuis le 1er janvier.
+ *
+ * Un livret réglementé ne rémunère pas au jour le jour mais par quinzaines :
+ * du 1er au 15, puis du 16 à la fin du mois. Une quinzaine entamée ne compte
+ * pas encore. Compter en jours donnerait un chiffre plus flatteur et faux.
+ */
+function _livQuinzaines(d) {
+  const dt = d || new Date();
+  return dt.getMonth() * 2 + (dt.getDate() >= 16 ? 1 : 0);
+}
+/**
+ * Intérêts acquis depuis le 1er janvier, versés au 31 décembre.
+ *
+ * Estimation sur le solde actuel et au taux actuel : un versement en cours
+ * d'année ou une révision de taux — il y en a deux par an — déplacent le
+ * résultat. L'écran le dit.
+ */
+function _livAcquis(l) {
+  const { brut, net } = _livInterets(l);
+  const part = _livQuinzaines() / 24;
+  return { brut: brut * part, net: net * part, quinzaines: _livQuinzaines() };
+}
 function _livTotal(user)     { return getLivrets(user).reduce((s, l) => s + _livSolde(l), 0); }
 function _livInteretsNets()  { return getLivrets().reduce((s, l) => s + _livInterets(l).net, 0); }
+/**
+ * Fin de validité : un Livret Jeune se ferme à 25 ans, un PEL a un terme.
+ * Renvoie null si aucune date n'est posée, sinon le nombre de jours restants,
+ * négatif une fois la date passée.
+ */
+function _livJoursRestants(l) {
+  if (!l || !l.fin) return null;
+  const p = String(l.fin).split('-');
+  if (p.length < 3) return null;
+  const fin = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  const ajd = new Date();
+  ajd.setHours(0, 0, 0, 0);
+  return Math.round((fin - ajd) / 86400000);
+}
+function _livEchu(l) { const j = _livJoursRestants(l); return j !== null && j < 0; }
+// Trois mois : de quoi préparer un transfert sans se presser.
+const LIV_PREAVIS = 90;
+
 // Reste à verser, plafonds réglementés seulement — un livret bancaire n'en a pas.
 function _livReste(l) {
   const p = _livPlafond(l);
@@ -18489,8 +18531,9 @@ function _livRender() {
 
   _depText('liv-bareme-note',
     'Plafonds et taux en vigueur depuis le ' + b.effet + ', applicables jusqu\'au ' + b.jusqu + '. ' +
-    'Les intérêts affichés sont une projection sur douze mois au taux actuel : le calcul réel suit la règle ' +
-    'des quinzaines et dépend de vos versements. Capital Board ne fournit aucun conseil en investissement.');
+    'Les intérêts acquis sont comptés par quinzaines depuis le 1er janvier, sur le solde et le taux du jour : ' +
+    'un versement en cours d’année ou une révision de taux déplacent le résultat. Le prévisionnel projette ' +
+    'douze mois au taux actuel. Capital Board ne fournit aucun conseil en investissement.');
 
   _livRenderKpis(livrets, total, nets);
   _livRenderListe(livrets, total, nets);
@@ -18499,12 +18542,18 @@ function _livRender() {
 
 function _livRenderKpis(livrets, total, nets) {
   _depText('liv-k-total', fmt(total));
+  // L'acquis passe devant le prévisionnel : c'est de l'argent déjà gagné, le
+  // second n'est qu'une projection.
+  const acquis = livrets.reduce((s, l) => s + _livAcquis(l).net, 0);
   const pill = document.getElementById('liv-k-interets');
   const hint = document.getElementById('liv-k-hint');
-  if (pill) pill.textContent = total > 0 ? '+' + fmt(nets) + ' / an' : '—';
-  if (pill) pill.hidden = total <= 0;
+  if (pill) {
+    pill.textContent = '+' + fmt(acquis) + ' acquis';
+    pill.hidden = total <= 0;
+  }
   if (hint) hint.textContent = total > 0
-    ? 'soit ' + (nets / total * 100).toFixed(2).replace('.', ',') + ' % net en moyenne'
+    ? 'prévisionnel +' + fmt(nets) + ' sur douze mois · ' +
+      (nets / total * 100).toFixed(2).replace('.', ',') + ' % net'
     : 'Ajoutez un livret pour démarrer.';
 
   // Remplissage global des plafonds réglementés. Un livret bancaire n'en a pas :
@@ -18549,7 +18598,8 @@ function _livRenderListe(livrets, total, nets) {
   _depText('liv-list-sub', livrets.length
     ? livrets.length + (livrets.length > 1 ? ' livrets' : ' livret')
     : 'Aucun livret enregistré');
-  _depText('liv-list-fig', fmt(nets));
+  const acquis = livrets.reduce((s, l) => s + _livAcquis(l).net, 0);
+  _depText('liv-list-fig', fmt(acquis));
 
   const box = document.getElementById('liv-list');
   if (!box) return;
@@ -18566,9 +18616,18 @@ function _livRenderListe(livrets, total, nets) {
     const pct  = p ? Math.min(100, (s / p) * 100) : null;
     const plein = p !== null && s >= p;
     const int  = _livInterets(l);
+    const acq  = _livAcquis(l);
+    const jours = _livJoursRestants(l);
     const meta = [_livTauxTxt(l) + ' par an'];
     if (l.banque) meta.push(_escapeHtmlChat(l.banque));
     meta.push(t.fisc ? 'imposé à 30 %' : 'exonéré d\'impôt');
+    if (jours !== null) {
+      meta.push(jours < 0
+        ? '<span class="liv-fin echu">clos depuis le ' + _escapeHtmlChat(_depDateCourt(l.fin)) + '</span>'
+        : jours <= LIV_PREAVIS
+          ? '<span class="liv-fin proche">prend fin dans ' + jours + ' jour' + (jours > 1 ? 's' : '') + '</span>'
+          : 'jusqu’au ' + _escapeHtmlChat(_depDateCourt(l.fin)));
+    }
 
     return '<div class="liv-row" onclick="livOpenModal(\'' + _attr(l.id) + '\')" role="button" tabindex="0" ' +
         'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}">' +
@@ -18576,6 +18635,7 @@ function _livRenderListe(livrets, total, nets) {
       '<div class="liv-main">' +
         '<div class="liv-top">' +
           '<span class="liv-nom">' + _escapeHtmlChat(t.label) +
+            (_livEchu(l) ? '<span class="liv-plein echu">échu</span>' : '') +
             (plein ? '<span class="liv-plein">au plafond</span>' : '') + '</span>' +
           '<span class="liv-solde">' + fmt(s) + '</span>' +
         '</div>' +
@@ -18585,7 +18645,8 @@ function _livRenderListe(livrets, total, nets) {
               '" style="width:' + pct.toFixed(1) + '%;background:' + (plein ? 'var(--gold)' : t.color) + '"></div></div>') +
         '<div class="liv-meta">' +
           '<span>' + meta.join('<span class="sep">·</span>') + '</span>' +
-          '<span class="liv-int">+' + fmt(int.net) + ' / an</span>' +
+          '<span class="liv-int">+' + fmt(acq.net) + ' acquis' +
+            '<small>+' + fmt(int.net) + ' / an</small></span>' +
         '</div>' +
         (pct === null ? '' :
           '<div class="liv-reste">' + (plein
@@ -18685,6 +18746,7 @@ window.livOpenModal = function(id) {
   _depSet('liv-f-solde', l ? String(_livSolde(l)).replace('.', ',') : '');
   _depSet('liv-f-taux', l && l.taux ? String(l.taux).replace('.', ',') : '');
   _depSet('liv-f-banque', l ? (l.banque || '') : '');
+  _depSet('liv-f-fin', l ? (l.fin || '') : '');
   _livDomaine = l ? (l.banqueDomaine || ((_livBanque(l.banque) || {}).d) || null) : null;
   _livSuggClear();
   _depText('liv-modal-title', l ? 'Modifier ce livret' : 'Nouveau livret');
@@ -18848,11 +18910,14 @@ window.livRecalc = function() {
   const net  = t.fisc ? brut * (1 - LIV_PFU) : brut;
   const reste = t.plafond === null ? null : Math.max(0, t.plafond - solde);
   box.hidden = false;
+  // Deux chiffres, deux natures : ce qui est déjà gagné cette année, et ce que
+  // douze mois donneraient au taux actuel.
+  const acquis = net * _livQuinzaines() / 24;
   box.innerHTML =
-    '<span class="dep-recap-l">' + _livPct(taux) + ' sur douze mois' +
+    '<span class="dep-recap-l">' + _livPct(taux) + ' · +' + fmt(net) + ' sur douze mois' +
       (reste === null ? '' : reste > 0 ? ' · ' + fmt(reste) + ' encore possibles' : ' · plafond atteint') +
     '</span>' +
-    '<span class="dep-recap-v">+' + fmt(net) + '</span>';
+    '<span class="dep-recap-v">+' + fmt(acquis) + '</span>';
 };
 
 function _livPct(t) { return Number(t).toFixed(2).replace('.', ',').replace(/,00$/, '') + ' %'; }
@@ -18897,6 +18962,7 @@ window.livSave = function() {
     // Domaine figé à l'enregistrement, comme pour les marchands : le logo
     // reste le bon même si le catalogue évolue.
     banqueDomaine: _livDomaine || null,
+    fin: _depVal('liv-f-fin') || null,
   };
 
   const all = getLivrets().slice();

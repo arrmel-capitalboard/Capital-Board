@@ -4705,7 +4705,20 @@ body.has-demo-banner { padding-top: 40px; }
   gap: 12px; margin-top: 8px; font-size: 11.5px; color: var(--text3);
 }
 .liv-meta .sep { color: var(--muted2); margin: 0 6px; }
-.liv-int { font-family: var(--mono); font-weight: 700; color: var(--positive); white-space: nowrap; }
+/* L'acquis en vert, le prévisionnel en dessous et en retrait : le premier est
+   gagné, le second n'est qu'une projection. */
+.liv-int {
+  font-family: var(--mono); font-weight: 700; color: var(--positive);
+  white-space: nowrap; text-align: right; line-height: 1.35;
+}
+.liv-int small {
+  display: block; font-size: 10.5px; font-weight: 500;
+  color: var(--text3); margin-top: 1px;
+}
+
+.liv-fin.proche { color: var(--gold); font-weight: 600; }
+.liv-fin.echu   { color: var(--negative); font-weight: 600; }
+.liv-plein.echu { background: rgba(255,77,106,.14); color: var(--negative); }
 .liv-reste { font-size: 11px; color: var(--text3); margin-top: 5px; }
 
 /* Marge de manœuvre */

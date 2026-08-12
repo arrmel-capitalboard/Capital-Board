@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260814u">
+<link rel="stylesheet" href="css/style.css?v=20260814v">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2502,6 +2502,12 @@
       </div>
     </div>
 
+    <div class="form-group">
+      <label class="form-label" for="liv-f-fin">Fin de validité <span class="dep-opt">facultatif</span></label>
+      <input class="form-input" id="liv-f-fin" type="date" onchange="livRecalc()">
+      <div class="dep-help">Un Livret Jeune se ferme à 25 ans, un PEL a un terme. Renseignée, la date apparaît sur la ligne et vous êtes prévenu trois mois avant.</div>
+    </div>
+
     <div class="dep-recap" id="liv-f-recap" hidden></div>
     <div class="dep-help" id="liv-f-help"></div>
 
@@ -3209,9 +3215,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260814u"></script>
+<script src="js/app.js?v=20260814v"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260814u"></script>
+<script src="js/onboarding.js?v=20260814v"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
