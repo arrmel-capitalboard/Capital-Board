@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260814j">
+<link rel="stylesheet" href="css/style.css?v=20260814k">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2404,7 +2404,16 @@
 
     <div class="form-group">
       <label class="form-label" for="dep-f-nom">Intitulé</label>
-      <input class="form-input" id="dep-f-nom" placeholder="Netflix, plein d'essence, salaire…" autocomplete="off" spellcheck="false">
+      <div class="dep-nameline">
+        <div class="dep-logo" id="dep-f-logo" aria-hidden="true"></div>
+        <div class="dep-namefield">
+          <input class="form-input" id="dep-f-nom" placeholder="Netflix, plein d'essence, salaire…"
+                 autocomplete="off" spellcheck="false" role="combobox" aria-expanded="false"
+                 aria-autocomplete="list" aria-controls="dep-f-sugg"
+                 oninput="depNameInput()" onkeydown="depNameKey(event)" onblur="depSuggClose(true)">
+          <div class="dep-sugg" id="dep-f-sugg" role="listbox"></div>
+        </div>
+      </div>
     </div>
 
     <div class="dep-row2">
@@ -2441,11 +2450,17 @@
           <button type="button" data-freq="annuel" onclick="depSetFreq('annuel')">Annuel</button>
         </div>
       </div>
-      <div class="form-group">
-        <label class="form-label" for="dep-f-fin">Résilié le <span class="dep-opt">facultatif</span></label>
-        <input class="form-input" id="dep-f-fin" type="date">
-        <div class="dep-help">Renseigné, l'abonnement cesse d'être compté après cette date — sans disparaître des mois passés.</div>
+      <div class="dep-row2">
+        <div class="form-group">
+          <label class="form-label" for="dep-f-jour">Prélevé le</label>
+          <select class="form-input dep-select" id="dep-f-jour"></select>
+        </div>
+        <div class="form-group">
+          <label class="form-label" for="dep-f-fin">Résilié le <span class="dep-opt">facultatif</span></label>
+          <input class="form-input" id="dep-f-fin" type="date">
+        </div>
       </div>
+      <div class="dep-help">Une date de résiliation arrête le décompte après ce mois, sans effacer l'abonnement des mois qu'il a réellement coûtés.</div>
     </div>
 
     <div class="dep-error" id="dep-f-error" hidden></div>
@@ -3021,9 +3036,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260814j"></script>
+<script src="js/app.js?v=20260814k"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260814j"></script>
+<script src="js/onboarding.js?v=20260814k"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

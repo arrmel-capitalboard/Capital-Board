@@ -4596,8 +4596,12 @@ body.has-demo-banner { padding-top: 40px; }
   width: 34px; height: 34px; flex-shrink: 0; border-radius: 11px;
   display: flex; align-items: center; justify-content: center;
   font-family: var(--mono); font-size: 11.5px; font-weight: 700;
-  letter-spacing: .3px;
+  letter-spacing: .3px; overflow: hidden;
 }
+/* Fond clair sous un logo : la plupart des marques sont dessinées pour du
+   blanc, et un logo noir disparaissait sur la teinte du poste. */
+.dep-chip-logo { background: var(--logo-bg) !important; border: 1px solid var(--logo-border); }
+.dep-chip-logo img { width: 100%; height: 100%; object-fit: contain; padding: 5px; }
 .dep-rmain { flex: 1; min-width: 0; }
 .dep-rname {
   font-size: 13px; font-weight: 600; color: var(--text);
@@ -4680,6 +4684,52 @@ body.has-demo-banner { padding-top: 40px; }
 .dep-seg button.active { background: var(--s4); color: var(--text); box-shadow: 0 2px 8px rgba(0,0,0,.35); }
 
 .dep-row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+
+/* La flèche native d'un <select> est peinte par l'OS et jure avec le reste ;
+   on la remplace par un chevron dessiné dans le fond. */
+.dep-select {
+  appearance: none; -webkit-appearance: none;
+  padding-right: 34px; cursor: pointer;
+  background-image: url("data:image/svg+xml;charset=utf8,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%238892a8' stroke-width='2.4' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 13px center;
+}
+.dep-select option { background: var(--s2); color: var(--text); }
+
+/* ─── Intitulé : aperçu du logo + suggestions de marchands ─── */
+.dep-nameline { display: flex; gap: 10px; align-items: stretch; }
+.dep-logo {
+  width: 45px; flex-shrink: 0; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  font-family: var(--mono); font-size: 13px; font-weight: 700;
+  overflow: hidden; transition: background .2s, color .2s;
+}
+.dep-logo.has-logo { background: var(--logo-bg) !important; border: 1px solid var(--logo-border); }
+.dep-logo img { width: 100%; height: 100%; object-fit: contain; padding: 6px; }
+
+.dep-namefield { flex: 1; min-width: 0; position: relative; }
+
+.dep-sugg {
+  position: absolute; top: calc(100% + 5px); left: 0; right: 0; z-index: 20;
+  background: var(--s2); border: 1px solid var(--border3);
+  border-radius: 12px; overflow: hidden; display: none;
+  box-shadow: 0 20px 44px -14px rgba(0,0,0,.8);
+}
+.dep-sugg.open { display: block; }
+.dep-sugg-item {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 12px; cursor: pointer; transition: background .12s;
+}
+.dep-sugg-item + .dep-sugg-item { border-top: 1px solid var(--border); }
+.dep-sugg-item:hover, .dep-sugg-item.active { background: var(--s3); }
+.dep-sugg-logo {
+  width: 24px; height: 24px; flex-shrink: 0; border-radius: 6px;
+  background: var(--logo-bg); display: flex; align-items: center; justify-content: center;
+  overflow: hidden;
+}
+.dep-sugg-logo img { width: 100%; height: 100%; object-fit: contain; padding: 3px; }
+.dep-sugg-n { flex: 1; min-width: 0; font-size: 12.5px; font-weight: 600; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.dep-sugg-c { font-size: 10.5px; color: var(--text3); font-family: var(--mono); white-space: nowrap; }
 
 .dep-cats { display: flex; flex-wrap: wrap; gap: 6px; }
 .dep-cat {

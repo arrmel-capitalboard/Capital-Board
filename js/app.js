@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814j';
+const APP_VERSION = '20260814k';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -16972,11 +16972,175 @@ const DEP_CATS = {
 const DEP_FREQ       = { mensuel: 1, trimestriel: 3, annuel: 12 };
 const DEP_FREQ_LABEL = { mensuel: 'Tous les mois', trimestriel: 'Tous les 3 mois', annuel: 'Une fois par an' };
 
+// Catalogue des marchands courants : nom, domaine (pour le logo), catégorie
+// proposée. Le domaine n'est JAMAIS deviné à partir d'un intitulé libre — un
+// « plein d'essence » produirait pleindessence.com et une requête pour rien.
+// Hors catalogue, la ligne garde sa pastille d'initiales, ce qui est honnête.
+const DEP_MARCHANDS = [
+  // Vidéo
+  { n: 'Netflix', d: 'netflix.com', c: 'abonnements' },
+  { n: 'Disney+', d: 'disneyplus.com', c: 'abonnements' },
+  { n: 'Prime Video', d: 'primevideo.com', c: 'abonnements' },
+  { n: 'Canal+', d: 'canalplus.com', c: 'abonnements' },
+  { n: 'Apple TV+', d: 'apple.com', c: 'abonnements' },
+  { n: 'Max', d: 'max.com', c: 'abonnements' },
+  { n: 'Paramount+', d: 'paramountplus.com', c: 'abonnements' },
+  { n: 'Crunchyroll', d: 'crunchyroll.com', c: 'abonnements' },
+  { n: 'Molotov', d: 'molotov.tv', c: 'abonnements' },
+  { n: 'YouTube Premium', d: 'youtube.com', c: 'abonnements' },
+  { n: 'Twitch', d: 'twitch.tv', c: 'abonnements' },
+  { n: 'Mubi', d: 'mubi.com', c: 'abonnements' },
+  // Musique et audio
+  { n: 'Spotify', d: 'spotify.com', c: 'abonnements' },
+  { n: 'Deezer', d: 'deezer.com', c: 'abonnements' },
+  { n: 'Apple Music', d: 'apple.com', c: 'abonnements' },
+  { n: 'Amazon Music', d: 'amazon.fr', c: 'abonnements' },
+  { n: 'Audible', d: 'audible.fr', c: 'abonnements' },
+  { n: 'SoundCloud', d: 'soundcloud.com', c: 'abonnements' },
+  { n: 'Tidal', d: 'tidal.com', c: 'abonnements' },
+  // Jeu vidéo
+  { n: 'PlayStation Plus', d: 'playstation.com', c: 'loisirs' },
+  { n: 'Xbox Game Pass', d: 'xbox.com', c: 'loisirs' },
+  { n: 'Nintendo Switch Online', d: 'nintendo.com', c: 'loisirs' },
+  { n: 'Steam', d: 'steampowered.com', c: 'loisirs' },
+  { n: 'EA Play', d: 'ea.com', c: 'loisirs' },
+  { n: 'Ubisoft+', d: 'ubisoft.com', c: 'loisirs' },
+  // Télécom
+  { n: 'Free', d: 'free.fr', c: 'abonnements' },
+  { n: 'Free Mobile', d: 'free.fr', c: 'abonnements' },
+  { n: 'Orange', d: 'orange.fr', c: 'abonnements' },
+  { n: 'Sosh', d: 'sosh.fr', c: 'abonnements' },
+  { n: 'SFR', d: 'sfr.fr', c: 'abonnements' },
+  { n: 'RED by SFR', d: 'red-by-sfr.fr', c: 'abonnements' },
+  { n: 'Bouygues Telecom', d: 'bouyguestelecom.fr', c: 'abonnements' },
+  { n: 'B&You', d: 'bouyguestelecom.fr', c: 'abonnements' },
+  { n: 'La Poste Mobile', d: 'lapostemobile.fr', c: 'abonnements' },
+  { n: 'Prixtel', d: 'prixtel.com', c: 'abonnements' },
+  { n: 'Starlink', d: 'starlink.com', c: 'abonnements' },
+  // Logiciels et cloud
+  { n: 'Microsoft 365', d: 'microsoft.com', c: 'abonnements' },
+  { n: 'Google One', d: 'google.com', c: 'abonnements' },
+  { n: 'iCloud', d: 'apple.com', c: 'abonnements' },
+  { n: 'Dropbox', d: 'dropbox.com', c: 'abonnements' },
+  { n: 'Adobe Creative Cloud', d: 'adobe.com', c: 'abonnements' },
+  { n: 'Canva', d: 'canva.com', c: 'abonnements' },
+  { n: 'Notion', d: 'notion.so', c: 'abonnements' },
+  { n: 'ChatGPT', d: 'openai.com', c: 'abonnements' },
+  { n: 'Claude', d: 'claude.ai', c: 'abonnements' },
+  { n: 'GitHub', d: 'github.com', c: 'abonnements' },
+  { n: 'Figma', d: 'figma.com', c: 'abonnements' },
+  { n: '1Password', d: '1password.com', c: 'abonnements' },
+  { n: 'Dashlane', d: 'dashlane.com', c: 'abonnements' },
+  { n: 'NordVPN', d: 'nordvpn.com', c: 'abonnements' },
+  { n: 'Surfshark', d: 'surfshark.com', c: 'abonnements' },
+  { n: 'Proton', d: 'proton.me', c: 'abonnements' },
+  // Sport
+  { n: 'Basic-Fit', d: 'basic-fit.com', c: 'sante' },
+  { n: 'Fitness Park', d: 'fitnesspark.fr', c: 'sante' },
+  { n: 'Neoness', d: 'neoness.fr', c: 'sante' },
+  { n: 'Keep Cool', d: 'keepcool.fr', c: 'sante' },
+  { n: 'L\'Orange Bleue', d: 'lorangebleue.fr', c: 'sante' },
+  { n: 'On Air', d: 'onair-fitness.fr', c: 'sante' },
+  { n: 'Strava', d: 'strava.com', c: 'sante' },
+  { n: 'Decathlon', d: 'decathlon.fr', c: 'loisirs' },
+  // Énergie et logement
+  // edf.fr et edf.com ne rendent rien côté Clearbit ni favicon ; le
+  // sous-domaine particuliers, si.
+  { n: 'EDF', d: 'particulier.edf.fr', c: 'logement' },
+  { n: 'Engie', d: 'engie.fr', c: 'logement' },
+  { n: 'TotalEnergies', d: 'totalenergies.fr', c: 'logement' },
+  { n: 'Ekwateur', d: 'ekwateur.fr', c: 'logement' },
+  { n: 'Octopus Energy', d: 'octopusenergy.fr', c: 'logement' },
+  { n: 'Veolia', d: 'veolia.fr', c: 'logement' },
+  { n: 'Suez', d: 'suez.com', c: 'logement' },
+  // Assurance et banque
+  { n: 'AXA', d: 'axa.fr', c: 'sante' },
+  { n: 'MAIF', d: 'maif.fr', c: 'sante' },
+  { n: 'MACIF', d: 'macif.fr', c: 'sante' },
+  { n: 'Matmut', d: 'matmut.fr', c: 'sante' },
+  { n: 'Allianz', d: 'allianz.fr', c: 'sante' },
+  { n: 'Groupama', d: 'groupama.fr', c: 'sante' },
+  { n: 'MAAF', d: 'maaf.fr', c: 'sante' },
+  { n: 'Direct Assurance', d: 'direct-assurance.fr', c: 'transport' },
+  { n: 'Luko', d: 'luko.eu', c: 'logement' },
+  { n: 'Boursorama', d: 'boursorama.com', c: 'autre' },
+  { n: 'Revolut', d: 'revolut.com', c: 'autre' },
+  { n: 'N26', d: 'n26.com', c: 'autre' },
+  { n: 'Qonto', d: 'qonto.com', c: 'autre' },
+  { n: 'Fortuneo', d: 'fortuneo.fr', c: 'autre' },
+  { n: 'Lydia', d: 'lydia-app.com', c: 'autre' },
+  { n: 'Trade Republic', d: 'traderepublic.com', c: 'autre' },
+  // Transport
+  { n: 'SNCF Connect', d: 'sncf-connect.com', c: 'transport' },
+  { n: 'Navigo', d: 'iledefrance-mobilites.fr', c: 'transport' },
+  { n: 'RATP', d: 'ratp.fr', c: 'transport' },
+  { n: 'BlaBlaCar', d: 'blablacar.fr', c: 'transport' },
+  { n: 'Uber', d: 'uber.com', c: 'transport' },
+  { n: 'Total', d: 'totalenergies.fr', c: 'transport' },
+  { n: 'Shell', d: 'shell.fr', c: 'transport' },
+  { n: 'Esso', d: 'esso.fr', c: 'transport' },
+  { n: 'Avia', d: 'avia-france.fr', c: 'transport' },
+  // Courses et livraison
+  { n: 'Carrefour', d: 'carrefour.fr', c: 'courses' },
+  { n: 'E.Leclerc', d: 'e-leclerc.com', c: 'courses' },
+  { n: 'Intermarché', d: 'intermarche.com', c: 'courses' },
+  { n: 'Lidl', d: 'lidl.fr', c: 'courses' },
+  { n: 'Auchan', d: 'auchan.fr', c: 'courses' },
+  { n: 'Monoprix', d: 'monoprix.fr', c: 'courses' },
+  { n: 'Franprix', d: 'franprix.fr', c: 'courses' },
+  { n: 'Picard', d: 'picard.fr', c: 'courses' },
+  { n: 'Amazon', d: 'amazon.fr', c: 'courses' },
+  { n: 'Uber Eats', d: 'ubereats.com', c: 'courses' },
+  { n: 'Deliveroo', d: 'deliveroo.fr', c: 'courses' },
+  { n: 'HelloFresh', d: 'hellofresh.fr', c: 'courses' },
+  // Presse
+  { n: 'Le Monde', d: 'lemonde.fr', c: 'abonnements' },
+  { n: 'Mediapart', d: 'mediapart.fr', c: 'abonnements' },
+  { n: 'Les Échos', d: 'lesechos.fr', c: 'abonnements' },
+  { n: 'L\'Équipe', d: 'lequipe.fr', c: 'abonnements' },
+  { n: 'Le Figaro', d: 'lefigaro.fr', c: 'abonnements' },
+];
+
+// Comparaison insensible à la casse, aux accents et à la ponctuation :
+// « L'Équipe », « lequipe » et « L Equipe » désignent le même marchand.
+function _depNorm(s) {
+  return String(s || '').toLowerCase()
+    .normalize('NFD').replace(/[̀-ͯ]/g, '')
+    .replace(/[^a-z0-9]/g, '');
+}
+// Marchand reconnu à l'identique — sert à retrouver un logo pour une ligne
+// saisie à la main, sans passer par la liste de suggestions.
+function _depMarchand(nom) {
+  const k = _depNorm(nom);
+  if (k.length < 2) return null;
+  return DEP_MARCHANDS.find(m => _depNorm(m.n) === k) || null;
+}
+function _depSuggest(q, type) {
+  if (type === 'revenu') return [];            // pas de logo de marque pour un salaire
+  const k = _depNorm(q);
+  if (k.length < 2) return [];
+  const debut = [], milieu = [];
+  DEP_MARCHANDS.forEach(m => {
+    const n = _depNorm(m.n);
+    if (n === k) return;                        // déjà saisi tel quel
+    if (n.startsWith(k)) debut.push(m);
+    else if (n.includes(k)) milieu.push(m);
+  });
+  return debut.concat(milieu).slice(0, 6);
+}
+// Le Worker sert le logo (cascade Clearbit → favicon) avec les en-têtes CORS
+// et un cache d'une semaine. En cas d'échec, onerror rend la pastille.
+function _depLogoUrl(domaine) {
+  return WORKER_URL + '/logo?domain=' + encodeURIComponent(domaine);
+}
+
 let _depMonth    = null;        // 'YYYY-MM' consulté
 let _depFilter   = 'tous';      // filtre de la liste d'opérations
 let _depDeadOpen = false;       // repli des abonnements résiliés
 let _depEditId   = null;        // opération en cours d'édition, null = création
-let _depForm     = { type: 'depense', cat: 'abonnements', freq: 'mensuel' };
+let _depForm     = { type: 'depense', cat: 'abonnements', freq: 'mensuel', domaine: null };
+let _depSuggList = [];          // suggestions affichées sous l'intitulé
+let _depSuggSel  = -1;          // suggestion surlignée au clavier
 
 function _depCatList(type) { return DEP_CATS[type === 'revenu' ? 'revenu' : 'depense']; }
 function _depCat(type, key) {
@@ -16997,7 +17161,19 @@ function _depMonthName(ym) {
   return new Date(Number(p[0]), Number(p[1]) - 1, 1)
     .toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
 }
-function _depDay(d) { return Number(String(d || '').slice(8, 10)) || 1; }
+// Jour du mois d'une opération. Une récurrence porte son propre jour de
+// prélèvement (`jour`), indépendant de la date de première échéance : un
+// abonnement souscrit le 3 peut être prélevé le 14. Les lignes créées avant
+// ce champ retombent sur le jour de leur date, ce qui donne la même valeur
+// qu'avant. `fin` = dernier jour du mois, pour les prélèvements de fin de mois.
+function _depJour(e) {
+  if (e && e.recurrent && e.jour) return e.jour === 'fin' ? 31 : (Number(e.jour) || 1);
+  return Number(String((e && e.date) || '').slice(8, 10)) || 1;
+}
+function _depJourLabel(e) {
+  if (e && e.recurrent && e.jour === 'fin') return 'le dernier jour';
+  return 'le ' + _depJour(e);
+}
 
 // L'abonnement tourne-t-il encore au mois demandé ? Le mois de la résiliation
 // compte : résilié le 20 mars, il a bien été prélevé en mars.
@@ -17135,7 +17311,7 @@ function _depRenderRecur(all, ym) {
 function _depRenderOps(inMonth, ym) {
   // Une récurrence retombe sur son jour de prélèvement dans le mois consulté ;
   // une opération ponctuelle garde sa date. Les deux se trient ensemble.
-  const rows = inMonth.slice().sort((a, b) => _depDay(b.date) - _depDay(a.date));
+  const rows = inMonth.slice().sort((a, b) => _depJour(b) - _depJour(a));
   const cats = [];
   rows.forEach(e => {
     const c = _depCat(e.type, e.categorie);
@@ -17215,14 +17391,14 @@ function _depRowHtml(e, opt) {
 
   if (opt.recur) {
     meta.push(_escapeHtmlChat(DEP_FREQ_LABEL[e.frequence] || 'Tous les mois'));
-    meta.push('le ' + _depDay(e.date));
+    meta.push(_depJourLabel(e));
     if (opt.dead && e.dateFin) meta.push('résilié le ' + _depDateCourt(e.dateFin));
   } else {
     if (e.recurrent) {
       meta.push('<span class="dep-recur-ico" title="Opération récurrente">' +
         '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
         '<path d="M21 12a9 9 0 1 1-6.2-8.6"/><polyline points="21 3 21 9 15 9"/></svg></span>' +
-        'le ' + _depDay(e.date));
+        _depJourLabel(e));
     } else {
       meta.push(_depDateCourt(e.date));
     }
@@ -17237,8 +17413,7 @@ function _depRowHtml(e, opt) {
 
   return '<div class="dep-row' + (opt.dead ? ' dead' : '') + '" onclick="depOpenModal(\'' + _attr(e.id) + '\')" ' +
       'role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}">' +
-    '<div class="dep-chip" style="background:' + c.color + '1f;color:' + c.color + '">' +
-      _escapeHtmlChat(_depInitials(e.nom)) + '</div>' +
+    _depChipHtml(e, c) +
     '<div class="dep-rmain">' +
       '<div class="dep-rname">' + _escapeHtmlChat(e.nom || 'Sans nom') + '</div>' +
       '<div class="dep-rmeta">' + meta.join('<span class="sep">·</span>') + '</div>' +
@@ -17248,6 +17423,23 @@ function _depRowHtml(e, opt) {
       lisse +
     '</div>' +
   '</div>';
+}
+
+// Pastille d'une ligne : le logo du marchand quand on le connaît, les
+// initiales sinon. Le domaine est celui enregistré avec l'opération ; à
+// défaut on retente une reconnaissance sur l'intitulé, ce qui rattrape les
+// lignes saisies avant l'arrivée du catalogue.
+function _depChipHtml(e, c) {
+  const dom  = (e.domaine || ((_depMarchand(e.nom) || {}).d)) || '';
+  const init = _escapeHtmlChat(_depInitials(e.nom));
+  const fond = 'background:' + c.color + '1f;color:' + c.color;
+  if (!dom) return '<div class="dep-chip" style="' + fond + '">' + init + '</div>';
+  // Le logo échoue (marque inconnue de Clearbit, réseau coupé) → la pastille
+  // d'initiales reprend sa place, jamais une image cassée.
+  return '<div class="dep-chip dep-chip-logo" style="' + fond + '">' +
+    '<img src="' + _safeUrl(_depLogoUrl(dom)) + '" alt="" loading="lazy" ' +
+    'onerror="this.parentNode.textContent=this.dataset.i;this.parentNode.classList.remove(\'dep-chip-logo\')" ' +
+    'data-i="' + _attr(_depInitials(e.nom)) + '">' + '</div>';
 }
 
 function _depDateCourt(d) {
@@ -17287,9 +17479,10 @@ window.depOpenModal = function(id) {
   const e   = id ? all.find(x => x.id === id) : null;
   _depEditId = e ? e.id : null;
 
-  _depForm.type = e ? (e.type === 'revenu' ? 'revenu' : 'depense') : 'depense';
-  _depForm.cat  = e ? _depCat(_depForm.type, e.categorie).key : _depCatList(_depForm.type)[0].key;
-  _depForm.freq = (e && e.frequence) || 'mensuel';
+  _depForm.type    = e ? (e.type === 'revenu' ? 'revenu' : 'depense') : 'depense';
+  _depForm.cat     = e ? _depCat(_depForm.type, e.categorie).key : _depCatList(_depForm.type)[0].key;
+  _depForm.freq    = (e && e.frequence) || 'mensuel';
+  _depForm.domaine = e ? (e.domaine || ((_depMarchand(e.nom) || {}).d) || null) : null;
 
   _depSet('dep-f-nom', e ? (e.nom || '') : '');
   _depSet('dep-f-montant', e ? String(_depAmt(e)).replace('.', ',') : '');
@@ -17297,8 +17490,11 @@ window.depOpenModal = function(id) {
   // saisir une dépense de mars en consultant mars ne doit pas la dater d'août.
   _depSet('dep-f-date', e ? (e.date || '') : _depDefaultDate());
   _depSet('dep-f-fin', e ? (e.dateFin || '') : '');
+  _depFillJours(e && e.recurrent && e.jour ? e.jour : String(_depJour(e || { date: _depDefaultDate() })));
   const rec = document.getElementById('dep-f-recur');
   if (rec) rec.checked = !!(e && e.recurrent);
+  _depSuggClear();
+  _depRenderLogo();
 
   _depText('dep-modal-title', e ? 'Modifier l\'opération' : 'Nouvelle opération');
   const del = document.getElementById('dep-f-delete');
@@ -17332,7 +17528,7 @@ window.depSetType = function(t) {
   _depSyncType();
 };
 
-window.depSetCat  = function(k) { _depForm.cat = k; _depRenderCatChips(); };
+window.depSetCat  = function(k) { _depForm.cat = k; _depRenderCatChips(); _depRenderLogo(); };
 window.depSetFreq = function(f) {
   _depForm.freq = f;
   document.querySelectorAll('#dep-f-freq button').forEach(b =>
@@ -17342,14 +17538,23 @@ window.depSetFreq = function(f) {
 window.depToggleRecur = function() {
   const rec = document.getElementById('dep-f-recur');
   const box = document.getElementById('dep-f-recur-fields');
-  if (box) box.hidden = !(rec && rec.checked);
-  if (rec && rec.checked) depSetFreq(_depForm.freq);
+  const on  = !!(rec && rec.checked);
+  if (box) box.hidden = !on;
+  if (!on) return;
+  depSetFreq(_depForm.freq);
+  // Le jour de prélèvement part de la date saisie : c'est vrai dans la plupart
+  // des cas, et la liste reste là pour le corriger quand ça ne l'est pas.
+  const jour = document.getElementById('dep-f-jour');
+  const date = _depVal('dep-f-date');
+  if (jour && !jour.value && date) jour.value = String(Number(date.slice(8, 10)) || 1);
 };
 
 function _depSyncType() {
   document.querySelectorAll('#dep-f-type button').forEach(b =>
     b.classList.toggle('active', b.dataset.type === _depForm.type));
   _depRenderCatChips();
+  _depSuggClear();
+  _depRenderLogo();
 }
 
 function _depRenderCatChips() {
@@ -17366,6 +17571,121 @@ function _depRenderCatChips() {
 
 function _depSet(id, v) { const el = document.getElementById(id); if (el) el.value = v; }
 function _depVal(id)    { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
+
+// ─── Reconnaissance du marchand ───
+
+// Aperçu à gauche de l'intitulé : le logo dès qu'un marchand est reconnu,
+// sinon les initiales sur la couleur du poste choisi.
+function _depRenderLogo() {
+  const box = document.getElementById('dep-f-logo');
+  if (!box) return;
+  const nom = _depVal('dep-f-nom');
+  const c   = _depCat(_depForm.type, _depForm.cat);
+  box.style.background = c.color + '1f';
+  box.style.color      = c.color;
+  if (_depForm.domaine) {
+    box.classList.add('has-logo');
+    box.innerHTML = '<img src="' + _safeUrl(_depLogoUrl(_depForm.domaine)) + '" alt="" ' +
+      'onerror="depLogoFailed()">';
+  } else {
+    box.classList.remove('has-logo');
+    box.textContent = nom ? _depInitials(nom) : '?';
+  }
+}
+
+// Clearbit et le favicon ont tous les deux échoué : on oublie le domaine
+// plutôt que de laisser un cadre vide, et la pastille reprend les initiales.
+window.depLogoFailed = function() { _depForm.domaine = null; _depRenderLogo(); };
+
+window.depNameInput = function() {
+  const q = _depVal('dep-f-nom');
+  // Le domaine suit l'intitulé : un marchand reconnu à la frappe donne son
+  // logo sans passer par la liste ; effacer le nom efface le logo.
+  const m = _depMarchand(q);
+  _depForm.domaine = m ? m.d : null;
+  _depRenderLogo();
+  _depSuggShow(_depSuggest(q, _depForm.type));
+};
+
+function _depSuggShow(list) {
+  _depSuggList = list;
+  _depSuggSel  = -1;
+  const box = document.getElementById('dep-f-sugg');
+  const inp = document.getElementById('dep-f-nom');
+  if (!box) return;
+  if (!list.length) { _depSuggClear(); return; }
+  box.innerHTML = list.map((m, i) =>
+    '<div class="dep-sugg-item" role="option" data-i="' + i + '" ' +
+      'onmousedown="event.preventDefault();depPickMarchand(' + i + ')">' +
+      '<span class="dep-sugg-logo"><img src="' + _safeUrl(_depLogoUrl(m.d)) + '" alt="" loading="lazy" ' +
+        'onerror="this.style.visibility=\'hidden\'"></span>' +
+      '<span class="dep-sugg-n">' + _escapeHtmlChat(m.n) + '</span>' +
+      '<span class="dep-sugg-c">' + _escapeHtmlChat(_depCat('depense', m.c).label) + '</span>' +
+    '</div>').join('');
+  box.classList.add('open');
+  if (inp) inp.setAttribute('aria-expanded', 'true');
+}
+
+function _depSuggClear() {
+  const box = document.getElementById('dep-f-sugg');
+  const inp = document.getElementById('dep-f-nom');
+  if (box) { box.classList.remove('open'); box.innerHTML = ''; }
+  if (inp) inp.setAttribute('aria-expanded', 'false');
+  _depSuggList = [];
+  _depSuggSel  = -1;
+}
+
+// Le clic sur une suggestion passe par mousedown : un simple `click` arrive
+// après le `blur` du champ, qui aurait déjà refermé la liste.
+window.depSuggClose = function(differe) {
+  if (differe) setTimeout(_depSuggClear, 120);
+  else _depSuggClear();
+};
+
+window.depPickMarchand = function(i) {
+  const m = _depSuggList[i];
+  if (!m) return;
+  _depSet('dep-f-nom', m.n);
+  _depForm.domaine = m.d;
+  // La catégorie du catalogue ne s'impose que sur une saisie neuve : sur une
+  // modification, le classement choisi par le membre reste le sien.
+  if (!_depEditId) { _depForm.cat = m.c; _depRenderCatChips(); }
+  _depSuggClear();
+  _depRenderLogo();
+  const mt = document.getElementById('dep-f-montant');
+  if (mt) mt.focus();
+};
+
+window.depNameKey = function(ev) {
+  if (!_depSuggList.length) return;
+  const n = _depSuggList.length;
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+    ev.preventDefault();
+    _depSuggSel = (_depSuggSel + (ev.key === 'ArrowDown' ? 1 : n - 1)) % n;
+    document.querySelectorAll('#dep-f-sugg .dep-sugg-item').forEach((el, i) =>
+      el.classList.toggle('active', i === _depSuggSel));
+  } else if (ev.key === 'Enter' && _depSuggSel >= 0) {
+    ev.preventDefault();
+    depPickMarchand(_depSuggSel);
+  } else if (ev.key === 'Escape') {
+    _depSuggClear();
+  }
+};
+
+// ─── Jour de prélèvement ───
+
+// 1 à 31, plus « dernier jour du mois » — un prélèvement calé sur la fin du
+// mois ne peut pas s'écrire en chiffre : février n'a pas de 31.
+function _depFillJours(sel) {
+  const el = document.getElementById('dep-f-jour');
+  if (!el) return;
+  let html = '';
+  for (let j = 1; j <= 31; j++) html += '<option value="' + j + '">' + j + '</option>';
+  html += '<option value="fin">Dernier jour du mois</option>';
+  el.innerHTML = html;
+  el.value = String(sel || 1);
+  if (!el.value) el.value = '1';
+}
 
 // « 13,49 » comme « 13.49 » : personne ne tape le point sur un pavé français.
 function _depParse(v) {
@@ -17399,6 +17719,10 @@ window.depSave = function() {
     categorie: _depForm.cat,
     recurrent: recur,
     frequence: recur ? _depForm.freq : null,
+    jour: recur ? (_depVal('dep-f-jour') || null) : null,
+    // Domaine du marchand, figé à l'enregistrement : le logo reste le bon même
+    // si le catalogue change plus tard, et l'affichage n'a rien à redeviner.
+    domaine: _depForm.domaine || null,
     dateFin: fin || null,
   };
 
