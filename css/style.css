@@ -2260,14 +2260,6 @@ body.sb-collapsed .main { margin-left: 58px; }
     margin: 4px 0 0; padding: 1px 5px;
     font-size: 8.5px; letter-spacing: .7px;
   }
-  /* Le vert de .badge-action est celui de la performance positive, à deux
-     colonnes de là : sur 390px de large il se lisait comme un gain. Sur mobile
-     il passe en gris — le badge nomme une catégorie, pas une variation. */
-  #page-portfolio .ticker-name .badge-action {
-    background: rgba(255,255,255,0.05);
-    color: var(--text2);
-    border-color: var(--border2);
-  }
 
   /* Le nom est affiché en entier : c'est lui qu'on lit, pas le ticker, qui
      disparaît de la ligne. Pour qu'un nom long ne s'empile pas sur huit
