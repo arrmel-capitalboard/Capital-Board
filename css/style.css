@@ -4716,6 +4716,42 @@ body.has-demo-banner { padding-top: 40px; }
   color: var(--text3); margin-top: 1px;
 }
 
+/* Marqueur discret : ce chiffre est estimé faute de dates de versement. */
+.liv-approx {
+  font-style: normal; font-size: 11px; color: var(--text3);
+  margin-left: 3px; cursor: help;
+}
+
+/* Versements de l'année */
+.liv-mvts-group { margin-top: 18px; }
+.liv-mvt {
+  display: grid; grid-template-columns: 1fr 110px 30px;
+  gap: 8px; margin-bottom: 8px; align-items: center;
+}
+.liv-mvt .form-input { padding: 9px 11px; font-size: 12.5px; }
+.liv-mvt-del {
+  width: 30px; height: 30px; border-radius: 8px;
+  background: transparent; border: 1px solid var(--border);
+  color: var(--text3); cursor: pointer;
+  display: flex; align-items: center; justify-content: center;
+  transition: all .15s;
+}
+.liv-mvt-del:hover { color: var(--negative); border-color: rgba(255,77,106,.35); }
+.liv-mvt-add {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 13px; border-radius: 9px;
+  background: var(--s2); border: 1px dashed var(--border3);
+  color: var(--text2); font-family: var(--sans); font-size: 12px; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+}
+.liv-mvt-add:hover { color: var(--text); border-color: var(--accent); background: var(--accent-d); }
+
+.liv-ecart {
+  margin-top: 14px; padding: 10px 13px; border-radius: 10px;
+  background: rgba(245,183,49,.07); border: 1px solid rgba(245,183,49,.22);
+  color: var(--text2); font-size: 12px; line-height: 1.55;
+}
+
 .liv-fin.proche { color: var(--gold); font-weight: 600; }
 .liv-fin.echu   { color: var(--negative); font-weight: 600; }
 .liv-plein.echu { background: rgba(255,77,106,.14); color: var(--negative); }

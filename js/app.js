@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814v';
+const APP_VERSION = '20260814w';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18318,7 +18318,9 @@ const LIV_BAREME = {
     // seul plancher légal celui du Livret A. 3,75 % est une valeur courante,
     // pas une règle : `min` sert à refuser une saisie sous le plancher.
     jeune:    { label: 'Livret Jeune',    court: 'LJ',   plafond: 1600,  taux: 3.75, unique: true,  fisc: false, color: '#38bdf8', min: 'livretA' },
-    pel:      { label: 'PEL',             court: 'PEL',  plafond: 61200, taux: null, unique: false, fisc: true,  color: '#a78bfa' },
+    // `duree` : terme légal en années, quand il existe. Il permet de déduire
+    // la fin de validité de l'ouverture, et réciproquement.
+    pel:      { label: 'PEL',             court: 'PEL',  plafond: 61200, taux: null, unique: false, fisc: true,  color: '#a78bfa', duree: 15 },
     cel:      { label: 'CEL',             court: 'CEL',  plafond: 15300, taux: null, unique: false, fisc: true,  color: '#c084fc' },
     bancaire: { label: 'Livret bancaire', court: 'LB',   plafond: null,  taux: null, unique: false, fisc: true,  color: '#f5b731' },
   },
@@ -18449,17 +18451,74 @@ function _livQuinzaines(d) {
   const dt = d || new Date();
   return dt.getMonth() * 2 + (dt.getDate() >= 16 ? 1 : 0);
 }
+// Index de quinzaine d'une date dans son année : 0 pour le 1er-15 janvier,
+// 1 pour le 16-31 janvier, jusqu'à 23.
+function _livQIndex(d) { return d.getMonth() * 2 + (d.getDate() >= 16 ? 1 : 0); }
+
+/**
+ * Quinzaine à partir de laquelle une somme commence à produire.
+ *
+ * Règle des livrets : un versement ne rapporte qu'à compter du 1er ou du 16
+ * qui suit. Déposer le 3 janvier fait courir les intérêts au 16 janvier ;
+ * déposer le 20 janvier, au 1er février. Une somme déjà présente au 1er
+ * janvier produit dès la première quinzaine.
+ */
+function _livDebutQuinzaine(dateIso, annee) {
+  const p = String(dateIso || '').split('-');
+  if (p.length < 3) return 0;
+  const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  if (d.getFullYear() < annee) return 0;          // versement d'une année passée
+  if (d.getFullYear() > annee) return 24;         // pas encore versé cette année
+  return _livQIndex(d) + 1;
+}
+
 /**
  * Intérêts acquis depuis le 1er janvier, versés au 31 décembre.
  *
- * Estimation sur le solde actuel et au taux actuel : un versement en cours
- * d'année ou une révision de taux — il y en a deux par an — déplacent le
- * résultat. L'écran le dit.
+ * Deux régimes, selon ce que le membre a saisi.
+ *
+ * Avec l'historique des versements, le calcul est juste : chaque somme compte
+ * à partir de la quinzaine qui suit son dépôt. C'est ce qui fait qu'un même
+ * solde rapporte très différemment selon qu'il est arrivé en janvier ou en
+ * juin — et c'est ce que la version précédente ignorait, en supposant le solde
+ * présent depuis le 1er janvier.
+ *
+ * Sans historique, on retombe sur cette hypothèse, et `exact` vaut false pour
+ * que l'écran l'annonce plutôt que de faire passer une approximation pour un
+ * relevé.
  */
 function _livAcquis(l) {
-  const { brut, net } = _livInterets(l);
-  const part = _livQuinzaines() / 24;
-  return { brut: brut * part, net: net * part, quinzaines: _livQuinzaines() };
+  const taux    = _livTaux(l);
+  const imposee = _livType_(l && l.type).fisc;
+  const annee   = new Date().getFullYear();
+  const ecoule  = _livQuinzaines();
+  const mvts    = Array.isArray(l && l.mouvements) ? l.mouvements : [];
+
+  let brut = 0, exact = false;
+  if (mvts.length) {
+    exact = true;
+    mvts.forEach(m => {
+      const montant = Number(m && m.m);
+      if (!Number.isFinite(montant) || montant === 0) return;
+      const debut = _livDebutQuinzaine(m.d, annee);
+      const q = Math.max(0, ecoule - debut);
+      brut += montant * taux / 100 * q / 24;
+    });
+  } else {
+    // Un livret ouvert en cours d'année ne produit pas avant son ouverture :
+    // c'est le seul raffinement possible sans historique.
+    const debut = _livDebutQuinzaine(l && l.ouverture, annee);
+    brut = _livSolde(l) * taux / 100 * Math.max(0, ecoule - debut) / 24;
+  }
+  const net = imposee ? brut * (1 - LIV_PFU) : brut;
+  return { brut, net, exact, quinzaines: ecoule };
+}
+
+// Somme des mouvements saisis. Sert à signaler un écart avec le solde déclaré
+// — l'un des deux est faux, et mieux vaut le dire que calculer sur du sable.
+function _livSommeMvts(l) {
+  const mvts = Array.isArray(l && l.mouvements) ? l.mouvements : [];
+  return mvts.reduce((s, m) => s + (Number(m && m.m) || 0), 0);
 }
 function _livTotal(user)     { return getLivrets(user).reduce((s, l) => s + _livSolde(l), 0); }
 function _livInteretsNets()  { return getLivrets().reduce((s, l) => s + _livInterets(l).net, 0); }
@@ -18551,9 +18610,11 @@ function _livRenderKpis(livrets, total, nets) {
     pill.textContent = '+' + fmt(acquis) + ' acquis';
     pill.hidden = total <= 0;
   }
+  const estimes = livrets.filter(l => _livSolde(l) > 0 && !_livAcquis(l).exact).length;
   if (hint) hint.textContent = total > 0
     ? 'prévisionnel +' + fmt(nets) + ' sur douze mois · ' +
-      (nets / total * 100).toFixed(2).replace('.', ',') + ' % net'
+      (nets / total * 100).toFixed(2).replace('.', ',') + ' % net' +
+      (estimes ? ' · ' + estimes + ' estimé' + (estimes > 1 ? 's' : '') : '')
     : 'Ajoutez un livret pour démarrer.';
 
   // Remplissage global des plafonds réglementés. Un livret bancaire n'en a pas :
@@ -18645,7 +18706,8 @@ function _livRenderListe(livrets, total, nets) {
               '" style="width:' + pct.toFixed(1) + '%;background:' + (plein ? 'var(--gold)' : t.color) + '"></div></div>') +
         '<div class="liv-meta">' +
           '<span>' + meta.join('<span class="sep">·</span>') + '</span>' +
-          '<span class="liv-int">+' + fmt(acq.net) + ' acquis' +
+          '<span class="liv-int"' + (acq.exact ? '' : ' title="Estimation : sans les dates de versement, le solde est supposé présent depuis le 1er janvier."') + '>' +
+            '+' + fmt(acq.net) + ' acquis' + (acq.exact ? '' : '<i class="liv-approx">~</i>') +
             '<small>+' + fmt(int.net) + ' / an</small></span>' +
         '</div>' +
         (pct === null ? '' :
@@ -18747,6 +18809,10 @@ window.livOpenModal = function(id) {
   _depSet('liv-f-taux', l && l.taux ? String(l.taux).replace('.', ',') : '');
   _depSet('liv-f-banque', l ? (l.banque || '') : '');
   _depSet('liv-f-fin', l ? (l.fin || '') : '');
+  _depSet('liv-f-ouverture', l ? (l.ouverture || '') : '');
+  _livMvts = (l && Array.isArray(l.mouvements) ? l.mouvements : []).map(m => ({ d: m.d, m: String(m.m).replace('.', ',') }));
+  _livRenderMvts();
+  livDatesSync();
   _livDomaine = l ? (l.banqueDomaine || ((_livBanque(l.banque) || {}).d) || null) : null;
   _livSuggClear();
   _depText('liv-modal-title', l ? 'Modifier ce livret' : 'Nouveau livret');
@@ -18776,7 +18842,102 @@ window.livCloseModal = function() {
   _livEditId = null;
 };
 
-window.livSetType = function(t) { _livType = t; _livRenderTypes(); _livRenderLogo(); livRecalc(); };
+window.livSetType = function(t) { _livType = t; _livRenderTypes(); _livRenderLogo(); livDatesSync(); livRecalc(); };
+
+// ─── Dates : ouverture et fin se déduisent l'une de l'autre ───
+
+let _livMvts = [];      // brouillon de saisie, confirmé à l'enregistrement
+
+function _livAnnee(iso) { const n = Number(String(iso || '').slice(0, 4)); return n > 1900 ? n : null; }
+// Décale une date ISO de n années, en gardant jour et mois.
+function _livPlusAns(iso, n) {
+  const p = String(iso || '').split('-');
+  if (p.length < 3) return '';
+  return String(Number(p[0]) + n) + '-' + p[1] + '-' + p[2];
+}
+
+/**
+ * Remplit la date manquante à partir de l'autre, quand la loi la détermine.
+ *
+ * Le PEL a un terme fixe de quinze ans : les deux dates s'en déduisent l'une
+ * de l'autre. Le Livret Jeune, non — il se ferme le 31 décembre de l'année des
+ * 25 ans, et la date d'ouverture ne dit pas l'âge qu'on avait (on peut ouvrir
+ * de 12 à 25 ans). Dans ce cas on ne devine pas : on explique la règle, et on
+ * déduit l'année de naissance de la date de fin quand elle est posée.
+ *
+ * @param {string} source champ que l'utilisateur vient de modifier
+ */
+window.livDateChange = function(source) {
+  const t   = _livType_(_livType);
+  const ouv = _depVal('liv-f-ouverture');
+  const fin = _depVal('liv-f-fin');
+  if (t.duree) {
+    if (source === 'ouverture' && ouv && !fin) _depSet('liv-f-fin', _livPlusAns(ouv, t.duree));
+    if (source === 'fin' && fin && !ouv)       _depSet('liv-f-ouverture', _livPlusAns(fin, -t.duree));
+  }
+  livDatesSync();
+  livRecalc();
+};
+
+function livDatesSync() {
+  const t   = _livType_(_livType);
+  const ouv = _depVal('liv-f-ouverture');
+  const fin = _depVal('liv-f-fin');
+  const el  = document.getElementById('liv-f-dates-help');
+  if (!el) return;
+
+  if (t.duree) {
+    el.textContent = 'Terme légal de ' + t.duree + ' ans : renseignez une date, l\'autre se remplit toute seule.';
+  } else if (_livType === 'jeune') {
+    const an = _livAnnee(fin);
+    el.textContent = an
+      ? 'Un Livret Jeune se ferme le 31 décembre de l\'année des 25 ans — soit une naissance en ' + (an - 25) + '.'
+      : 'Un Livret Jeune se ferme le 31 décembre de l\'année de vos 25 ans. La date d\'ouverture ne suffit pas à la déduire : on peut en ouvrir un de 12 à 25 ans.';
+  } else if (ouv) {
+    el.textContent = 'Ce livret n\'a pas de terme réglementaire.';
+  } else {
+    el.textContent = '';
+  }
+}
+
+// ─── Versements de l'année ───
+
+window.livAddMvt = function() {
+  _livMvts.push({ d: new Date().toISOString().slice(0, 10), m: '' });
+  _livRenderMvts();
+  const champs = document.querySelectorAll('#liv-f-mvts .liv-mvt-m');
+  const dernier = champs[champs.length - 1];
+  if (dernier) dernier.focus();
+};
+window.livDelMvt = function(i) { _livMvts.splice(i, 1); _livRenderMvts(); livRecalc(); };
+window.livSetMvt = function(i, champ, val) {
+  if (!_livMvts[i]) return;
+  _livMvts[i][champ] = val;
+  livRecalc();
+};
+
+function _livRenderMvts() {
+  const box = document.getElementById('liv-f-mvts');
+  if (!box) return;
+  box.innerHTML = _livMvts.map((m, i) =>
+    '<div class="liv-mvt">' +
+      '<input class="form-input liv-mvt-d" type="date" value="' + _attr(m.d) + '" ' +
+        'onchange="livSetMvt(' + i + ',\'d\',this.value)">' +
+      '<input class="form-input liv-mvt-m" type="text" inputmode="decimal" placeholder="montant" ' +
+        'value="' + _attr(m.m) + '" oninput="livSetMvt(' + i + ',\'m\',this.value)">' +
+      '<button type="button" class="liv-mvt-del" onclick="livDelMvt(' + i + ')" aria-label="Retirer ce versement">' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
+      '</button>' +
+    '</div>').join('');
+}
+
+// Brouillon de saisie → mouvements exploitables. Les lignes incomplètes sont
+// écartées : une date sans montant ne veut rien dire.
+function _livMvtsPropres() {
+  return _livMvts
+    .map(m => ({ d: m.d, m: _depParse(String(m.m)) }))
+    .filter(m => m.d && Number.isFinite(m.m) && m.m > 0);
+}
 
 // ─── Champ Banque : logo et suggestions ───
 
@@ -18905,14 +19066,39 @@ window.livRecalc = function() {
   const box = document.getElementById('liv-f-recap');
   if (!box) return;
   const taux = isFinite(perso) && perso > 0 ? perso : t.taux;
-  if (!isFinite(solde) || solde <= 0 || !taux) { box.hidden = true; return; }
+  if (!isFinite(solde) || solde <= 0 || !taux) {
+    box.hidden = true;
+    const e0 = document.getElementById('liv-f-ecart');
+    if (e0) e0.hidden = true;
+    return;
+  }
   const brut = solde * taux / 100;
   const net  = t.fisc ? brut * (1 - LIV_PFU) : brut;
   const reste = t.plafond === null ? null : Math.max(0, t.plafond - solde);
   box.hidden = false;
   // Deux chiffres, deux natures : ce qui est déjà gagné cette année, et ce que
   // douze mois donneraient au taux actuel.
-  const acquis = net * _livQuinzaines() / 24;
+  // Le récapitulatif utilise le même moteur que les lignes : les versements
+  // saisis y comptent, sinon on retombe sur l'estimation.
+  const mvts   = _livMvtsPropres();
+  const acquis = _livAcquis({
+    type: _livType, solde, taux: perso,
+    ouverture: _depVal('liv-f-ouverture'),
+    mouvements: mvts,
+  }).net;
+
+  // Les versements saisis doivent retomber sur le solde déclaré. Sinon l'un des
+  // deux est faux, et le calcul d'acquis porte sur du sable. On le signale sans
+  // bloquer : c'est peut-être un historique volontairement partiel.
+  const ec    = document.getElementById('liv-f-ecart');
+  const somme = mvts.reduce((a, m) => a + m.m, 0);
+  if (ec) {
+    const decale = mvts.length && Math.abs(somme - solde) >= 1;
+    ec.hidden = !decale;
+    if (decale) ec.textContent = 'Vos versements totalisent ' + fmt(somme) +
+      ', le solde déclaré est ' + fmt(solde) + '. Les intérêts acquis sont calculés sur les versements.';
+  }
+
   box.innerHTML =
     '<span class="dep-recap-l">' + _livPct(taux) + ' · +' + fmt(net) + ' sur douze mois' +
       (reste === null ? '' : reste > 0 ? ' · ' + fmt(reste) + ' encore possibles' : ' · plafond atteint') +
@@ -18963,6 +19149,8 @@ window.livSave = function() {
     // reste le bon même si le catalogue évolue.
     banqueDomaine: _livDomaine || null,
     fin: _depVal('liv-f-fin') || null,
+    ouverture: _depVal('liv-f-ouverture') || null,
+    mouvements: _livMvtsPropres(),
   };
 
   const all = getLivrets().slice();
