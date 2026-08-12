@@ -51,6 +51,7 @@ même liste, distingués par `type`.
   jour: null,            // '1'..'31' | 'fin' — jour de prélèvement, récurrent seulement
   domaine: null,         // domaine du marchand, pour le logo
   dateFin: null,         // résiliation
+  note: null,            // texte libre, 300 caractères max
 }
 ```
 

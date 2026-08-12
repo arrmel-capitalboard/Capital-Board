@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814m';
+const APP_VERSION = '20260814n';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -17460,6 +17460,14 @@ function _depRowHtml(e, opt) {
     '<div class="dep-rmain">' +
       '<div class="dep-rname">' + _escapeHtmlChat(e.nom || 'Sans nom') + '</div>' +
       '<div class="dep-rmeta">' + meta.join('<span class="sep">·</span>') + '</div>' +
+      // La note n'apparaît que sur les lignes qui en portent une : elle ajoute
+      // une ligne de hauteur, hors de question de la payer sur toutes.
+      (e.note
+        ? '<div class="dep-rnote" title="' + _attr(e.note) + '">' +
+            '<svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 7h16M4 12h16M4 17h9"/></svg>' +
+            _escapeHtmlChat(e.note) +
+          '</div>'
+        : '') +
     '</div>' +
     '<div>' +
       '<div class="dep-ramount' + (isIn ? ' in' : '') + '">' + (isIn ? '+ ' : '') + fmt(_depAmt(e)) + '</div>' +
@@ -17533,6 +17541,8 @@ window.depOpenModal = function(id) {
   // saisir une dépense de mars en consultant mars ne doit pas la dater d'août.
   _depSet('dep-f-date', e ? (e.date || '') : _depDefaultDate());
   _depSet('dep-f-fin', e ? (e.dateFin || '') : '');
+  _depSet('dep-f-note', e ? (e.note || '') : '');
+  depNoteCount();
   _depFillJours(e && e.recurrent && e.jour ? e.jour : String(_depJour(e || { date: _depDefaultDate() })));
   const rec = document.getElementById('dep-f-recur');
   if (rec) rec.checked = !!(e && e.recurrent);
@@ -17653,6 +17663,18 @@ function _depRenderCatChips() {
 
 function _depSet(id, v) { const el = document.getElementById(id); if (el) el.value = v; }
 function _depVal(id)    { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
+
+// Compteur de caractères : affiché seulement quand on approche de la limite,
+// sinon c'est du bruit sur un champ facultatif que la plupart laissent vide.
+window.depNoteCount = function() {
+  const el  = document.getElementById('dep-f-note');
+  const box = document.getElementById('dep-f-note-count');
+  if (!el || !box) return;
+  const reste = 300 - el.value.length;
+  box.hidden = reste > 60;
+  box.textContent = reste + ' caractère' + (reste > 1 ? 's' : '') + ' restant' + (reste > 1 ? 's' : '');
+  box.classList.toggle('low', reste <= 15);
+};
 
 // ─── Reconnaissance du marchand ───
 
@@ -17802,6 +17824,10 @@ window.depSave = function() {
     recurrent: recur,
     frequence: recur ? _depForm.freq : null,
     jour: recur ? (_depVal('dep-f-jour') || null) : null,
+    // Le « pourquoi » d'une ligne : formule choisie, partage à plusieurs,
+    // hausse encaissée. Rien ne le déduit du montant, et c'est ce qu'on cherche
+    // six mois plus tard en se demandant pourquoi on paie ça.
+    note: _depVal('dep-f-note').slice(0, 300) || null,
     // Domaine du marchand, figé à l'enregistrement : le logo reste le bon même
     // si le catalogue change plus tard, et l'affichage n'a rien à redeviner.
     domaine: _depForm.domaine || null,

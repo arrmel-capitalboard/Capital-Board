@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260814m">
+<link rel="stylesheet" href="css/style.css?v=20260814n">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2498,6 +2498,14 @@
       <div class="dep-help">Une date de résiliation arrête le décompte après ce mois, sans effacer l'abonnement des mois qu'il a réellement coûtés.</div>
     </div>
 
+    <div class="form-group dep-notefield">
+      <label class="form-label" for="dep-f-note">Note <span class="dep-opt">facultatif</span></label>
+      <textarea class="form-input dep-textarea" id="dep-f-note" rows="2" maxlength="300"
+                placeholder="Formule famille, partagé à trois, augmenté en mars…"
+                oninput="depNoteCount()"></textarea>
+      <div class="dep-count" id="dep-f-note-count" hidden></div>
+    </div>
+
     <div class="dep-error" id="dep-f-error" hidden></div>
 
     <div class="modal-footer">
@@ -3071,9 +3079,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260814m"></script>
+<script src="js/app.js?v=20260814n"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260814m"></script>
+<script src="js/onboarding.js?v=20260814n"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

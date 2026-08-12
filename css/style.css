@@ -4612,6 +4612,14 @@ body.has-demo-banner { padding-top: 40px; }
   display: flex; align-items: center; gap: 6px; flex-wrap: wrap;
 }
 .dep-rmeta .sep { color: var(--muted2); }
+/* Note de la ligne : une seule ligne, coupée. Le texte entier est dans le
+   title, et la modale l'affiche en entier. */
+.dep-rnote {
+  display: flex; align-items: center; gap: 5px;
+  margin-top: 4px; font-size: 11px; color: var(--text3); font-style: italic;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.dep-rnote svg { flex-shrink: 0; opacity: .6; }
 .dep-recur-ico { color: var(--accent); display: inline-flex; vertical-align: -2px; }
 .dep-ramount {
   font-family: var(--mono); font-size: 14px; font-weight: 700;
@@ -4769,6 +4777,18 @@ body.has-demo-banner { padding-top: 40px; }
   color: var(--muted2); text-transform: none; margin-left: 6px;
 }
 .dep-help { font-size: 11px; color: var(--text3); margin-top: 7px; line-height: 1.5; }
+
+/* ─── Note ─── */
+.dep-notefield { margin-top: 18px; }
+.dep-textarea {
+  font-family: var(--sans); font-size: 13px; line-height: 1.55;
+  resize: vertical; min-height: 62px; max-height: 180px;
+}
+.dep-count {
+  font-family: var(--mono); font-size: 10px; color: var(--text3);
+  text-align: right; margin-top: 6px;
+}
+.dep-count.low { color: var(--gold); }
 
 /* Récapitulatif du cumul versé. Mis en avant : c'est lui qui fait décider de
    garder ou de résilier, pas le montant mensuel. */
