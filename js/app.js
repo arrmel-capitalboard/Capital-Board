@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814k';
+const APP_VERSION = '20260814l';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -17195,6 +17195,41 @@ function _depOccursIn(e, ym) {
 // Sans ça, comparer un mensuel et un annuel n'a aucun sens.
 function _depMonthly(e) { return _depAmt(e) / (DEP_FREQ[e.frequence] || 1); }
 
+/**
+ * Nombre d'échéances réellement passées depuis la première, et total versé.
+ *
+ * C'est le chiffre qui frappe : « Netflix, 13,49 €/mois » ne dit rien, « 256 €
+ * versés depuis janvier 2025 » se ressent. Il se calcule, il ne se stocke pas.
+ *
+ * Le mois en cours ne compte que si le jour de prélèvement est passé — sinon on
+ * annoncerait un versement qui n'a pas eu lieu. Une résiliation borne le
+ * décompte à son propre mois.
+ */
+function _depVersements(e) {
+  if (!e || !e.recurrent || !e.date) return { count: 0, total: 0 };
+  const debut = _depYm(e.date);
+  const ajd   = _depNowYm();
+  let fin = ajd;
+  if (e.dateFin && _depYm(e.dateFin) < fin) fin = _depYm(e.dateFin);
+  if (fin < debut) return { count: 0, total: 0 };
+
+  const pas = DEP_FREQ[e.frequence] || 1;
+  let count = Math.floor((_depIdx(fin) - _depIdx(debut)) / pas) + 1;
+
+  // La dernière échéance calculée tombe-t-elle ce mois-ci, avant le jour dit ?
+  const derniere = _depFromIdx(_depIdx(debut) + (count - 1) * pas);
+  if (derniere === ajd && new Date().getDate() < _depJour(e)) count -= 1;
+
+  count = Math.max(0, count);
+  return { count, total: count * _depAmt(e) };
+}
+
+// « janvier 2025 » à partir d'une date ISO.
+function _depMoisAn(d) {
+  const ym = _depYm(d);
+  return ym.length === 7 ? _depMonthName(ym) : '—';
+}
+
 function _depInitials(nom) {
   const words = String(nom || '?').trim().split(/[\s-]+/).filter(Boolean);
   if (!words.length) return '?';
@@ -17392,6 +17427,7 @@ function _depRowHtml(e, opt) {
   if (opt.recur) {
     meta.push(_escapeHtmlChat(DEP_FREQ_LABEL[e.frequence] || 'Tous les mois'));
     meta.push(_depJourLabel(e));
+    meta.push('depuis ' + _escapeHtmlChat(_depMoisAn(e.date)));
     if (opt.dead && e.dateFin) meta.push('résilié le ' + _depDateCourt(e.dateFin));
   } else {
     if (e.recurrent) {
@@ -17405,11 +17441,18 @@ function _depRowHtml(e, opt) {
     meta.push(_escapeHtmlChat(c.label));
   }
 
-  // Un abonnement trimestriel ou annuel n'est comparable qu'une fois ramené
-  // au mois : on l'affiche en second, sous le montant réellement prélevé.
-  const lisse = opt.recur && (DEP_FREQ[e.frequence] || 1) > 1
-    ? '<div class="dep-rsub">' + fmt(_depMonthly(e)) + ' / mois</div>'
-    : '';
+  // Sous le montant : le coût ramené au mois quand la fréquence n'est pas
+  // mensuelle — sinon un annuel n'est comparable à rien — et surtout le total
+  // déjà versé, qui est le chiffre parlant.
+  let sous = '';
+  if (opt.recur) {
+    const bouts = [];
+    if ((DEP_FREQ[e.frequence] || 1) > 1) bouts.push(fmt(_depMonthly(e)) + ' / mois');
+    const v = _depVersements(e);
+    if (v.count > 0) bouts.push(fmt(v.total) + ' versés');
+    if (bouts.length) sous = '<div class="dep-rsub">' + bouts.join(' · ') + '</div>';
+  }
+  const lisse = sous;
 
   return '<div class="dep-row' + (opt.dead ? ' dead' : '') + '" onclick="depOpenModal(\'' + _attr(e.id) + '\')" ' +
       'role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}">' +
@@ -17533,6 +17576,7 @@ window.depSetFreq = function(f) {
   _depForm.freq = f;
   document.querySelectorAll('#dep-f-freq button').forEach(b =>
     b.classList.toggle('active', b.dataset.freq === f));
+  depRecalc();
 };
 
 window.depToggleRecur = function() {
@@ -17540,13 +17584,51 @@ window.depToggleRecur = function() {
   const box = document.getElementById('dep-f-recur-fields');
   const on  = !!(rec && rec.checked);
   if (box) box.hidden = !on;
-  if (!on) return;
+  // Sur une récurrence, la date n'est plus celle de l'opération mais celle de
+  // la première échéance. Le libellé doit le dire, sinon on ne sait pas quoi
+  // saisir — et c'est de cette date que découle le total versé.
+  const lab = document.getElementById('dep-f-date-label');
+  if (lab) lab.textContent = on ? 'Abonné depuis' : 'Date';
+  if (!on) { depRecalc(); return; }
   depSetFreq(_depForm.freq);
   // Le jour de prélèvement part de la date saisie : c'est vrai dans la plupart
   // des cas, et la liste reste là pour le corriger quand ça ne l'est pas.
   const jour = document.getElementById('dep-f-jour');
   const date = _depVal('dep-f-date');
   if (jour && !jour.value && date) jour.value = String(Number(date.slice(8, 10)) || 1);
+  depRecalc();
+};
+
+// Récapitulatif vivant sous les champs de récurrence : depuis quand, combien
+// d'échéances, combien versé au total. Recalculé à chaque frappe — c'est ce
+// chiffre-là qui fait décider de garder ou de résilier.
+window.depRecalc = function() {
+  const box = document.getElementById('dep-f-recap');
+  if (!box) return;
+  const rec = document.getElementById('dep-f-recur');
+  const date = _depVal('dep-f-date');
+  const montant = _depParse(_depVal('dep-f-montant'));
+  if (!(rec && rec.checked) || !date || !isFinite(montant) || montant <= 0) {
+    box.hidden = true;
+    return;
+  }
+  const e = {
+    recurrent: true, date, montant,
+    frequence: _depForm.freq,
+    jour: _depVal('dep-f-jour') || null,
+    dateFin: _depVal('dep-f-fin') || null,
+  };
+  const v = _depVersements(e);
+  if (!v.count) {
+    box.hidden = false;
+    box.innerHTML = '<span class="dep-recap-l">Première échéance à venir</span>';
+    return;
+  }
+  box.hidden = false;
+  box.innerHTML =
+    '<span class="dep-recap-l">Depuis ' + _escapeHtmlChat(_depMoisAn(date)) + ' — ' +
+      v.count + (v.count > 1 ? ' échéances' : ' échéance') + '</span>' +
+    '<span class="dep-recap-v">' + fmt(v.total) + '</span>';
 };
 
 function _depSyncType() {

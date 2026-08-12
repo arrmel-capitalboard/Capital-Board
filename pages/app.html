@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260814k">
+<link rel="stylesheet" href="css/style.css?v=20260814l">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2419,11 +2419,14 @@
     <div class="dep-row2">
       <div class="form-group">
         <label class="form-label" for="dep-f-montant">Montant</label>
-        <input class="form-input" id="dep-f-montant" type="text" inputmode="decimal" placeholder="13,49">
+        <input class="form-input" id="dep-f-montant" type="text" inputmode="decimal" placeholder="13,49" oninput="depRecalc()">
       </div>
       <div class="form-group">
-        <label class="form-label" for="dep-f-date">Date</label>
-        <input class="form-input" id="dep-f-date" type="date">
+        <!-- Sur une récurrence, cette date n'est pas « la » date de l'opération
+             mais celle de la première échéance : le libellé bascule en
+             « Abonné depuis », sinon on ne sait pas quoi y mettre. -->
+        <label class="form-label" for="dep-f-date" id="dep-f-date-label">Date</label>
+        <input class="form-input" id="dep-f-date" type="date" onchange="depRecalc()">
       </div>
     </div>
 
@@ -2453,13 +2456,14 @@
       <div class="dep-row2">
         <div class="form-group">
           <label class="form-label" for="dep-f-jour">Prélevé le</label>
-          <select class="form-input dep-select" id="dep-f-jour"></select>
+          <select class="form-input dep-select" id="dep-f-jour" onchange="depRecalc()"></select>
         </div>
         <div class="form-group">
           <label class="form-label" for="dep-f-fin">Résilié le <span class="dep-opt">facultatif</span></label>
-          <input class="form-input" id="dep-f-fin" type="date">
+          <input class="form-input" id="dep-f-fin" type="date" onchange="depRecalc()">
         </div>
       </div>
+      <div class="dep-recap" id="dep-f-recap" hidden></div>
       <div class="dep-help">Une date de résiliation arrête le décompte après ce mois, sans effacer l'abonnement des mois qu'il a réellement coûtés.</div>
     </div>
 
@@ -3036,9 +3040,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260814k"></script>
+<script src="js/app.js?v=20260814l"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260814k"></script>
+<script src="js/onboarding.js?v=20260814l"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

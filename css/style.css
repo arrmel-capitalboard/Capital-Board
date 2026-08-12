@@ -4769,6 +4769,21 @@ body.has-demo-banner { padding-top: 40px; }
   color: var(--muted2); text-transform: none; margin-left: 6px;
 }
 .dep-help { font-size: 11px; color: var(--text3); margin-top: 7px; line-height: 1.5; }
+
+/* Récapitulatif du cumul versé. Mis en avant : c'est lui qui fait décider de
+   garder ou de résilier, pas le montant mensuel. */
+.dep-recap {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; margin-top: 4px; padding: 11px 13px;
+  background: rgba(245,183,49,.07);
+  border: 1px solid rgba(245,183,49,.2);
+  border-radius: 11px;
+}
+.dep-recap-l { font-size: 12px; color: var(--text2); line-height: 1.4; }
+.dep-recap-v {
+  font-family: var(--mono); font-size: 16px; font-weight: 700;
+  color: var(--gold); white-space: nowrap;
+}
 .dep-error {
   margin-top: 14px; padding: 10px 13px; border-radius: 10px;
   background: var(--negative-d); border: 1px solid rgba(255,77,106,.22);
