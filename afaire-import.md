@@ -1,6 +1,20 @@
 # Importer un relevé plutôt que tout retaper
 
-Note de conception, 12 août 2026. Rien n'est implémenté à ce jour.
+Note de conception, 12 août 2026.
+
+**État au 13 août 2026 : les trois voies sont livrées**, branchées sur les
+livrets. Le socle vit dans `js/import.js`, la suite de tests dans
+`scripts/t-import.cjs` (76 cas, en CI). Ce qui reste à faire est en fin de
+document.
+
+| Voie | État | Où |
+|---|---|---|
+| Relevé saisi | livré avant | fiche du livret, bloc « Relevé de la banque » |
+| **CSV** | **livré** | `CBImport.csv` |
+| **PDF** | **livré** | `CBImport.pdf`, pdf.js 6.2.108 hébergé chez nous |
+| **Captures (OCR)** | **livré** | `CBImport.ocr`, tesseract.js + dictionnaire fr |
+| Capture → modèle de vision | écarté | fait sortir le relevé de l'appareil |
+| Agrégation bancaire | ailleurs | `afaire-depenses.md`, section 6 |
 
 ---
 
@@ -116,25 +130,25 @@ le premier branchement, et la seule qui soit payante et réglementée.
 
 ---
 
-## Recommandation
+## Recommandation, et ce qui a été fait
 
-**Le PDF, et rien d'autre pour commencer.**
+La note recommandait « le PDF, et rien d'autre pour commencer ». Trois voies ont
+finalement été livrées ensemble, le 13 août 2026, dans cet ordre :
 
-Il est gratuit, exact, ne fait sortir aucune donnée, et couvre le besoin des deux
-modules. Il n'attend l'autorisation de personne.
+1. **Socle commun** — dépôt de fichier, extraction en lignes
+   `{ d, m, label }`, écran de validation ligne à ligne. `js/import.js`.
+2. **CSV** — la voie la plus simple, ajoutée en cours de route.
+3. **Livrets** — sortie branchée sur les mouvements, bouton dans la fiche.
+4. **PDF** — `pdf.js`, colonnes reconnues par leur position en X.
+5. **OCR local** — `tesseract.js`, pour les banques qui n'exposent leur relevé
+   que dans leur application mobile.
 
-Ordre proposé :
+Reste : **Dépenses**, qui n'a qu'à fournir un `onValider` — mais dont la
+catégorisation et la détection d'abonnements sont à reprendre de SpendBoard.
 
-1. **Socle commun** — dépôt de fichier, lecture `pdf.js`, extraction en lignes
-   `{ date, libellé, montant }`, écran de validation.
-2. **Livrets** — brancher la sortie sur les mouvements d'un livret, plus le
-   report au 31 décembre lu dans le relevé annuel.
-3. **Dépenses** — brancher la même sortie sur les opérations du mois, avec la
-   catégorisation et la détection d'abonnements déjà écrites dans SpendBoard.
-4. **OCR local** en repli, si des membres n'ont que des captures.
-
-Les étapes 2 et 3 partagent tout sauf leur destination. C'est le même travail
-fait une fois.
+Le choix de l'endroit est tranché : **un bouton dans chaque module**, pas un
+écran commun. Le socle est partagé, l'entrée ne l'est pas — « Importer un
+relevé » à côté de « Versement » et « Retrait » se comprend sans explication.
 
 ---
 
@@ -155,12 +169,32 @@ et réservée au repli.
 
 ---
 
-## Questions ouvertes
+## Ce qui reste à faire
 
-1. **Quelles banques d'abord ?** Il faut savoir où sont les comptes des membres.
-   Une question dans le questionnaire d'accueil suffirait à trancher.
-2. **Le relevé annuel suffit-il pour les livrets ?** Il donne le solde au
-   31 décembre et les intérêts versés. Avec les seules opérations de l'année en
-   cours, on couvre peut-être tout — à vérifier sur un vrai relevé.
-3. **Où vit l'import ?** Un écran commun aux deux modules, ou un bouton dans
-   chacun ? Le second est plus simple à comprendre, le premier à maintenir.
+1. **Le CSV a été ajouté aux cinq voies.** Il n'était pas dans la première
+   version de cette note, et il aurait dû l'être : il est plus simple que le
+   PDF — aucune bibliothèque, un découpage et deux motifs — et toutes les
+   banques françaises l'exportent depuis leur espace web. Il est désormais la
+   voie recommandée, le PDF venant en second.
+
+2. **Brancher la même sortie sur les Dépenses.** L'import rend
+   `[{ d, m, label }]` et ne sait rien de sa destination : le module Dépenses
+   n'a qu'à fournir un `onValider`. C'est le même travail fait une fois, comme
+   annoncé — mais la catégorisation et la détection d'abonnements restent à
+   écrire côté Dépenses.
+
+3. **Adaptateurs PDF par banque.** L'analyse générique repère les colonnes
+   Débit / Crédit / Montant / Solde par leur position en X, ce qui couvre la
+   forme habituelle d'un relevé. Aucun adaptateur nommé n'est écrit : à faire
+   quand un vrai PDF résiste, banque par banque, pas avant.
+
+4. **Le relevé annuel donne-t-il le solde au 31 décembre ?** Toujours ouvert —
+   à vérifier sur un vrai relevé annuel. C'est la ligne de report, celle qui
+   manque le plus, et l'obtenir automatiquement supprimerait le dernier calcul
+   à la main.
+
+5. **Quelles banques d'abord ?** Il faut savoir où sont les comptes des
+   membres. Une question dans le questionnaire d'accueil suffirait à trancher.
+
+6. **`worker-src 'self'`** quand le CSP sera complété (`afaire.md`, point B) :
+   pdf.js décode dans un worker, et tesseract.js aussi.

@@ -720,6 +720,188 @@ window.CBImport.pdf = (function () {
   return { lire, analyser, _lignesDePage, _montantsDe, _colonnes };
 })();
 
+// ═══════════════════════════════════════════════════════════════════════════
+//  VOIE 3 — CAPTURES D'ÉCRAN, LUES EN LOCAL
+//
+//  Le repli, et il est classé dernier pour une raison : sur une capture de
+//  téléphone la reconnaissance du texte est correcte, mais sur les chiffres
+//  elle ne l'est pas assez. Un 8 lu 3 fausse un solde sans rien signaler.
+//  D'où l'écran de validation, obligatoire ici plus qu'ailleurs.
+//
+//  Cela dit c'est la seule voie disponible quand la banque n'expose son relevé
+//  que dans son application mobile — cas du CIC, dont l'appli affiche les
+//  opérations sans jamais proposer de fichier.
+//
+//  Une capture d'appli mobile n'a pas la forme d'un relevé : pas de colonnes,
+//  et surtout pas de date par ligne. La date est un en-tête de groupe — « 06
+//  août » — sous lequel se rangent plusieurs opérations. L'analyse en tient
+//  compte, sans quoi aucune ligne n'aurait de date.
+//
+//  tesseract.js (Apache-2.0) et son dictionnaire français sont hébergés chez
+//  nous. 6,5 Mo, chargés une seule fois, et seulement si une image est déposée.
+// ═══════════════════════════════════════════════════════════════════════════
+
+window.CBImport.ocr = (function () {
+  'use strict';
+
+  const DIR = 'assets/vendor/tesseract/';
+  let _worker = null;
+
+  function _url(f) { return new URL(DIR + f, document.baseURI).href; }
+
+  async function _charger(progres) {
+    if (_worker) return _worker;
+    if (!window.Tesseract) {
+      if (progres) progres('Chargement du lecteur de texte…');
+      await new Promise((ok, ko) => {
+        const s = document.createElement('script');
+        s.src = _url('tesseract.min.js');
+        s.onload = ok;
+        s.onerror = () => ko(new Error('Le lecteur de texte n’a pas pu être chargé.'));
+        document.head.appendChild(s);
+      });
+    }
+    if (progres) progres('Préparation du dictionnaire français…');
+    // workerBlobURL: false — le worker est servi depuis notre domaine plutôt
+    // que recopié dans une URL blob:, qu'un script-src futur refuserait.
+    _worker = await window.Tesseract.createWorker('fra', 1, {
+      workerPath: _url('worker.min.js'),
+      corePath:   _url(''),
+      langPath:   _url(''),
+      workerBlobURL: false,
+      logger: m => {
+        if (progres && m && m.status === 'recognizing text') {
+          progres('Lecture de l’image… ' + Math.round((m.progress || 0) * 100) + ' %');
+        }
+      },
+    });
+    return _worker;
+  }
+
+  async function lire(file, progres) {
+    const worker = await _charger(progres);
+    if (progres) progres('Lecture de l’image…');
+    const res = await worker.recognize(file);
+    // Le worker est relâché : rien de l'image ne reste en mémoire.
+    await worker.terminate();
+    _worker = null;
+    return analyserTexte((res && res.data && res.data.text) || '');
+  }
+
+  // ─── Analyse du texte reconnu ────────────────────────────────────────────
+
+  const MOIS = {
+    janvier: 1, fevrier: 2, mars: 3, avril: 4, mai: 5, juin: 6, juillet: 7,
+    aout: 8, septembre: 9, octobre: 10, novembre: 11, decembre: 12,
+    janv: 1, fev: 2, avr: 4, juil: 7, sept: 9, oct: 10, nov: 11, dec: 12,
+  };
+
+  function _norm(s) {
+    return String(s || '').toLowerCase().normalize('NFD')
+      .replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  // « 06 août », « 31 décembre 2025 », « 06/08/2026 ». Sans année, c'est
+  // l'année en cours — sauf si la date tombe dans le futur, auquel cas le
+  // relevé parle de l'année précédente.
+  function enTeteDate(ligne, aujourdHui) {
+    const n = _norm(ligne);
+    const iso = window.CBImport.csv.parseDate(n);
+    if (iso) return iso;
+    const m = /^(\d{1,2})\s+([a-z]+)\.?\s*(\d{4})?$/.exec(n);
+    if (!m) return null;
+    const mois = MOIS[m[2]];
+    if (!mois) return null;
+    const today = aujourdHui || new Date();
+    let an = m[3] ? Number(m[3]) : today.getFullYear();
+    const faire = (a) => a + '-' + String(mois).padStart(2, '0') + '-' + String(m[1]).padStart(2, '0');
+    if (!m[3]) {
+      const d = new Date(faire(an) + 'T12:00:00');
+      if (d.getTime() > today.getTime()) an -= 1;
+    }
+    return faire(an);
+  }
+
+  // Tesseract confond volontiers O et 0, l et 1. La correction se fait mot par
+  // mot, et seulement sur un mot qui contient déjà un chiffre : « Solde » ne
+  // doit pas devenir « 501de », mais « 1O5,OO » doit devenir « 105,00 ».
+  //
+  // Écrit sans lookbehind à dessein : `(?<=…)` n'existe qu'à partir de
+  // Safari 16.4, et une erreur de syntaxe ici emporterait tout le fichier, donc
+  // les trois voies d'import, sur un iPhone un peu ancien.
+  function _redresser(s) {
+    return String(s || '').split(' ').map(mot => {
+      if (!/\d/.test(mot)) return mot;
+      // Un mot déjà mêlé de lettres et de chiffres reste ambigu — « C/C » ou un
+      // numéro de compte. On ne redresse que ce qui ressemble à un nombre.
+      if (!/^[+\-−–]?[\dOoLlIiSs  .,]+(?:€|EUR)?$/i.test(mot)) return mot;
+      return mot.replace(/[Oo]/g, '0').replace(/[LlIi]/g, '1').replace(/[Ss]/g, '5');
+    }).join(' ');
+  }
+
+  // Un montant en fin de ligne, avec son signe. Le signe est l'information
+  // essentielle et la seule que l'écran mobile donne vraiment : « + 735,00 € »
+  // est un versement, « - 105,00 € » un retrait.
+  const RE_MONTANT = /([+\-−–])?\s*(\d[\d  .]*[,.]\d{2})\s*(?:€|EUR)/i;
+
+  function analyserTexte(texte, aujourdHui) {
+    const lignes = String(texte || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
+    const out = [];
+    let dateCourante = null;
+    let attente = [];        // libellés lus depuis le dernier montant
+
+    lignes.forEach(brut => {
+      const ligne = _redresser(brut);
+
+      const d = enTeteDate(ligne, aujourdHui);
+      if (d) { dateCourante = d; attente = []; return; }
+
+      const m = RE_MONTANT.exec(ligne);
+      if (!m) {
+        // Ni date ni montant : c'est un libellé, ou du décor. On le garde pour
+        // la prochaine opération — sur mobile le libellé précède le montant.
+        const t = ligne.replace(/\s+/g, ' ').trim();
+        if (t.length > 2 && !/^(virements? internes?|hors budget[, ]*divers|op[ée]rations?|caract[ée]ristiques?|retour|solde\s*:?)$/i.test(_norm(t))) {
+          attente.push(t);
+        }
+        return;
+      }
+
+      const val = window.CBImport.csv.parseMontant(m[2]);
+      if (!isFinite(val) || val === 0) return;
+      // − (U+2212) et – (tiret demi-cadratin) sortent régulièrement d'un OCR à
+      // la place du trait d'union.
+      const negatif = m[1] === '-' || m[1] === '−' || m[1] === '–';
+
+      // Le libellé peut être sur la même ligne que le montant, ou au-dessus.
+      const surPlace = ligne.slice(0, m.index).replace(/\s+/g, ' ').trim();
+      const label = (surPlace.length > 2 ? surPlace : attente.join(' ')).slice(0, 80);
+      attente = [];
+
+      out.push({
+        d: dateCourante,
+        m: negatif ? -val : val,
+        label: label,
+        // Un montant sans signe explicite est un pari. L'écran de validation
+        // le montre comme les autres, mais on garde l'information au cas où.
+        signeDeduit: !m[1],
+      });
+    });
+
+    // Une opération lue avant toute date n'est pas exploitable : la capture a
+    // été rognée au-dessus de l'en-tête de groupe. On la rend quand même, à la
+    // date du jour, pour que le membre la corrige plutôt que de la perdre.
+    const defaut = (aujourdHui || new Date()).toISOString().slice(0, 10);
+    return out.filter(o => o.m !== 0).map(o => ({
+      d: o.d || defaut,
+      m: o.m,
+      label: o.label,
+    }));
+  }
+
+  return { lire, analyserTexte, enTeteDate, _redresser };
+})();
+
 // Exposé pour la suite de tests hors navigateur (scripts/t-import.cjs).
 window.CBImport._outils = window.CBImport.csv;
 

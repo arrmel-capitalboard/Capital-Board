@@ -232,6 +232,70 @@ chk('PDF : deux lignes distinctes', groupes.length, 2);
 chk('PDF : fragments regroupés',    groupes[0].items.length, 2);
 chk('PDF : haut de page en premier', groupes[0].items[0].str, 'a');
 
+// ── Voie OCR ────────────────────────────────────────────────────────────────
+// tesseract.js n'est pas chargé : on lui donne le texte qu'il rendrait, et on
+// vérifie l'analyse. Date figée pour que « 06 août » soit reproductible.
+const O = CB.ocr;
+const LE13AOUT = new Date('2026-08-13T12:00:00');
+
+// Le cas réel : capture de l'appli CIC. Aucune date par ligne, un en-tête de
+// groupe, le libellé au-dessus du montant.
+const capture = [
+  '06 août',
+  'Vir De M Armel Plantier',
+  'Virements internes',
+  '+ 735,00 €',
+  '01 août',
+  'Nouveau Taux Du Livret Jeune',
+  'Hors budget, divers',
+  '+ 0,00 €',
+  '30 juillet',
+  'Vir C/C Contrat Personnel Parcours',
+  'Virements internes',
+  '- 150,00 €',
+].join('\n');
+const rO = O.analyserTexte(capture, LE13AOUT);
+chk('OCR : ligne à 0 € écartée', rO.length, 2);
+chk('OCR : date héritée du groupe', rO[0].d, '2026-08-06');
+chk('OCR : versement positif',     rO[0].m, 735);
+chk('OCR : libellé pris au-dessus', rO[0].label, 'Vir De M Armel Plantier');
+chk('OCR : « Virements internes » écarté',
+  rO[0].label.indexOf('Virements internes'), -1);
+chk('OCR : retrait négatif', rO[1].m, -150);
+chk('OCR : date du second groupe', rO[1].d, '2026-07-30');
+
+// En-têtes de date sous toutes leurs formes.
+chk('OCR : jour et mois',        O.enTeteDate('06 août', LE13AOUT), '2026-08-06');
+chk('OCR : mois abrégé',         O.enTeteDate('06 janv.', LE13AOUT), '2026-01-06');
+chk('OCR : année explicite',     O.enTeteDate('31 décembre 2025', LE13AOUT), '2025-12-31');
+chk('OCR : date au format jj/mm/aaaa', O.enTeteDate('06/08/2026', LE13AOUT), '2026-08-06');
+// Une date qui tombe après aujourd'hui appartient à l'année précédente : un
+// relevé ne parle jamais du futur.
+chk('OCR : décembre est celui d’avant', O.enTeteDate('20 décembre', LE13AOUT), '2025-12-20');
+chk('OCR : libellé n’est pas une date', O.enTeteDate('Vir De M Armel Plantier', LE13AOUT), null);
+
+// Signes malmenés par l'OCR : U+2212 et le tiret demi-cadratin.
+chk('OCR : signe moins Unicode',
+  O.analyserTexte('06 août\nRetrait\n− 105,00 €', LE13AOUT)[0].m, -105);
+chk('OCR : tiret demi-cadratin',
+  O.analyserTexte('06 août\nRetrait\n– 105,00 €', LE13AOUT)[0].m, -105);
+
+// Confusions de caractères sur les chiffres.
+chk('OCR : O lu pour zéro',  O._redresser('1O5,OO €'), '105,00 €');
+chk('OCR : mot sans chiffre intact', O._redresser('Solde'), 'Solde');
+chk('OCR : mot mêlé laissé tel quel', O._redresser('Vir C/C 2026'), 'Vir C/C 2026');
+
+// Capture rognée : une opération lue avant tout en-tête garde la date du jour
+// plutôt que d'être perdue.
+const rognee = O.analyserTexte('Vir De M Armel Plantier\n+ 200,00 €', LE13AOUT);
+chk('OCR : sans en-tête, date du jour', rognee[0].d, '2026-08-13');
+chk('OCR : sans en-tête, montant gardé', rognee[0].m, 200);
+
+// Montant et libellé sur la même ligne — mise en page de tablette.
+chk('OCR : libellé sur la ligne du montant',
+  O.analyserTexte('06 août\nVir De M Armel Plantier + 735,00 €', LE13AOUT)[0].label,
+  'Vir De M Armel Plantier');
+
 console.log(t.join('\n'));
 const ko = t.filter(x => x.startsWith('FAIL')).length;
 console.log('\n' + (t.length - ko) + '/' + t.length + (ko ? '  >>> ECHEC' : '  >>> tout passe'));
