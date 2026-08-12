@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814i';
+const APP_VERSION = '20260814j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -382,7 +382,7 @@ async function loadAllUserData(uid) {
   // Enregistrer l'email pour la recherche par email (gestion des rôles)
   const _u = fbAuth.currentUser;
   if (_u) setFirestoreDoc(firestoreDoc(db, 'users', uid), { email: _u.email }, { merge: true }).catch(() => {});
-  const cols = ['portfolio', 'transactions', 'versements', 'watchlist', 'dailyValues', 'alerts', 'trCohort', 'divIgnored', 'nominatif'];
+  const cols = ['portfolio', 'transactions', 'versements', 'watchlist', 'dailyValues', 'alerts', 'trCohort', 'divIgnored', 'nominatif', 'depenses'];
   await Promise.all(cols.map(async col => {
     try {
       const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', col));
@@ -481,6 +481,14 @@ function saveNominatif(user, data) { _fsWrite(user||currentUser, 'nominatif', da
 
 function getAlerts(user)       { return _localCache[(user||currentUser) + '_alerts']       || []; }
 function saveAlerts(user, data)       { _fsWrite(user||currentUser, 'alerts',       data); }
+
+// depenses : le budget du membre — opérations ponctuelles et lignes récurrentes
+// mélangées dans une seule liste. Une récurrence est stockée UNE fois (sa règle),
+// jamais recopiée d'un mois sur l'autre : c'est l'affichage qui la reprojette.
+// Doc unique, comme le reste ; une entrée pèse ~130 octets, la limite Firestore
+// d'1 Mo laisse de la marge pour plusieurs milliers de lignes.
+function getDepenses(user)  { return _localCache[(user||currentUser) + '_depenses'] || []; }
+function saveDepenses(user, data) { _fsWrite(user||currentUser, 'depenses', data); }
 
 // ─── LIAISON DISCORD ──────────────────────────────────────────────
 // Flux : l'utilisateur tape /link sur Discord → le bot crée
@@ -2501,11 +2509,11 @@ async function startApp(user) {
     _getAppConfig().then(c => {
       applySocialLinks(c.social);
       applyNavLayout(_navFromConfig(c));
-      applyFeatureFlags(c.features);
+      applyFeatureFlags(c.features, c.beta);
     }).catch(() => {
       applySocialLinks(null);
       applyNavLayout(null);
-      applyFeatureFlags({});
+      applyFeatureFlags({}, {});
     });
     try { _startPresenceHeartbeat(); } catch(e) { console.warn('presence:', e); }
     try { _processDiscordLink(user); } catch(e) { console.warn('discord link:', e); }
@@ -3344,10 +3352,35 @@ window.setAvatarHue = async function(deg) {
 
 // ─── Feature flags (config/app.features) ───
 const FLAGGABLE = ['watchlist','dividendes','avantages','benchmark','projections','earnings','recap','actualites','favoris','idees','depenses','cto','crypto','fiscalite','av','per','livrets','immo','or','nonco'];
+
+// Sections qui portent DEUX vues dans la même page : le teaser « Bientôt » et
+// le module réel. Elles seules acceptent l'état bêta — ailleurs il ne voudrait
+// rien dire, la page EST le teaser et il n'y a rien d'autre à montrer.
+const BETA_CAPABLE = ['depenses'];
+
 let _featureFlags = {};
+// config/app.beta = { depenses: true }. Séparé de `features` pour que couper
+// une section reste possible sans toucher à son état bêta, et inversement.
+let _betaFlags = {};
+
 function _isFeatureOn(key) { return _featureFlags[key] !== false; }
-function applyFeatureFlags(features) {
+// Bêta = la section est visible dans le menu pour tout le monde, mais seul
+// l'admin voit le module ; les autres restent sur le teaser.
+function _isFeatureBeta(key) { return BETA_CAPABLE.includes(key) && _betaFlags[key] === true; }
+// Trois états pour l'éditeur admin : masqué / bêta / ouvert.
+function _featureState(key) {
+  if (!_isFeatureOn(key)) return 'off';
+  return _isFeatureBeta(key) ? 'beta' : 'on';
+}
+// La vraie question posée par les pages à double vue : montre-t-on le module ?
+function _isModuleLive(key) {
+  if (!_isFeatureOn(key)) return false;
+  return _isFeatureBeta(key) ? isAdmin() : true;
+}
+
+function applyFeatureFlags(features, beta) {
   _featureFlags = features || {};
+  if (beta !== undefined) _betaFlags = beta || {};
   FLAGGABLE.forEach(key => {
     const on = _featureFlags[key] !== false;
     const needles = ["showPage('" + key + "')", "showPageMobile('" + key + "')", "showPeaTab('" + key + "')"];
@@ -3358,8 +3391,38 @@ function applyFeatureFlags(features) {
       }
     });
   });
+  _applyBetaBadges();
   const active = (document.querySelector('.page.active') || {}).id;
   if (active) _syncPeaTabs(active.replace('page-', ''));
+  // Le module peut venir d'être ouvert ou refermé sous les pieds de l'admin.
+  if (document.getElementById('depenses-app')) renderDepenses();
+}
+
+// Le badge « Bientôt » est écrit en dur dans le menu, sur ordinateur comme dans
+// le tiroir mobile. Pour une section à double vue il ment dès qu'elle s'ouvre :
+// on le réécrit selon l'état réel, et on le retire une fois la section publiée.
+function _applyBetaBadges() {
+  BETA_CAPABLE.forEach(key => {
+    const live = _isModuleLive(key);
+    const beta = _isFeatureBeta(key);
+    document.querySelectorAll('[onclick]').forEach(el => {
+      const oc = el.getAttribute('onclick') || '';
+      if (!oc.includes("showPage('" + key + "')") && !oc.includes("showPageMobile('" + key + "')")) return;
+      const badge = el.querySelector('.nav-soon');
+      if (!badge) return;
+      if (beta && isAdmin()) {
+        badge.textContent = 'Bêta';
+        badge.style.color = '#f5b731';
+        badge.hidden = false;
+      } else if (live) {
+        badge.hidden = true;
+      } else {
+        badge.textContent = 'Bientôt';
+        badge.style.color = '';
+        badge.hidden = false;
+      }
+    });
+  });
 }
 
 // ─── Organisation du menu (config/app.nav) ───
@@ -3603,6 +3666,7 @@ function _runPageHook(id) {
   if (id === 'dividendes')    initDividendes();
   if (id === 'avantages')     initAvantages();
   if (id === 'patrimoine')    renderPatrimoine();
+  if (id === 'depenses')      renderDepenses();
 }
 
 // Changer de page sans remonter laissait l'utilisateur au milieu de la
@@ -14404,8 +14468,8 @@ async function renderAdminPage() {
   if (signupT) signupT.checked = signupOpen;
   _adminSignupStatus(signupOpen);
 
-  // Feature flags (on/off) — intégrés à l'éditeur de menu ci-dessous
-  applyFeatureFlags(cfg.features || {});
+  // Feature flags (masqué / bêta / ouvert) — intégrés à l'éditeur de menu ci-dessous
+  applyFeatureFlags(cfg.features || {}, cfg.beta || {});
 
   // Éditeur d'organisation du menu
   const savedNav = _navFromConfig(cfg);
@@ -14444,12 +14508,51 @@ async function adminToggleFeature(key, el) {
     await _setAppConfig({ features: { [key]: on } });
     _audit('feature', key + '=' + (on ? 'on' : 'off'));
     _featureFlags[key] = on;
-    applyFeatureFlags(_featureFlags);
+    applyFeatureFlags(_featureFlags, _betaFlags);
     if (_navDraft) renderNavEditor();
   } catch (e) {
     console.error('[admin] feature flag:', e);
     el.checked = !on;
   } finally { el.disabled = false; }
+}
+
+// Sections à double vue : un seul réglage à trois crans plutôt qu'un
+// interrupteur plus une case. « Bêta » ouvre le module à l'admin seul, les
+// membres continuent de voir la page « Bientôt ».
+async function adminSetFeatureState(key, state) {
+  if (!isAdmin() || !BETA_CAPABLE.includes(key)) return;
+  if (_featureState(key) === state) return;
+  const prevOn = _featureFlags[key];
+  const prevBeta = _betaFlags[key];
+  const on   = state !== 'off';
+  const beta = state === 'beta';
+  _featureFlags[key] = on;
+  _betaFlags[key]    = beta;
+  applyFeatureFlags(_featureFlags, _betaFlags);
+  renderNavEditor();
+  try {
+    await _setAppConfig({ features: { [key]: on }, beta: { [key]: beta } });
+    _audit('feature', key + '=' + state);
+  } catch (e) {
+    console.error('[admin] feature state:', e);
+    _featureFlags[key] = prevOn;
+    _betaFlags[key]    = prevBeta;
+    applyFeatureFlags(_featureFlags, _betaFlags);
+    renderNavEditor();
+  }
+}
+
+// Rendu du sélecteur à trois crans, à la place de l'interrupteur.
+function _featureStateCtrl(key) {
+  const cur = _featureState(key);
+  const opt = (val, label, title) =>
+    '<button type="button" title="' + title + '" onclick="adminSetFeatureState(\'' + key + '\',\'' + val + '\')"' +
+    ' class="adm-tri-opt' + (cur === val ? ' active ' + val : '') + '">' + label + '</button>';
+  return '<span class="adm-tri">' +
+    opt('off',  'Masqué', 'Invisible dans le menu, pour tout le monde') +
+    opt('beta', 'Bêta',   'Le module ne s\'ouvre que pour vous ; les membres voient « Bientôt »') +
+    opt('on',   'Ouvert', 'Module visible par tous les membres') +
+  '</span>';
 }
 
 // ─── Éditeur d'organisation du menu (admin) ───
@@ -14482,7 +14585,9 @@ function renderNavEditor() {
     const items = (cat.items || []).map((key, ii) => {
       const flaggable = FLAGGABLE.includes(key);
       const on = _isFeatureOn(key);
-      const flagCtrl = flaggable
+      const flagCtrl = BETA_CAPABLE.includes(key)
+        ? _featureStateCtrl(key)
+        : flaggable
         ? '<label class="toggle-switch" style="transform:scale(.78);transform-origin:right center" title="Activer / masquer"><input type="checkbox" ' + (on ? 'checked' : '') + ' onchange="adminToggleFeature(\'' + key + '\',this)"><span class="toggle-track"></span></label>'
         : '<span style="font-size:8.5px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">core</span>';
       const dim = flaggable && !on ? 'opacity:.45' : '';
@@ -14491,7 +14596,7 @@ function renderNavEditor() {
         ? '<input value="' + ((_socialDraft && _socialDraft[key]) || '').replace(/"/g, '&quot;') + '" onchange="adminNavSetSocial(\'' + key + '\',this)" placeholder="https://…" spellcheck="false" style="width:100%;margin:5px 0 0;background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text2);font-size:11.5px;padding:6px 9px;font-family:var(--mono,monospace);outline:none;box-sizing:border-box">'
         : '';
       return '<div style="padding:7px 10px;background:var(--s2);border:1px solid var(--border);border-radius:9px;margin-bottom:5px">' +
-        '<div style="display:flex;align-items:center;justify-content:space-between">' +
+        '<div style="display:flex;align-items:center;justify-content:space-between;gap:8px;flex-wrap:wrap">' +
           '<span style="font-size:12.5px;color:var(--text);' + dim + '">' + (SECTION_LABELS[key] || key) + '</span>' +
           '<span style="display:flex;gap:6px;align-items:center">' +
             flagCtrl +
@@ -16832,6 +16937,503 @@ function _updateIdeasBadge() {
 }
 
 window.renderIdeasPage = renderIdeasPage;
+
+// ═══════════════════════════════════════════════════════════════════
+//  DÉPENSES & ABONNEMENTS
+//
+//  Une seule liste pour deux natures : ce qui arrive une fois (un plein
+//  d'essence) et ce qui revient (Netflix, le salaire). La récurrence est
+//  une RÈGLE stockée une fois — jamais une occurrence recopiée chaque
+//  mois. Tout l'affichage reprojette cette règle sur le mois consulté,
+//  ce qui rend l'historique juste sans jamais rien dupliquer.
+//
+//  Un abonnement résilié garde sa `dateFin` : il cesse d'être compté
+//  après, mais reste dans les mois qu'il a réellement coûtés.
+// ═══════════════════════════════════════════════════════════════════
+
+const DEP_CATS = {
+  depense: [
+    { key: 'abonnements', label: 'Abonnements', color: '#818cf8' },
+    { key: 'logement',    label: 'Logement',    color: '#f5b731' },
+    { key: 'courses',     label: 'Courses',     color: '#4ade80' },
+    { key: 'transport',   label: 'Transport',   color: '#60a5fa' },
+    { key: 'loisirs',     label: 'Loisirs',     color: '#c084fc' },
+    { key: 'sante',       label: 'Santé',       color: '#f472b6' },
+    { key: 'autre',       label: 'Autre',       color: '#8892a8' },
+  ],
+  revenu: [
+    { key: 'salaire',   label: 'Salaire',     color: '#00e09e' },
+    { key: 'freelance', label: 'Freelance',   color: '#2dd4bf' },
+    { key: 'loyer',     label: 'Loyer perçu', color: '#a3e635' },
+    { key: 'aides',     label: 'Aides',       color: '#38bdf8' },
+    { key: 'autrerev',  label: 'Autre',       color: '#8892a8' },
+  ],
+};
+const DEP_FREQ       = { mensuel: 1, trimestriel: 3, annuel: 12 };
+const DEP_FREQ_LABEL = { mensuel: 'Tous les mois', trimestriel: 'Tous les 3 mois', annuel: 'Une fois par an' };
+
+let _depMonth    = null;        // 'YYYY-MM' consulté
+let _depFilter   = 'tous';      // filtre de la liste d'opérations
+let _depDeadOpen = false;       // repli des abonnements résiliés
+let _depEditId   = null;        // opération en cours d'édition, null = création
+let _depForm     = { type: 'depense', cat: 'abonnements', freq: 'mensuel' };
+
+function _depCatList(type) { return DEP_CATS[type === 'revenu' ? 'revenu' : 'depense']; }
+function _depCat(type, key) {
+  const list = _depCatList(type);
+  return list.find(c => c.key === key) || list[list.length - 1];
+}
+function _depAmt(e) { const n = Number(e && e.montant); return isFinite(n) ? Math.abs(n) : 0; }
+function _depYm(d)  { return String(d || '').slice(0, 7); }
+function _depNowYm() {
+  const d = new Date();
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0');
+}
+// Index absolu en mois : rend les comparaisons et les décalages triviaux.
+function _depIdx(ym) { const p = ym.split('-'); return Number(p[0]) * 12 + (Number(p[1]) - 1); }
+function _depFromIdx(i) { return Math.floor(i / 12) + '-' + String((i % 12) + 1).padStart(2, '0'); }
+function _depMonthName(ym) {
+  const p = ym.split('-');
+  return new Date(Number(p[0]), Number(p[1]) - 1, 1)
+    .toLocaleDateString('fr-FR', { month: 'long', year: 'numeric' });
+}
+function _depDay(d) { return Number(String(d || '').slice(8, 10)) || 1; }
+
+// L'abonnement tourne-t-il encore au mois demandé ? Le mois de la résiliation
+// compte : résilié le 20 mars, il a bien été prélevé en mars.
+function _depIsLive(e, ym) {
+  if (!e.recurrent) return false;
+  if (_depYm(e.date) > ym) return false;
+  return !e.dateFin || _depYm(e.dateFin) >= ym;
+}
+// L'opération tombe-t-elle sur ce mois ? Pour une récurrence, il faut en plus
+// que le mois soit sur le pas de la fréquence depuis le premier prélèvement.
+function _depOccursIn(e, ym) {
+  if (!e || !e.date) return false;
+  if (!e.recurrent) return _depYm(e.date) === ym;
+  if (!_depIsLive(e, ym)) return false;
+  const step = DEP_FREQ[e.frequence] || 1;
+  return (_depIdx(ym) - _depIdx(_depYm(e.date))) % step === 0;
+}
+// Coût lissé sur le mois : un abonnement annuel à 89 € pèse 7,42 €/mois.
+// Sans ça, comparer un mensuel et un annuel n'a aucun sens.
+function _depMonthly(e) { return _depAmt(e) / (DEP_FREQ[e.frequence] || 1); }
+
+function _depInitials(nom) {
+  const words = String(nom || '?').trim().split(/[\s-]+/).filter(Boolean);
+  if (!words.length) return '?';
+  if (words.length === 1) return words[0].slice(0, 2).toUpperCase();
+  return (words[0][0] + words[1][0]).toUpperCase();
+}
+
+// ─── Rendu ───
+
+function renderDepenses() {
+  const teaser = document.getElementById('depenses-teaser');
+  const app    = document.getElementById('depenses-app');
+  if (!teaser || !app) return;
+  const live = _isModuleLive('depenses');
+  teaser.hidden = live;
+  app.hidden    = !live;
+  if (!live) return;
+  const note = document.getElementById('dep-beta-note');
+  if (note) note.hidden = !_isFeatureBeta('depenses');
+  if (!_depMonth) _depMonth = _depNowYm();
+  _depRender();
+}
+
+function _depRender() {
+  const ym  = _depMonth;
+  const all = getDepenses();
+
+  const lab = document.getElementById('dep-month-label');
+  if (lab) {
+    lab.textContent = _depMonthName(ym);
+    lab.classList.toggle('off', ym !== _depNowYm());
+  }
+
+  const inMonth = all.filter(e => _depOccursIn(e, ym));
+  const rev = inMonth.filter(e => e.type === 'revenu').reduce((s, e) => s + _depAmt(e), 0);
+  const dep = inMonth.filter(e => e.type !== 'revenu').reduce((s, e) => s + _depAmt(e), 0);
+
+  _depRenderKpis(rev, dep, inMonth);
+  _depRenderRecur(all, ym);
+  _depRenderOps(inMonth, ym);
+  _depRenderSplit(inMonth);
+}
+
+function _depRenderKpis(rev, dep, inMonth) {
+  const reste = rev - dep;
+  const hero  = document.getElementById('dep-hero');
+  if (hero) hero.classList.toggle('neg', reste < 0);
+  _depText('dep-k-reste', fmt(reste));
+
+  // Taux d'épargne : sans revenu saisi il ne veut rien dire, on le remplace
+  // par l'invitation à en saisir un plutôt que par un « 0 % » trompeur.
+  const pill = document.getElementById('dep-k-taux');
+  const hint = document.getElementById('dep-k-hint');
+  if (pill && hint) {
+    if (rev > 0) {
+      pill.hidden = false;
+      pill.textContent = Math.round((reste / rev) * 100) + ' % de vos revenus';
+      hint.textContent = reste > 0 ? 'soit ' + fmt(reste * 12) + ' sur douze mois' : '';
+    } else {
+      pill.hidden = true;
+      hint.textContent = inMonth.length
+        ? 'Ajoutez un revenu pour obtenir votre taux d\'épargne.'
+        : '';
+    }
+  }
+
+  const total = rev + dep;
+  _depWidth('dep-flow-in',  total ? (rev / total) * 100 : 0);
+  _depWidth('dep-flow-out', total ? (dep / total) * 100 : 0);
+
+  const revRec = inMonth.filter(e => e.type === 'revenu' && e.recurrent).reduce((s, e) => s + _depAmt(e), 0);
+  const abos   = inMonth.filter(e => e.type !== 'revenu' && e.recurrent).reduce((s, e) => s + _depAmt(e), 0);
+  _depText('dep-k-rev', fmt(rev));
+  _depText('dep-k-rev-sub', revRec ? 'dont ' + fmt(revRec) + ' de revenus fixes' : 'aucun revenu fixe saisi');
+  _depText('dep-k-dep', fmt(dep));
+  _depText('dep-k-dep-sub', abos ? 'dont ' + fmt(abos) + ' de prélèvements récurrents' : 'aucun prélèvement récurrent');
+}
+
+function _depRenderRecur(all, ym) {
+  // Les revenus récurrents ne sont pas des charges : ils vivent dans la liste
+  // des opérations, pas dans cette carte.
+  const charges = all.filter(e => e.type !== 'revenu' && e.recurrent);
+  const actifs  = charges.filter(e => _depIsLive(e, ym)).sort((a, b) => _depMonthly(b) - _depMonthly(a));
+  const morts   = charges.filter(e => !_depIsLive(e, ym) && e.dateFin);
+
+  const mensuel = actifs.reduce((s, e) => s + _depMonthly(e), 0);
+  _depText('dep-recur-sub', actifs.length
+    ? actifs.length + (actifs.length > 1 ? ' actifs' : ' actif') + ' · ' + fmt(mensuel) + ' par mois en moyenne'
+    : 'Rien de récurrent pour l\'instant');
+  _depText('dep-recur-year', fmt(mensuel * 12));
+
+  const list = document.getElementById('dep-recur-list');
+  if (list) {
+    list.innerHTML = actifs.length
+      ? actifs.map(e => _depRowHtml(e, { recur: true })).join('')
+      : _depEmpty('Vos abonnements apparaîtront ici',
+          'Netflix, forfait mobile, salle de sport : saisis une fois, ils sont recomptés chaque mois tout seuls.',
+          'Ajouter un abonnement');
+  }
+
+  // Résiliés : repliés par défaut. Gardés parce qu'ils expliquent les mois
+  // passés — les effacer creuserait un trou dans l'historique.
+  const dead = document.getElementById('dep-recur-dead');
+  if (dead) {
+    dead.innerHTML = morts.length
+      ? '<button class="dep-dead-toggle" onclick="depToggleDead()">' +
+          (_depDeadOpen ? '▾' : '▸') + ' Résiliés (' + morts.length + ')' +
+        '</button>' +
+        (_depDeadOpen ? morts.map(e => _depRowHtml(e, { recur: true, dead: true })).join('') : '')
+      : '';
+  }
+}
+
+function _depRenderOps(inMonth, ym) {
+  // Une récurrence retombe sur son jour de prélèvement dans le mois consulté ;
+  // une opération ponctuelle garde sa date. Les deux se trient ensemble.
+  const rows = inMonth.slice().sort((a, b) => _depDay(b.date) - _depDay(a.date));
+  const cats = [];
+  rows.forEach(e => {
+    const c = _depCat(e.type, e.categorie);
+    if (!cats.some(x => x.key === c.key)) cats.push(c);
+  });
+  if (!cats.some(c => c.key === _depFilter)) _depFilter = 'tous';
+
+  const filters = document.getElementById('dep-filters');
+  if (filters) {
+    filters.innerHTML = rows.length
+      ? ['<button class="dep-filter' + (_depFilter === 'tous' ? ' active' : '') + '" onclick="depSetFilter(\'tous\')">Tout</button>']
+          .concat(cats.map(c =>
+            '<button class="dep-filter' + (_depFilter === c.key ? ' active' : '') + '" onclick="depSetFilter(\'' + c.key + '\')">' +
+            _escapeHtmlChat(c.label) + '</button>'))
+          .join('')
+      : '';
+  }
+
+  const shown = _depFilter === 'tous'
+    ? rows
+    : rows.filter(e => _depCat(e.type, e.categorie).key === _depFilter);
+
+  _depText('dep-ops-sub', rows.length
+    ? rows.length + (rows.length > 1 ? ' opérations' : ' opération') + ' sur ' + _depMonthName(ym)
+    : 'Rien sur ce mois');
+
+  const list = document.getElementById('dep-ops-list');
+  if (list) {
+    list.innerHTML = shown.length
+      ? shown.map(e => _depRowHtml(e, { day: true })).join('')
+      : (rows.length
+        ? _depEmpty('Aucune opération dans ce poste', 'Changez de filtre pour voir le reste du mois.')
+        : _depEmpty('Ce mois est encore vide',
+            'Ajoutez une première opération — un plein d\'essence, une course, un salaire.',
+            'Ajouter une opération'));
+  }
+}
+
+function _depRenderSplit(inMonth) {
+  const box = document.getElementById('dep-split');
+  if (!box) return;
+  const sorties = inMonth.filter(e => e.type !== 'revenu');
+  if (!sorties.length) {
+    box.innerHTML = _depEmpty('Rien à répartir',
+      'La répartition par poste apparaît dès la première dépense du mois.');
+    return;
+  }
+  const par = {};
+  sorties.forEach(e => {
+    const c = _depCat(e.type, e.categorie);
+    par[c.key] = par[c.key] || { cat: c, total: 0 };
+    par[c.key].total += _depAmt(e);
+  });
+  const lignes = Object.keys(par).map(k => par[k]).sort((a, b) => b.total - a.total);
+  const total  = lignes.reduce((s, l) => s + l.total, 0);
+  const max    = lignes[0].total || 1;
+
+  box.innerHTML = lignes.map(l =>
+    '<div class="dep-bar-row">' +
+      '<div class="dep-bar-top">' +
+        '<span>' + _escapeHtmlChat(l.cat.label) +
+          '<span class="dep-bar-pct">' + Math.round((l.total / total) * 100) + ' %</span></span>' +
+        '<span class="dep-bar-amount">' + fmt(l.total) + '</span>' +
+      '</div>' +
+      '<div class="dep-bar-track"><div class="dep-bar-fill" style="width:' +
+        Math.max(2, (l.total / max) * 100) + '%;background:' + l.cat.color + '"></div></div>' +
+    '</div>'
+  ).join('');
+}
+
+// Une ligne, deux contextes : la carte des récurrents (fréquence + jour) et la
+// liste du mois (date + pastille de récurrence).
+function _depRowHtml(e, opt) {
+  const c    = _depCat(e.type, e.categorie);
+  const isIn = e.type === 'revenu';
+  const meta = [];
+
+  if (opt.recur) {
+    meta.push(_escapeHtmlChat(DEP_FREQ_LABEL[e.frequence] || 'Tous les mois'));
+    meta.push('le ' + _depDay(e.date));
+    if (opt.dead && e.dateFin) meta.push('résilié le ' + _depDateCourt(e.dateFin));
+  } else {
+    if (e.recurrent) {
+      meta.push('<span class="dep-recur-ico" title="Opération récurrente">' +
+        '<svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M21 12a9 9 0 1 1-6.2-8.6"/><polyline points="21 3 21 9 15 9"/></svg></span>' +
+        'le ' + _depDay(e.date));
+    } else {
+      meta.push(_depDateCourt(e.date));
+    }
+    meta.push(_escapeHtmlChat(c.label));
+  }
+
+  // Un abonnement trimestriel ou annuel n'est comparable qu'une fois ramené
+  // au mois : on l'affiche en second, sous le montant réellement prélevé.
+  const lisse = opt.recur && (DEP_FREQ[e.frequence] || 1) > 1
+    ? '<div class="dep-rsub">' + fmt(_depMonthly(e)) + ' / mois</div>'
+    : '';
+
+  return '<div class="dep-row' + (opt.dead ? ' dead' : '') + '" onclick="depOpenModal(\'' + _attr(e.id) + '\')" ' +
+      'role="button" tabindex="0" onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}">' +
+    '<div class="dep-chip" style="background:' + c.color + '1f;color:' + c.color + '">' +
+      _escapeHtmlChat(_depInitials(e.nom)) + '</div>' +
+    '<div class="dep-rmain">' +
+      '<div class="dep-rname">' + _escapeHtmlChat(e.nom || 'Sans nom') + '</div>' +
+      '<div class="dep-rmeta">' + meta.join('<span class="sep">·</span>') + '</div>' +
+    '</div>' +
+    '<div>' +
+      '<div class="dep-ramount' + (isIn ? ' in' : '') + '">' + (isIn ? '+ ' : '') + fmt(_depAmt(e)) + '</div>' +
+      lisse +
+    '</div>' +
+  '</div>';
+}
+
+function _depDateCourt(d) {
+  const p = String(d || '').split('-');
+  if (p.length < 3) return '—';
+  return new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]))
+    .toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+}
+
+function _depEmpty(titre, sous, cta) {
+  return '<div class="dep-empty">' +
+    '<div class="dep-empty-ico"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+      '<rect x="2" y="5" width="20" height="14" rx="2"/><line x1="2" y1="10" x2="22" y2="10"/><line x1="6" y1="15" x2="10" y2="15"/></svg></div>' +
+    '<div class="dep-empty-t">' + _escapeHtmlChat(titre) + '</div>' +
+    '<div class="dep-empty-s">' + _escapeHtmlChat(sous) + '</div>' +
+    (cta ? '<button class="dep-empty-cta" onclick="depOpenModal()">' + _escapeHtmlChat(cta) + '</button>' : '') +
+  '</div>';
+}
+
+function _depText(id, txt)  { const el = document.getElementById(id); if (el) el.textContent = txt; }
+function _depWidth(id, pct) { const el = document.getElementById(id); if (el) el.style.width = pct + '%'; }
+
+// ─── Navigation dans le temps ───
+
+window.depShiftMonth = function(n) {
+  _depMonth = _depFromIdx(_depIdx(_depMonth || _depNowYm()) + n);
+  _depRender();
+};
+window.depGoToday = function() { _depMonth = _depNowYm(); _depRender(); };
+window.depSetFilter = function(k) { _depFilter = k; _depRender(); };
+window.depToggleDead = function() { _depDeadOpen = !_depDeadOpen; _depRender(); };
+
+// ─── Saisie ───
+
+window.depOpenModal = function(id) {
+  const all = getDepenses();
+  const e   = id ? all.find(x => x.id === id) : null;
+  _depEditId = e ? e.id : null;
+
+  _depForm.type = e ? (e.type === 'revenu' ? 'revenu' : 'depense') : 'depense';
+  _depForm.cat  = e ? _depCat(_depForm.type, e.categorie).key : _depCatList(_depForm.type)[0].key;
+  _depForm.freq = (e && e.frequence) || 'mensuel';
+
+  _depSet('dep-f-nom', e ? (e.nom || '') : '');
+  _depSet('dep-f-montant', e ? String(_depAmt(e)).replace('.', ',') : '');
+  // Nouvelle saisie : on propose le jour même, mais dans le mois consulté —
+  // saisir une dépense de mars en consultant mars ne doit pas la dater d'août.
+  _depSet('dep-f-date', e ? (e.date || '') : _depDefaultDate());
+  _depSet('dep-f-fin', e ? (e.dateFin || '') : '');
+  const rec = document.getElementById('dep-f-recur');
+  if (rec) rec.checked = !!(e && e.recurrent);
+
+  _depText('dep-modal-title', e ? 'Modifier l\'opération' : 'Nouvelle opération');
+  const del = document.getElementById('dep-f-delete');
+  if (del) del.hidden = !e;
+  const err = document.getElementById('dep-f-error');
+  if (err) err.hidden = true;
+
+  _depSyncType();
+  depToggleRecur();
+  document.getElementById('dep-modal').classList.add('open');
+  setTimeout(() => { const n = document.getElementById('dep-f-nom'); if (n) n.focus(); }, 60);
+};
+
+function _depDefaultDate() {
+  const now = new Date();
+  const ym  = _depMonth || _depNowYm();
+  if (ym === _depNowYm()) return ym + '-' + String(now.getDate()).padStart(2, '0');
+  return ym + '-01';
+}
+
+window.depCloseModal = function() {
+  const m = document.getElementById('dep-modal');
+  if (m) m.classList.remove('open');
+  _depEditId = null;
+};
+
+window.depSetType = function(t) {
+  if (_depForm.type === t) return;
+  _depForm.type = t;
+  _depForm.cat  = _depCatList(t)[0].key;
+  _depSyncType();
+};
+
+window.depSetCat  = function(k) { _depForm.cat = k; _depRenderCatChips(); };
+window.depSetFreq = function(f) {
+  _depForm.freq = f;
+  document.querySelectorAll('#dep-f-freq button').forEach(b =>
+    b.classList.toggle('active', b.dataset.freq === f));
+};
+
+window.depToggleRecur = function() {
+  const rec = document.getElementById('dep-f-recur');
+  const box = document.getElementById('dep-f-recur-fields');
+  if (box) box.hidden = !(rec && rec.checked);
+  if (rec && rec.checked) depSetFreq(_depForm.freq);
+};
+
+function _depSyncType() {
+  document.querySelectorAll('#dep-f-type button').forEach(b =>
+    b.classList.toggle('active', b.dataset.type === _depForm.type));
+  _depRenderCatChips();
+}
+
+function _depRenderCatChips() {
+  const box = document.getElementById('dep-f-cats');
+  if (!box) return;
+  box.innerHTML = _depCatList(_depForm.type).map(c => {
+    const on = c.key === _depForm.cat;
+    return '<button type="button" class="dep-cat' + (on ? ' active' : '') + '"' +
+      (on ? ' style="border-color:' + c.color + '66"' : '') +
+      ' onclick="depSetCat(\'' + c.key + '\')">' +
+      '<i style="background:' + c.color + '"></i>' + _escapeHtmlChat(c.label) + '</button>';
+  }).join('');
+}
+
+function _depSet(id, v) { const el = document.getElementById(id); if (el) el.value = v; }
+function _depVal(id)    { const el = document.getElementById(id); return el ? el.value.trim() : ''; }
+
+// « 13,49 » comme « 13.49 » : personne ne tape le point sur un pavé français.
+function _depParse(v) {
+  const n = parseFloat(String(v).replace(/\s/g, '').replace(',', '.'));
+  return isFinite(n) ? Math.abs(n) : NaN;
+}
+
+function _depErr(msg) {
+  const el = document.getElementById('dep-f-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.hidden = false;
+}
+
+window.depSave = function() {
+  const nom     = _depVal('dep-f-nom');
+  const montant = _depParse(_depVal('dep-f-montant'));
+  const date    = _depVal('dep-f-date');
+  const recur   = !!(document.getElementById('dep-f-recur') || {}).checked;
+  const fin     = recur ? _depVal('dep-f-fin') : '';
+
+  if (!nom)                    return _depErr('Il manque l\'intitulé.');
+  if (!isFinite(montant) || montant <= 0) return _depErr('Le montant doit être un nombre supérieur à zéro.');
+  if (!date)                   return _depErr('Il manque la date.');
+  if (fin && fin < date)       return _depErr('La date de résiliation est antérieure au début de l\'abonnement.');
+
+  const entry = {
+    id: _depEditId || ('d' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
+    type: _depForm.type,
+    nom, montant, date,
+    categorie: _depForm.cat,
+    recurrent: recur,
+    frequence: recur ? _depForm.freq : null,
+    dateFin: fin || null,
+  };
+
+  const all = getDepenses().slice();
+  const i   = _depEditId ? all.findIndex(x => x.id === _depEditId) : -1;
+  if (i >= 0) all[i] = entry; else all.push(entry);
+  saveDepenses(currentUser, all);
+
+  depCloseModal();
+  _depRender();
+};
+
+window.depDelete = function() {
+  if (!_depEditId) return;
+  const e = getDepenses().find(x => x.id === _depEditId);
+  const nom = e ? (e.nom || 'cette opération') : 'cette opération';
+  // Un récurrent supprimé disparaît aussi des mois passés : la résiliation est
+  // presque toujours ce qu'on voulait, on le dit avant d'effacer.
+  const msg = e && e.recurrent
+    ? 'Supprimer « ' + nom +' » l\'efface aussi de tous les mois passés.\n\n'
+      + 'Pour arrêter un abonnement en gardant son historique, renseignez plutôt une date de résiliation.\n\nSupprimer quand même ?'
+    : 'Supprimer « ' + nom + ' » ?';
+  if (!confirm(msg)) return;
+  saveDepenses(currentUser, getDepenses().filter(x => x.id !== _depEditId));
+  depCloseModal();
+  _depRender();
+};
+
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Escape') return;
+  const m = document.getElementById('dep-modal');
+  if (m && m.classList.contains('open')) depCloseModal();
+});
+
+window.renderDepenses = renderDepenses;
 
 // Version-lock strict : vérifie dès l'accès/refresh (avant même le login)
 try { _checkVersion(); } catch(_) {}

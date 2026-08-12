@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260814i">
+<link rel="stylesheet" href="css/style.css?v=20260814j">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2121,7 +2121,11 @@
          Aucune donnée réelle ici : la section n'existe pas encore, la page
          annonce l'intention du module. L'aperçu est une illustration figée,
          explicitement signalée comme telle. -->
+    <!-- Deux vues sous la même entrée de menu. Laquelle s'affiche est décidé
+         par renderDepenses() : le module réel si la section est activée, ou si
+         elle est en bêta et que c'est l'admin qui regarde ; le teaser sinon. -->
     <div class="page" id="page-depenses">
+    <div id="depenses-teaser">
       <div class="page-header">
         <div>
           <div class="page-title">Dépenses &amp; abonnements</div>
@@ -2246,6 +2250,104 @@
         Aucun compte bancaire n'est rattaché à Capital Board aujourd'hui, et les chiffres
         de cette page sont inventés pour l'exemple.
       </p>
+    </div><!-- /#depenses-teaser -->
+
+    <div id="depenses-app" hidden>
+      <div class="page-header dep-header">
+        <div>
+          <div class="page-title">Dépenses &amp; abonnements</div>
+          <div class="page-subtitle">Ce qui entre, ce qui sort, ce qu'il reste</div>
+        </div>
+        <div class="dep-header-tools">
+          <div class="dep-monthnav">
+            <button class="dep-mnav" onclick="depShiftMonth(-1)" aria-label="Mois précédent">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m15 18-6-6 6-6"/></svg>
+            </button>
+            <button class="dep-month" id="dep-month-label" onclick="depGoToday()" title="Revenir au mois en cours">—</button>
+            <button class="dep-mnav" onclick="depShiftMonth(1)" aria-label="Mois suivant">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+            </button>
+          </div>
+          <button class="dep-addbtn" onclick="depOpenModal()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Ajouter
+          </button>
+        </div>
+      </div>
+
+      <div class="dep-beta-note" id="dep-beta-note" hidden>
+        <span class="dep-beta-tag">Bêta</span>
+        Section visible par vous seul. Les autres membres voient encore la page « Bientôt ».
+      </div>
+
+      <!-- Bento : le reste à vivre occupe la grande tuile, les deux flux
+           l'encadrent. C'est le chiffre qu'on vient chercher. -->
+      <div class="dep-kpis">
+        <div class="dep-hero" id="dep-hero">
+          <div class="dep-kl">Reste ce mois-ci</div>
+          <div class="dep-kv" id="dep-k-reste">—</div>
+          <div class="dep-heroline">
+            <span class="dep-pill" id="dep-k-taux">—</span>
+            <span class="dep-hint" id="dep-k-hint"></span>
+          </div>
+          <div class="dep-flow">
+            <div class="dep-flow-bar"><span id="dep-flow-in"></span><span id="dep-flow-out"></span></div>
+            <div class="dep-flow-legend">
+              <span><i class="dot" style="background:var(--positive)"></i>Entrées</span>
+              <span><i class="dot" style="background:#818cf8"></i>Sorties</span>
+            </div>
+          </div>
+        </div>
+        <div class="dep-kpi">
+          <div class="dep-kl">Revenus</div>
+          <div class="dep-kv sm" id="dep-k-rev">—</div>
+          <div class="dep-ks" id="dep-k-rev-sub">—</div>
+        </div>
+        <div class="dep-kpi">
+          <div class="dep-kl">Dépenses</div>
+          <div class="dep-kv sm" id="dep-k-dep">—</div>
+          <div class="dep-ks" id="dep-k-dep-sub">—</div>
+        </div>
+      </div>
+
+      <div class="dep-grid">
+        <section class="dep-card">
+          <div class="dep-card-head">
+            <div>
+              <div class="dep-card-title">Abonnements &amp; récurrents</div>
+              <div class="dep-card-sub" id="dep-recur-sub">—</div>
+            </div>
+            <div class="dep-card-fig">
+              <span id="dep-recur-year">—</span>
+              <small>sur 12 mois</small>
+            </div>
+          </div>
+          <div id="dep-recur-list"></div>
+          <div id="dep-recur-dead"></div>
+        </section>
+
+        <section class="dep-card">
+          <div class="dep-card-head">
+            <div>
+              <div class="dep-card-title">Opérations du mois</div>
+              <div class="dep-card-sub" id="dep-ops-sub">—</div>
+            </div>
+          </div>
+          <div class="dep-filters" id="dep-filters"></div>
+          <div id="dep-ops-list"></div>
+        </section>
+      </div>
+
+      <section class="dep-card dep-card-wide">
+        <div class="dep-card-head">
+          <div>
+            <div class="dep-card-title">Répartition</div>
+            <div class="dep-card-sub">Où part l'argent, sur le mois affiché</div>
+          </div>
+        </div>
+        <div id="dep-split"></div>
+      </section>
+    </div><!-- /#depenses-app -->
     </div>
 
     <!-- ═══ CALENDRIER DES RÉSULTATS ═══════════════════ -->
@@ -2289,6 +2391,73 @@
 
 
 <!-- ═══ MODAL DÉTAIL RÉSULTAT (earnings) ════════════ -->
+<!-- ═══ DÉPENSES — saisie ═══════════════════════════ -->
+<div class="modal-overlay" id="dep-modal" onclick="if(event.target===this)depCloseModal()" role="dialog" aria-modal="true" aria-labelledby="dep-modal-title">
+  <div class="modal dep-modal">
+    <div class="modal-title" id="dep-modal-title">Nouvelle opération</div>
+    <div class="modal-sub">Un plein d'essence, un abonnement, un salaire — tout se saisit ici.</div>
+
+    <div class="dep-seg" id="dep-f-type" role="tablist">
+      <button type="button" class="active" data-type="depense" onclick="depSetType('depense')" role="tab">Dépense</button>
+      <button type="button" data-type="revenu" onclick="depSetType('revenu')" role="tab">Revenu</button>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="dep-f-nom">Intitulé</label>
+      <input class="form-input" id="dep-f-nom" placeholder="Netflix, plein d'essence, salaire…" autocomplete="off" spellcheck="false">
+    </div>
+
+    <div class="dep-row2">
+      <div class="form-group">
+        <label class="form-label" for="dep-f-montant">Montant</label>
+        <input class="form-input" id="dep-f-montant" type="text" inputmode="decimal" placeholder="13,49">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="dep-f-date">Date</label>
+        <input class="form-input" id="dep-f-date" type="date">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <span class="form-label">Catégorie</span>
+      <div class="dep-cats" id="dep-f-cats"></div>
+    </div>
+
+    <label class="dep-check">
+      <input type="checkbox" id="dep-f-recur" onchange="depToggleRecur()">
+      <span class="dep-check-box"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
+      <span>
+        <b>Ça revient</b>
+        <small>Saisi une fois, recompté sur chaque mois concerné.</small>
+      </span>
+    </label>
+
+    <div id="dep-f-recur-fields" hidden>
+      <div class="form-group" style="margin-top:14px">
+        <span class="form-label">Fréquence</span>
+        <div class="dep-seg dep-seg-3" id="dep-f-freq">
+          <button type="button" class="active" data-freq="mensuel" onclick="depSetFreq('mensuel')">Mensuel</button>
+          <button type="button" data-freq="trimestriel" onclick="depSetFreq('trimestriel')">Trimestriel</button>
+          <button type="button" data-freq="annuel" onclick="depSetFreq('annuel')">Annuel</button>
+        </div>
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="dep-f-fin">Résilié le <span class="dep-opt">facultatif</span></label>
+        <input class="form-input" id="dep-f-fin" type="date">
+        <div class="dep-help">Renseigné, l'abonnement cesse d'être compté après cette date — sans disparaître des mois passés.</div>
+      </div>
+    </div>
+
+    <div class="dep-error" id="dep-f-error" hidden></div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="depCloseModal()">Annuler</button>
+      <button class="btn-primary" onclick="depSave()">Enregistrer</button>
+    </div>
+    <button class="dep-delete" id="dep-f-delete" hidden onclick="depDelete()">Supprimer cette opération</button>
+  </div>
+</div>
+
 <div class="modal-overlay" id="ec-detail-overlay" onclick="if(event.target===this)ecCloseDetail()" role="dialog" aria-modal="true" aria-labelledby="ec-detail-name">
   <div class="modal" id="ec-detail-body"></div>
 </div>
@@ -2852,9 +3021,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260814i"></script>
+<script src="js/app.js?v=20260814j"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260814i"></script>
+<script src="js/onboarding.js?v=20260814j"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
