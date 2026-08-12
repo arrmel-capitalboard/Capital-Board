@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260814s">
+<link rel="stylesheet" href="css/style.css?v=20260814t">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -1759,7 +1759,10 @@
     <!-- ═══ LIVRETS &AMP; ÉPARGNE (annonce) ═══════════════
          Même patron que les autres annonces : aucune donnée réelle,
          aperçu signalé comme fictif. -->
+    <!-- Deux vues sous la même entrée : renderLivrets() montre le module réel
+         si la section est ouverte, ou en bêta pour l'admin ; le teaser sinon. -->
     <div class="page" id="page-livrets">
+    <div id="livrets-teaser">
       <div class="page-header">
         <div>
           <div class="page-title">Livrets &amp; épargne</div>
@@ -1815,6 +1818,78 @@
       </div>
 
       <p class="tease-note">Chiffres inventés pour l'exemple. Les plafonds et les taux des livrets réglementés sont fixés par l'État et peuvent changer ; Capital Board ne fournit aucun conseil en investissement.</p>
+    </div><!-- /#livrets-teaser -->
+
+    <div id="livrets-app" hidden>
+      <div class="page-header dep-header">
+        <div>
+          <div class="page-title">Livrets &amp; épargne</div>
+          <div class="page-subtitle">Votre matelas de sécurité, et ce qu'il rapporte</div>
+        </div>
+        <div class="dep-header-tools">
+          <button class="dep-addbtn" onclick="livOpenModal()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Ajouter un livret
+          </button>
+        </div>
+      </div>
+
+      <div class="dep-beta-note" id="liv-beta-note" hidden>
+        <span class="dep-beta-tag">Bêta</span>
+        Section visible par vous seul. Les autres membres voient encore la page « Bientôt ».
+      </div>
+
+      <div class="dep-kpis">
+        <div class="dep-hero">
+          <div class="dep-kl">Épargne disponible</div>
+          <div class="dep-kv" id="liv-k-total">—</div>
+          <div class="dep-heroline">
+            <span class="dep-pill" id="liv-k-interets">—</span>
+            <span class="dep-hint" id="liv-k-hint"></span>
+          </div>
+          <div class="dep-flow">
+            <div class="dep-flow-bar"><span id="liv-flow-rempli"></span></div>
+            <div class="dep-flow-legend" id="liv-flow-legend"></div>
+          </div>
+        </div>
+        <div class="dep-kpi">
+          <div class="dep-kl">Réserve</div>
+          <div class="dep-kv sm" id="liv-k-reserve">—</div>
+          <div class="dep-ks" id="liv-k-reserve-sub">—</div>
+        </div>
+        <div class="dep-kpi">
+          <div class="dep-kl">Reste à verser</div>
+          <div class="dep-kv sm" id="liv-k-marge">—</div>
+          <div class="dep-ks" id="liv-k-marge-sub">—</div>
+        </div>
+      </div>
+
+      <section class="dep-card dep-card-wide" style="margin-bottom:16px">
+        <div class="dep-card-head">
+          <div>
+            <div class="dep-card-title">Mes livrets</div>
+            <div class="dep-card-sub" id="liv-list-sub">—</div>
+          </div>
+          <div class="dep-card-fig">
+            <span id="liv-list-fig">—</span>
+            <small>intérêts / an</small>
+          </div>
+        </div>
+        <div id="liv-list"></div>
+      </section>
+
+      <section class="dep-card dep-card-wide">
+        <div class="dep-card-head">
+          <div>
+            <div class="dep-card-title">Marge de manœuvre</div>
+            <div class="dep-card-sub">Ce qu'il reste à verser, du taux le plus élevé au plus faible</div>
+          </div>
+        </div>
+        <div id="liv-marge"></div>
+      </section>
+
+      <p class="tease-note" id="liv-bareme-note"></p>
+    </div><!-- /#livrets-app -->
     </div>
 
     <!-- ═══ IMMOBILIER &AMP; SCPI (annonce) ═══════════════
@@ -2391,6 +2466,46 @@
 
 
 <!-- ═══ MODAL DÉTAIL RÉSULTAT (earnings) ════════════ -->
+<!-- ═══ LIVRETS — saisie ════════════════════════════ -->
+<div class="modal-overlay" id="liv-modal" onclick="if(event.target===this)livCloseModal()" role="dialog" aria-modal="true" aria-labelledby="liv-modal-title">
+  <div class="modal dep-modal">
+    <div class="modal-title" id="liv-modal-title">Nouveau livret</div>
+    <div class="modal-sub">Le solde d'aujourd'hui suffit — le plafond et le taux viennent du barème.</div>
+
+    <div class="form-group">
+      <span class="form-label">Type de livret</span>
+      <div class="dep-cats liv-types" id="liv-f-types"></div>
+    </div>
+
+    <div class="dep-row2">
+      <div class="form-group">
+        <label class="form-label" for="liv-f-solde">Solde actuel</label>
+        <input class="form-input" id="liv-f-solde" type="text" inputmode="decimal" placeholder="12 500" oninput="livRecalc()">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="liv-f-taux">Taux annuel <span class="dep-opt" id="liv-f-taux-opt"></span></label>
+        <input class="form-input" id="liv-f-taux" type="text" inputmode="decimal" placeholder="1,7" oninput="livRecalc()">
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="liv-f-banque">Banque <span class="dep-opt">facultatif</span></label>
+      <input class="form-input" id="liv-f-banque" placeholder="Boursorama, Crédit Agricole…" autocomplete="off" spellcheck="false">
+    </div>
+
+    <div class="dep-recap" id="liv-f-recap" hidden></div>
+    <div class="dep-help" id="liv-f-help"></div>
+
+    <div class="dep-error" id="liv-f-error" hidden></div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="livCloseModal()">Annuler</button>
+      <button class="btn-primary" onclick="livSave()">Enregistrer</button>
+    </div>
+    <button class="dep-delete" id="liv-f-delete" hidden onclick="livDelete()">Supprimer ce livret</button>
+  </div>
+</div>
+
 <!-- ═══ DÉPENSES — confirmation de suppression ═════ -->
 <!-- Au-dessus de la modale de saisie (z-index), qui reste ouverte derrière :
      annuler doit ramener sur le formulaire, pas le refermer. -->
@@ -3085,9 +3200,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260814s"></script>
+<script src="js/app.js?v=20260814t"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260814s"></script>
+<script src="js/onboarding.js?v=20260814t"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

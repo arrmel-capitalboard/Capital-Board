@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814s';
+const APP_VERSION = '20260814t';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -382,7 +382,7 @@ async function loadAllUserData(uid) {
   // Enregistrer l'email pour la recherche par email (gestion des rôles)
   const _u = fbAuth.currentUser;
   if (_u) setFirestoreDoc(firestoreDoc(db, 'users', uid), { email: _u.email }, { merge: true }).catch(() => {});
-  const cols = ['portfolio', 'transactions', 'versements', 'watchlist', 'dailyValues', 'alerts', 'trCohort', 'divIgnored', 'nominatif', 'depenses'];
+  const cols = ['portfolio', 'transactions', 'versements', 'watchlist', 'dailyValues', 'alerts', 'trCohort', 'divIgnored', 'nominatif', 'depenses', 'livrets'];
   await Promise.all(cols.map(async col => {
     try {
       const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', col));
@@ -489,6 +489,12 @@ function saveAlerts(user, data)       { _fsWrite(user||currentUser, 'alerts',   
 // d'1 Mo laisse de la marge pour plusieurs milliers de lignes.
 function getDepenses(user)  { return _localCache[(user||currentUser) + '_depenses'] || []; }
 function saveDepenses(user, data) { _fsWrite(user||currentUser, 'depenses', data); }
+
+// livrets : un document par membre, une entrée par livret détenu. Le plafond et
+// le taux ne sont pas stockés ici — ils viennent du barème, qui change deux fois
+// par an et vaut pour tout le monde. Seul un taux dérogatoire est enregistré.
+function getLivrets(user)  { return _localCache[(user||currentUser) + '_livrets'] || []; }
+function saveLivrets(user, data) { _fsWrite(user||currentUser, 'livrets', data); }
 
 // ─── LIAISON DISCORD ──────────────────────────────────────────────
 // Flux : l'utilisateur tape /link sur Discord → le bot crée
@@ -2509,11 +2515,11 @@ async function startApp(user) {
     _getAppConfig().then(c => {
       applySocialLinks(c.social);
       applyNavLayout(_navFromConfig(c));
-      applyFeatureFlags(c.features, c.beta);
+      applyFeatureFlags(c.features, c.beta, c.bareme);
     }).catch(() => {
       applySocialLinks(null);
       applyNavLayout(null);
-      applyFeatureFlags({}, {});
+      applyFeatureFlags({}, {}, null);
     });
     try { _startPresenceHeartbeat(); } catch(e) { console.warn('presence:', e); }
     try { _processDiscordLink(user); } catch(e) { console.warn('discord link:', e); }
@@ -3356,7 +3362,7 @@ const FLAGGABLE = ['watchlist','dividendes','avantages','benchmark','projections
 // Sections qui portent DEUX vues dans la même page : le teaser « Bientôt » et
 // le module réel. Elles seules acceptent l'état bêta — ailleurs il ne voudrait
 // rien dire, la page EST le teaser et il n'y a rien d'autre à montrer.
-const BETA_CAPABLE = ['depenses'];
+const BETA_CAPABLE = ['depenses', 'livrets'];
 
 let _featureFlags = {};
 // config/app.beta = { depenses: true }. Séparé de `features` pour que couper
@@ -3378,9 +3384,10 @@ function _isModuleLive(key) {
   return _isFeatureBeta(key) ? isAdmin() : true;
 }
 
-function applyFeatureFlags(features, beta) {
+function applyFeatureFlags(features, beta, bareme) {
   _featureFlags = features || {};
   if (beta !== undefined) _betaFlags = beta || {};
+  if (bareme !== undefined) applyLivretsBareme(bareme);
   FLAGGABLE.forEach(key => {
     const on = _featureFlags[key] !== false;
     const needles = ["showPage('" + key + "')", "showPageMobile('" + key + "')", "showPeaTab('" + key + "')"];
@@ -3396,6 +3403,7 @@ function applyFeatureFlags(features, beta) {
   if (active) _syncPeaTabs(active.replace('page-', ''));
   // Le module peut venir d'être ouvert ou refermé sous les pieds de l'admin.
   if (document.getElementById('depenses-app')) renderDepenses();
+  if (document.getElementById('livrets-app'))  renderLivrets();
 }
 
 // Le badge « Bientôt » est écrit en dur dans le menu, sur ordinateur comme dans
@@ -3667,6 +3675,7 @@ function _runPageHook(id) {
   if (id === 'avantages')     initAvantages();
   if (id === 'patrimoine')    renderPatrimoine();
   if (id === 'depenses')      renderDepenses();
+  if (id === 'livrets')       renderLivrets();
 }
 
 // Changer de page sans remonter laissait l'utilisateur au milieu de la
@@ -3954,7 +3963,7 @@ const PATRIMOINE_ENVELOPPES = [
   { key: 'av',        label: 'Assurance-vie',           color: '#00cec9', value: () => null },
   { key: 'per',       label: 'PER',                     color: '#00e09e', value: () => null },
   { key: 'crypto',    label: 'Crypto',                  color: '#f5b731', value: () => null },
-  { key: 'livrets',   label: 'Livrets & épargne',       color: '#ff9f43', value: () => null },
+  { key: 'livrets',   label: 'Livrets & épargne',       color: '#ff9f43', value: () => _livTotal() || null },
   { key: 'immo',      label: 'Immobilier & SCPI',       color: '#a29bfe', value: () => null },
   { key: 'or',        label: 'Or & métaux',             color: '#ffd166', value: () => null },
   { key: 'nonco',     label: 'Crowdfunding & non coté', color: '#ff4d6a', value: () => null },
@@ -14469,7 +14478,7 @@ async function renderAdminPage() {
   _adminSignupStatus(signupOpen);
 
   // Feature flags (masqué / bêta / ouvert) — intégrés à l'éditeur de menu ci-dessous
-  applyFeatureFlags(cfg.features || {}, cfg.beta || {});
+  applyFeatureFlags(cfg.features || {}, cfg.beta || {}, cfg.bareme || null);
 
   // Éditeur d'organisation du menu
   const savedNav = _navFromConfig(cfg);
@@ -18279,6 +18288,449 @@ document.addEventListener('keydown', function(e) {
 });
 
 window.renderDepenses = renderDepenses;
+
+// ═══════════════════════════════════════════════════════════════════
+//  LIVRETS & ÉPARGNE
+//
+//  Le plafond et le taux ne sont pas des données du membre : ce sont des
+//  paramètres publics, révisés au 1er février et au 1er août. Ils vivent
+//  donc dans un barème unique, surchargeable par l'admin sans déploiement,
+//  et le membre ne saisit que son solde.
+//
+//  Les intérêts affichés sont une projection sur douze mois au taux du
+//  moment, pas un acquis. Le calcul réel suit la règle des quinzaines — un
+//  versement ne produit qu'à partir du 1er ou du 16 suivant — et demanderait
+//  l'historique des mouvements. La structure est prête pour ça ; l'écran dit
+//  clairement qu'il s'agit d'une projection.
+// ═══════════════════════════════════════════════════════════════════
+
+// Barème par défaut. Surchargeable par `config/app.bareme`, qui vaut pour tous
+// les membres : deux fois par an, l'admin met à jour les taux sans livraison.
+// `taux: null` = propre à chaque contrat, c'est au membre de le saisir.
+const LIV_BAREME = {
+  effet: '1er août 2026',
+  jusqu: '31 janvier 2027',
+  types: {
+    livretA:  { label: 'Livret A',        court: 'A',    plafond: 22950, taux: 1.7,  unique: true,  fisc: false, color: '#00e09e' },
+    ldds:     { label: 'LDDS',            court: 'LDDS', plafond: 12000, taux: 1.7,  unique: true,  fisc: false, color: '#4ade80' },
+    lep:      { label: 'LEP',             court: 'LEP',  plafond: 10000, taux: 2.5,  unique: true,  fisc: false, color: '#22d3ee' },
+    jeune:    { label: 'Livret Jeune',    court: 'LJ',   plafond: 1600,  taux: 1.7,  unique: true,  fisc: false, color: '#38bdf8' },
+    pel:      { label: 'PEL',             court: 'PEL',  plafond: 61200, taux: null, unique: false, fisc: true,  color: '#a78bfa' },
+    cel:      { label: 'CEL',             court: 'CEL',  plafond: 15300, taux: null, unique: false, fisc: true,  color: '#c084fc' },
+    bancaire: { label: 'Livret bancaire', court: 'LB',   plafond: null,  taux: null, unique: false, fisc: true,  color: '#f5b731' },
+  },
+};
+// Les livrets réglementés sont exonérés ; le reste subit le prélèvement
+// forfaitaire unique. C'est la seule fiscalité qui joue ici.
+const LIV_PFU = 0.30;
+// Une réserve se mesure en mois de dépenses. En dessous, elle est mince ; très
+// au-dessus, l'argent dort. Ces bornes sont un repère, pas un conseil.
+const LIV_RESERVE_MIN = 3;
+const LIV_RESERVE_MAX = 6;
+
+let _livBareme = null;   // barème effectif (défaut fusionné avec config/app)
+let _livCfg    = null;   // surcharge admin, lue dans config/app.bareme
+let _livEditId = null;
+let _livType   = 'livretA';
+
+function _livB() {
+  if (_livBareme) return _livBareme;
+  const cfg = (_livCfg && _livCfg.types) ? _livCfg.types : {};
+  const types = {};
+  Object.keys(LIV_BAREME.types).forEach(k => {
+    types[k] = Object.assign({}, LIV_BAREME.types[k], cfg[k] || {});
+  });
+  _livBareme = {
+    effet: (_livCfg && _livCfg.effet) || LIV_BAREME.effet,
+    jusqu: (_livCfg && _livCfg.jusqu) || LIV_BAREME.jusqu,
+    types,
+  };
+  return _livBareme;
+}
+function applyLivretsBareme(cfg) { _livCfg = cfg || null; _livBareme = null; }
+
+function _livType_(t)  { return _livB().types[t] || _livB().types.bancaire; }
+function _livSolde(l)  { const n = Number(l && l.solde); return isFinite(n) && n > 0 ? n : 0; }
+// Taux effectif : celui saisi par le membre s'il existe, celui du barème sinon.
+function _livTaux(l) {
+  const perso = Number(l && l.taux);
+  if (Number.isFinite(perso) && perso > 0) return perso;
+  const t = _livType_(l && l.type).taux;
+  // Number.isFinite et non isFinite : le global convertit d'abord, et
+  // isFinite(null) vaut true — un type sans taux réglementé renvoyait donc
+  // null là où tout le reste attend un nombre.
+  return Number.isFinite(t) ? t : 0;
+}
+function _livPlafond(l) { return _livType_(l && l.type).plafond; }
+// Projection sur douze mois au taux du moment. Brut, puis net du PFU quand le
+// livret y est soumis.
+function _livInterets(l) {
+  const brut = _livSolde(l) * _livTaux(l) / 100;
+  const net  = _livType_(l && l.type).fisc ? brut * (1 - LIV_PFU) : brut;
+  return { brut, net };
+}
+function _livTotal(user)     { return getLivrets(user).reduce((s, l) => s + _livSolde(l), 0); }
+function _livInteretsNets()  { return getLivrets().reduce((s, l) => s + _livInterets(l).net, 0); }
+// Reste à verser, plafonds réglementés seulement — un livret bancaire n'en a pas.
+function _livReste(l) {
+  const p = _livPlafond(l);
+  return p === null ? null : Math.max(0, p - _livSolde(l));
+}
+
+/**
+ * Dépenses mensuelles moyennes, prises sur les trois derniers mois révolus.
+ *
+ * C'est le pont avec le module Dépenses : sans lui, « 5,2 mois de réserve »
+ * n'était pas calculable et le teaser le disait déjà. Le mois en cours est
+ * écarté, il est incomplet et écraserait la moyenne vers le bas.
+ */
+function _livDepenseMensuelle() {
+  const all = getDepenses();
+  if (!all.length) return null;
+  const ym = _depNowYm();
+  let total = 0, mois = 0;
+  for (let i = 1; i <= 3; i++) {
+    const m = _depFromIdx(_depIdx(ym) - i);
+    const d = all.filter(e => e.type !== 'revenu' && _depOccursIn(e, m))
+                 .reduce((s, e) => s + _depAmt(e), 0);
+    if (d > 0) { total += d; mois += 1; }
+  }
+  return mois ? total / mois : null;
+}
+
+// ─── Rendu ───
+
+function renderLivrets() {
+  const teaser = document.getElementById('livrets-teaser');
+  const app    = document.getElementById('livrets-app');
+  if (!teaser || !app) return;
+  const live = _isModuleLive('livrets');
+  teaser.hidden = live;
+  app.hidden    = !live;
+  if (!live) return;
+  const note = document.getElementById('liv-beta-note');
+  if (note) note.hidden = !_isFeatureBeta('livrets');
+  _livRender();
+}
+
+function _livRender() {
+  const livrets = getLivrets().slice().sort((a, b) => _livSolde(b) - _livSolde(a));
+  const total   = livrets.reduce((s, l) => s + _livSolde(l), 0);
+  const nets    = livrets.reduce((s, l) => s + _livInterets(l).net, 0);
+  const b       = _livB();
+
+  _depText('liv-bareme-note',
+    'Plafonds et taux en vigueur depuis le ' + b.effet + ', applicables jusqu\'au ' + b.jusqu + '. ' +
+    'Les intérêts affichés sont une projection sur douze mois au taux actuel : le calcul réel suit la règle ' +
+    'des quinzaines et dépend de vos versements. Capital Board ne fournit aucun conseil en investissement.');
+
+  _livRenderKpis(livrets, total, nets);
+  _livRenderListe(livrets, total, nets);
+  _livRenderMarge(livrets);
+}
+
+function _livRenderKpis(livrets, total, nets) {
+  _depText('liv-k-total', fmt(total));
+  const pill = document.getElementById('liv-k-interets');
+  const hint = document.getElementById('liv-k-hint');
+  if (pill) pill.textContent = total > 0 ? '+' + fmt(nets) + ' / an' : '—';
+  if (pill) pill.hidden = total <= 0;
+  if (hint) hint.textContent = total > 0
+    ? 'soit ' + (nets / total * 100).toFixed(2).replace('.', ',') + ' % net en moyenne'
+    : 'Ajoutez un livret pour démarrer.';
+
+  // Remplissage global des plafonds réglementés. Un livret bancaire n'en a pas :
+  // l'inclure ferait chuter un taux qui n'aurait plus de sens.
+  const regl = livrets.filter(l => _livPlafond(l) !== null);
+  const cap  = regl.reduce((s, l) => s + _livPlafond(l), 0);
+  const dans = regl.reduce((s, l) => s + Math.min(_livSolde(l), _livPlafond(l)), 0);
+  const pct  = cap > 0 ? (dans / cap) * 100 : 0;
+  _depWidth('liv-flow-rempli', pct);
+  const leg = document.getElementById('liv-flow-legend');
+  if (leg) leg.innerHTML = cap > 0
+    ? '<span><i class="dot" style="background:var(--positive)"></i>Plafonds remplis à ' + Math.round(pct) + ' %</span>' +
+      '<span>' + fmt(cap - dans) + ' encore possibles</span>'
+    : '<span>Aucun livret réglementé</span>';
+
+  // Réserve, en mois de dépenses — le pont avec le module Dépenses.
+  const dep = _livDepenseMensuelle();
+  if (dep === null) {
+    _depText('liv-k-reserve', '—');
+    _depText('liv-k-reserve-sub', 'Renseignez vos dépenses pour connaître votre réserve en mois.');
+  } else if (total <= 0) {
+    _depText('liv-k-reserve', '0 mois');
+    _depText('liv-k-reserve-sub', 'Aucune épargne enregistrée.');
+  } else {
+    const mois = total / dep;
+    _depText('liv-k-reserve', mois.toFixed(1).replace('.', ',') + ' mois');
+    _depText('liv-k-reserve-sub',
+      mois < LIV_RESERVE_MIN ? 'Réserve mince — moins de ' + LIV_RESERVE_MIN + ' mois de dépenses.'
+      : mois > LIV_RESERVE_MAX ? 'Au-delà de ' + LIV_RESERVE_MAX + ' mois : ' + fmt(total - dep * LIV_RESERVE_MAX) + ' dorment.'
+      : 'Entre ' + LIV_RESERVE_MIN + ' et ' + LIV_RESERVE_MAX + ' mois — bien calibrée.');
+  }
+
+  const reste = livrets.reduce((s, l) => s + (_livReste(l) || 0), 0);
+  _depText('liv-k-marge', fmt(reste));
+  const pleins = livrets.filter(l => _livReste(l) === 0).length;
+  _depText('liv-k-marge-sub', !livrets.length ? '—'
+    : pleins ? pleins + (pleins > 1 ? ' livrets sont au plafond' : ' livret est au plafond')
+    : 'sur vos livrets réglementés');
+}
+
+function _livRenderListe(livrets, total, nets) {
+  _depText('liv-list-sub', livrets.length
+    ? livrets.length + (livrets.length > 1 ? ' livrets' : ' livret')
+    : 'Aucun livret enregistré');
+  _depText('liv-list-fig', fmt(nets));
+
+  const box = document.getElementById('liv-list');
+  if (!box) return;
+  if (!livrets.length) {
+    box.innerHTML = _livEmpty('Vos livrets apparaîtront ici',
+      'Livret A, LDDS, LEP, PEL : indiquez le solde, le plafond et le taux viennent du barème.',
+      'Ajouter un livret');
+    return;
+  }
+  box.innerHTML = livrets.map(l => {
+    const t    = _livType_(l.type);
+    const s    = _livSolde(l);
+    const p    = _livPlafond(l);
+    const pct  = p ? Math.min(100, (s / p) * 100) : null;
+    const plein = p !== null && s >= p;
+    const int  = _livInterets(l);
+    const meta = [_livTauxTxt(l) + ' par an'];
+    if (l.banque) meta.push(_escapeHtmlChat(l.banque));
+    meta.push(t.fisc ? 'imposé à 30 %' : 'exonéré d\'impôt');
+
+    return '<div class="liv-row" onclick="livOpenModal(\'' + _attr(l.id) + '\')" role="button" tabindex="0" ' +
+        'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}">' +
+      '<div class="liv-chip" style="background:' + t.color + '1f;color:' + t.color + '">' +
+        _escapeHtmlChat(t.court) + '</div>' +
+      '<div class="liv-main">' +
+        '<div class="liv-top">' +
+          '<span class="liv-nom">' + _escapeHtmlChat(t.label) +
+            (plein ? '<span class="liv-plein">au plafond</span>' : '') + '</span>' +
+          '<span class="liv-solde">' + fmt(s) + '</span>' +
+        '</div>' +
+        (pct === null
+          ? '<div class="liv-libre">Sans plafond réglementé</div>'
+          : '<div class="liv-jauge"><div class="liv-jauge-fill' + (plein ? ' plein' : '') +
+              '" style="width:' + pct.toFixed(1) + '%;background:' + (plein ? 'var(--gold)' : t.color) + '"></div></div>') +
+        '<div class="liv-meta">' +
+          '<span>' + meta.join('<span class="sep">·</span>') + '</span>' +
+          '<span class="liv-int">+' + fmt(int.net) + ' / an</span>' +
+        '</div>' +
+        (pct === null ? '' :
+          '<div class="liv-reste">' + (plein
+            ? 'Plafond de ' + fmt(p) + ' atteint'
+            : fmt(p - s) + ' encore possibles sur ' + fmt(p)) + '</div>') +
+      '</div>' +
+    '</div>';
+  }).join('');
+}
+
+function _livRenderMarge(livrets) {
+  const box = document.getElementById('liv-marge');
+  if (!box) return;
+  const ouverts = livrets
+    .filter(l => (_livReste(l) || 0) > 0)
+    .sort((a, b) => _livTaux(b) - _livTaux(a));
+
+  if (!livrets.length) {
+    box.innerHTML = _livEmpty('Rien à calculer pour l\'instant',
+      'Cette carte montrera où il vous reste de la place, une fois vos livrets ajoutés.');
+    return;
+  }
+
+  const dep   = _livDepenseMensuelle();
+  const total = livrets.reduce((s, l) => s + _livSolde(l), 0);
+  // Épargne dormante : ce qui dépasse la réserve jugée confortable. Constat
+  // chiffré, sans recommandation — ce n'est pas à nous de dire quoi en faire.
+  const dort = (dep !== null && total > dep * LIV_RESERVE_MAX) ? total - dep * LIV_RESERVE_MAX : 0;
+
+  const lignes = ouverts.length
+    ? ouverts.map(l => {
+        const t = _livType_(l.type);
+        return '<div class="liv-marge-row">' +
+          '<span class="liv-marge-dot" style="background:' + t.color + '"></span>' +
+          '<span class="liv-marge-n">' + _escapeHtmlChat(t.label) + '</span>' +
+          '<span class="liv-marge-t">' + _livTauxTxt(l) + '</span>' +
+          '<span class="liv-marge-v">' + fmt(_livReste(l)) + '</span>' +
+        '</div>';
+      }).join('')
+    : '<div class="liv-marge-vide">Tous vos livrets réglementés sont au plafond.</div>';
+
+  const alerte = dort > 0
+    ? '<div class="liv-alerte"><b>' + fmt(dort) + '</b> dépassent ' + LIV_RESERVE_MAX +
+      ' mois de dépenses. Sur un livret, cette part ne travaille qu\'au taux réglementé.</div>'
+    : (dep !== null && total < dep * LIV_RESERVE_MIN
+      ? '<div class="liv-alerte mince">Votre réserve couvre moins de ' + LIV_RESERVE_MIN +
+        ' mois de dépenses. Il manque <b>' + fmt(dep * LIV_RESERVE_MIN - total) + '</b> pour l\'atteindre.</div>'
+      : '');
+
+  box.innerHTML = lignes + alerte;
+}
+
+function _livTauxTxt(l) {
+  const t = _livTaux(l);
+  return t > 0 ? t.toFixed(2).replace('.', ',').replace(/,00$/, '') + ' %' : 'taux non renseigné';
+}
+
+function _livEmpty(titre, sous, cta) {
+  return '<div class="dep-empty">' +
+    '<div class="dep-empty-ico"><svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">' +
+      '<path d="M19 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="M3 10h18"/><circle cx="17" cy="14.5" r="1.3"/></svg></div>' +
+    '<div class="dep-empty-t">' + _escapeHtmlChat(titre) + '</div>' +
+    '<div class="dep-empty-s">' + _escapeHtmlChat(sous) + '</div>' +
+    (cta ? '<button class="dep-empty-cta" onclick="livOpenModal()">' + _escapeHtmlChat(cta) + '</button>' : '') +
+  '</div>';
+}
+
+// ─── Saisie ───
+
+window.livOpenModal = function(id) {
+  const l = id ? getLivrets().find(x => x.id === id) : null;
+  _livEditId = l ? l.id : null;
+  _livType   = l ? (_livB().types[l.type] ? l.type : 'bancaire') : _livPremierLibre();
+
+  _depSet('liv-f-solde', l ? String(_livSolde(l)).replace('.', ',') : '');
+  _depSet('liv-f-taux', l && l.taux ? String(l.taux).replace('.', ',') : '');
+  _depSet('liv-f-banque', l ? (l.banque || '') : '');
+  _depText('liv-modal-title', l ? 'Modifier ce livret' : 'Nouveau livret');
+  const del = document.getElementById('liv-f-delete');
+  if (del) del.hidden = !l;
+  const err = document.getElementById('liv-f-error');
+  if (err) err.hidden = true;
+
+  _livRenderTypes();
+  livRecalc();
+  document.getElementById('liv-modal').classList.add('open');
+  setTimeout(() => { const s = document.getElementById('liv-f-solde'); if (s) s.focus(); }, 60);
+};
+
+// Les livrets réglementés sont uniques par personne : on présélectionne le
+// premier qui n'est pas déjà détenu, plutôt que d'ouvrir sur un doublon.
+function _livPremierLibre() {
+  const pris = getLivrets().map(l => l.type);
+  const libre = Object.keys(_livB().types).find(k => _livB().types[k].unique && !pris.includes(k));
+  return libre || 'bancaire';
+}
+
+window.livCloseModal = function() {
+  const m = document.getElementById('liv-modal');
+  if (m) m.classList.remove('open');
+  _livEditId = null;
+};
+
+window.livSetType = function(t) { _livType = t; _livRenderTypes(); livRecalc(); };
+
+function _livRenderTypes() {
+  const box = document.getElementById('liv-f-types');
+  if (!box) return;
+  const pris = getLivrets().filter(l => l.id !== _livEditId).map(l => l.type);
+  box.innerHTML = Object.keys(_livB().types).map(k => {
+    const t = _livB().types[k];
+    const doublon = t.unique && pris.includes(k);
+    const on = k === _livType;
+    return '<button type="button" class="dep-cat' + (on ? ' active' : '') + (doublon ? ' liv-pris' : '') + '"' +
+      (on ? ' style="border-color:' + t.color + '66"' : '') +
+      (doublon ? ' title="Vous en avez déjà un — un seul est autorisé par personne"' : '') +
+      ' onclick="livSetType(\'' + k + '\')">' +
+      '<i style="background:' + t.color + '"></i>' + _escapeHtmlChat(t.label) + '</button>';
+  }).join('');
+}
+
+// Récapitulatif vivant : plafond, taux appliqué, intérêts projetés.
+window.livRecalc = function() {
+  const t     = _livType_(_livType);
+  const solde = _depParse(_depVal('liv-f-solde'));
+  const perso = _depParse(_depVal('liv-f-taux'));
+
+  const opt = document.getElementById('liv-f-taux-opt');
+  if (opt) opt.textContent = t.taux === null ? 'à renseigner' : 'laisser vide = ' + _livPct(t.taux);
+  const inp = document.getElementById('liv-f-taux');
+  if (inp) inp.placeholder = t.taux === null ? '2,00' : String(t.taux).replace('.', ',');
+
+  _depText('liv-f-help', t.plafond === null
+    ? 'Un livret bancaire n\'a pas de plafond réglementé. Ses intérêts sont soumis au prélèvement forfaitaire de 30 %.'
+    : 'Plafond de ' + fmt(t.plafond) + '.' + (t.fisc
+        ? ' Intérêts soumis au prélèvement forfaitaire de 30 %.'
+        : ' Intérêts exonérés d\'impôt et de prélèvements sociaux.'));
+
+  const box = document.getElementById('liv-f-recap');
+  if (!box) return;
+  const taux = isFinite(perso) && perso > 0 ? perso : t.taux;
+  if (!isFinite(solde) || solde <= 0 || !taux) { box.hidden = true; return; }
+  const brut = solde * taux / 100;
+  const net  = t.fisc ? brut * (1 - LIV_PFU) : brut;
+  const reste = t.plafond === null ? null : Math.max(0, t.plafond - solde);
+  box.hidden = false;
+  box.innerHTML =
+    '<span class="dep-recap-l">' + _livPct(taux) + ' sur douze mois' +
+      (reste === null ? '' : reste > 0 ? ' · ' + fmt(reste) + ' encore possibles' : ' · plafond atteint') +
+    '</span>' +
+    '<span class="dep-recap-v">+' + fmt(net) + '</span>';
+};
+
+function _livPct(t) { return Number(t).toFixed(2).replace('.', ',').replace(/,00$/, '') + ' %'; }
+
+function _livErr(msg) {
+  const el = document.getElementById('liv-f-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.hidden = false;
+}
+
+window.livSave = function() {
+  const t     = _livType_(_livType);
+  const solde = _depParse(_depVal('liv-f-solde'));
+  const brut  = _depVal('liv-f-taux');
+  const perso = brut ? _depParse(brut) : null;
+
+  if (!isFinite(solde) || solde <= 0) return _livErr('Le solde doit être un nombre supérieur à zéro.');
+  if (brut && (!isFinite(perso) || perso <= 0 || perso > 20)) return _livErr('Le taux doit être un pourcentage plausible, entre 0 et 20.');
+  if (t.taux === null && !brut) return _livErr('Ce livret n\'a pas de taux réglementé : indiquez celui de votre contrat.');
+  // Le plafond est une règle, pas une préférence : on refuse un solde qui le
+  // dépasse plutôt que d'afficher une jauge à 130 %.
+  if (t.plafond !== null && solde > t.plafond) {
+    return _livErr('Le plafond du ' + t.label + ' est de ' + fmt(t.plafond) + '. Vérifiez le solde saisi.');
+  }
+  const doublon = getLivrets().some(l => l.id !== _livEditId && l.type === _livType && t.unique);
+  if (doublon) return _livErr('Vous avez déjà un ' + t.label + ', et il n\'en est autorisé qu\'un par personne.');
+
+  const entree = {
+    id: _livEditId || ('l' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
+    type: _livType,
+    solde,
+    taux: brut ? perso : null,          // null = on suit le barème, y compris ses révisions
+    banque: _depVal('liv-f-banque').slice(0, 60) || null,
+  };
+
+  const all = getLivrets().slice();
+  const i   = _livEditId ? all.findIndex(x => x.id === _livEditId) : -1;
+  if (i >= 0) all[i] = entree; else all.push(entree);
+  saveLivrets(currentUser, all);
+
+  livCloseModal();
+  _livRender();
+};
+
+window.livDelete = function() {
+  if (!_livEditId) return;
+  const l = getLivrets().find(x => x.id === _livEditId);
+  if (!confirm('Supprimer ce ' + _livType_(l && l.type).label + ' ?')) return;
+  saveLivrets(currentUser, getLivrets().filter(x => x.id !== _livEditId));
+  livCloseModal();
+  _livRender();
+};
+
+document.addEventListener('keydown', function(e) {
+  if (e.key !== 'Escape') return;
+  const m = document.getElementById('liv-modal');
+  if (m && m.classList.contains('open')) livCloseModal();
+});
+
+window.renderLivrets = renderLivrets;
 
 // Version-lock strict : vérifie dès l'accès/refresh (avant même le login)
 try { _checkVersion(); } catch(_) {}
