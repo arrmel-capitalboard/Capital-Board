@@ -33,5 +33,12 @@ jobs:
       - name: Syntaxe des fichiers JS principaux
         run: |
           node --check js/app.js
+          node --check js/import.js
           node --check capital-board-worker/src/index.js
           node --check discord-bot/src/index.js
+
+      - name: Calcul des livrets
+        run: node scripts/t-livrets.cjs
+
+      - name: Parseur de relevés
+        run: node scripts/t-import.cjs

@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260815e';
+const APP_VERSION = '20260815f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -19078,6 +19078,34 @@ window.livAddMvt = function(sens) {
   const dernier = champs[champs.length - 1];
   if (dernier) dernier.focus();
 };
+// Import d'un relevé dans le brouillon de saisie. Les lignes retenues sont
+// ajoutées aux mouvements déjà présents, jamais substituées : on peut importer
+// un relevé annuel puis compléter au mois le mois.
+//
+// L'écriture en base reste au bouton Enregistrer, qui applique tous ses
+// contrôles — plafond, date d'ouverture, solde positif. Un import ne doit pas
+// être une porte dérobée vers Firestore.
+window.livImporterReleve = function() {
+  if (!window.CBImport) return;
+  const t = _livType_(_livType);
+  window.CBImport.open({
+    titre: 'Importer un relevé',
+    sous: 'CSV, PDF ou capture d’écran de votre ' + t.label + '. ' +
+          'Les montants restent modifiables avant d’être ajoutés.',
+    existant: _livMvtsPropres(),
+    onValider: function(lignes) {
+      lignes.forEach(l => _livMvts.push({
+        d: l.d,
+        m: String(Math.abs(l.m)).replace('.', ','),
+        s: l.m < 0 ? -1 : 1,
+      }));
+      _livMvts.sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+      _livRenderMvts();
+      livRecalc();
+    },
+  });
+};
+
 window.livToggleSens = function(i) {
   if (!_livMvts[i]) return;
   _livMvts[i].s = _livMvts[i].s < 0 ? 1 : -1;

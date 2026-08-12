@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260815e">
+<link rel="stylesheet" href="css/style.css?v=20260815f">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2535,8 +2535,12 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg>
           Retrait
         </button>
+        <button type="button" class="liv-mvt-add import" onclick="livImporterReleve()">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+          Importer un relevé
+        </button>
       </div>
-      <div class="dep-help">Le solde se déduit de ces lignes. Un versement rapporte à partir du 1er ou du 16 qui suit ; un retrait cesse de rapporter dès la quinzaine en cours. Pour un livret ancien, une première ligne à la date d'ouverture suffit.</div>
+      <div class="dep-help">Le solde se déduit de ces lignes. Un versement rapporte à partir du 1er ou du 16 qui suit ; un retrait cesse de rapporter dès la quinzaine en cours. Pour un livret ancien, une première ligne à la date d'ouverture suffit. L'import lit un relevé sans rien téléverser : tout se passe dans votre navigateur.</div>
     </div>
 
     <div class="form-group liv-mvts-group">
@@ -2570,6 +2574,87 @@
       <button class="btn-primary" onclick="livSave()">Enregistrer</button>
     </div>
     <button class="dep-delete" id="liv-f-delete" hidden onclick="livDelete()">Supprimer ce livret</button>
+  </div>
+</div>
+
+<!-- ═══ IMPORT DE RELEVÉ ════════════════════════════
+     Socle commun aux modules, branché sur les livrets en premier.
+     Il s'ouvre PAR-DESSUS la fiche de saisie, qui reste derrière : annuler
+     doit ramener sur le formulaire, pas le refermer. D'où le z-index propre. -->
+<div class="modal-overlay imp-overlay" id="imp-modal" onclick="if(event.target===this)CBImport.close()"
+     role="dialog" aria-modal="true" aria-labelledby="imp-title">
+  <div class="modal imp-modal">
+    <div class="modal-title" id="imp-title">Importer un relevé</div>
+    <div class="modal-sub" id="imp-sub"></div>
+
+    <!-- ── Étape 1 : dépôt ── -->
+    <div id="imp-etape-depot">
+      <label class="imp-drop" id="imp-drop"
+             ondragover="CBImport.onDragOver(event)" ondragleave="CBImport.dragOff()"
+             ondrop="CBImport.onDrop(event)">
+        <input type="file" id="imp-file" accept=".csv,.txt,.tsv,.pdf,.png,.jpg,.jpeg,.webp,image/*,application/pdf,text/csv"
+               onchange="CBImport.onFile(event)" hidden>
+        <div class="imp-drop-ico">
+          <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+          </svg>
+        </div>
+        <div class="imp-drop-t">Déposez votre relevé, ou cliquez pour le choisir</div>
+        <div class="imp-drop-s">CSV, PDF ou capture d’écran</div>
+      </label>
+
+      <div class="imp-erreur" id="imp-erreur" hidden></div>
+
+      <!-- Les trois garanties sont écrites ici, pas seulement dans les CGU :
+           c'est ce qui fait accepter le dépôt d'un relevé bancaire. -->
+      <div class="imp-garanties">
+        <div class="imp-gar-t">Ce fichier ne quitte pas votre navigateur</div>
+        <ul>
+          <li>Il est lu sur votre appareil. Rien n’est envoyé, ni à nous, ni à un tiers.</li>
+          <li>Seules les lignes que vous cochez sont enregistrées.</li>
+          <li>Le fichier d’origine n’est jamais conservé, ni copié, ni mis en cache.</li>
+        </ul>
+      </div>
+
+      <div class="imp-aide">
+        <b>Où trouver le fichier ?</b> Sur le site de votre banque, depuis un ordinateur :
+        ouvrez le compte, puis « Télécharger les opérations » ou « Exporter ».
+        Choisissez le CSV si le format vous est demandé. L’application mobile ne
+        propose en général que l’affichage — d’où la lecture des captures, moins fiable.
+      </div>
+    </div>
+
+    <!-- ── Étape 2 : lecture ── -->
+    <div id="imp-etape-lecture" hidden>
+      <div class="imp-lecture">
+        <div class="imp-spin" aria-hidden="true"></div>
+        <div class="imp-lecture-nom" id="imp-lecture-nom">fichier</div>
+        <div class="imp-lecture-etat" id="imp-lecture-etat">Lecture en cours…</div>
+      </div>
+    </div>
+
+    <!-- ── Étape 3 : validation ligne à ligne ── -->
+    <div id="imp-etape-validation" hidden>
+      <div class="imp-bar">
+        <button type="button" class="imp-mini" onclick="CBImport.toutCocher(true)">Tout cocher</button>
+        <button type="button" class="imp-mini" onclick="CBImport.toutCocher(false)">Tout décocher</button>
+        <button type="button" class="imp-mini" onclick="CBImport.retour()">Changer de fichier</button>
+      </div>
+      <div class="imp-head">
+        <span></span><span>Date</span><span>Libellé</span><span>Montant</span>
+      </div>
+      <div class="imp-rows" id="imp-rows"></div>
+      <div class="imp-help">
+        Un montant négatif est un retrait. Corrigez ce qui doit l’être : rien n’est
+        enregistré tant que vous n’avez pas validé la fiche du livret.
+      </div>
+    </div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="CBImport.close()">Annuler</button>
+      <span class="imp-count" id="imp-count" hidden></span>
+      <button class="btn-primary" id="imp-ok" onclick="CBImport.valider()" hidden>Ajouter</button>
+    </div>
   </div>
 </div>
 
@@ -3267,9 +3352,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260815e"></script>
+<script src="js/app.js?v=20260815f"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260815e"></script>
+<script src="js/onboarding.js?v=20260815f"></script>
+<!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
+<script src="js/import.js?v=20260815f"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

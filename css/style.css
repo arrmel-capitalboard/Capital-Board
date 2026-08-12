@@ -4824,6 +4824,152 @@ body.has-demo-banner { padding-top: 40px; }
   font-size: 12.5px; color: var(--text2); line-height: 1.6;
 }
 .liv-alerte b { color: var(--gold); font-family: var(--mono); font-weight: 700; }
+
+/* ═══════════════════════════════════════════════════
+   IMPORT DE RELEVÉS  (js/import.js)
+   Socle commun aux modules ; branché sur les livrets en premier.
+   ═══════════════════════════════════════════════════ */
+
+/* La fiche de saisie reste ouverte derrière : l'import passe au-dessus, et
+   l'annuler doit ramener sur le formulaire, pas le refermer. */
+.imp-overlay { z-index: 1100; }
+.imp-modal {
+  width: 620px; max-width: calc(100vw - 32px);
+  max-height: 92vh; overflow-y: auto;
+}
+
+.liv-mvt-add.import { border-style: solid; }
+.liv-mvt-add.import:hover { color: var(--text); border-color: var(--accent); background: var(--accent-d); }
+
+/* ─── Zone de dépôt ─── */
+.imp-drop {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 7px; margin: 18px 0 14px; padding: 30px 20px;
+  border: 1px dashed var(--border3); border-radius: 14px;
+  background: var(--s2); cursor: pointer; text-align: center;
+  transition: border-color .15s, background .15s;
+}
+.imp-drop:hover, .imp-drop.over { border-color: var(--accent); background: var(--accent-d); }
+.imp-drop-ico { color: var(--text3); line-height: 0; }
+.imp-drop.over .imp-drop-ico, .imp-drop:hover .imp-drop-ico { color: var(--accent); }
+.imp-drop-t { font-size: 13px; font-weight: 600; color: var(--text); }
+.imp-drop-s { font-size: 11.5px; color: var(--text3); }
+
+.imp-erreur {
+  margin-bottom: 14px; padding: 10px 13px; border-radius: 10px;
+  background: rgba(255,77,106,.08); border: 1px solid rgba(255,77,106,.25);
+  color: var(--negative); font-size: 12px; line-height: 1.55;
+}
+
+/* Les trois garanties. Écrites à l'écran, pas seulement dans les CGU. */
+.imp-garanties {
+  padding: 12px 14px; border-radius: 11px;
+  background: var(--positive-d); border: 1px solid rgba(0,224,158,.2);
+}
+.imp-gar-t { font-size: 12px; font-weight: 700; color: var(--positive); margin-bottom: 6px; }
+.imp-garanties ul { margin: 0; padding-left: 16px; }
+.imp-garanties li { font-size: 11.5px; color: var(--text2); line-height: 1.6; }
+
+.imp-aide {
+  margin-top: 12px; font-size: 11.5px; color: var(--text3); line-height: 1.6;
+}
+.imp-aide b { color: var(--text2); }
+
+/* ─── Lecture en cours ─── */
+.imp-lecture {
+  display: flex; flex-direction: column; align-items: center; gap: 10px;
+  padding: 44px 20px; text-align: center;
+}
+.imp-spin {
+  width: 26px; height: 26px; border-radius: 50%;
+  border: 2px solid var(--border2); border-top-color: var(--accent);
+  animation: imp-spin 0.7s linear infinite;
+}
+@keyframes imp-spin { to { transform: rotate(360deg); } }
+.imp-lecture-nom  { font-size: 13px; font-weight: 600; color: var(--text); word-break: break-all; }
+.imp-lecture-etat { font-size: 11.5px; color: var(--text3); }
+
+/* ─── Validation ligne à ligne ─── */
+.imp-bar { display: flex; gap: 7px; flex-wrap: wrap; margin: 16px 0 10px; }
+.imp-mini {
+  padding: 6px 11px; border-radius: 8px;
+  background: var(--s2); border: 1px solid var(--border);
+  color: var(--text2); font-family: var(--sans); font-size: 11.5px; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+}
+.imp-mini:hover { color: var(--text); border-color: var(--accent); background: var(--accent-d); }
+
+.imp-head, .imp-row {
+  display: grid; grid-template-columns: 26px 132px 1fr 104px;
+  align-items: center; gap: 9px;
+}
+.imp-head {
+  padding: 0 2px 6px; border-bottom: 1px solid var(--border);
+  font-size: 10px; text-transform: uppercase; letter-spacing: .5px; color: var(--text3);
+}
+.imp-head span:last-child { text-align: right; }
+
+/* La liste peut compter cinquante lignes : elle défile dans sa propre boîte,
+   sinon le pied du modal part sous l'écran et le bouton devient introuvable. */
+.imp-rows { max-height: 46vh; overflow-y: auto; padding: 2px; }
+.imp-row { padding: 5px 0; border-bottom: 1px solid var(--border); }
+.imp-row:last-child { border-bottom: none; }
+.imp-row.doublon { opacity: .55; }
+
+.imp-chk { display: flex; align-items: center; justify-content: center; cursor: pointer; }
+.imp-chk input { width: 15px; height: 15px; accent-color: var(--accent); cursor: pointer; }
+
+.imp-row .imp-d, .imp-row .imp-m {
+  background: var(--s2); border: 1px solid var(--border); border-radius: 8px;
+  color: var(--text); font-family: var(--mono); font-size: 12px;
+  padding: 7px 9px; outline: none; width: 100%; box-sizing: border-box;
+}
+.imp-row .imp-d:focus, .imp-row .imp-m:focus { border-color: var(--accent); }
+.imp-row .imp-m { text-align: right; color: var(--positive); }
+.imp-row .imp-m.neg { color: var(--negative); }
+
+.imp-lab {
+  font-size: 12px; color: var(--text2);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.imp-tag {
+  margin-left: 6px; padding: 1px 5px; border-radius: 5px;
+  background: var(--s3); color: var(--text3);
+  font-family: var(--sans); font-size: 9px; font-style: normal;
+  text-transform: uppercase; letter-spacing: .4px;
+}
+
+.imp-help { margin-top: 10px; font-size: 11.5px; color: var(--text3); line-height: 1.6; }
+.imp-count {
+  flex: 1; font-family: var(--mono); font-size: 11.5px; color: var(--text3);
+  text-align: right; white-space: nowrap;
+}
+#imp-ok:disabled { opacity: .4; cursor: not-allowed; }
+
+/* Mobile : la grille à quatre colonnes ne tient pas. Le libellé passe sur sa
+   propre ligne, sous la date et le montant qui restent côte à côte. */
+@media (max-width: 640px) {
+  /* Même feuille du bas que la fiche de saisie, pour que les deux modales
+     empilées se ressemblent. */
+  .imp-modal {
+    width: 100%; border-radius: 20px 20px 0 0;
+    padding: 22px 18px calc(18px + env(safe-area-inset-bottom));
+    max-height: 92dvh;
+  }
+  .imp-drop { padding: 24px 14px; }
+  .imp-head { display: none; }
+  .imp-row {
+    grid-template-columns: 22px 1fr 96px;
+    grid-template-areas: 'chk date montant' '.   lab  lab';
+    row-gap: 4px; padding: 9px 0;
+  }
+  .imp-chk { grid-area: chk; align-items: flex-start; padding-top: 8px; }
+  .imp-row .imp-d { grid-area: date; }
+  .imp-row .imp-m { grid-area: montant; }
+  .imp-lab { grid-area: lab; white-space: normal; font-size: 11.5px; }
+  .imp-rows { max-height: 40vh; }
+  .imp-count { flex-basis: 100%; text-align: left; order: 3; margin-top: 8px; }
+}
 .liv-alerte.mince { background: var(--negative-d); border-color: rgba(255,77,106,.2); }
 .liv-alerte.mince b { color: var(--negative); }
 
