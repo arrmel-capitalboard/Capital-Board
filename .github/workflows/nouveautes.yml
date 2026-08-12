@@ -32,6 +32,9 @@ jobs:
       - name: Mettre en file les nouveautés
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          # Réécriture du sujet de commit en phrase lisible par un utilisateur.
+          # Absente, le script retombe sur la traduction mot à mot.
+          MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
         run: |
           cd scripts
           node queue-feature.mjs
