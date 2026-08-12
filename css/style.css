@@ -805,6 +805,22 @@ body { font-family: var(--sans); background: var(--bg); color: var(--text); min-
   }
   .pf-kpis .pf-pair > .pf-card:hover { background: transparent; transform: none; border: none; }
   .pf-kpis .pf-pair > .pf-card + .pf-card { border-top: 1px solid var(--border); }
+
+  /* Cartes bord à bord. Les 14px de marge de .main de chaque côté coûtaient
+     28px de contenu sur un écran de 390px, pour deux traits de bordure que
+     l'écran donne déjà. Le padding reste sur .main — titres, onglets et textes
+     courants en ont besoin —, les cartes le reprennent par un margin négatif.
+     Sous 640px seulement : au-dessus, la grille KPI est encore sur deux
+     colonnes et le margin négatif ferait chevaucher les cartes voisines. */
+  .pf-kpis > .pf-card,
+  .pf-kpis > .pf-pair,
+  .portf-chart-card,
+  .table-container {
+    margin-left: calc(var(--bleed, 14px) * -1);
+    margin-right: calc(var(--bleed, 14px) * -1);
+    border-radius: 0;
+    border-left: none; border-right: none;
+  }
 }
 
 /* ─── Masquer le solde : JS remplace les chiffres par bullets (• via WeakMap) ───
@@ -2349,6 +2365,8 @@ body.sb-collapsed .main { margin-left: 58px; }
   .main {
     margin-left: 0 !important;
     padding: 72px 14px calc(96px + max(20px, env(safe-area-inset-bottom, 0px)));
+    /* Marge horizontale de .main, relue par les cartes qui vont bord à bord. */
+    --bleed: 14px;
   }
 
   /* Grilles */
@@ -2936,7 +2954,7 @@ body.has-demo-banner { padding-top: 40px; }
 /* Très petit écran */
 @media (max-width: 380px) {
   .stats-grid { grid-template-columns: 1fr !important; }
-  .main { padding: 72px 10px calc(96px + max(20px, env(safe-area-inset-bottom, 0px))); }
+  .main { padding: 72px 10px calc(96px + max(20px, env(safe-area-inset-bottom, 0px))); --bleed: 10px; }
   .mobile-nav-item { padding: 6px 6px; min-width: 44px; font-size: 9px; }
 }
 
