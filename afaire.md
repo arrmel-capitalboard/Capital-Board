@@ -5,6 +5,11 @@ Dernière mise à jour : 30 juillet 2026 (fin du balayage de sécurité).
 Priorité par ordre décroissant. Les points de sécurité sont en tête : ils passent
 avant toute nouvelle fonctionnalité.
 
+> **Dépenses & abonnements** a son propre fichier : [`afaire-depenses.md`](afaire-depenses.md).
+> Module livré et ouvrable en bêta depuis le 12 août 2026 ; la suite du sujet —
+> arrêter la saisie manuelle, agrégation bancaire via Enable Banking — y est
+> détaillée avec la recherche déjà faite et les démarches à engager.
+
 ---
 
 ## Sécurité — pistes de renforcement
