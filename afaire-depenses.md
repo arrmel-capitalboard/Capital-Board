@@ -82,7 +82,22 @@ rendent une image. Seul `edf.fr` échouait, remplacé par `particulier.edf.fr`.
 
 > **Choix délibéré :** le domaine n'est jamais deviné à partir d'un intitulé
 > libre. « Plein d'essence » produirait `pleindessence.com` et une requête pour
-> rien à chaque affichage. Hors catalogue, la ligne garde ses initiales.
+> rien à chaque affichage.
+
+### Les icônes de concept
+
+`DEP_ICONES` (`js/app.js`) — 32 motifs `{ regex, paths SVG }` pour ce qui n'est
+pas une marque : loyer, essence, électricité, assurance, crèche, péage, salaire…
+Un loyer n'a pas de logo et n'en aura jamais ; deux initiales ne disaient rien.
+
+La pastille suit donc trois niveaux, dans cet ordre : **logo du marchand** si le
+catalogue le connaît, **icône de concept** si l'intitulé en évoque une, **initiales**
+sinon. L'icône prend la couleur du poste.
+
+L'ordre des motifs compte — le premier qui tombe gagne, donc les cas précis
+passent avant les génériques : « assurance auto » doit donner un bouclier, pas
+une voiture. `_depMots()` garde les espaces (contrairement à `_depNorm()`) pour
+que les limites de mot `\b` des motifs veuillent dire quelque chose.
 
 ### Le total versé
 
