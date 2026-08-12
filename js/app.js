@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814g';
+const APP_VERSION = '20260814h';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3752,6 +3752,14 @@ function fmt(n) {
   return new Intl.NumberFormat('fr-FR', { style: 'currency', currency: 'EUR', minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(n);
 }
 
+// Même montant, euro collé au chiffre. Réservé aux deux cellules qui basculent
+// entre pourcentage et euros à chaque rafraîchissement : l'espace fine
+// insécable posée par Intl n'a pas la largeur d'un caractère de la police
+// mono, et le symbole sautait d'un rendu à l'autre.
+function fmtSerre(n) {
+  return fmt(n).replace(/[\s  ]+€/, '€');
+}
+
 // Cartes de synthèse (valorisation totale, +/- value latente, solde espèces,
 // évaluation des titres) : même défilement que le tableau, de l'ancienne valeur
 // vers la nouvelle. La valeur brute est mémorisée sur l'élément — le texte
@@ -4059,7 +4067,7 @@ function renderPortfolio() {
       const chg = row.changePct || 0;
       const dayVal = row.qty * row.currentPrice * chg / 100;
       const dayPctTxt = `${chg >= 0 ? '+' : ''}${chg.toFixed(2)}%`;
-      const dayEurTxt = `${chg >= 0 ? '+' : ''}${dayVal.toFixed(2)} €`;
+      const dayEurTxt = `${chg >= 0 ? '+' : ''}${dayVal.toFixed(2)}€`;
       const perfJourHtml = chg !== 0
         ? `<span class="perf-jour-cell ${chg >= 0 ? 'perf-pos' : 'perf-neg'}"
               data-pct="${dayPctTxt}"
@@ -4110,10 +4118,10 @@ function renderPortfolio() {
           <div style="font-weight:500" class="c-val">${fmt(val)}</div>
           <div class="perf-total-sub ${isPos ? 'perf-pos' : 'perf-neg'}"
                data-pct="${isPos ? '+' : ''}${pct.toFixed(2)}%"
-               data-eur="${isPos ? '+' : ''}${fmt(Math.abs(pnl))}"
+               data-eur="${isPos ? '+' : ''}${fmtSerre(Math.abs(pnl))}"
                onclick="togglePerfTotalMode()"
                style="cursor:pointer">${_perfTotalMode === 'eur'
-                 ? `${isPos ? '+' : ''}${fmt(Math.abs(pnl))}`
+                 ? `${isPos ? '+' : ''}${fmtSerre(Math.abs(pnl))}`
                  : `${isPos ? '+' : ''}${pct.toFixed(2)}%`}</div>
         </td>
         <td class="hide-mobile c-plus">
@@ -9297,6 +9305,24 @@ function wlSetPeriod(i, ticker, period, btn) {
   loadWlChart(i, ticker, period);
 }
 
+// Un jeton par courbe : le tableau se reconstruit à chaque rafraîchissement
+// des cours, et une réponse arrivée après coup écrivait dans un noeud détaché
+// — la ligne restait sur « Chargement… » pour toujours.
+const _wlLoadToken = {};
+
+// État d'échec, avec de quoi réessayer sur place. Sans bouton, la seule sortie
+// était de replier puis rouvrir la ligne.
+function _wlChartFail(i, ticker, period, msg) {
+  const el = document.getElementById('wl-cloading-' + i);
+  if (!el) return;
+  el.style.display = 'flex';
+  el.innerHTML = '<span style="color:var(--text3)">' + (msg || 'Données indisponibles') + '</span>'
+    + '<button class="pf-btn ghost" style="margin-left:10px;font-size:11px;padding:5px 11px"'
+    + ' onclick="event.stopPropagation();loadWlChart(&quot;' + i + '&quot;,&quot;' + ticker + '&quot;,&quot;' + period + '&quot;)">Réessayer</button>';
+  const cv = document.getElementById('wl-canvas-' + i);
+  if (cv) cv.style.display = 'none';
+}
+
 async function loadWlChart(i, ticker, period) {
   const canvas   = document.getElementById('wl-canvas-' + i);
   const loading  = document.getElementById('wl-cloading-' + i);
@@ -9304,7 +9330,10 @@ async function loadWlChart(i, ticker, period) {
   const elChange = document.getElementById('wl-cchange-' + i);
   if (!canvas) return;
 
-  if (loading) { loading.style.display = 'flex'; canvas.style.display = 'none'; }
+  const jeton = (_wlLoadToken[i] = (_wlLoadToken[i] || 0) + 1);
+  const courant = () => _wlLoadToken[i] === jeton;
+
+  if (loading) { loading.style.display = 'flex'; loading.textContent = 'Chargement…'; canvas.style.display = 'none'; }
 
   const periodDef = WL_PERIODS[period] || WL_PERIODS['1M'];
   const { interval } = periodDef;
@@ -9331,7 +9360,14 @@ async function loadWlChart(i, ticker, period) {
           + encodeURIComponent(yt) + '?interval=' + interval + '&range=' + periodDef.range
           + (periodDef.prePost ? '&includePrePost=true' : '') + '&_=' + cb;
       }
-      raw = await fetchWithFallback(url);
+      // Plafond dur : fetchWithFallback enchaîne cinq proxys, chacun avec son
+      // propre délai. Additionnés, la ligne pouvait rester une demi-minute sur
+      // « Chargement… » sans jamais rien dire.
+      raw = await Promise.race([
+        fetchWithFallback(url),
+        new Promise((_, rej) => setTimeout(() => rej(new Error('délai dépassé')), 15000)),
+      ]);
+      if (!courant()) return; // une autre période a été demandée entre-temps
       _wlChartPeriodCache[cacheKey] = { raw, ts: now };
     }
 
@@ -9423,10 +9459,15 @@ async function loadWlChart(i, ticker, period) {
 
     if (_wlChartInstances[i]) { _wlChartInstances[i].destroy(); delete _wlChartInstances[i]; }
 
-    if (loading) loading.style.display = 'none';
-    canvas.style.display = 'block';
+    // Les noeuds sont relus ici : entre la demande et la réponse, un
+    // rafraîchissement des cours a pu reconstruire la ligne, et masquer
+    // l'ancien chargeur laissait le nouveau tourner dans le vide.
+    const loadEl = document.getElementById('wl-cloading-' + i) || loading;
+    const cvEl   = document.getElementById('wl-canvas-' + i) || canvas;
+    if (loadEl) loadEl.style.display = 'none';
+    cvEl.style.display = 'block';
 
-    const ctx = canvas.getContext('2d');
+    const ctx = cvEl.getContext('2d');
     _wlChartInstances[i] = new Chart(ctx, {
       type: 'line',
       data: {
@@ -9500,8 +9541,8 @@ async function loadWlChart(i, ticker, period) {
     });
 
   } catch(e) {
-    if (loading) { loading.textContent = 'Données indisponibles'; loading.style.display = 'flex'; }
-    canvas.style.display = 'none';
+    if (!courant()) return;
+    _wlChartFail(i, ticker, period, 'Données indisponibles');
   }
 }
 
@@ -9668,8 +9709,8 @@ function _pxSameComposition(before) {
 
 // Formats des colonnes animées, calqués sur ceux du rendu.
 const _pxFmtPct    = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + '%';
-const _pxFmtEurSgn = (v) => (v >= 0 ? '+' : '') + fmt(Math.abs(v));
-const _pxFmtDayEur = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + ' €';
+const _pxFmtEurSgn = (v) => (v >= 0 ? '+' : '') + fmtSerre(Math.abs(v));
+const _pxFmtDayEur = (v) => (v >= 0 ? '+' : '') + v.toFixed(2) + '€';
 
 // Fait défiler le nombre de `from` à `to` (easeOutCubic).
 function _pxCount(el, from, to, format) {
