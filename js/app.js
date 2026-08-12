@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814w';
+const APP_VERSION = '20260814x';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3362,7 +3362,7 @@ const FLAGGABLE = ['watchlist','dividendes','avantages','benchmark','projections
 // Sections qui portent DEUX vues dans la même page : le teaser « Bientôt » et
 // le module réel. Elles seules acceptent l'état bêta — ailleurs il ne voudrait
 // rien dire, la page EST le teaser et il n'y a rien d'autre à montrer.
-const BETA_CAPABLE = ['depenses', 'livrets'];
+const BETA_CAPABLE = ['depenses'];
 
 let _featureFlags = {};
 // config/app.beta = { depenses: true }. Séparé de `features` pour que couper
@@ -18317,10 +18317,10 @@ const LIV_BAREME = {
     // Le taux du Livret Jeune est fixé librement par chaque banque, avec pour
     // seul plancher légal celui du Livret A. 3,75 % est une valeur courante,
     // pas une règle : `min` sert à refuser une saisie sous le plancher.
-    jeune:    { label: 'Livret Jeune',    court: 'LJ',   plafond: 1600,  taux: 3.75, unique: true,  fisc: false, color: '#38bdf8', min: 'livretA' },
+    jeune:    { label: 'Livret Jeune',    court: 'LJ',   plafond: 1600,  taux: 3.75, unique: true,  fisc: false, color: '#38bdf8', min: 'livretA', finRequise: true },
     // `duree` : terme légal en années, quand il existe. Il permet de déduire
     // la fin de validité de l'ouverture, et réciproquement.
-    pel:      { label: 'PEL',             court: 'PEL',  plafond: 61200, taux: null, unique: false, fisc: true,  color: '#a78bfa', duree: 15 },
+    pel:      { label: 'PEL',             court: 'PEL',  plafond: 61200, taux: null, unique: false, fisc: true,  color: '#a78bfa', duree: 15, finRequise: true },
     cel:      { label: 'CEL',             court: 'CEL',  plafond: 15300, taux: null, unique: false, fisc: true,  color: '#c084fc' },
     bancaire: { label: 'Livret bancaire', court: 'LB',   plafond: null,  taux: null, unique: false, fisc: true,  color: '#f5b731' },
   },
@@ -18577,8 +18577,6 @@ function renderLivrets() {
   teaser.hidden = live;
   app.hidden    = !live;
   if (!live) return;
-  const note = document.getElementById('liv-beta-note');
-  if (note) note.hidden = !_isFeatureBeta('livrets');
   _livRender();
 }
 
@@ -18883,6 +18881,14 @@ function livDatesSync() {
   const t   = _livType_(_livType);
   const ouv = _depVal('liv-f-ouverture');
   const fin = _depVal('liv-f-fin');
+
+  // Un Livret A n'a pas de terme : exiger une date de fin ferait inventer une
+  // donnée. Elle n'est obligatoire que là où la loi en pose un.
+  const lab = document.getElementById('liv-f-fin-label');
+  if (lab) lab.innerHTML = t.finRequise
+    ? 'Fin de validité'
+    : 'Fin de validité <span class="dep-opt">sans objet</span>';
+
   const el  = document.getElementById('liv-f-dates-help');
   if (!el) return;
 
@@ -19122,6 +19128,12 @@ window.livSave = function() {
   const perso = brut ? _depParse(brut) : null;
 
   if (!isFinite(solde) || solde <= 0) return _livErr('Le solde doit être un nombre supérieur à zéro.');
+  const ouverture = _depVal('liv-f-ouverture');
+  const finValid  = _depVal('liv-f-fin');
+  if (!ouverture) return _livErr('La date d’ouverture est nécessaire : elle détermine à partir de quand les intérêts courent.');
+  if (t.finRequise && !finValid) return _livErr('Un ' + t.label + ' a un terme : indiquez sa fin de validité.');
+  if (finValid && finValid <= ouverture) return _livErr('La fin de validité doit être postérieure à l’ouverture.');
+  if (ouverture > new Date().toISOString().slice(0, 10)) return _livErr('La date d’ouverture est dans le futur.');
   if (brut && (!isFinite(perso) || perso <= 0 || perso > 20)) return _livErr('Le taux doit être un pourcentage plausible, entre 0 et 20.');
   // Un Livret Jeune ne peut légalement pas rémunérer moins que le Livret A.
   if (t.min && brut) {
@@ -19148,8 +19160,8 @@ window.livSave = function() {
     // Domaine figé à l'enregistrement, comme pour les marchands : le logo
     // reste le bon même si le catalogue évolue.
     banqueDomaine: _livDomaine || null,
-    fin: _depVal('liv-f-fin') || null,
-    ouverture: _depVal('liv-f-ouverture') || null,
+    fin: finValid || null,
+    ouverture,
     mouvements: _livMvtsPropres(),
   };
 

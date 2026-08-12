@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260814w">
+<link rel="stylesheet" href="css/style.css?v=20260814x">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -1834,11 +1834,6 @@
         </div>
       </div>
 
-      <div class="dep-beta-note" id="liv-beta-note" hidden>
-        <span class="dep-beta-tag">Bêta</span>
-        Section visible par vous seul. Les autres membres voient encore la page « Bientôt ».
-      </div>
-
       <div class="dep-kpis">
         <div class="dep-hero">
           <div class="dep-kl">Épargne disponible</div>
@@ -2504,11 +2499,11 @@
 
     <div class="dep-row2">
       <div class="form-group">
-        <label class="form-label" for="liv-f-ouverture">Ouvert le <span class="dep-opt">facultatif</span></label>
+        <label class="form-label" for="liv-f-ouverture">Ouvert le</label>
         <input class="form-input" id="liv-f-ouverture" type="date" onchange="livDateChange('ouverture')">
       </div>
       <div class="form-group">
-        <label class="form-label" for="liv-f-fin">Fin de validité <span class="dep-opt">facultatif</span></label>
+        <label class="form-label" for="liv-f-fin" id="liv-f-fin-label">Fin de validité</label>
         <input class="form-input" id="liv-f-fin" type="date" onchange="livDateChange('fin')">
       </div>
     </div>
@@ -3232,9 +3227,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260814w"></script>
+<script src="js/app.js?v=20260814x"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260814w"></script>
+<script src="js/onboarding.js?v=20260814x"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
