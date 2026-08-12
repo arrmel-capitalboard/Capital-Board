@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814f';
+const APP_VERSION = '20260814g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3399,9 +3399,11 @@ const DEFAULT_NAV = [
   // d'un bloc à l'autre pour une même ligne.
   // Ordre de lecture : les enveloppes investies d'abord, puis l'épargne
   // disponible, les actifs non cotés, et le budget en dernier.
+  // Administration en tête : l'entrée n'existe que pour l'équipe, et elle se
+  // perdait en bas d'une liste de onze comptes.
+  { title: 'Administration', items: ['admin'] },
   { title: 'Mes comptes',    items: ['patrimoine', 'portfolio', 'cto', 'av', 'per', 'crypto', 'livrets', 'immo', 'or', 'nonco', 'depenses'] },
   { title: 'Outils',         items: ['actualites', 'favoris', 'fiscalite', 'idees', 'support'] },
-  { title: 'Administration', items: ['admin'] },
   { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord', 'facebook', 'linkedin'] },
 ];
 let _navNodes = null;   // cache des noeuds .nav-item par clé (sidebar desktop)
