@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814o';
+const APP_VERSION = '20260814p';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -17237,7 +17237,33 @@ let _depMonth    = null;        // 'YYYY-MM' consulté
 let _depFilter   = 'tous';      // filtre de la liste d'opérations
 let _depDeadOpen = false;       // repli des abonnements résiliés
 let _depEditId   = null;        // opération en cours d'édition, null = création
-let _depForm     = { type: 'depense', cat: 'abonnements', freq: 'mensuel', domaine: null };
+// `tab` est une commodité de saisie, pas une donnée : elle se projette sur le
+// couple (type, recurrent) du modèle, qui n'a pas bougé. Abonnement = dépense
+// récurrente ; le revenu garde sa case « ça revient », parce qu'un salaire
+// revient et pas une prime.
+let _depForm     = { tab: 'depense', type: 'depense', cat: 'courses', freq: 'mensuel', domaine: null };
+
+const DEP_TABS = {
+  depense:    { type: 'depense', cat: 'courses',     titre: 'Nouvelle dépense',    sous: 'Une sortie ponctuelle — un plein, des courses, un restaurant.' },
+  abonnement: { type: 'depense', cat: 'abonnements', titre: 'Nouvel abonnement',   sous: 'Une dépense qui revient — abonnement, loyer, facture.' },
+  revenu:     { type: 'revenu',  cat: 'salaire',     titre: 'Nouveau revenu',      sous: 'Salaire, freelance, loyer perçu, aide.' },
+};
+
+// L'onglet d'une opération existante se déduit de ce qui est stocké.
+function _depTabOf(e) {
+  if (!e) return 'depense';
+  if (e.type === 'revenu') return 'revenu';
+  return e.recurrent ? 'abonnement' : 'depense';
+}
+// La récurrence est imposée par l'onglet côté sortie, laissée au choix côté
+// revenu. Une seule fonction décide, pour que la modale et l'enregistrement ne
+// puissent pas diverger.
+function _depRecurOn() {
+  if (_depForm.tab === 'abonnement') return true;
+  if (_depForm.tab === 'depense')    return false;
+  const rec = document.getElementById('dep-f-recur');
+  return !!(rec && rec.checked);
+}
 let _depSuggList = [];          // suggestions affichées sous l'intitulé
 let _depSuggSel  = -1;          // suggestion surlignée au clavier
 
@@ -17635,8 +17661,10 @@ window.depOpenModal = function(id) {
   const e   = id ? all.find(x => x.id === id) : null;
   _depEditId = e ? e.id : null;
 
-  _depForm.type    = e ? (e.type === 'revenu' ? 'revenu' : 'depense') : 'depense';
-  _depForm.cat     = e ? _depCat(_depForm.type, e.categorie).key : _depCatList(_depForm.type)[0].key;
+  _depForm.tab     = _depTabOf(e);
+  const def        = DEP_TABS[_depForm.tab];
+  _depForm.type    = def.type;
+  _depForm.cat     = e ? _depCat(def.type, e.categorie).key : def.cat;
   _depForm.freq    = (e && e.frequence) || 'mensuel';
   _depForm.domaine = e ? (e.domaine || ((_depMarchand(e.nom) || {}).d) || null) : null;
 
@@ -17654,13 +17682,18 @@ window.depOpenModal = function(id) {
   _depSuggClear();
   _depRenderLogo();
 
-  _depText('dep-modal-title', e ? 'Modifier l\'opération' : 'Nouvelle opération');
+  // En modification, le titre annonce ce qu'on modifie ; en création, c'est
+  // _depSyncTab() qui l'écrit et le suit à chaque changement d'onglet.
+  if (e) {
+    _depText('dep-modal-title', 'Modifier « ' + (e.nom || 'l\'opération') + ' »');
+    _depText('dep-modal-sub', DEP_TABS[_depForm.tab].sous);
+  }
   const del = document.getElementById('dep-f-delete');
   if (del) del.hidden = !e;
   const err = document.getElementById('dep-f-error');
   if (err) err.hidden = true;
 
-  _depSyncType();
+  _depSyncTab();
   depToggleRecur();
   document.getElementById('dep-modal').classList.add('open');
   setTimeout(() => { const n = document.getElementById('dep-f-nom'); if (n) n.focus(); }, 60);
@@ -17679,11 +17712,14 @@ window.depCloseModal = function() {
   _depEditId = null;
 };
 
-window.depSetType = function(t) {
-  if (_depForm.type === t) return;
-  _depForm.type = t;
-  _depForm.cat  = _depCatList(t)[0].key;
-  _depSyncType();
+window.depSetTab = function(tab) {
+  if (_depForm.tab === tab) return;
+  const def = DEP_TABS[tab] || DEP_TABS.depense;
+  _depForm.tab  = tab;
+  _depForm.type = def.type;
+  _depForm.cat  = def.cat;
+  _depSyncTab();
+  depToggleRecur();
 };
 
 window.depSetCat  = function(k) { _depForm.cat = k; _depRenderCatChips(); _depRenderLogo(); };
@@ -17695,9 +17731,8 @@ window.depSetFreq = function(f) {
 };
 
 window.depToggleRecur = function() {
-  const rec = document.getElementById('dep-f-recur');
   const box = document.getElementById('dep-f-recur-fields');
-  const on  = !!(rec && rec.checked);
+  const on  = _depRecurOn();
   if (box) box.hidden = !on;
   // Sur une récurrence, la date n'est plus celle de l'opération mais celle de
   // la première échéance. Le libellé doit le dire, sinon on ne sait pas quoi
@@ -17723,7 +17758,7 @@ window.depRecalc = function() {
   const rec = document.getElementById('dep-f-recur');
   const date = _depVal('dep-f-date');
   const montant = _depParse(_depVal('dep-f-montant'));
-  if (!(rec && rec.checked) || !date || !isFinite(montant) || montant <= 0) {
+  if (!_depRecurOn() || !date || !isFinite(montant) || montant <= 0) {
     box.hidden = true;
     return;
   }
@@ -17746,9 +17781,26 @@ window.depRecalc = function() {
     '<span class="dep-recap-v">' + fmt(v.total) + '</span>';
 };
 
-function _depSyncType() {
+function _depSyncTab() {
   document.querySelectorAll('#dep-f-type button').forEach(b =>
-    b.classList.toggle('active', b.dataset.type === _depForm.type));
+    b.classList.toggle('active', b.dataset.tab === _depForm.tab));
+
+  const def = DEP_TABS[_depForm.tab] || DEP_TABS.depense;
+  if (!_depEditId) {
+    _depText('dep-modal-title', def.titre);
+    _depText('dep-modal-sub', def.sous);
+  }
+
+  // La case « ça revient » n'a de sens que sur un revenu : côté sortie, c'est
+  // l'onglet qui tranche, et la garder poserait deux fois la même question.
+  const wrap = document.getElementById('dep-f-recur-wrap');
+  if (wrap) wrap.hidden = _depForm.tab !== 'revenu';
+
+  const nom = document.getElementById('dep-f-nom');
+  if (nom) nom.placeholder = _depForm.tab === 'abonnement' ? 'Netflix, loyer, forfait mobile…'
+    : _depForm.tab === 'revenu' ? 'Salaire, mission freelance, aide…'
+    : 'Plein d\'essence, courses, restaurant…';
+
   _depRenderCatChips();
   _depSuggClear();
   _depRenderLogo();
@@ -17917,7 +17969,7 @@ window.depSave = function() {
   const nom     = _depVal('dep-f-nom');
   const montant = _depParse(_depVal('dep-f-montant'));
   const date    = _depVal('dep-f-date');
-  const recur   = !!(document.getElementById('dep-f-recur') || {}).checked;
+  const recur   = _depRecurOn();
   const fin     = recur ? _depVal('dep-f-fin') : '';
 
   if (!nom)                    return _depErr('Il manque l\'intitulé.');
@@ -18004,8 +18056,13 @@ window.depDeleteConfirmed = function() {
 // avec le champ déjà sélectionné. Aucune écriture — il valide lui-même.
 window.depResilierPlutot = function() {
   depConfirmClose();
-  const rec = document.getElementById('dep-f-recur');
-  if (rec && !rec.checked) { rec.checked = true; depToggleRecur(); }
+  // Un abonnement porte déjà la récurrence par son onglet ; un revenu
+  // récurrent passe par la case, qu'on coche si elle ne l'est pas.
+  if (!_depRecurOn()) {
+    const rec = document.getElementById('dep-f-recur');
+    if (rec) rec.checked = true;
+    depToggleRecur();
+  }
   const fin = document.getElementById('dep-f-fin');
   if (!fin) return;
   if (!fin.value) fin.value = new Date().toISOString().slice(0, 10);

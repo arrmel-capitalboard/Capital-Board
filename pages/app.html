@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260814o">
+<link rel="stylesheet" href="css/style.css?v=20260814p">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2426,11 +2426,14 @@
 <div class="modal-overlay" id="dep-modal" onclick="if(event.target===this)depCloseModal()" role="dialog" aria-modal="true" aria-labelledby="dep-modal-title">
   <div class="modal dep-modal">
     <div class="modal-title" id="dep-modal-title">Nouvelle opération</div>
-    <div class="modal-sub">Un plein d'essence, un abonnement, un salaire — tout se saisit ici.</div>
+    <div class="modal-sub" id="dep-modal-sub">Un plein d'essence, un abonnement, un salaire — tout se saisit ici.</div>
 
-    <div class="dep-seg" id="dep-f-type" role="tablist">
-      <button type="button" class="active" data-type="depense" onclick="depSetType('depense')" role="tab">Dépense</button>
-      <button type="button" data-type="revenu" onclick="depSetType('revenu')" role="tab">Revenu</button>
+    <!-- Dépense et abonnement sont deux sorties d'argent : elles restent
+         voisines, le revenu ferme la barre. -->
+    <div class="dep-seg dep-seg-3" id="dep-f-type" role="tablist">
+      <button type="button" class="active" data-tab="depense" onclick="depSetTab('depense')" role="tab">Dépense</button>
+      <button type="button" data-tab="abonnement" onclick="depSetTab('abonnement')" role="tab">Abonnement</button>
+      <button type="button" data-tab="revenu" onclick="depSetTab('revenu')" role="tab">Revenu</button>
     </div>
 
     <div class="form-group">
@@ -2466,7 +2469,9 @@
       <div class="dep-cats" id="dep-f-cats"></div>
     </div>
 
-    <label class="dep-check">
+    <!-- Ne subsiste que pour le revenu : un salaire revient, une prime non.
+         Côté sortie, c'est l'onglet Abonnement qui porte la distinction. -->
+    <label class="dep-check" id="dep-f-recur-wrap">
       <input type="checkbox" id="dep-f-recur" onchange="depToggleRecur()">
       <span class="dep-check-box"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg></span>
       <span>
@@ -2478,7 +2483,7 @@
     <div id="dep-f-recur-fields" hidden>
       <div class="form-group" style="margin-top:14px">
         <span class="form-label">Fréquence</span>
-        <div class="dep-seg dep-seg-3" id="dep-f-freq">
+        <div class="dep-seg dep-seg-3 dep-seg-tight" id="dep-f-freq">
           <button type="button" class="active" data-freq="mensuel" onclick="depSetFreq('mensuel')">Mensuel</button>
           <button type="button" data-freq="trimestriel" onclick="depSetFreq('trimestriel')">Trimestriel</button>
           <button type="button" data-freq="annuel" onclick="depSetFreq('annuel')">Annuel</button>
@@ -3079,9 +3084,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260814o"></script>
+<script src="js/app.js?v=20260814p"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260814o"></script>
+<script src="js/onboarding.js?v=20260814p"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

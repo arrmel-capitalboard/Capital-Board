@@ -55,6 +55,13 @@ même liste, distingués par `type`.
 }
 ```
 
+**La saisie se fait par trois onglets — Dépense · Abonnement · Revenu — mais le
+modèle n'en connaît que deux champs.** `DEP_TABS` projette l'onglet sur le couple
+`(type, recurrent)` : abonnement = dépense récurrente. `_depTabOf(e)` fait le
+chemin inverse à l'ouverture. Aucune donnée supplémentaire, aucune migration.
+La case « ça revient » ne subsiste que sur le revenu, où un salaire revient et
+pas une prime ; côté sortie c'est l'onglet qui tranche.
+
 **Le principe central : une récurrence est une RÈGLE, stockée une seule fois.**
 Elle n'est jamais recopiée d'un mois sur l'autre — c'est l'affichage qui la
 reprojette sur le mois consulté (`_depOccursIn`). L'historique est donc juste

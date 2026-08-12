@@ -4681,7 +4681,9 @@ body.has-demo-banner { padding-top: 40px; }
   background: var(--s2); border: 1px solid var(--border2);
   border-radius: 11px; padding: 4px; margin-bottom: 18px;
 }
-.dep-seg-3 { grid-template-columns: repeat(3, 1fr); margin-bottom: 0; }
+.dep-seg-3 { grid-template-columns: repeat(3, 1fr); }
+/* Variante sans marge : la barre de fréquence vit déjà dans un .form-group. */
+.dep-seg-tight { margin-bottom: 0; }
 .dep-seg button {
   padding: 9px 6px; border: none; border-radius: 8px;
   background: transparent; color: var(--text3);
