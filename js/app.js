@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260815c';
+const APP_VERSION = '20260815d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18447,31 +18447,77 @@ function _livDebutQuinzaine(dateIso, annee, retrait) {
  * que l'écran l'annonce plutôt que de faire passer une approximation pour un
  * relevé.
  */
-function _livInteretsQ(l, jusqu) {
-  const taux    = _livTaux(l);
-  const imposee = _livType_(l && l.type).fisc;
-  const annee   = new Date().getFullYear();
-  const mvts    = Array.isArray(l && l.mouvements) ? l.mouvements : [];
+/**
+ * Historique des taux du livret, du plus ancien au plus récent.
+ *
+ * Un livret réglementé change de taux au 1er février et au 1er août — le CIC
+ * journalise d'ailleurs chaque révision par une ligne « Nouveau Taux ». Un taux
+ * unique ne peut donc pas décrire une année entière, et c'est ce qui creusait
+ * l'écart avec les chiffres de la banque.
+ */
+function _livTauxHist(l) {
+  const h = Array.isArray(l && l.tauxHist) ? l.tauxHist : [];
+  return h
+    .filter(x => x && x.depuis && Number.isFinite(Number(x.taux)) && Number(x.taux) > 0)
+    .map(x => ({ depuis: x.depuis, taux: Number(x.taux) }))
+    .sort((a, b) => (a.depuis < b.depuis ? -1 : 1));
+}
 
-  let brut = 0, exact = false;
+// Taux en vigueur à la quinzaine q. Sans historique, le taux courant vaut pour
+// toute l'année — c'est le comportement d'avant, conservé tel quel.
+function _livTauxA(l, q, annee) {
+  const hist = _livTauxHist(l);
+  if (!hist.length) return _livTaux(l);
+  let taux = null;
+  hist.forEach(x => {
+    const p = String(x.depuis).split('-');
+    const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+    const qi = d.getFullYear() < annee ? -1 : d.getFullYear() > annee ? 99 : _livQIndex(d);
+    if (qi <= q) taux = x.taux;
+  });
+  // Aucune révision connue avant cette quinzaine : le taux courant fait foi.
+  return taux === null ? _livTaux(l) : taux;
+}
+
+/**
+ * Intérêts sur les `jusqu` premières quinzaines de l'année.
+ *
+ * On somme quinzaine par quinzaine plutôt que mouvement par mouvement : c'est
+ * la seule façon de faire cohabiter un capital qui bouge et un taux qui bouge
+ * aussi. Le capital actif à la quinzaine q est la somme des mouvements dont
+ * l'effet a commencé au plus tard à q.
+ *
+ * `courant` force le taux d'aujourd'hui sur toute la période. C'est ce que fait
+ * la banque pour son prévisionnel — sa note dit « selon les caractéristiques
+ * actuelles » — alors que l'acquis, lui, suit les taux réellement appliqués.
+ */
+function _livInteretsQ(l, jusqu, courant) {
+  const annee   = new Date().getFullYear();
+  const imposee = _livType_(l && l.type).fisc;
+  const mvts    = Array.isArray(l && l.mouvements) ? l.mouvements : [];
+  const tCourant = _livTaux(l);
+
+  // Départs : liste de { debut, montant }. Sans mouvements, le solde est
+  // supposé en place depuis l'ouverture — le seul repli possible.
+  let parts, exact;
   if (mvts.length) {
     exact = true;
-    mvts.forEach(m => {
-      const montant = Number(m && m.m);
-      if (!Number.isFinite(montant) || montant === 0) return;
-      const debut = _livDebutQuinzaine(m.d, annee, montant < 0);
-      const q = Math.max(0, jusqu - debut);
-      brut += montant * taux / 100 * q / 24;
-    });
-    // Un retrait plus ancien que les versements restants peut faire passer le
-    // total sous zéro sur des saisies incohérentes. On ne montre pas d'intérêts
-    // négatifs : un livret n'en produit jamais.
-    if (brut < 0) brut = 0;
+    parts = mvts
+      .map(m => ({ montant: Number(m && m.m), d: m && m.d }))
+      .filter(x => Number.isFinite(x.montant) && x.montant !== 0)
+      .map(x => ({ montant: x.montant, debut: _livDebutQuinzaine(x.d, annee, x.montant < 0) }));
   } else {
-    // Un livret ouvert en cours d'année ne produit pas avant son ouverture :
-    // c'est le seul raffinement possible sans historique.
-    const debut = _livDebutQuinzaine(l && l.ouverture, annee);
-    brut = _livSolde(l) * taux / 100 * Math.max(0, jusqu - debut) / 24;
+    exact = false;
+    parts = [{ montant: _livSolde(l), debut: _livDebutQuinzaine(l && l.ouverture, annee) }];
+  }
+
+  let brut = 0;
+  for (let q = 0; q < jusqu; q++) {
+    let capital = 0;
+    parts.forEach(x => { if (x.debut <= q) capital += x.montant; });
+    if (capital <= 0) continue;   // un livret ne produit jamais d'intérêts négatifs
+    const taux = courant ? tCourant : _livTauxA(l, q, annee);
+    brut += capital * taux / 100 / 24;
   }
   const net = imposee ? brut * (1 - LIV_PFU) : brut;
   return { brut, net, exact };
@@ -18545,7 +18591,7 @@ function _livProjete(l) {
     const net = _livType_(l && l.type).fisc ? r.projete * (1 - LIV_PFU) : r.projete;
     return { brut: r.projete, net, exact: true, releve: true };
   }
-  return _livInteretsQ(l, 24);
+  return _livInteretsQ(l, 24, true);
 }
 
 function _livTotal(user)     { return getLivrets(user).reduce((s, l) => s + _livSolde(l), 0); }
@@ -18857,6 +18903,9 @@ window.livOpenModal = function(id) {
   _depSet('liv-f-r-acquis',  rel.acquis  != null ? String(rel.acquis).replace('.', ',')  : '');
   _depSet('liv-f-r-projete', rel.projete != null ? String(rel.projete).replace('.', ',') : '');
   _depSet('liv-f-r-le',      rel.le || '');
+  _livTx = ((l && Array.isArray(l.tauxHist)) ? l.tauxHist : [])
+    .map(x => ({ depuis: x.depuis, taux: String(x.taux).replace('.', ',') }));
+  _livRenderTaux();
   // Reprise des lignes créées avant ce modèle : leur solde devient un premier
   // mouvement daté de l'ouverture, sinon il disparaîtrait à la réouverture.
   let source = (l && Array.isArray(l.mouvements) && l.mouvements.length) ? l.mouvements : [];
@@ -18964,6 +19013,52 @@ function livDatesSync() {
 }
 
 // ─── Versements de l'année ───
+
+let _livTx = [];   // brouillon des changements de taux
+
+window.livAddTaux = function() {
+  // Les révisions tombent au 1er février et au 1er août : on propose la
+  // prochaine échéance non couverte plutôt qu'une date au hasard.
+  const an = new Date().getFullYear();
+  const prises = _livTx.map(x => x.depuis);
+  const d = [an + '-02-01', an + '-08-01'].find(x => !prises.includes(x)) || (an + '-01-01');
+  _livTx.push({ depuis: d, taux: '' });
+  _livRenderTaux();
+  const c = document.querySelectorAll('#liv-f-taux-hist .liv-mvt-m');
+  if (c.length) c[c.length - 1].focus();
+};
+window.livDelTaux = function(i) { _livTx.splice(i, 1); _livRenderTaux(); livRecalc(); };
+window.livSetTaux = function(i, champ, val) {
+  if (!_livTx[i]) return;
+  _livTx[i][champ] = val;
+  livRecalc();
+};
+
+function _livRenderTaux() {
+  const box = document.getElementById('liv-f-taux-hist');
+  if (!box) return;
+  if (!_livTx.length) {
+    box.innerHTML = '<div class="liv-mvt-vide">Aucune révision. Le taux ci-dessus vaut pour toute l\'année.</div>';
+    return;
+  }
+  box.innerHTML = _livTx.map((x, i) =>
+    '<div class="liv-mvt liv-mvt-taux">' +
+      '<input class="form-input liv-mvt-d" type="date" value="' + _attr(x.depuis) + '" ' +
+        'onchange="livSetTaux(' + i + ',\'depuis\',this.value)">' +
+      '<input class="form-input liv-mvt-m" type="text" inputmode="decimal" placeholder="taux %" ' +
+        'value="' + _attr(x.taux) + '" oninput="livSetTaux(' + i + ',\'taux\',this.value)">' +
+      '<button type="button" class="liv-mvt-del" onclick="livDelTaux(' + i + ')" aria-label="Supprimer cette révision">' +
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
+      '</button>' +
+    '</div>').join('');
+}
+
+function _livTauxPropres() {
+  return _livTx
+    .map(x => ({ depuis: x.depuis, taux: _depParse(String(x.taux)) }))
+    .filter(x => x.depuis && Number.isFinite(x.taux) && x.taux > 0 && x.taux <= 20)
+    .sort((a, b) => (a.depuis < b.depuis ? -1 : 1));
+}
 
 window.livAddMvt = function(sens) {
   // Une première ligne se date à l'ouverture : c'est presque toujours ce qu'on
@@ -19187,6 +19282,7 @@ window.livRecalc = function() {
     ouverture: _depVal('liv-f-ouverture'),
     mouvements: mvts,
     releve: _livReleveSaisi(),
+    tauxHist: _livTauxPropres(),
   };
   const acquis  = _livAcquis(brouillon).net;
   const projete = _livProjete(brouillon).net;
@@ -19274,6 +19370,7 @@ window.livSave = function() {
     ouverture,
     mouvements: mvts,
     releve: _livReleveSaisi(),
+    tauxHist: _livTauxPropres(),
   };
 
   const all = getLivrets().slice();

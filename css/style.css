@@ -4771,6 +4771,8 @@ body.has-demo-banner { padding-top: 40px; }
   color: var(--negative);
 }
 .liv-mvt-vide { font-size: 12px; color: var(--text3); padding: 4px 0 10px; line-height: 1.5; }
+/* Une révision de taux n'a pas de sens : pas de bouton +/− devant. */
+.liv-mvt-taux { grid-template-columns: 1fr 110px 30px; }
 .liv-mvt-actions { display: flex; gap: 8px; flex-wrap: wrap; }
 .liv-mvt-add.retrait:hover {
   color: var(--negative); border-color: var(--negative); background: var(--negative-d);

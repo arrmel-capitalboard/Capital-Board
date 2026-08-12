@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260815c">
+<link rel="stylesheet" href="css/style.css?v=20260815d">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2534,6 +2534,16 @@
       <div class="dep-help">Le solde se déduit de ces lignes. Un versement rapporte à partir du 1er ou du 16 qui suit ; un retrait cesse de rapporter dès la quinzaine en cours. Pour un livret ancien, une première ligne à la date d'ouverture suffit.</div>
     </div>
 
+    <div class="form-group liv-mvts-group">
+      <span class="form-label">Changements de taux <span class="dep-opt">recommandé</span></span>
+      <div id="liv-f-taux-hist"></div>
+      <button type="button" class="liv-mvt-add" onclick="livAddTaux()">
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+        Ajouter un taux
+      </button>
+      <div class="dep-help">Les livrets changent de taux au 1er février et au 1er août. Sans ces révisions, les intérêts acquis sont calculés au taux d'aujourd'hui sur toute l'année, ce qui les fausse. Votre relevé les journalise sous « Nouveau taux ».</div>
+    </div>
+
     <div class="form-group liv-releve-group">
       <span class="form-label">Relevé de la banque <span class="dep-opt">recommandé</span></span>
       <div class="dep-row2">
@@ -3252,9 +3262,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260815c"></script>
+<script src="js/app.js?v=20260815d"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260815c"></script>
+<script src="js/onboarding.js?v=20260815d"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
