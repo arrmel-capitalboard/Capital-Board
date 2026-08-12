@@ -4301,7 +4301,22 @@ body.has-demo-banner { padding-top: 40px; }
 }
 .ob-sheet-row b { font-size: 12.5px; font-weight: 600; color: var(--text); text-align: right; }
 
-.ob-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; }
+/* Le pied colle au bas de la carte : à neuf options, « Suivant » sortait de
+   l'écran et la question à choix multiple semblait sans issue — on attendait
+   un enchaînement automatique qui, elle seule, ne vient pas. */
+.ob-foot {
+  position: sticky; bottom: -18px; z-index: 1;
+  display: flex; align-items: center; justify-content: space-between; gap: 12px;
+  margin-top: 20px; padding: 12px 0 4px;
+  background: linear-gradient(180deg, transparent, #0c0e16 42%);
+}
+/* Le compte des réponses cochées, dans le bouton. */
+.ob-cta b {
+  display: inline-grid; place-items: center; min-width: 17px; height: 17px;
+  margin-left: 5px; padding: 0 4px; border-radius: 5px;
+  background: rgba(255,255,255,.22); font-family: var(--mono);
+  font-size: 10px; font-weight: 700; vertical-align: 1px;
+}
 
 /* Trois niveaux d'action, trois traitements : l'action principale est pleine,
    le retour est un contour, « plus tard » n'est qu'un mot. */

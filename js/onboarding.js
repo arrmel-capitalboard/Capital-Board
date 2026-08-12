@@ -258,7 +258,11 @@
         + '<div class="ob-foot">'
         +   (step > 0 ? '<button type="button" class="ob-ghost ob-back">Retour</button>' : '<span></span>')
         +   '<button type="button" class="ob-cta ob-next"' + (estRepondu(qn) ? '' : ' disabled') + '>'
-        +     (step === QUESTIONS.length - 1 ? 'Terminer' : 'Suivant') + '</button>'
+        +     (step === QUESTIONS.length - 1 ? 'Terminer' : 'Suivant')
+        // Choix multiple : la question ne se ferme pas seule, le bouton dit
+        // donc où on en est — sinon on attend un enchaînement qui ne vient pas.
+        +     (qn.multi && estRepondu(qn) ? ' <b>' + (answers[qn.key] || []).length + '</b>' : '')
+        +   '</button>'
         + '</div>';
 
       card.querySelectorAll('.ob-opt').forEach((b) => {
