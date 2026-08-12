@@ -46,7 +46,7 @@ async function addPending(text, { source = 'manuel', sha = null } = {}) {
 }
 
 /** Message de validation, reflétant le statut courant. */
-function validationPayload(id, text, status = 'pending', decidedBy = null, subject = null) {
+function validationPayload(id, text, status = 'pending', decidedBy = null) {
   const approved = status === 'approved';
   const rejected = status === 'rejected';
 
@@ -61,9 +61,6 @@ function validationPayload(id, text, status = 'pending', decidedBy = null, subje
     })
     .setTimestamp();
 
-  // Le sujet du commit, pour juger la reformulation sur pièce. Ce salon est
-  // interne : seul le texte ci-dessus part aux membres le lundi.
-  if (subject) embed.addFields({ name: 'Commit d\'origine', value: `\`${subject.slice(0, 200)}\`` });
   if (decidedBy) embed.addFields({ name: 'Décision', value: `<@${decidedBy}>`, inline: true });
 
   const row = new ActionRowBuilder().addComponents(
@@ -76,7 +73,7 @@ function validationPayload(id, text, status = 'pending', decidedBy = null, subje
 
 /** Payload depuis un doc Firestore. */
 function payloadFromDoc(id, data) {
-  return validationPayload(id, data.text, data.status || 'pending', data.decidedBy || null, data.subject || null);
+  return validationPayload(id, data.text, data.status || 'pending', data.decidedBy || null);
 }
 
 /** Message verrouillé après publication (plus de boutons). */

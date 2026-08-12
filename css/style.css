@@ -4143,123 +4143,279 @@ body.has-demo-banner { padding-top: 40px; }
   .proj-range  { grid-template-columns: 1fr; }
 }
 
+
 /* ═══════════════════════════════════════════════════
    ONBOARDING — questionnaire de profil + visite guidée
    (js/onboarding.js)
+
+   Parti pris : le questionnaire n'est pas un formulaire, c'est une fiche qui
+   se construit sous les yeux de celui qui répond — les réponses données
+   s'empilent en bas de la carte, comme des lignes dans un portefeuille, et
+   l'écran final présente la fiche assemblée. Tout le reste se tait : une
+   typographie, deux couleurs, aucune décoration qui ne dise rien.
    ═══════════════════════════════════════════════════ */
 
 .ob-overlay {
   position: fixed; inset: 0; z-index: 100001;
   display: flex; align-items: center; justify-content: center;
-  padding: 20px; background: rgba(0,0,0,.78); backdrop-filter: blur(6px);
+  padding: 20px;
+  /* Le violet de la marque monte du bas du voile, plutôt qu'un noir plat. */
+  background:
+    radial-gradient(120% 80% at 50% 115%, rgba(124,109,245,.18), transparent 60%),
+    rgba(2,3,7,.86);
+  backdrop-filter: blur(10px);
+  animation: ob-fade .28s ease both;
 }
+@keyframes ob-fade { from { opacity: 0; } to { opacity: 1; } }
+
 .ob-card {
-  width: 100%; max-width: 460px; box-sizing: border-box;
-  background: #12141e; border: 1px solid var(--border2);
-  border-radius: 20px; padding: 24px 24px 20px;
-  box-shadow: 0 24px 60px -20px rgba(0,0,0,.8);
+  position: relative;
+  width: 100%; max-width: 480px; box-sizing: border-box;
+  background:
+    radial-gradient(90% 60% at 0% 0%, rgba(124,109,245,.10), transparent 62%),
+    linear-gradient(180deg, rgba(20,23,33,.5), transparent 40%),
+    #0c0e16;
+  border: 1px solid rgba(255,255,255,.10);
+  border-radius: 22px; padding: 20px 22px 18px;
+  box-shadow: 0 40px 90px -30px rgba(0,0,0,.95), 0 0 0 1px rgba(124,109,245,.06);
   font-family: var(--sans, sans-serif);
   max-height: calc(100dvh - 40px); overflow-y: auto;
+  animation: ob-rise .34s cubic-bezier(.2,.9,.25,1) both;
 }
+/* Filet lumineux sur l'arête haute : la carte capte la lumière du voile. */
+.ob-card::before {
+  content: ''; position: absolute; left: 22px; right: 22px; top: 0; height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(124,109,245,.65), transparent);
+}
+@keyframes ob-rise { from { opacity: 0; transform: translateY(14px) scale(.985); } to { opacity: 1; transform: none; } }
+
 .ob-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-.ob-step { font-size: 11px; font-family: var(--mono); color: var(--text3); letter-spacing: .4px; }
-.ob-skip {
+
+/* Compteur en chiffres fixes : 03 — 06. Le mono est la langue des chiffres
+   dans l'app, et un compteur en est un. */
+.ob-eyebrow {
+  display: flex; align-items: center; gap: 7px;
+  font-size: 10px; font-family: var(--mono); font-weight: 500;
+  letter-spacing: 1.4px; text-transform: uppercase; color: var(--text3);
+}
+.ob-eyebrow b { color: var(--accent); font-weight: 700; }
+.ob-eyebrow s { width: 12px; height: 1px; background: var(--muted2); text-decoration: none; }
+
+/* Progression : six segments. Combien reste-t-il ? se lit d'un coup d'œil,
+   ce qu'un pourcentage ne dit pas. */
+.ob-rail { display: flex; gap: 4px; margin: 14px 0 20px; }
+.ob-rail i {
+  flex: 1; height: 3px; border-radius: 2px; background: var(--s3);
+  transition: background .3s ease, box-shadow .3s ease;
+}
+.ob-rail i.done { background: rgba(124,109,245,.55); }
+.ob-rail i.now  { background: var(--accent); box-shadow: 0 0 12px rgba(124,109,245,.55); }
+
+.ob-body { animation: ob-slide .3s cubic-bezier(.2,.9,.25,1) both; }
+@keyframes ob-slide { from { opacity: 0; transform: translateX(10px); } to { opacity: 1; transform: none; } }
+
+.ob-q {
+  font-size: 23px; line-height: 1.22; font-weight: 800;
+  letter-spacing: -.6px; color: var(--text); margin: 0;
+  text-wrap: balance;
+}
+.ob-hint { font-size: 12.5px; color: var(--text2); line-height: 1.6; margin: 9px 0 0; }
+
+.ob-options { display: flex; flex-direction: column; gap: 7px; margin: 20px 0 0; }
+.ob-opt {
+  position: relative; display: flex; align-items: center; gap: 11px;
+  width: 100%; box-sizing: border-box; text-align: left;
+  padding: 12px 14px; border-radius: 13px; cursor: pointer;
+  background: rgba(255,255,255,.025);
+  border: 1px solid rgba(255,255,255,.07);
+  color: var(--text); font-family: inherit;
+  transition: background .16s, border-color .16s, transform .12s;
+  animation: ob-pop .26s cubic-bezier(.2,.9,.25,1) both; animation-delay: var(--d, 0ms);
+}
+@keyframes ob-pop { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+.ob-opt:hover { background: rgba(255,255,255,.05); border-color: rgba(255,255,255,.14); }
+.ob-opt:active { transform: scale(.99); }
+.ob-opt:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+.ob-opt.on {
+  background: linear-gradient(90deg, rgba(124,109,245,.16), rgba(124,109,245,.05));
+  border-color: rgba(124,109,245,.5);
+}
+/* Le repère de sélection : un point qui se remplit, pas une case à cocher. */
+.ob-tick {
+  width: 16px; height: 16px; border-radius: 50%; flex-shrink: 0;
+  border: 1.5px solid rgba(255,255,255,.20);
+  display: grid; place-items: center;
+  transition: border-color .16s, background .16s;
+}
+.ob-tick::after {
+  content: ''; width: 7px; height: 7px; border-radius: 50%;
+  background: var(--accent); transform: scale(0);
+  transition: transform .18s cubic-bezier(.2,1.4,.4,1);
+}
+.ob-opt.on .ob-tick { border-color: var(--accent); }
+.ob-opt.on .ob-tick::after { transform: scale(1); }
+/* En choix multiple le repère devient carré : la forme dit qu'on peut en
+   cocher plusieurs, avant même d'avoir lu « plusieurs réponses possibles ». */
+.ob-multi .ob-tick { border-radius: 5px; }
+.ob-multi .ob-tick::after { border-radius: 2px; width: 8px; height: 8px; }
+
+.ob-opt-txt { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ob-opt-l { font-size: 13.5px; font-weight: 600; letter-spacing: -.1px; }
+.ob-opt-s { font-size: 11.5px; font-weight: 500; color: var(--text3); }
+.ob-opt.on .ob-opt-s { color: rgba(237,240,247,.55); }
+
+/* La fiche en construction : ce qui a déjà été répondu, en pastilles sous la
+   question. C'est la signature de l'écran — le questionnaire fabrique quelque
+   chose au lieu d'avaler les réponses une à une. */
+.ob-fiche {
+  display: flex; flex-wrap: wrap; gap: 5px;
+  margin: 18px 0 0; padding-top: 14px;
+  border-top: 1px dashed rgba(255,255,255,.09);
+}
+.ob-chip {
+  display: inline-flex; align-items: baseline; gap: 6px;
+  padding: 3px 9px; border-radius: 7px;
+  background: rgba(255,255,255,.03); border: 1px solid rgba(255,255,255,.07);
+  font-size: 11px; color: var(--text2); max-width: 100%;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.ob-chip b {
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  letter-spacing: .7px; text-transform: uppercase; color: var(--text3);
+}
+
+/* Écran final : la fiche assemblée. C'est le produit des six questions. */
+.ob-sheet {
+  margin: 18px 0 0; border: 1px solid rgba(124,109,245,.22); border-radius: 14px;
+  background: linear-gradient(180deg, rgba(124,109,245,.07), transparent 70%);
+  overflow: hidden;
+}
+.ob-sheet-row {
+  display: flex; align-items: baseline; justify-content: space-between; gap: 14px;
+  padding: 9px 14px;
+}
+.ob-sheet-row + .ob-sheet-row { border-top: 1px solid rgba(255,255,255,.05); }
+.ob-sheet-row span {
+  font-family: var(--mono); font-size: 9.5px; font-weight: 600;
+  letter-spacing: .8px; text-transform: uppercase; color: var(--text3); flex-shrink: 0;
+}
+.ob-sheet-row b { font-size: 12.5px; font-weight: 600; color: var(--text); text-align: right; }
+
+.ob-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 20px; }
+
+/* Trois niveaux d'action, trois traitements : l'action principale est pleine,
+   le retour est un contour, « plus tard » n'est qu'un mot. */
+.ob-cta {
+  background: var(--accent); border: none; color: #fff;
+  padding: 11px 22px; border-radius: 12px;
+  font-size: 13.5px; font-family: inherit; font-weight: 700; letter-spacing: -.1px;
+  cursor: pointer; box-shadow: 0 8px 22px -10px rgba(124,109,245,.9);
+  transition: filter .15s, transform .12s, box-shadow .15s;
+}
+.ob-cta:hover { filter: brightness(1.1); box-shadow: 0 10px 26px -10px rgba(124,109,245,1); }
+.ob-cta:active { transform: translateY(1px); }
+.ob-cta:disabled { opacity: .35; cursor: not-allowed; filter: none; box-shadow: none; }
+.ob-ghost {
+  background: transparent; border: 1px solid rgba(255,255,255,.11); color: var(--text2);
+  padding: 10px 16px; border-radius: 12px;
+  font-size: 13px; font-family: inherit; font-weight: 600; cursor: pointer;
+  transition: color .15s, border-color .15s;
+}
+.ob-ghost:hover { color: var(--text); border-color: rgba(255,255,255,.22); }
+.ob-link {
   background: none; border: none; color: var(--text3);
   font-size: 12px; font-family: inherit; cursor: pointer; padding: 4px 2px;
+  transition: color .15s;
 }
-.ob-skip:hover { color: var(--text2); text-decoration: underline; }
-.ob-bar { height: 3px; border-radius: 2px; background: var(--s3); margin: 12px 0 18px; overflow: hidden; }
-.ob-bar i { display: block; height: 100%; background: var(--accent); transition: width .25s ease; }
-.ob-title { font-size: 19px; font-weight: 800; color: var(--text); letter-spacing: -.3px; line-height: 1.3; margin: 0; }
-.ob-hint { font-size: 12.5px; color: var(--text2); line-height: 1.55; margin: 8px 0 0; }
-.ob-options { display: flex; flex-direction: column; gap: 8px; margin: 18px 0 4px; }
-.ob-opt {
-  display: flex; flex-direction: column; gap: 2px; text-align: left;
-  padding: 12px 14px; border-radius: 12px; cursor: pointer;
-  background: var(--s2); border: 1px solid var(--border2); color: var(--text);
-  font-family: inherit; font-size: 13.5px; font-weight: 600;
-  transition: background .15s, border-color .15s;
-}
-.ob-opt:hover { background: var(--s3); border-color: var(--border3); }
-.ob-opt.on { background: rgba(124,109,245,.14); border-color: rgba(124,109,245,.55); color: #fff; }
-.ob-opt-s { font-size: 11.5px; font-weight: 500; color: var(--text3); }
-.ob-opt.on .ob-opt-s { color: rgba(255,255,255,.6); }
-.ob-foot { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-top: 18px; }
-.ob-foot-end { justify-content: center; }
-.ob-back {
-  background: var(--s2); border: 1px solid var(--border2); color: var(--text2);
-  padding: 10px 16px; border-radius: 11px; font-size: 13px; font-family: inherit;
-  font-weight: 600; cursor: pointer;
-}
-.ob-back:hover { color: var(--text); border-color: var(--border3); }
-.ob-next {
-  background: var(--accent); border: none; color: #fff;
-  padding: 11px 22px; border-radius: 11px; font-size: 13.5px; font-family: inherit;
-  font-weight: 700; cursor: pointer;
-}
-.ob-next:hover { filter: brightness(1.08); }
-.ob-next:disabled { opacity: .4; cursor: not-allowed; filter: none; }
-.ob-done { text-align: center; padding: 8px 0 0; }
-.ob-check {
-  width: 46px; height: 46px; margin: 0 auto 14px; border-radius: 50%;
-  display: grid; place-items: center; font-size: 22px; font-weight: 800;
-  background: rgba(0,224,158,.12); color: var(--positive);
+.ob-link:hover { color: var(--text2); }
+.ob-cta:focus-visible, .ob-ghost:focus-visible, .ob-link:focus-visible {
+  outline: 2px solid var(--accent); outline-offset: 2px;
 }
 
 /* ─── Visite guidée ─── */
-.ob-tour { position: fixed; inset: 0; z-index: 100002; }
-/* Le trou : un bloc transparent dont l'ombre portée assombrit tout le reste.
-   Pas de masque à recalculer, et la zone visée reste nette. */
+.ob-tour { position: fixed; inset: 0; z-index: 100002; animation: ob-fade .25s ease both; }
+
+/* Le viseur : la zone visée reste nette, tout le reste s'assombrit par une
+   ombre portée de 9999px. Quatre équerres aux coins plutôt qu'un cadre plein —
+   on désigne sans enfermer. */
 .ob-spot {
-  position: fixed; border-radius: 12px; pointer-events: none;
-  box-shadow: 0 0 0 9999px rgba(4,6,11,.80), 0 0 0 2px var(--accent) inset;
-  transition: left .22s ease, top .22s ease, width .22s ease, height .22s ease;
+  position: fixed; border-radius: 14px; pointer-events: none;
+  box-shadow:
+    0 0 0 9999px rgba(2,3,7,.82),
+    0 0 0 1px rgba(124,109,245,.55),
+    0 0 34px rgba(124,109,245,.30);
+  transition: left .3s cubic-bezier(.3,.9,.3,1), top .3s cubic-bezier(.3,.9,.3,1),
+              width .3s cubic-bezier(.3,.9,.3,1), height .3s cubic-bezier(.3,.9,.3,1);
 }
+.ob-spot i, .ob-spot u { position: absolute; inset: -3px; pointer-events: none; }
+.ob-spot i::before, .ob-spot i::after,
+.ob-spot u::before, .ob-spot u::after {
+  content: ''; position: absolute; width: 16px; height: 16px;
+  border: 2px solid var(--accent);
+}
+.ob-spot i::before { top: 0; left: 0;  border-right: none; border-bottom: none; border-radius: 12px 0 0 0; }
+.ob-spot i::after  { top: 0; right: 0; border-left: none;  border-bottom: none; border-radius: 0 12px 0 0; }
+.ob-spot u::before { bottom: 0; left: 0;  border-right: none; border-top: none; border-radius: 0 0 0 12px; }
+.ob-spot u::after  { bottom: 0; right: 0; border-left: none;  border-top: none; border-radius: 0 0 12px 0; }
+
 .ob-tip {
-  position: fixed; width: min(340px, calc(100vw - 24px)); box-sizing: border-box;
-  background: #12141e; border: 1px solid var(--border2); border-radius: 16px;
-  padding: 16px 18px 14px; box-shadow: 0 20px 50px -16px rgba(0,0,0,.85);
+  position: fixed; width: min(360px, calc(100vw - 24px)); box-sizing: border-box;
+  background:
+    radial-gradient(80% 60% at 0% 0%, rgba(124,109,245,.12), transparent 60%),
+    #0c0e16;
+  border: 1px solid rgba(255,255,255,.11); border-radius: 18px;
+  padding: 15px 17px 13px;
+  box-shadow: 0 30px 70px -24px rgba(0,0,0,.95);
   font-family: var(--sans, sans-serif);
+  animation: ob-rise .28s cubic-bezier(.2,.9,.25,1) both;
 }
-.ob-tip-step { font-size: 10.5px; font-family: var(--mono); color: var(--text3); letter-spacing: .6px; margin-bottom: 6px; }
-.ob-tip-title { font-size: 15px; font-weight: 800; color: var(--text); letter-spacing: -.2px; margin-bottom: 6px; }
-.ob-tip-text { font-size: 12.5px; color: var(--text2); line-height: 1.6; }
-.ob-tip-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 14px; }
+/* La pointe désigne la cible, pas le centre de la bulle : sur mobile la bulle
+   fait toute la largeur et les deux n'ont rien à voir. */
+.ob-tip-arrow {
+  position: absolute; width: 12px; height: 12px; margin-left: -6px;
+  background: #0c0e16; border: 1px solid rgba(255,255,255,.11);
+  transform: rotate(45deg);
+}
+.ob-tip.ob-below .ob-tip-arrow { top: -7px; border-right: none; border-bottom: none; }
+.ob-tip.ob-above .ob-tip-arrow { bottom: -7px; border-left: none; border-top: none; }
+
+.ob-tip-step {
+  display: flex; align-items: center; gap: 7px; margin-bottom: 8px;
+  font-size: 9.5px; font-family: var(--mono); font-weight: 500;
+  letter-spacing: 1.4px; text-transform: uppercase; color: var(--text3);
+}
+.ob-tip-step b { color: var(--accent); font-weight: 700; }
+.ob-tip-step s { width: 12px; height: 1px; background: var(--muted2); text-decoration: none; }
+.ob-tip-title { font-size: 16px; font-weight: 800; letter-spacing: -.3px; color: var(--text); margin-bottom: 6px; }
+.ob-tip-text { font-size: 12.5px; color: var(--text2); line-height: 1.65; }
+.ob-tip-foot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 15px; }
 .ob-tip-nav { display: flex; gap: 8px; }
-.ob-tip-skip {
-  background: none; border: none; color: var(--text3);
-  font-size: 12px; font-family: inherit; cursor: pointer; padding: 4px 2px;
+.ob-tip-prev { padding: 8px 13px; font-size: 12px; border-radius: 10px; }
+.ob-tip-next { padding: 9px 17px; font-size: 12.5px; border-radius: 10px; }
+
+/* Bandeau des essais lancés depuis la page Admin : rien d'autre ne distingue
+   un parcours de test d'un vrai, et les réponses de test ne sont pas écrites. */
+.ob-test {
+  margin: 0 0 12px; padding: 5px 9px; border-radius: 8px;
+  background: rgba(245,183,49,.10); border: 1px solid rgba(245,183,49,.26);
+  color: var(--gold); font-family: var(--mono);
+  font-size: 9.5px; font-weight: 700; letter-spacing: .6px;
+  text-transform: uppercase; text-align: center;
 }
-.ob-tip-skip:hover { color: var(--text2); text-decoration: underline; }
-.ob-tip-prev {
-  background: var(--s2); border: 1px solid var(--border2); color: var(--text2);
-  padding: 7px 12px; border-radius: 9px; font-size: 12px; font-family: inherit; font-weight: 600; cursor: pointer;
-}
-.ob-tip-next {
-  background: var(--accent); border: none; color: #fff;
-  padding: 8px 16px; border-radius: 9px; font-size: 12.5px; font-family: inherit; font-weight: 700; cursor: pointer;
-}
-.ob-tip-next:hover { filter: brightness(1.08); }
 
 @media (max-width: 640px) {
-  .ob-card { padding: 20px 18px 18px; border-radius: 18px; }
-  .ob-title { font-size: 17.5px; }
-  .ob-opt { padding: 13px 14px; }
-  /* Sur mobile la bulle est ancrée en bas : posée près de la cible, elle
-     recouvrait la barre de navigation, justement montrée à deux étapes. */
+  /* La carte remonte du bas de l'écran, là où est le pouce. */
+  .ob-overlay { padding: 14px; align-items: flex-end; }
+  .ob-card { padding: 18px 17px 16px; border-radius: 20px; max-height: calc(100dvh - 28px); }
+  .ob-q { font-size: 20px; }
+  .ob-opt { padding: 12px 13px; }
+  .ob-sheet-row { padding: 8px 12px; }
+  /* La bulle traverse l'écran : posée sur la largeur de sa cible, elle
+     recouvrait la barre de navigation, montrée à deux étapes sur six. */
   .ob-tip { left: 12px !important; right: 12px; width: auto; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .ob-spot { transition: none; }
-  .ob-bar i { transition: none; }
-}
-
-/* Bandeau des essais lancés depuis la page Admin : sans lui, rien ne distingue
-   un parcours de test d'un vrai — et les réponses de test ne sont pas écrites. */
-.ob-test {
-  margin: -4px 0 12px; padding: 5px 9px; border-radius: 7px;
-  background: rgba(245,183,49,.12); border: 1px solid rgba(245,183,49,.28);
-  color: var(--gold); font-size: 10.5px; font-weight: 700;
-  letter-spacing: .3px; text-align: center;
+  .ob-overlay, .ob-card, .ob-body, .ob-opt, .ob-tip, .ob-tour { animation: none; }
+  .ob-spot, .ob-rail i, .ob-tick::after { transition: none; }
 }

@@ -29,6 +29,7 @@
   const QUESTIONS = [
     {
       key: 'experience',
+      short: 'Expérience',
       title: 'Où en êtes-vous avec l’investissement ?',
       hint: 'Cela nous aide à calibrer ce que l’app vous montre en premier.',
       options: [
@@ -40,6 +41,7 @@
     },
     {
       key: 'goal',
+      short: 'Objectif',
       title: 'Votre objectif principal ?',
       options: [
         ['epargne',  'Faire fructifier mon épargne'],
@@ -51,6 +53,7 @@
     },
     {
       key: 'wrappers',
+      short: 'Enveloppes',
       title: 'Que suivez-vous déjà ?',
       hint: 'Plusieurs réponses possibles.',
       multi: true,
@@ -68,6 +71,7 @@
     },
     {
       key: 'amount',
+      short: 'Montant',
       title: 'Quel montant suivez-vous, environ ?',
       hint: 'Ordre de grandeur seulement — rien n’est vérifié ni partagé.',
       options: [
@@ -80,6 +84,7 @@
     },
     {
       key: 'expectation',
+      short: 'Attente',
       title: 'Qu’attendez-vous en priorité de Capital Board ?',
       options: [
         ['perf',      'Suivre mes performances'],
@@ -91,6 +96,7 @@
     },
     {
       key: 'source',
+      short: 'Origine',
       title: 'Comment avez-vous connu Capital Board ?',
       options: [
         ['bouche',   'Bouche-à-oreille'],
@@ -119,7 +125,7 @@
     {
       target: () => (mobile() ? q('#nav-add-btn') : q('.table-header .btn-add:last-of-type')),
       title: 'Ajouter une ligne',
-      text: 'Pour l’instant, la saisie est manuelle : un titre, une quantité, un prix d’achat, et la performance se calcule toute seule ensuite. L’import direct depuis votre courtier arrive bientôt.',
+      text: 'Pour l’instant, la saisie est manuelle : un titre, une quantité, un prix d’achat, et la performance se calcule toute seule ensuite. L’import depuis les données exportables de votre courtier arrive bientôt.',
       page: 'portfolio',
     },
     {
@@ -231,22 +237,27 @@
       card.innerHTML =
         (test ? '<div class="ob-test">Mode test — aucune réponse n’est enregistrée</div>' : '')
         + '<div class="ob-head">'
-        +   '<div class="ob-step">Question ' + (step + 1) + ' sur ' + QUESTIONS.length + '</div>'
-        +   '<button class="ob-skip" type="button">Plus tard</button>'
+        +   '<div class="ob-eyebrow">Votre profil <b>' + pad(step + 1) + '</b><s></s><span>' + pad(QUESTIONS.length) + '</span></div>'
+        +   '<button class="ob-link ob-skip" type="button">Plus tard</button>'
         + '</div>'
-        + '<div class="ob-bar"><i style="width:' + Math.round(((step) / QUESTIONS.length) * 100) + '%"></i></div>'
-        + '<h2 class="ob-title">' + qn.title + '</h2>'
-        + (qn.hint ? '<p class="ob-hint">' + qn.hint + '</p>' : '')
-        + '<div class="ob-options">'
-        +   qn.options.map(([v, label, sub]) =>
-              '<button type="button" class="ob-opt' + (choisi(v) ? ' on' : '') + '" data-v="' + v + '">'
-              + '<span class="ob-opt-l">' + label + '</span>'
-              + (sub ? '<span class="ob-opt-s">' + sub + '</span>' : '')
-              + '</button>').join('')
+        + rail(step)
+        + '<div class="ob-body">'
+        +   '<h2 class="ob-q">' + qn.title + '</h2>'
+        +   (qn.hint ? '<p class="ob-hint">' + qn.hint + '</p>' : '')
+        +   '<div class="ob-options' + (qn.multi ? ' ob-multi' : '') + '">'
+        +     qn.options.map(([v, label, sub], i) =>
+                '<button type="button" class="ob-opt' + (choisi(v) ? ' on' : '') + '" data-v="' + v + '"'
+                + ' style="--d:' + (i * 28) + 'ms">'
+                + '<span class="ob-tick"></span>'
+                + '<span class="ob-opt-txt"><span class="ob-opt-l">' + label + '</span>'
+                + (sub ? '<span class="ob-opt-s">' + sub + '</span>' : '') + '</span>'
+                + '</button>').join('')
+        +   '</div>'
         + '</div>'
+        + fiche(step)
         + '<div class="ob-foot">'
-        +   (step > 0 ? '<button type="button" class="ob-back">Retour</button>' : '<span></span>')
-        +   '<button type="button" class="ob-next"' + (estRepondu(qn) ? '' : ' disabled') + '>'
+        +   (step > 0 ? '<button type="button" class="ob-ghost ob-back">Retour</button>' : '<span></span>')
+        +   '<button type="button" class="ob-cta ob-next"' + (estRepondu(qn) ? '' : ' disabled') + '>'
         +     (step === QUESTIONS.length - 1 ? 'Terminer' : 'Suivant') + '</button>'
         + '</div>';
 
@@ -277,6 +288,33 @@
 
     const estRepondu = (qn) => (qn.multi ? (answers[qn.key] || []).length > 0 : !!answers[qn.key]);
 
+    const pad = (n) => String(n).padStart(2, '0');
+
+    // Six segments plutôt qu'une barre pleine : on lit d'un coup combien de
+    // questions restent, ce qu'un pourcentage ne dit pas.
+    const rail = (i) => '<div class="ob-rail" aria-hidden="true">'
+      + QUESTIONS.map((_, k) => '<i class="' + (k < i ? 'done' : k === i ? 'now' : '') + '"></i>').join('')
+      + '</div>';
+
+    // Le libellé d'une valeur, tel qu'il a été proposé.
+    const libelle = (qn, v) => {
+      const o = qn.options.find((x) => x[0] === v);
+      return o ? o[1] : v;
+    };
+
+    // Les réponses déjà données s'empilent sous la question : le questionnaire
+    // construit une fiche à vue, au lieu d'avaler les réponses une à une.
+    const fiche = (i) => {
+      const lignes = QUESTIONS.slice(0, i)
+        .filter((qn) => estRepondu(qn))
+        .map((qn) => {
+          const v = answers[qn.key];
+          const txt = qn.multi ? v.map((x) => libelle(qn, x)).join(', ') : libelle(qn, v);
+          return '<span class="ob-chip"><b>' + qn.short + '</b>' + txt + '</span>';
+        });
+      return lignes.length ? '<div class="ob-fiche">' + lignes.join('') + '</div>' : '';
+    };
+
     function next() {
       if (!estRepondu(QUESTIONS[step])) return;
       if (step < QUESTIONS.length - 1) { step++; render(); return; }
@@ -284,17 +322,30 @@
     }
 
     async function termine() {
+      // Écran de fin : la fiche assemblée. C'est ce que les six questions
+      // fabriquaient, autant la rendre.
+      const lignes = QUESTIONS.map((qn) => {
+        const v = answers[qn.key];
+        if (!v || (qn.multi && !v.length)) return '';
+        const txt = qn.multi ? v.map((x) => libelle(qn, x)).join(' · ') : libelle(qn, v);
+        return '<div class="ob-sheet-row"><span>' + qn.short + '</span><b>' + txt + '</b></div>';
+      }).join('');
+
       card.innerHTML = (test ? '<div class="ob-test">Mode test — rien n’a été enregistré</div>' : '')
-        + '<div class="ob-done"><div class="ob-check">✓</div>'
-        + '<h2 class="ob-title">Merci</h2>'
-        + '<p class="ob-hint">' + (tourEnsuite
-            ? 'Vos réponses nous servent à orienter la suite. On vous montre l’app ?'
-            : 'Vos réponses nous servent à orienter la suite.') + '</p>'
-        + '<div class="ob-foot ob-foot-end">'
-        +   (tourEnsuite ? '<button type="button" class="ob-back" id="ob-no-tour">Non merci</button>' : '')
-        +   '<button type="button" class="ob-next" id="ob-yes-tour">'
-        +     (tourEnsuite ? 'Faire le tour' : 'Terminer') + '</button>'
-        + '</div></div>';
+        + '<div class="ob-head"><div class="ob-eyebrow">Votre profil <b>' + pad(QUESTIONS.length) + '</b><s></s><span>' + pad(QUESTIONS.length) + '</span></div></div>'
+        + rail(QUESTIONS.length)
+        + '<div class="ob-body">'
+        +   '<h2 class="ob-q">C’est noté.</h2>'
+        +   '<div class="ob-sheet">' + lignes + '</div>'
+        +   '<p class="ob-hint">' + (tourEnsuite
+              ? 'Ces réponses orientent ce que nous construisons ensuite. On vous fait visiter ?'
+              : 'Ces réponses orientent ce que nous construisons ensuite.') + '</p>'
+        + '</div>'
+        + '<div class="ob-foot">'
+        +   (tourEnsuite ? '<button type="button" class="ob-ghost" id="ob-no-tour">Plus tard</button>' : '<span></span>')
+        +   '<button type="button" class="ob-cta" id="ob-yes-tour">'
+        +     (tourEnsuite ? 'Visiter l’app' : 'Terminer') + '</button>'
+        + '</div>';
       if (!test) {
         save(uid, { ...answers, completedAt: Date.now() }).catch((e) => console.warn('[onboarding] save:', e.message));
       } else {
@@ -338,18 +389,21 @@
     const test = !!(opts && opts.test);
     const ov = document.createElement('div');
     ov.className = 'ob-tour';
+    // Le viseur : anneau + quatre équerres. Deux éléments, quatre coins — un
+    // seul bloc ne peut pas porter plus de deux pseudo-éléments.
     ov.innerHTML =
-      '<div class="ob-spot"></div>'
+      '<div class="ob-spot"><i></i><u></u></div>'
       + '<div class="ob-tip" role="dialog" aria-live="polite">'
+      +   '<span class="ob-tip-arrow"></span>'
       +   (test ? '<div class="ob-test">Mode test</div>' : '')
       +   '<div class="ob-tip-step"></div>'
       +   '<div class="ob-tip-title"></div>'
       +   '<div class="ob-tip-text"></div>'
       +   '<div class="ob-tip-foot">'
-      +     '<button type="button" class="ob-tip-skip">Passer</button>'
+      +     '<button type="button" class="ob-link ob-tip-skip">Passer</button>'
       +     '<div class="ob-tip-nav">'
-      +       '<button type="button" class="ob-tip-prev">Retour</button>'
-      +       '<button type="button" class="ob-tip-next">Suivant</button>'
+      +       '<button type="button" class="ob-ghost ob-tip-prev">Retour</button>'
+      +       '<button type="button" class="ob-cta ob-tip-next">Suivant</button>'
       +     '</div>'
       +   '</div>'
       + '</div>';
@@ -387,7 +441,8 @@
       try { showPage(s.page); } catch (_) {}
     }
     const { tip } = tourEtat;
-    tip.querySelector('.ob-tip-step').textContent = (i + 1) + ' / ' + STEPS.length;
+    tip.querySelector('.ob-tip-step').innerHTML =
+      'Étape <b>' + String(i + 1).padStart(2, '0') + '</b><s></s><span>' + String(STEPS.length).padStart(2, '0') + '</span>';
     tip.querySelector('.ob-tip-title').textContent = s.title;
     tip.querySelector('.ob-tip-text').textContent = s.text;
     tip.querySelector('.ob-tip-prev').style.visibility = i === 0 ? 'hidden' : 'visible';
@@ -428,13 +483,23 @@
       // La bulle se pose sous la cible, ou au-dessus si le bas manque de place.
       const tr = tip.getBoundingClientRect();
       const vh = window.innerHeight, vw = window.innerWidth;
-      const dessous = r.bottom + 14 + tr.height < vh - 12;
-      const top = dessous ? r.bottom + 14 : Math.max(12, r.top - tr.height - 14);
+      const dessous = r.bottom + 16 + tr.height < vh - 12;
+      const top = dessous ? r.bottom + 16 : Math.max(12, r.top - tr.height - 16);
       let left = r.left + r.width / 2 - tr.width / 2;
       left = Math.max(12, Math.min(left, vw - tr.width - 12));
       tip.style.transform = 'none';
       tip.style.left = left + 'px';
       tip.style.top  = Math.min(top, vh - tr.height - 12) + 'px';
+      tip.classList.toggle('ob-below', dessous);
+      tip.classList.toggle('ob-above', !dessous);
+      // La flèche vise le centre de la cible, pas le centre de la bulle : sur
+      // mobile la bulle occupe toute la largeur, les deux n'ont rien à voir.
+      const fleche = tip.querySelector('.ob-tip-arrow');
+      if (fleche) {
+        const cible = r.left + r.width / 2;
+        const x = Math.max(18, Math.min(cible - tip.getBoundingClientRect().left, tr.width - 18));
+        fleche.style.left = x + 'px';
+      }
     });
   }
 
