@@ -173,6 +173,65 @@ chk('cas réel : premier mouvement', rReel[0].d, '2026-01-06');
 chk('cas réel : dernier mouvement', rReel[rReel.length - 1].d, '2026-08-06');
 chk('cas réel : rien à zéro', rReel.every(r => r.m !== 0), true);
 
+// ── Voie PDF ────────────────────────────────────────────────────────────────
+// pdf.js n'est pas chargé ici : seule l'analyse est testée, sur les lignes
+// telles que getTextContent() les rend une fois regroupées par ordonnée.
+const P = CB.pdf;
+
+// Fabrique une ligne : chaque fragment est [texte, x, largeur].
+const L = (frags) => ({ y: 0, page: 1, items: frags.map(f => ({ str: f[0], x: f[1], w: f[2] })) });
+
+// Relevé à quatre colonnes : Date, Libellé, Débit, Crédit, Solde.
+const entete = L([['Date', 40, 24], ['Libellé', 90, 34], ['Débit', 300, 28],
+                  ['Crédit', 380, 32], ['Solde', 460, 28]]);
+const pdfCic = [
+  entete,
+  L([['06/08/2026', 40, 48], ['Vir De M Armel Plantier', 90, 120], ['735,00', 366, 32], ['850,00', 446, 32]]),
+  L([['06/08/2026', 40, 48], ['Vir C/C Contrat Personnel', 90, 130], ['105,00', 286, 32], ['115,00', 446, 32]]),
+  L([['Report à nouveau', 90, 90], ['220,00', 446, 32]]),
+  L([['Page 1 sur 2', 250, 60]]),
+];
+const rP = P.analyser(pdfCic);
+chk('PDF : lignes sans date écartées', rP.length, 2);
+chk('PDF : crédit positif',  rP[0].m, 735);
+chk('PDF : débit négatif',   rP[1].m, -105);
+chk('PDF : solde ignoré',    rP.every(r => Math.abs(r.m) !== 850 && Math.abs(r.m) !== 115), true);
+chk('PDF : libellé reconstitué', rP[0].label, 'Vir De M Armel Plantier');
+
+// Colonne montant unique, signe porté par le nombre.
+const pdfMontant = [
+  L([['Date', 40, 24], ['Libellé', 90, 34], ['Montant', 360, 40]]),
+  L([['04/07/2026', 40, 48], ['Virement recu', 90, 70], ['250,00', 356, 32]]),
+  L([['18/07/2026', 40, 48], ['Retrait', 90, 40], ['-100,00', 350, 38]]),
+];
+const rM = P.analyser(pdfMontant);
+chk('PDF : colonne montant unique', rM.map(r => r.m), [250, -100]);
+
+// Sans entête du tout : le premier nombre de la ligne fait foi.
+const pdfBrut = [
+  L([['06/08/2026', 40, 48], ['Virement', 90, 50], ['735,00', 300, 32], ['850,00', 400, 32]]),
+];
+chk('PDF : sans entête, premier nombre', P.analyser(pdfBrut)[0].m, 735);
+
+// Montant éclaté en deux fragments par le moteur de rendu.
+const frag = P._montantsDe([{ str: '1', x: 300, w: 6 }, { str: '234,56', x: 306, w: 34 }]);
+chk('PDF : fragments recollés', frag.length, 1);
+chk('PDF : valeur recollée',   frag[0].v, 1234.56);
+
+// Une date n'est pas un montant, même si elle en a l'air.
+chk('PDF : date ignorée comme montant',
+  P._montantsDe([{ str: '06/08/2026', x: 40, w: 48 }]).length, 0);
+
+// Regroupement par ordonnée : deux fragments à la même hauteur font une ligne.
+const groupes = P._lignesDePage([
+  { str: 'a', transform: [1, 0, 0, 1, 40, 700], width: 8 },
+  { str: 'b', transform: [1, 0, 0, 1, 90, 701], width: 8 },
+  { str: 'c', transform: [1, 0, 0, 1, 40, 680], width: 8 },
+], 1);
+chk('PDF : deux lignes distinctes', groupes.length, 2);
+chk('PDF : fragments regroupés',    groupes[0].items.length, 2);
+chk('PDF : haut de page en premier', groupes[0].items[0].str, 'a');
+
 console.log(t.join('\n'));
 const ko = t.filter(x => x.startsWith('FAIL')).length;
 console.log('\n' + (t.length - ko) + '/' + t.length + (ko ? '  >>> ECHEC' : '  >>> tout passe'));

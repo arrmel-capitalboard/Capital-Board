@@ -508,6 +508,218 @@ window.CBImport.csv = (function () {
   return { lire, analyser, parseDate, parseMontant, _decouper, _separateur };
 })();
 
+
+// ═══════════════════════════════════════════════════════════════════════════
+//  VOIE 2 — PDF
+//
+//  Toutes les banques françaises produisent un relevé mensuel et un relevé
+//  annuel en PDF. Ce sont des PDF texte, pas des images : le contenu est déjà
+//  là, il suffit de le lire. Le relevé annuel donne en prime le solde au
+//  31 décembre — exactement la ligne de report qui manque le plus.
+//
+//  pdf.js (Mozilla, Apache-2.0) tourne entièrement dans le navigateur. Il est
+//  hébergé chez nous, comme Chart.js : aucun CDN, la direction est
+//  script-src 'self'. Ses 1,8 Mo ne sont chargés que si un PDF est déposé.
+//
+//  Un relevé est un tableau régulier. getTextContent() rend chaque fragment
+//  avec sa position, et c'est la position en X qui distingue une colonne débit
+//  d'une colonne crédit — un montant seul ne dit pas son sens.
+// ═══════════════════════════════════════════════════════════════════════════
+
+window.CBImport.pdf = (function () {
+  'use strict';
+
+  const VERSION = '6.2.108';
+  let _lib = null;
+
+  // Chargé à la demande. `import()` dans un script classique résout par rapport
+  // au script, pas à la page : on passe par document.baseURI, sinon l'URL
+  // deviendrait js/assets/vendor/… et le chargement échouerait en silence.
+  async function _charger() {
+    if (_lib) return _lib;
+    const base = document.baseURI;
+    const lib = await import(new URL('assets/vendor/pdf.min.' + VERSION + '.mjs', base).href);
+    lib.GlobalWorkerOptions.workerSrc =
+      new URL('assets/vendor/pdf.worker.min.' + VERSION + '.mjs', base).href;
+    _lib = lib;
+    return lib;
+  }
+
+  async function lire(file, progres) {
+    if (progres) progres('Chargement du lecteur PDF…');
+    const lib = await _charger();
+    if (progres) progres('Ouverture du document…');
+
+    const data = new Uint8Array(await file.arrayBuffer());
+    // isEvalSupported: false — pdf.js n'a aucune raison d'évaluer du code pour
+    // extraire du texte, et un relevé vient d'une source qu'on ne contrôle pas.
+    const doc = await lib.getDocument({ data, isEvalSupported: false }).promise;
+
+    let lignes = [];
+    for (let p = 1; p <= doc.numPages; p++) {
+      if (progres) progres('Lecture de la page ' + p + ' sur ' + doc.numPages + '…');
+      const page = await doc.getPage(p);
+      const contenu = await page.getTextContent();
+      lignes = lignes.concat(_lignesDePage(contenu.items, p));
+      page.cleanup();
+    }
+    // Le document est refermé et rien n'en est gardé : le fichier d'origine ne
+    // survit pas à la lecture.
+    await doc.destroy();
+
+    return analyser(lignes);
+  }
+
+  // Les fragments d'une même ligne partagent leur ordonnée à quelques dixièmes
+  // près. transform[4] et transform[5] sont X et Y dans le repère de la page.
+  function _lignesDePage(items, page) {
+    const paquets = [];
+    items.forEach(it => {
+      const s = String(it.str || '');
+      if (!s.trim()) return;
+      const x = it.transform[4], y = it.transform[5];
+      // 2,5 points de tolérance : assez pour absorber les exposants et les
+      // décalages de police, trop peu pour fusionner deux lignes voisines.
+      let p = paquets.find(q => Math.abs(q.y - y) < 2.5);
+      if (!p) { p = { y, page, items: [] }; paquets.push(p); }
+      p.items.push({ str: s, x, w: it.width || 0 });
+    });
+    paquets.forEach(p => p.items.sort((a, b) => a.x - b.x));
+    // Une page se lit de haut en bas, et Y croît vers le haut.
+    paquets.sort((a, b) => b.y - a.y);
+    return paquets;
+  }
+
+  const csv = window.CBImport.csv;
+
+  // Un fragment qui est un montant, et rien d'autre. « 1 234,56 » peut arriver
+  // en un seul fragment ou en plusieurs : on recolle d'abord les voisins
+  // immédiats, sinon « 1 234,56 » deviendrait 1 puis 234,56.
+  function _montantsDe(items) {
+    const out = [];
+    let i = 0;
+    while (i < items.length) {
+      let s = items[i].str.trim();
+      const x0 = items[i].x;
+      let xf = items[i].x + (items[i].w || 0);
+      let j = i + 1;
+      // Un fragment collé au précédent (moins de 2 points d'écart) et qui
+      // prolonge un nombre appartient au même montant.
+      while (j < items.length &&
+             items[j].x - (items[j - 1].x + (items[j - 1].w || 0)) < 2 &&
+             /^[\d,. ]/.test(items[j].str)) {
+        s += items[j].str.trim();
+        xf = items[j].x + (items[j].w || 0);
+        j++;
+      }
+      const m = csv.parseMontant(s);
+      // Une date passe le test du montant si on n'y prend pas garde : 06/08/2026
+      // ne contient ni virgule ni point décimal, mais 1.234 si. On exige donc
+      // deux décimales, ce qu'un relevé écrit toujours.
+      if (isFinite(m) && /\d[,.]\d{2}\s*(?:€|EUR)?$/i.test(s)) {
+        // Le centre sert à rattacher le montant à sa colonne : les montants
+        // sont alignés à droite, leur bord gauche varie avec le nombre de
+        // chiffres et ne dit rien de la colonne.
+        out.push({ v: m, x: x0, centre: (x0 + xf) / 2, brut: s });
+      }
+      i = (j > i + 1) ? j : i + 1;
+    }
+    return out;
+  }
+
+  const MOTS_COL = {
+    debit:  ['debit', 'débit', 'retrait'],
+    credit: ['credit', 'crédit', 'versement'],
+    montant:['montant', 'valeur'],
+    solde:  ['solde'],
+  };
+
+  function _norm(s) {
+    return String(s || '').toLowerCase().normalize('NFD')
+      .replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+  }
+
+  // Position en X des colonnes de montants, lue sur la ligne d'entête. C'est
+  // elle qui donne son sens à un nombre : sans elle, un débit et un crédit sont
+  // deux nombres identiques.
+  function _colonnes(lignes) {
+    const cols = {};
+    for (const l of lignes) {
+      for (const it of l.items) {
+        const n = _norm(it.str);
+        Object.keys(MOTS_COL).forEach(k => {
+          if (cols[k] !== undefined) return;
+          if (MOTS_COL[k].some(mot => n === mot || n === mot + ' (€)' || n === mot + ' €')) {
+            // Le centre du libellé, pas son bord : les montants sont alignés à
+            // droite, les entêtes souvent centrées.
+            cols[k] = it.x + (it.w || 0) / 2;
+          }
+        });
+      }
+      if (cols.solde !== undefined && (cols.debit !== undefined || cols.montant !== undefined)) break;
+    }
+    return cols;
+  }
+
+  function analyser(lignes) {
+    const cols = _colonnes(lignes);
+    const connues = Object.keys(cols);
+    const out = [];
+
+    lignes.forEach(l => {
+      // Une ligne d'opération commence par une date. Le reste — pied de page,
+      // mentions légales, totaux — n'en a pas.
+      let d = null, iDate = -1;
+      for (let i = 0; i < l.items.length && i < 3; i++) {
+        const v = csv.parseDate(l.items[i].str.trim());
+        if (v) { d = v; iDate = i; break; }
+      }
+      if (!d) return;
+
+      const montants = _montantsDe(l.items.slice(iDate + 1));
+      if (!montants.length) return;
+
+      let m = NaN;
+      if (connues.length) {
+        // Chaque montant rejoint la colonne dont le centre est le plus proche.
+        // Un montant sous « Solde » est ignoré : c'est un état, pas un flux.
+        let deb = 0, cre = 0, mont = NaN, vus = 0;
+        montants.forEach(x => {
+          let meilleure = null, dist = Infinity;
+          connues.forEach(k => {
+            const e = Math.abs(cols[k] - x.centre);
+            if (e < dist) { dist = e; meilleure = k; }
+          });
+          if (meilleure === 'solde') return;
+          vus++;
+          if (meilleure === 'debit')  deb += Math.abs(x.v);
+          else if (meilleure === 'credit') cre += Math.abs(x.v);
+          else mont = x.v;
+        });
+        if (!vus) return;
+        m = isFinite(mont) ? mont : (cre - deb);
+      } else {
+        // Sans entête reconnue : un seul nombre est le montant ; deux nombres,
+        // le second est le solde courant, convention de tous les relevés que
+        // nous avons vus. Au-delà, on ne devine pas — la ligne part quand même
+        // à l'écran de validation, où elle sera corrigée ou décochée.
+        m = montants[0].v;
+      }
+      if (!isFinite(m) || m === 0) return;
+
+      const label = l.items.slice(iDate + 1)
+        .map(it => it.str.trim())
+        .filter(s => !/^[\d,. ]*(?:€|EUR)?$/i.test(s))
+        .join(' ').replace(/\s+/g, ' ').trim();
+
+      out.push({ d, m, label: label.slice(0, 80) });
+    });
+    return out;
+  }
+
+  return { lire, analyser, _lignesDePage, _montantsDe, _colonnes };
+})();
+
 // Exposé pour la suite de tests hors navigateur (scripts/t-import.cjs).
 window.CBImport._outils = window.CBImport.csv;
 
