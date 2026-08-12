@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260815d';
+const APP_VERSION = '20260815e';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3307,7 +3307,7 @@ const FLAGGABLE = ['watchlist','dividendes','avantages','benchmark','projections
 // Sections qui portent DEUX vues dans la même page : le teaser « Bientôt » et
 // le module réel. Elles seules acceptent l'état bêta — ailleurs il ne voudrait
 // rien dire, la page EST le teaser et il n'y a rien d'autre à montrer.
-const BETA_CAPABLE = ['depenses'];
+const BETA_CAPABLE = ['depenses', 'livrets'];
 
 let _featureFlags = {};
 // config/app.beta = { depenses: true }. Séparé de `features` pour que couper
@@ -3317,7 +3317,12 @@ let _betaFlags = {};
 function _isFeatureOn(key) { return _featureFlags[key] !== false; }
 // Bêta = la section est visible dans le menu pour tout le monde, mais seul
 // l'admin voit le module ; les autres restent sur le teaser.
-function _isFeatureBeta(key) { return BETA_CAPABLE.includes(key) && _betaFlags[key] === true; }
+//
+// Le défaut est la bêta, pas l'ouverture. Une section à double vue est en
+// construction tant que personne n'a explicitement dit le contraire —
+// l'inverse avait exposé Dépenses à tous les membres alors que rien n'avait
+// jamais été réglé dans config/app.
+function _isFeatureBeta(key) { return BETA_CAPABLE.includes(key) && _betaFlags[key] !== false; }
 // Trois états pour l'éditeur admin : masqué / bêta / ouvert.
 function _featureState(key) {
   if (!_isFeatureOn(key)) return 'off';
@@ -18651,6 +18656,8 @@ function renderLivrets() {
   teaser.hidden = live;
   app.hidden    = !live;
   if (!live) return;
+  const note = document.getElementById('liv-beta-note');
+  if (note) note.hidden = !_isFeatureBeta('livrets');
   _livRender();
 }
 

@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260815d">
+<link rel="stylesheet" href="css/style.css?v=20260815e">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -459,7 +459,7 @@
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a29bfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>PER <span class="nav-soon">Bientôt</span>
       </div>
       <div class="mobile-drawer-item" onclick="showPageMobile('livrets');closeMobileDrawer()" data-mob="livrets">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="M3 10h18"/><circle cx="17" cy="14.5" r="1.3"/></svg></span>Livrets &amp; épargne
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="M3 10h18"/><circle cx="17" cy="14.5" r="1.3"/></svg></span>Livrets &amp; épargne <span class="nav-soon">Bientôt</span>
       </div>
       <div class="mobile-drawer-item" onclick="showPageMobile('immo');closeMobileDrawer()" data-mob="immo">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></svg></span>Immobilier &amp; SCPI <span class="nav-soon">Bientôt</span>
@@ -577,7 +577,7 @@
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a29bfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span> PER <span class="nav-soon">Bientôt</span>
       </div>
       <div class="nav-item" onclick="showPage('livrets')" id="nav-livrets">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="M3 10h18"/><circle cx="17" cy="14.5" r="1.3"/></svg></span> Livrets &amp; épargne
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="M3 10h18"/><circle cx="17" cy="14.5" r="1.3"/></svg></span> Livrets &amp; épargne <span class="nav-soon">Bientôt</span>
       </div>
       <div class="nav-item" onclick="showPage('immo')" id="nav-immo">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></svg></span> Immobilier &amp; SCPI <span class="nav-soon">Bientôt</span>
@@ -1832,6 +1832,11 @@
             Ajouter un livret
           </button>
         </div>
+      </div>
+
+      <div class="dep-beta-note" id="liv-beta-note" hidden>
+        <span class="dep-beta-tag">Bêta</span>
+        Section visible par vous seul. Les autres membres voient encore la page « Bientôt ».
       </div>
 
       <div class="dep-kpis">
@@ -3262,9 +3267,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260815d"></script>
+<script src="js/app.js?v=20260815e"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260815d"></script>
+<script src="js/onboarding.js?v=20260815e"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
