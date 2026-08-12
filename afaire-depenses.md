@@ -55,12 +55,16 @@ même liste, distingués par `type`.
 }
 ```
 
-**La saisie se fait par trois onglets — Dépense · Abonnement · Revenu — mais le
-modèle n'en connaît que deux champs.** `DEP_TABS` projette l'onglet sur le couple
-`(type, recurrent)` : abonnement = dépense récurrente. `_depTabOf(e)` fait le
-chemin inverse à l'ouverture. Aucune donnée supplémentaire, aucune migration.
-La case « ça revient » ne subsiste que sur le revenu, où un salaire revient et
-pas une prime ; côté sortie c'est l'onglet qui tranche.
+**La saisie se fait par quatre onglets — Dépense · Abonnement · Revenu · Aide —
+mais le modèle ne connaît que `type`, `recurrent` et `categorie`.** `DEP_TABS`
+projette l'onglet dessus : abonnement = dépense récurrente, aide = revenu de
+catégorie `aides`. `_depTabOf(e)` fait le chemin inverse à l'ouverture. Aucune
+donnée supplémentaire, aucune migration.
+
+La case « ça revient » ne subsiste que côté entrée — un salaire revient et pas
+une prime, une APL revient et pas une prime de naissance. Elle est pré-cochée
+sur l'onglet Aide, la plupart étant mensuelles. Côté sortie, c'est l'onglet qui
+tranche.
 
 **Le principe central : une récurrence est une RÈGLE, stockée une seule fois.**
 Elle n'est jamais recopiée d'un mois sur l'autre — c'est l'affichage qui la
@@ -90,6 +94,20 @@ rendent une image. Seul `edf.fr` échouait, remplacé par `particulier.edf.fr`.
 > **Choix délibéré :** le domaine n'est jamais deviné à partir d'un intitulé
 > libre. « Plein d'essence » produirait `pleindessence.com` et une requête pour
 > rien à chaque affichage.
+
+### Le catalogue des aides
+
+`DEP_AIDES` — 33 aides et prestations françaises `{ nom, domaine, organisme }`,
+sur 11 domaines. Le logo est celui de **l'organisme qui verse** : une APL n'a pas
+de marque propre, elle vient de la CAF. L'organisme est affiché dans la liste de
+suggestions (« APL · CAF »), ce qui distingue mieux que la catégorie.
+
+Le catalogue interrogé dépend de l'onglet (`_depCatalogue`) — proposer Netflix
+sous « Aide » n'aurait aucun sens. Mais `_depMarchand()` cherche dans les deux :
+une ligne « APL » saisie hors de l'onglet Aide retrouve quand même son logo.
+
+Les 11 domaines ont été vérifiés contre le Worker. Deux échouaient :
+`maprimerenov.gouv.fr` et `anah.fr`, remplacés par `france-renov.gouv.fr`.
 
 ### Les icônes de concept
 

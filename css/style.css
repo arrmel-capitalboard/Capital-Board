@@ -4682,6 +4682,9 @@ body.has-demo-banner { padding-top: 40px; }
   border-radius: 11px; padding: 4px; margin-bottom: 18px;
 }
 .dep-seg-3 { grid-template-columns: repeat(3, 1fr); }
+/* Quatre onglets : « Abonnement » est le plus long et fixe la largeur. */
+.dep-seg-4 { grid-template-columns: repeat(4, 1fr); }
+.dep-seg-4 button { padding: 9px 4px; font-size: 12px; }
 /* Variante sans marge : la barre de fréquence vit déjà dans un .form-group. */
 .dep-seg-tight { margin-bottom: 0; }
 .dep-seg button {
@@ -4931,6 +4934,10 @@ body.has-demo-banner { padding-top: 40px; }
   }
   .dep-row2 { grid-template-columns: 1fr; gap: 0; }
   .dep-seg-3 button { font-size: 11.5px; padding: 9px 3px; }
+  /* Quatre onglets sur une ligne écraseraient « Abonnement » : deux par deux
+     reste lisible et garde des cibles au pouce. */
+  .dep-seg-4 { grid-template-columns: repeat(2, 1fr); }
+  .dep-seg-4 button { font-size: 12.5px; padding: 10px 4px; }
 }
 
 @media (max-width: 380px) {

@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814p';
+const APP_VERSION = '20260814q';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -17200,6 +17200,55 @@ function _depSvg(paths, taille) {
     'aria-hidden="true">' + paths + '</svg>';
 }
 
+// Catalogue des aides et prestations françaises. Même mécanique que les
+// marchands, mais le logo est celui de l'ORGANISME qui verse — une APL n'a pas
+// de marque propre, elle vient de la CAF. `org` est affiché dans la liste de
+// suggestions : deux aides voisines se distinguent par leur guichet.
+//
+// Les 13 domaines ont été vérifiés contre le Worker : tous rendent une image.
+const DEP_AIDES = [
+  // Logement
+  { n: 'APL', d: 'caf.fr', org: 'CAF' },
+  { n: 'Aide personnalisée au logement', d: 'caf.fr', org: 'CAF' },
+  { n: 'ALS', d: 'caf.fr', org: 'CAF' },
+  { n: 'ALF', d: 'caf.fr', org: 'CAF' },
+  { n: 'Mobili-Jeune', d: 'actionlogement.fr', org: 'Action Logement' },
+  { n: 'Mobili-Pass', d: 'actionlogement.fr', org: 'Action Logement' },
+  { n: 'Loca-Pass', d: 'actionlogement.fr', org: 'Action Logement' },
+  { n: 'Visale', d: 'actionlogement.fr', org: 'Action Logement' },
+  { n: 'Aide au déménagement', d: 'caf.fr', org: 'CAF' },
+  { n: 'Chèque énergie', d: 'chequeenergie.gouv.fr', org: 'État' },
+  { n: 'MaPrimeRénov', d: 'france-renov.gouv.fr', org: 'France Rénov' },
+  // Famille
+  { n: 'Allocations familiales', d: 'caf.fr', org: 'CAF' },
+  { n: 'PAJE', d: 'caf.fr', org: 'CAF' },
+  { n: 'Complément mode de garde', d: 'caf.fr', org: 'CAF' },
+  { n: 'Allocation de rentrée scolaire', d: 'caf.fr', org: 'CAF' },
+  { n: 'Allocation de soutien familial', d: 'caf.fr', org: 'CAF' },
+  { n: 'Prime de naissance', d: 'caf.fr', org: 'CAF' },
+  // Solidarité
+  { n: 'RSA', d: 'caf.fr', org: 'CAF' },
+  { n: 'Prime d\'activité', d: 'caf.fr', org: 'CAF' },
+  { n: 'AAH', d: 'caf.fr', org: 'CAF' },
+  { n: 'Prime de Noël', d: 'caf.fr', org: 'CAF' },
+  { n: 'ASPA', d: 'lassuranceretraite.fr', org: 'Assurance retraite' },
+  // Emploi
+  { n: 'ARE', d: 'francetravail.fr', org: 'France Travail' },
+  { n: 'Allocation chômage', d: 'francetravail.fr', org: 'France Travail' },
+  { n: 'ASS', d: 'francetravail.fr', org: 'France Travail' },
+  { n: 'Aide à la mobilité', d: 'francetravail.fr', org: 'France Travail' },
+  // Études
+  { n: 'Bourse sur critères sociaux', d: 'etudiant.gouv.fr', org: 'CROUS' },
+  { n: 'Aide au mérite', d: 'etudiant.gouv.fr', org: 'CROUS' },
+  { n: 'Aide CROUS', d: 'lescrous.fr', org: 'CROUS' },
+  // Santé
+  { n: 'Complémentaire santé solidaire', d: 'ameli.fr', org: 'Assurance maladie' },
+  { n: 'Indemnités journalières', d: 'ameli.fr', org: 'Assurance maladie' },
+  // Autres régimes
+  { n: 'MSA', d: 'msa.fr', org: 'MSA' },
+  { n: 'AGEFIPH', d: 'agefiph.fr', org: 'AGEFIPH' },
+];
+
 // Comparaison insensible à la casse, aux accents et à la ponctuation :
 // « L'Équipe », « lequipe » et « L Equipe » désignent le même marchand.
 function _depNorm(s) {
@@ -17209,17 +17258,29 @@ function _depNorm(s) {
 }
 // Marchand reconnu à l'identique — sert à retrouver un logo pour une ligne
 // saisie à la main, sans passer par la liste de suggestions.
+// Cherche dans les deux catalogues : une ligne « APL » saisie hors de l'onglet
+// Aide doit retrouver son logo quand même.
 function _depMarchand(nom) {
   const k = _depNorm(nom);
   if (k.length < 2) return null;
-  return DEP_MARCHANDS.find(m => _depNorm(m.n) === k) || null;
+  return DEP_MARCHANDS.find(m => _depNorm(m.n) === k)
+      || DEP_AIDES.find(m => _depNorm(m.n) === k)
+      || null;
 }
-function _depSuggest(q, type) {
-  if (type === 'revenu') return [];            // pas de logo de marque pour un salaire
+// Le catalogue interrogé dépend de l'onglet : proposer Netflix sous « Aide »
+// n'aurait aucun sens, et inversement.
+function _depCatalogue(tab) {
+  if (tab === 'aide')   return DEP_AIDES;
+  if (tab === 'revenu') return [];              // pas de logo de marque pour un salaire
+  return DEP_MARCHANDS;
+}
+function _depSuggest(q, tab) {
+  const liste = _depCatalogue(tab);
+  if (!liste.length) return [];
   const k = _depNorm(q);
   if (k.length < 2) return [];
   const debut = [], milieu = [];
-  DEP_MARCHANDS.forEach(m => {
+  liste.forEach(m => {
     const n = _depNorm(m.n);
     if (n === k) return;                        // déjà saisi tel quel
     if (n.startsWith(k)) debut.push(m);
@@ -17244,15 +17305,18 @@ let _depEditId   = null;        // opération en cours d'édition, null = créat
 let _depForm     = { tab: 'depense', type: 'depense', cat: 'courses', freq: 'mensuel', domaine: null };
 
 const DEP_TABS = {
-  depense:    { type: 'depense', cat: 'courses',     titre: 'Nouvelle dépense',    sous: 'Une sortie ponctuelle — un plein, des courses, un restaurant.' },
-  abonnement: { type: 'depense', cat: 'abonnements', titre: 'Nouvel abonnement',   sous: 'Une dépense qui revient — abonnement, loyer, facture.' },
-  revenu:     { type: 'revenu',  cat: 'salaire',     titre: 'Nouveau revenu',      sous: 'Salaire, freelance, loyer perçu, aide.' },
+  depense:    { type: 'depense', cat: 'courses',     titre: 'Nouvelle dépense',  sous: 'Une sortie ponctuelle — un plein, des courses, un restaurant.' },
+  abonnement: { type: 'depense', cat: 'abonnements', titre: 'Nouvel abonnement', sous: 'Une dépense qui revient — abonnement, loyer, facture.' },
+  revenu:     { type: 'revenu',  cat: 'salaire',     titre: 'Nouveau revenu',    sous: 'Salaire, mission freelance, loyer perçu.' },
+  // Une aide est un revenu de catégorie « aides » : aucun champ en plus, et
+  // c'est cette catégorie qui la ramène sur son onglet à la réouverture.
+  aide:       { type: 'revenu',  cat: 'aides',       titre: 'Nouvelle aide',     sous: 'APL, Mobili-Jeune, prime d\'activité, bourse.' },
 };
 
 // L'onglet d'une opération existante se déduit de ce qui est stocké.
 function _depTabOf(e) {
   if (!e) return 'depense';
-  if (e.type === 'revenu') return 'revenu';
+  if (e.type === 'revenu') return e.categorie === 'aides' ? 'aide' : 'revenu';
   return e.recurrent ? 'abonnement' : 'depense';
 }
 // La récurrence est imposée par l'onglet côté sortie, laissée au choix côté
@@ -17718,6 +17782,13 @@ window.depSetTab = function(tab) {
   _depForm.tab  = tab;
   _depForm.type = def.type;
   _depForm.cat  = def.cat;
+  _depForm.domaine = null;      // le catalogue change, le logo précédent n'a plus lieu d'être
+  // Presque toutes les aides sont mensuelles : on coche d'office, la case
+  // reste là pour les ponctuelles (prime de naissance, prime de Noël).
+  if (tab === 'aide') {
+    const rec = document.getElementById('dep-f-recur');
+    if (rec) rec.checked = true;
+  }
   _depSyncTab();
   depToggleRecur();
 };
@@ -17791,15 +17862,20 @@ function _depSyncTab() {
     _depText('dep-modal-sub', def.sous);
   }
 
-  // La case « ça revient » n'a de sens que sur un revenu : côté sortie, c'est
-  // l'onglet qui tranche, et la garder poserait deux fois la même question.
+  // La case « ça revient » n'a de sens que côté entrée : un salaire revient et
+  // pas une prime, une APL revient et pas une prime de naissance. Côté sortie
+  // c'est l'onglet qui tranche, et la garder poserait deux fois la question.
   const wrap = document.getElementById('dep-f-recur-wrap');
-  if (wrap) wrap.hidden = _depForm.tab !== 'revenu';
+  if (wrap) wrap.hidden = !(_depForm.tab === 'revenu' || _depForm.tab === 'aide');
 
+  const exemples = {
+    depense:    'Plein d\'essence, courses, restaurant…',
+    abonnement: 'Netflix, loyer, forfait mobile…',
+    revenu:     'Salaire, mission freelance, loyer perçu…',
+    aide:       'APL, Mobili-Jeune, prime d\'activité…',
+  };
   const nom = document.getElementById('dep-f-nom');
-  if (nom) nom.placeholder = _depForm.tab === 'abonnement' ? 'Netflix, loyer, forfait mobile…'
-    : _depForm.tab === 'revenu' ? 'Salaire, mission freelance, aide…'
-    : 'Plein d\'essence, courses, restaurant…';
+  if (nom) nom.placeholder = exemples[_depForm.tab] || exemples.depense;
 
   _depRenderCatChips();
   _depSuggClear();
@@ -17869,7 +17945,7 @@ window.depNameInput = function() {
   const m = _depMarchand(q);
   _depForm.domaine = m ? m.d : null;
   _depRenderLogo();
-  _depSuggShow(_depSuggest(q, _depForm.type));
+  _depSuggShow(_depSuggest(q, _depForm.tab));
 };
 
 function _depSuggShow(list) {
@@ -17885,7 +17961,9 @@ function _depSuggShow(list) {
       '<span class="dep-sugg-logo"><img src="' + _safeUrl(_depLogoUrl(m.d)) + '" alt="" loading="lazy" ' +
         'onerror="this.style.visibility=\'hidden\'"></span>' +
       '<span class="dep-sugg-n">' + _escapeHtmlChat(m.n) + '</span>' +
-      '<span class="dep-sugg-c">' + _escapeHtmlChat(_depCat('depense', m.c).label) + '</span>' +
+      // Une aide s'identifie par son guichet, un marchand par son poste :
+      // « APL · CAF » distingue mieux que « APL · Aides ».
+      '<span class="dep-sugg-c">' + _escapeHtmlChat(m.org || _depCat('depense', m.c).label) + '</span>' +
     '</div>').join('');
   box.classList.add('open');
   if (inp) inp.setAttribute('aria-expanded', 'true');
@@ -17913,8 +17991,9 @@ window.depPickMarchand = function(i) {
   _depSet('dep-f-nom', m.n);
   _depForm.domaine = m.d;
   // La catégorie du catalogue ne s'impose que sur une saisie neuve : sur une
-  // modification, le classement choisi par le membre reste le sien.
-  if (!_depEditId) { _depForm.cat = m.c; _depRenderCatChips(); }
+  // modification, le classement choisi par le membre reste le sien. Les aides
+  // n'en portent pas — elles restent dans « Aides », posé par leur onglet.
+  if (!_depEditId && m.c) { _depForm.cat = m.c; _depRenderCatChips(); }
   _depSuggClear();
   _depRenderLogo();
   const mt = document.getElementById('dep-f-montant');
