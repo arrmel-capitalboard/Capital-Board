@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260813t';
+const APP_VERSION = '20260813u';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4058,10 +4058,15 @@ function renderPortfolio() {
       tr.id = 'wl-row-pf' + i;
       // Cliquer la ligne déplie sa courbe. Les zones interactives gardent leur
       // propre action : boutons, poignée de tri, bascule euro/pourcentage.
+      // Sur mobile, la ligne fait ce que fait le chevron : elle ouvre le tiroir
+      // de détails. On se règle sur la visibilité réelle du bouton plutôt que
+      // sur une largeur en dur, pour rester d'accord avec le CSS.
       tr.style.cursor = 'pointer';
       tr.addEventListener('click', (ev) => {
         if (ev.target.closest('button, a, select, input, textarea, .perf-total-sub, .drag-handle')) return;
-        toggleWatchlistChart('pf' + i, row.ticker);
+        const voirPlus = tr.querySelector('.btn-voir-plus');
+        if (voirPlus && voirPlus.offsetParent !== null) togglePortfolioDetail(i);
+        else toggleWatchlistChart('pf' + i, row.ticker);
       });
       // Repères pour l'animation de refresh : on compare ces valeurs d'un
       // rendu à l'autre pour n'animer que ce qui a réellement bougé.
