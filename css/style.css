@@ -4797,6 +4797,72 @@ body.has-demo-banner { padding-top: 40px; }
 }
 .dep-delete:hover { color: var(--negative); background: var(--negative-d); }
 
+/* ─── Confirmation de suppression ─── */
+/* Posée par-dessus la modale de saisie, qui reste visible derrière. */
+.dep-confirm-overlay { z-index: 1200; }
+.dep-confirm { width: 430px; text-align: left; }
+.dep-confirm-ico {
+  width: 44px; height: 44px; border-radius: 13px; margin-bottom: 16px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(255,77,106,.12); color: var(--negative);
+}
+.dep-confirm-title {
+  font-family: var(--display); font-size: 18px; font-weight: 700;
+  letter-spacing: -.3px; margin-bottom: 8px; line-height: 1.3;
+}
+.dep-confirm-body { font-size: 13px; color: var(--text2); line-height: 1.65; }
+.dep-confirm-body b { color: var(--text); font-weight: 700; }
+
+/* L'issue de secours : une action, pas une phrase de mise en garde. */
+.dep-confirm-alt {
+  display: flex; align-items: center; gap: 12px; width: 100%; text-align: left;
+  margin-top: 18px; padding: 13px 14px;
+  background: var(--s2); border: 1px solid var(--border2);
+  border-radius: 12px; cursor: pointer;
+  font-family: var(--sans); transition: border-color .15s, background .15s;
+}
+.dep-confirm-alt:hover { background: var(--s3); border-color: rgba(0,224,158,.35); }
+.dep-confirm-alt-ico {
+  width: 34px; height: 34px; flex-shrink: 0; border-radius: 10px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(0,224,158,.11); color: var(--positive);
+}
+.dep-confirm-alt > span:nth-child(2) { flex: 1; min-width: 0; }
+.dep-confirm-alt b { display: block; font-size: 13px; font-weight: 700; color: var(--text); }
+.dep-confirm-alt small { display: block; font-size: 11.5px; color: var(--text3); margin-top: 3px; line-height: 1.45; }
+.dep-confirm-alt-go { color: var(--text3); flex-shrink: 0; display: flex; transition: transform .15s, color .15s; }
+.dep-confirm-alt:hover .dep-confirm-alt-go { color: var(--positive); transform: translateX(2px); }
+
+.dep-btn-danger {
+  flex: 1; padding: 11px;
+  background: rgba(255,77,106,.13); border: 1px solid rgba(255,77,106,.3);
+  color: var(--negative); border-radius: 9px;
+  font-size: 13px; font-weight: 700; cursor: pointer;
+  font-family: var(--sans); transition: all .18s;
+}
+.dep-btn-danger:hover { background: var(--negative); border-color: var(--negative); color: #fff; }
+
+/* Signale le champ vers lequel on vient d'envoyer l'utilisateur. */
+@keyframes dep-flash {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(0,224,158,0); }
+  25%, 75% { box-shadow: 0 0 0 3px rgba(0,224,158,.28); }
+}
+.dep-flash { animation: dep-flash 1.4s ease-in-out; border-color: var(--positive) !important; }
+
+@media (max-width: 640px) {
+  #dep-confirm { align-items: flex-end; }
+  .dep-confirm {
+    width: 100%; border-radius: 20px 20px 0 0;
+    padding: 22px 18px calc(18px + env(safe-area-inset-bottom));
+  }
+  .dep-confirm-title { font-size: 17px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .dep-flash { animation: none; }
+  .dep-confirm-alt, .dep-confirm-alt-go, .dep-btn-danger { transition: none; }
+}
+
 /* ─── Tablette ─── */
 @media (max-width: 1100px) {
   .dep-kpis { grid-template-columns: 1fr 1fr; }

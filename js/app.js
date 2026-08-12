@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814l';
+const APP_VERSION = '20260814m';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -17817,24 +17817,76 @@ window.depSave = function() {
   _depRender();
 };
 
+/**
+ * Suppression : on ne demande pas « êtes-vous sûr », on montre ce qui se perd.
+ *
+ * Un récurrent supprimé disparaît aussi des mois passés — ce n'est presque
+ * jamais ce qu'on voulait. La résiliation est offerte comme une action, pas
+ * comme un conseil dans un paragraphe que personne ne lit.
+ */
 window.depDelete = function() {
   if (!_depEditId) return;
   const e = getDepenses().find(x => x.id === _depEditId);
-  const nom = e ? (e.nom || 'cette opération') : 'cette opération';
-  // Un récurrent supprimé disparaît aussi des mois passés : la résiliation est
-  // presque toujours ce qu'on voulait, on le dit avant d'effacer.
-  const msg = e && e.recurrent
-    ? 'Supprimer « ' + nom +' » l\'efface aussi de tous les mois passés.\n\n'
-      + 'Pour arrêter un abonnement en gardant son historique, renseignez plutôt une date de résiliation.\n\nSupprimer quand même ?'
-    : 'Supprimer « ' + nom + ' » ?';
-  if (!confirm(msg)) return;
+  if (!e) return;
+  const nom = e.nom || 'cette opération';
+
+  _depText('dep-confirm-title', 'Supprimer « ' + nom + ' » ?');
+
+  const body = document.getElementById('dep-confirm-body');
+  const alt  = document.getElementById('dep-confirm-alt');
+  if (e.recurrent) {
+    const v = _depVersements(e);
+    const compte = v.count > 0
+      ? 'Il est compté sur <b>' + v.count + (v.count > 1 ? ' mois' : ' mois') +
+        '</b>, pour <b>' + fmt(v.total) + '</b> depuis ' + _escapeHtmlChat(_depMoisAn(e.date)) + '. '
+      : '';
+    if (body) body.innerHTML = compte + 'Le supprimer l\'efface aussi de tous ces mois passés.';
+    if (alt) alt.hidden = false;
+  } else {
+    if (body) body.innerHTML = 'Cette opération sera retirée de ' +
+      _escapeHtmlChat(_depMoisAn(e.date)) + '.';
+    if (alt) alt.hidden = true;
+  }
+
+  document.getElementById('dep-confirm').classList.add('open');
+};
+
+window.depConfirmClose = function() {
+  const m = document.getElementById('dep-confirm');
+  if (m) m.classList.remove('open');
+};
+
+window.depDeleteConfirmed = function() {
+  if (!_depEditId) return;
   saveDepenses(currentUser, getDepenses().filter(x => x.id !== _depEditId));
+  depConfirmClose();
   depCloseModal();
   _depRender();
 };
 
+// Sortie de secours : on referme la confirmation, on s'assure que le bloc de
+// récurrence est ouvert, et on amène l'utilisateur sur la date de résiliation
+// avec le champ déjà sélectionné. Aucune écriture — il valide lui-même.
+window.depResilierPlutot = function() {
+  depConfirmClose();
+  const rec = document.getElementById('dep-f-recur');
+  if (rec && !rec.checked) { rec.checked = true; depToggleRecur(); }
+  const fin = document.getElementById('dep-f-fin');
+  if (!fin) return;
+  if (!fin.value) fin.value = new Date().toISOString().slice(0, 10);
+  depRecalc();
+  fin.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  fin.focus();
+  fin.classList.add('dep-flash');
+  setTimeout(() => fin.classList.remove('dep-flash'), 1400);
+};
+
+// Échap ferme la confirmation d'abord : elle est posée par-dessus la saisie,
+// et l'annuler doit ramener sur le formulaire, pas tout refermer d'un coup.
 document.addEventListener('keydown', function(e) {
   if (e.key !== 'Escape') return;
+  const c = document.getElementById('dep-confirm');
+  if (c && c.classList.contains('open')) { depConfirmClose(); return; }
   const m = document.getElementById('dep-modal');
   if (m && m.classList.contains('open')) depCloseModal();
 });
