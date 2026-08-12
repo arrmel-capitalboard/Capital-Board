@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814r';
+const APP_VERSION = '20260814s';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -17498,7 +17498,7 @@ function _depRender() {
   _depRenderKpis(rev, dep, inMonth);
   _depRenderRecur(all, ym);
   _depRenderOps(inMonth, ym);
-  _depRenderSplit(inMonth);
+  _depRenderSplit(all, ym);
 }
 
 function _depRenderKpis(rev, dep, inMonth) {
@@ -17613,36 +17613,97 @@ function _depRenderOps(inMonth, ym) {
   }
 }
 
-function _depRenderSplit(inMonth) {
+// Totaux par poste de dépense sur un mois donné. Sert au mois affiché comme au
+// précédent, dont la comparaison est tout l'intérêt de la carte.
+function _depParPoste(all, ym) {
+  const par = {};
+  all.filter(e => e.type !== 'revenu' && _depOccursIn(e, ym)).forEach(e => {
+    const c = _depCat(e.type, e.categorie);
+    par[c.key] = par[c.key] || { cat: c, total: 0, n: 0 };
+    par[c.key].total += _depAmt(e);
+    par[c.key].n += 1;
+  });
+  return par;
+}
+
+/**
+ * Répartition : un anneau pour la forme, une légende pour les chiffres.
+ *
+ * Les barres précédentes étaient calées sur le plus gros poste, qui occupait
+ * donc toujours toute la largeur — on lisait un classement, jamais une part.
+ * L'anneau montre la part, ce qui est la question posée.
+ *
+ * Et surtout la légende porte l'écart avec le mois précédent : « 412 € en
+ * courses » ne veut rien dire seul, « 412 €, soit 32 de plus qu'en juillet »
+ * se comprend d'un coup.
+ */
+function _depRenderSplit(all, ym) {
   const box = document.getElementById('dep-split');
   if (!box) return;
-  const sorties = inMonth.filter(e => e.type !== 'revenu');
-  if (!sorties.length) {
+
+  const par    = _depParPoste(all, ym);
+  const lignes = Object.keys(par).map(k => par[k]).sort((a, b) => b.total - a.total);
+  if (!lignes.length) {
     box.innerHTML = _depEmpty('Rien à répartir',
       'La répartition par poste apparaît dès la première dépense du mois.');
     return;
   }
-  const par = {};
-  sorties.forEach(e => {
-    const c = _depCat(e.type, e.categorie);
-    par[c.key] = par[c.key] || { cat: c, total: 0 };
-    par[c.key].total += _depAmt(e);
-  });
-  const lignes = Object.keys(par).map(k => par[k]).sort((a, b) => b.total - a.total);
-  const total  = lignes.reduce((s, l) => s + l.total, 0);
-  const max    = lignes[0].total || 1;
+  const total = lignes.reduce((s, l) => s + l.total, 0);
+  const avant = _depParPoste(all, _depFromIdx(_depIdx(ym) - 1));
 
-  box.innerHTML = lignes.map(l =>
-    '<div class="dep-bar-row">' +
-      '<div class="dep-bar-top">' +
-        '<span>' + _escapeHtmlChat(l.cat.label) +
-          '<span class="dep-bar-pct">' + Math.round((l.total / total) * 100) + ' %</span></span>' +
-        '<span class="dep-bar-amount">' + fmt(l.total) + '</span>' +
+  // Anneau en SVG pur : rayon 15.915 donne une circonférence de 100, donc un
+  // pourcentage s'écrit directement en stroke-dasharray. Décalage de 25 pour
+  // démarrer à midi plutôt qu'à trois heures.
+  let cumul = 0;
+  const segments = lignes.map(l => {
+    const pct = (l.total / total) * 100;
+    const off = 25 - cumul;
+    cumul += pct;
+    return '<circle cx="21" cy="21" r="15.915" fill="none" stroke="' + l.cat.color + '" ' +
+      'stroke-width="4.6" stroke-dasharray="' + pct.toFixed(2) + ' ' + (100 - pct).toFixed(2) + '" ' +
+      'stroke-dashoffset="' + off.toFixed(2) + '"><title>' +
+      _attr(l.cat.label + ' — ' + fmt(l.total)) + '</title></circle>';
+  }).join('');
+
+  const anneau =
+    '<div class="dep-donut">' +
+      '<svg viewBox="0 0 42 42" role="img" aria-label="Répartition des dépenses par poste">' +
+        '<circle cx="21" cy="21" r="15.915" fill="none" stroke="var(--s3)" stroke-width="4.6"/>' +
+        segments +
+      '</svg>' +
+      '<div class="dep-donut-mid">' +
+        '<span class="dep-donut-v">' + fmt(total) + '</span>' +
+        '<span class="dep-donut-l">' + lignes.length + ' poste' + (lignes.length > 1 ? 's' : '') + '</span>' +
       '</div>' +
-      '<div class="dep-bar-track"><div class="dep-bar-fill" style="width:' +
-        Math.max(2, (l.total / max) * 100) + '%;background:' + l.cat.color + '"></div></div>' +
-    '</div>'
-  ).join('');
+    '</div>';
+
+  const legende = lignes.map(l => {
+    const pct = Math.round((l.total / total) * 100);
+    const av  = avant[l.cat.key];
+    // Un écart sous 1 € est du bruit d'arrondi, pas une évolution.
+    let delta = '<span class="dep-lg-d neuf">nouveau</span>';
+    if (av) {
+      const d = l.total - av.total;
+      delta = Math.abs(d) < 1
+        ? '<span class="dep-lg-d flat">stable</span>'
+        : '<span class="dep-lg-d ' + (d > 0 ? 'up' : 'down') + '">' +
+            (d > 0 ? '+' : '−') + fmt(Math.abs(d)) + '</span>';
+    }
+    return '<button type="button" class="dep-lg' + (_depFilter === l.cat.key ? ' active' : '') + '" ' +
+        'onclick="depSetFilter(\'' + l.cat.key + '\')" ' +
+        'title="Ne montrer que ce poste dans les opérations du mois">' +
+      '<span class="dep-lg-dot" style="background:' + l.cat.color + '"></span>' +
+      '<span class="dep-lg-n">' + _escapeHtmlChat(l.cat.label) + '</span>' +
+      '<span class="dep-lg-p">' + pct + ' %</span>' +
+      '<span class="dep-lg-v">' + fmt(l.total) + '</span>' +
+      delta +
+    '</button>';
+  }).join('');
+
+  box.innerHTML = '<div class="dep-split-wrap">' + anneau +
+    '<div class="dep-legende">' + legende +
+      '<div class="dep-lg-note">Le mois précédent sert de repère. Cliquez un poste pour ne garder que lui dans les opérations.</div>' +
+    '</div></div>';
 }
 
 // Une ligne, deux contextes : la carte des récurrents (fréquence + jour) et la
