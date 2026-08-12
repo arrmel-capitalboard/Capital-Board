@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814t';
+const APP_VERSION = '20260814u';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18314,12 +18314,80 @@ const LIV_BAREME = {
     livretA:  { label: 'Livret A',        court: 'A',    plafond: 22950, taux: 1.7,  unique: true,  fisc: false, color: '#00e09e' },
     ldds:     { label: 'LDDS',            court: 'LDDS', plafond: 12000, taux: 1.7,  unique: true,  fisc: false, color: '#4ade80' },
     lep:      { label: 'LEP',             court: 'LEP',  plafond: 10000, taux: 2.5,  unique: true,  fisc: false, color: '#22d3ee' },
-    jeune:    { label: 'Livret Jeune',    court: 'LJ',   plafond: 1600,  taux: 1.7,  unique: true,  fisc: false, color: '#38bdf8' },
+    // Le taux du Livret Jeune est fixé librement par chaque banque, avec pour
+    // seul plancher légal celui du Livret A. 3,75 % est une valeur courante,
+    // pas une règle : `min` sert à refuser une saisie sous le plancher.
+    jeune:    { label: 'Livret Jeune',    court: 'LJ',   plafond: 1600,  taux: 3.75, unique: true,  fisc: false, color: '#38bdf8', min: 'livretA' },
     pel:      { label: 'PEL',             court: 'PEL',  plafond: 61200, taux: null, unique: false, fisc: true,  color: '#a78bfa' },
     cel:      { label: 'CEL',             court: 'CEL',  plafond: 15300, taux: null, unique: false, fisc: true,  color: '#c084fc' },
     bancaire: { label: 'Livret bancaire', court: 'LB',   plafond: null,  taux: null, unique: false, fisc: true,  color: '#f5b731' },
   },
 };
+// Banques et plateformes d'épargne. Même mécanique que le catalogue de
+// marchands : reconnaissance exacte à la frappe, suggestions par sous-chaîne,
+// logo servi par le Worker. Les 33 domaines ont été vérifiés contre lui —
+// societegenerale.fr, caisse-epargne.fr et lanef.com ne rendaient rien, d'où
+// les variantes retenues ici.
+const LIV_BANQUES = [
+  // Réseaux
+  { n: 'BNP Paribas', d: 'bnpparibas.fr' },
+  { n: 'Crédit Agricole', d: 'credit-agricole.fr' },
+  { n: 'Société Générale', d: 'societegenerale.com' },
+  { n: 'LCL', d: 'lcl.fr' },
+  { n: 'Caisse d\'Épargne', d: 'www.caisse-epargne.fr' },
+  { n: 'Banque Populaire', d: 'banquepopulaire.fr' },
+  { n: 'Crédit Mutuel', d: 'creditmutuel.fr' },
+  { n: 'CIC', d: 'cic.fr' },
+  { n: 'La Banque Postale', d: 'labanquepostale.fr' },
+  { n: 'BRED', d: 'bred.fr' },
+  { n: 'HSBC', d: 'hsbc.fr' },
+  { n: 'AXA Banque', d: 'axa.fr' },
+  { n: 'Banque Palatine', d: 'palatine.fr' },
+  { n: 'Milleis', d: 'milleis.fr' },
+  // En ligne
+  { n: 'BoursoBank', d: 'boursobank.com' },
+  { n: 'Boursorama', d: 'boursobank.com' },
+  { n: 'Fortuneo', d: 'fortuneo.fr' },
+  { n: 'Hello bank!', d: 'hellobank.fr' },
+  { n: 'Monabanq', d: 'monabanq.com' },
+  { n: 'BforBank', d: 'bforbank.com' },
+  { n: 'Nickel', d: 'nickel.eu' },
+  { n: 'Revolut', d: 'revolut.com' },
+  { n: 'N26', d: 'n26.com' },
+  { n: 'Lydia', d: 'lydia-app.com' },
+  { n: 'Qonto', d: 'qonto.com' },
+  // Épargne et courtage
+  { n: 'Distingo', d: 'distingo.fr' },
+  { n: 'Zesto', d: 'rcibanque.com' },
+  { n: 'Cashbee', d: 'cashbee.fr' },
+  { n: 'Linxea', d: 'linxea.com' },
+  { n: 'Yomoni', d: 'yomoni.fr' },
+  { n: 'Nalo', d: 'nalo.fr' },
+  { n: 'Ramify', d: 'ramify.fr' },
+  { n: 'Trade Republic', d: 'traderepublic.com' },
+  // Banques engagées
+  { n: 'La Nef', d: 'lanef.fr' },
+  { n: 'Helios', d: 'helios.do' },
+  { n: 'Green-Got', d: 'green-got.com' },
+];
+function _livBanque(nom) {
+  const k = _depNorm(nom);
+  if (k.length < 2) return null;
+  return LIV_BANQUES.find(b => _depNorm(b.n) === k) || null;
+}
+function _livBanqueSuggest(q) {
+  const k = _depNorm(q);
+  if (k.length < 2) return [];
+  const debut = [], milieu = [];
+  LIV_BANQUES.forEach(b => {
+    const n = _depNorm(b.n);
+    if (n === k) return;
+    if (n.startsWith(k)) debut.push(b);
+    else if (n.includes(k)) milieu.push(b);
+  });
+  return debut.concat(milieu).slice(0, 6);
+}
+
 // Les livrets réglementés sont exonérés ; le reste subit le prélèvement
 // forfaitaire unique. C'est la seule fiscalité qui joue ici.
 const LIV_PFU = 0.30;
@@ -18504,8 +18572,7 @@ function _livRenderListe(livrets, total, nets) {
 
     return '<div class="liv-row" onclick="livOpenModal(\'' + _attr(l.id) + '\')" role="button" tabindex="0" ' +
         'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();this.click();}">' +
-      '<div class="liv-chip" style="background:' + t.color + '1f;color:' + t.color + '">' +
-        _escapeHtmlChat(t.court) + '</div>' +
+      _livChipHtml(l, t) +
       '<div class="liv-main">' +
         '<div class="liv-top">' +
           '<span class="liv-nom">' + _escapeHtmlChat(t.label) +
@@ -18571,6 +18638,28 @@ function _livRenderMarge(livrets) {
   box.innerHTML = lignes + alerte;
 }
 
+// Pastille d'une ligne : le logo de la banque quand on le connaît, le sigle du
+// type sinon. Le libellé du livret reste dans le titre, l'identité visuelle
+// peut donc revenir à l'établissement — c'est lui qui distingue deux PEL.
+function _livChipHtml(l, t) {
+  const dom = l.banqueDomaine || ((_livBanque(l.banque) || {}).d) || '';
+  const fond = 'background:' + t.color + '1f;color:' + t.color;
+  if (!dom) return '<div class="liv-chip" style="' + fond + '">' + _escapeHtmlChat(t.court) + '</div>';
+  return '<div class="liv-chip liv-chip-logo" style="' + fond + '">' +
+    '<img src="' + _safeUrl(_depLogoUrl(dom)) + '" alt="" loading="lazy" ' +
+    'onerror="livChipFailed(this)" ' +
+    'data-c="' + _attr(t.court) + '">' + '</div>';
+}
+
+// Le logo n'a pas chargé : la pastille reprend le sigle du type plutôt que de
+// garder un cadre vide.
+window.livChipFailed = function(img) {
+  const p = img.parentNode;
+  if (!p) return;
+  p.textContent = img.dataset.c || '';
+  p.classList.remove('liv-chip-logo');
+};
+
 function _livTauxTxt(l) {
   const t = _livTaux(l);
   return t > 0 ? t.toFixed(2).replace('.', ',').replace(/,00$/, '') + ' %' : 'taux non renseigné';
@@ -18596,6 +18685,8 @@ window.livOpenModal = function(id) {
   _depSet('liv-f-solde', l ? String(_livSolde(l)).replace('.', ',') : '');
   _depSet('liv-f-taux', l && l.taux ? String(l.taux).replace('.', ',') : '');
   _depSet('liv-f-banque', l ? (l.banque || '') : '');
+  _livDomaine = l ? (l.banqueDomaine || ((_livBanque(l.banque) || {}).d) || null) : null;
+  _livSuggClear();
   _depText('liv-modal-title', l ? 'Modifier ce livret' : 'Nouveau livret');
   const del = document.getElementById('liv-f-delete');
   if (del) del.hidden = !l;
@@ -18603,6 +18694,7 @@ window.livOpenModal = function(id) {
   if (err) err.hidden = true;
 
   _livRenderTypes();
+  _livRenderLogo();
   livRecalc();
   document.getElementById('liv-modal').classList.add('open');
   setTimeout(() => { const s = document.getElementById('liv-f-solde'); if (s) s.focus(); }, 60);
@@ -18622,7 +18714,98 @@ window.livCloseModal = function() {
   _livEditId = null;
 };
 
-window.livSetType = function(t) { _livType = t; _livRenderTypes(); livRecalc(); };
+window.livSetType = function(t) { _livType = t; _livRenderTypes(); _livRenderLogo(); livRecalc(); };
+
+// ─── Champ Banque : logo et suggestions ───
+
+let _livSuggList = [];
+let _livSuggSel  = -1;
+
+// Aperçu à gauche du champ : le logo dès que la banque est reconnue, sinon
+// l'initiale sur la couleur du type de livret choisi.
+function _livRenderLogo() {
+  const box = document.getElementById('liv-f-logo');
+  if (!box) return;
+  const t = _livType_(_livType);
+  box.style.background = t.color + '1f';
+  box.style.color      = t.color;
+  if (_livDomaine) {
+    box.classList.add('has-logo');
+    box.innerHTML = '<img src="' + _safeUrl(_depLogoUrl(_livDomaine)) + '" alt="" onerror="livLogoFailed()">';
+    return;
+  }
+  box.classList.remove('has-logo');
+  const nom = _depVal('liv-f-banque');
+  box.textContent = nom ? _depInitials(nom) : t.court;
+}
+let _livDomaine = null;
+
+window.livLogoFailed = function() { _livDomaine = null; _livRenderLogo(); };
+
+window.livBanqueInput = function() {
+  const q = _depVal('liv-f-banque');
+  const b = _livBanque(q);
+  _livDomaine = b ? b.d : null;
+  _livRenderLogo();
+  _livSuggShow(_livBanqueSuggest(q));
+};
+
+function _livSuggShow(list) {
+  _livSuggList = list;
+  _livSuggSel  = -1;
+  const box = document.getElementById('liv-f-sugg');
+  const inp = document.getElementById('liv-f-banque');
+  if (!box) return;
+  if (!list.length) { _livSuggClear(); return; }
+  box.innerHTML = list.map((b, i) =>
+    '<div class="dep-sugg-item" role="option" data-i="' + i + '" ' +
+      'onmousedown="event.preventDefault();livPickBanque(' + i + ')">' +
+      '<span class="dep-sugg-logo"><img src="' + _safeUrl(_depLogoUrl(b.d)) + '" alt="" loading="lazy" ' +
+        'onerror="this.style.visibility=\'hidden\'"></span>' +
+      '<span class="dep-sugg-n">' + _escapeHtmlChat(b.n) + '</span>' +
+    '</div>').join('');
+  box.classList.add('open');
+  if (inp) inp.setAttribute('aria-expanded', 'true');
+}
+
+function _livSuggClear() {
+  const box = document.getElementById('liv-f-sugg');
+  const inp = document.getElementById('liv-f-banque');
+  if (box) { box.classList.remove('open'); box.innerHTML = ''; }
+  if (inp) inp.setAttribute('aria-expanded', 'false');
+  _livSuggList = [];
+  _livSuggSel  = -1;
+}
+
+window.livSuggClose = function(differe) {
+  if (differe) setTimeout(_livSuggClear, 120);
+  else _livSuggClear();
+};
+
+window.livPickBanque = function(i) {
+  const b = _livSuggList[i];
+  if (!b) return;
+  _depSet('liv-f-banque', b.n);
+  _livDomaine = b.d;
+  _livSuggClear();
+  _livRenderLogo();
+};
+
+window.livBanqueKey = function(ev) {
+  if (!_livSuggList.length) return;
+  const n = _livSuggList.length;
+  if (ev.key === 'ArrowDown' || ev.key === 'ArrowUp') {
+    ev.preventDefault();
+    _livSuggSel = (_livSuggSel + (ev.key === 'ArrowDown' ? 1 : n - 1)) % n;
+    document.querySelectorAll('#liv-f-sugg .dep-sugg-item').forEach((el, i) =>
+      el.classList.toggle('active', i === _livSuggSel));
+  } else if (ev.key === 'Enter' && _livSuggSel >= 0) {
+    ev.preventDefault();
+    livPickBanque(_livSuggSel);
+  } else if (ev.key === 'Escape') {
+    _livSuggClear();
+  }
+};
 
 function _livRenderTypes() {
   const box = document.getElementById('liv-f-types');
@@ -18689,6 +18872,13 @@ window.livSave = function() {
 
   if (!isFinite(solde) || solde <= 0) return _livErr('Le solde doit être un nombre supérieur à zéro.');
   if (brut && (!isFinite(perso) || perso <= 0 || perso > 20)) return _livErr('Le taux doit être un pourcentage plausible, entre 0 et 20.');
+  // Un Livret Jeune ne peut légalement pas rémunérer moins que le Livret A.
+  if (t.min && brut) {
+    const plancher = _livType_(t.min).taux;
+    if (Number.isFinite(plancher) && perso < plancher) {
+      return _livErr('Un ' + t.label + ' ne peut pas rémunérer moins que le Livret A, soit ' + _livPct(plancher) + '.');
+    }
+  }
   if (t.taux === null && !brut) return _livErr('Ce livret n\'a pas de taux réglementé : indiquez celui de votre contrat.');
   // Le plafond est une règle, pas une préférence : on refuse un solde qui le
   // dépasse plutôt que d'afficher une jauge à 130 %.
@@ -18704,6 +18894,9 @@ window.livSave = function() {
     solde,
     taux: brut ? perso : null,          // null = on suit le barème, y compris ses révisions
     banque: _depVal('liv-f-banque').slice(0, 60) || null,
+    // Domaine figé à l'enregistrement, comme pour les marchands : le logo
+    // reste le bon même si le catalogue évolue.
+    banqueDomaine: _livDomaine || null,
   };
 
   const all = getLivrets().slice();
