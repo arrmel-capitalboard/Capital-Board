@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260815b">
+<link rel="stylesheet" href="css/style.css?v=20260815c">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2534,6 +2534,16 @@
       <div class="dep-help">Le solde se déduit de ces lignes. Un versement rapporte à partir du 1er ou du 16 qui suit ; un retrait cesse de rapporter dès la quinzaine en cours. Pour un livret ancien, une première ligne à la date d'ouverture suffit.</div>
     </div>
 
+    <div class="form-group liv-releve-group">
+      <span class="form-label">Relevé de la banque <span class="dep-opt">recommandé</span></span>
+      <div class="dep-row2">
+        <input class="form-input" id="liv-f-r-acquis" type="text" inputmode="decimal" placeholder="intérêts à ce jour" oninput="livRecalc()">
+        <input class="form-input" id="liv-f-r-projete" type="text" inputmode="decimal" placeholder="intérêts prévisionnels" oninput="livRecalc()">
+      </div>
+      <input class="form-input" id="liv-f-r-le" type="date" onchange="livRecalc()" style="margin-top:8px">
+      <div class="dep-help">Recopiez les deux montants affichés par votre banque, et la date à laquelle vous les avez lus. Ils remplacent l'estimation : aucun modèle ne reproduit au centime les conventions de chaque établissement. L'acquis continue de courir depuis cette date. Recopiez les montants bruts — la fiscalité est appliquée ensuite si le livret y est soumis.</div>
+    </div>
+
     <div class="liv-ecart" id="liv-f-ecart" hidden></div>
     <div class="dep-recap" id="liv-f-recap" hidden></div>
     <div class="dep-help" id="liv-f-help"></div>
@@ -3242,9 +3252,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260815b"></script>
+<script src="js/app.js?v=20260815c"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260815b"></script>
+<script src="js/onboarding.js?v=20260815c"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

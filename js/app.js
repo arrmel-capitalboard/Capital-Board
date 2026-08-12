@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260815b';
+const APP_VERSION = '20260815c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18477,9 +18477,54 @@ function _livInteretsQ(l, jusqu) {
   return { brut, net, exact };
 }
 
+/**
+ * Relevé de la banque : les deux chiffres lus dans l'appli, avec leur date.
+ *
+ * Aucun modèle ne peut reproduire les deux au centime. La preuve tient en une
+ * ligne : entre aujourd'hui et le 31 décembre il reste dix quinzaines, donc
+ * `projeté − acquis` ne peut pas dépasser `solde × taux × 10/24`. Le CIC
+ * annonce un écart supérieur, parce que ses deux lignes ne reposent pas sur la
+ * même base — la note de son écran le dit, le prévisionnel est calculé « selon
+ * les caractéristiques actuelles », l'acquis sur ce qui s'est réellement passé.
+ *
+ * Plutôt que de modéliser les conventions de chaque banque, on accepte la
+ * valeur qu'elle affiche. C'est sa vérité, et c'est celle qui sera créditée.
+ */
+function _livReleve(l) {
+  const r = l && l.releve;
+  if (!r || !r.le) return null;
+  // Number(null) vaut 0, et 0 est un nombre fini : convertir avant de tester
+  // transformait un champ vide en « zéro intérêt » au lieu de « non renseigné ».
+  const nb = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v))) ? null : Number(v);
+  const a = nb(r.acquis), p = nb(r.projete);
+  if (a === null && p === null) return null;
+  return { le: r.le, acquis: a, projete: p };
+}
+
 function _livAcquis(l) {
   const q = _livQuinzaines();
+  const r = _livReleve(l);
+  // Un relevé est une photo, pas une valeur vivante : on repart de son chiffre
+  // et on ajoute ce qui a couru depuis, sinon il vieillirait en silence.
+  if (r && r.acquis !== null) {
+    const depuis = _livQuinzainesDe(r.le);
+    const brut = r.acquis + _livSolde(l) * _livTaux(l) / 100 * Math.max(0, q - depuis) / 24;
+    // Une banque affiche le brut. Toute la page raisonne en net, sinon un PEL
+    // et un Livret A cesseraient d'être comparables.
+    const net = _livType_(l && l.type).fisc ? brut * (1 - LIV_PFU) : brut;
+    return { brut, net, exact: true, releve: true, quinzaines: q };
+  }
   return Object.assign(_livInteretsQ(l, q), { quinzaines: q });
+}
+
+// Quinzaines révolues au 1er janvier de l'année d'une date donnée. Sert à
+// mesurer le temps écoulé depuis un relevé.
+function _livQuinzainesDe(iso) {
+  const p = String(iso || '').split('-');
+  if (p.length < 3) return 0;
+  const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]));
+  if (d.getFullYear() < new Date().getFullYear()) return 0;
+  return _livQuinzaines(d);
 }
 
 /**
@@ -18492,7 +18537,16 @@ function _livAcquis(l) {
  *
  * Le calcul suppose qu'aucun mouvement n'intervient d'ici la fin de l'année.
  */
-function _livProjete(l) { return _livInteretsQ(l, 24); }
+function _livProjete(l) {
+  const r = _livReleve(l);
+  // Le prévisionnel vise le 31 décembre : il ne vieillit pas, on le reprend tel
+  // quel. Il ne vaut plus rien en revanche si un mouvement survient après.
+  if (r && r.projete !== null) {
+    const net = _livType_(l && l.type).fisc ? r.projete * (1 - LIV_PFU) : r.projete;
+    return { brut: r.projete, net, exact: true, releve: true };
+  }
+  return _livInteretsQ(l, 24);
+}
 
 function _livTotal(user)     { return getLivrets(user).reduce((s, l) => s + _livSolde(l), 0); }
 function _livInteretsNets()  { return getLivrets().reduce((s, l) => s + _livProjete(l).net, 0); }
@@ -18563,8 +18617,9 @@ function _livRender() {
   _depText('liv-bareme-note',
     'Plafonds et taux en vigueur depuis le ' + b.effet + ', applicables jusqu\'au ' + b.jusqu + '. ' +
     'Les intérêts sont comptés par quinzaines : l’acquis jusqu’à aujourd’hui, la projection ' +
-    'jusqu’au 31 décembre, date à laquelle ils sont crédités. Elle suppose qu’aucun mouvement ' +
-    'n’intervient d’ici là, et une révision de taux la déplacerait. ' +
+    'jusqu’au 31 décembre, date à laquelle ils sont crédités. Chaque banque applique ses propres ' +
+    'conventions, et deux de ses chiffres peuvent reposer sur des bases différentes : recopier son relevé ' +
+    'dans la fiche du livret donne le montant exact, que Capital Board prolonge ensuite jour après jour. ' +
     'Capital Board ne fournit aucun conseil en investissement.');
 
   _livRenderKpis(livrets, total, nets);
@@ -18584,10 +18639,12 @@ function _livRenderKpis(livrets, total, nets) {
     pill.hidden = total <= 0;
   }
   const estimes = livrets.filter(l => _livSolde(l) > 0 && !_livAcquis(l).exact).length;
+  const releves = livrets.filter(l => _livAcquis(l).releve).length;
   if (hint) hint.textContent = total > 0
     ? '+' + fmt(nets) + ' attendus au 31 décembre · ' +
       _livPct(_livTauxMoyen(livrets, total)) + ' net en moyenne' +
-      (estimes ? ' · ' + estimes + ' estimé' + (estimes > 1 ? 's' : '') : '')
+      (estimes ? ' · ' + estimes + ' estimé' + (estimes > 1 ? 's' : '') : '') +
+      (releves ? ' · ' + releves + ' d’après votre banque' : '')
     : 'Ajoutez un livret pour démarrer.';
 
   // Remplissage global des plafonds réglementés. Un livret bancaire n'en a pas :
@@ -18679,8 +18736,13 @@ function _livRenderListe(livrets, total, nets) {
               '" style="width:' + pct.toFixed(1) + '%;background:' + (plein ? 'var(--gold)' : t.color) + '"></div></div>') +
         '<div class="liv-meta">' +
           '<span>' + meta.join('<span class="sep">·</span>') + '</span>' +
-          '<span class="liv-int"' + (acq.exact ? '' : ' title="Estimation : sans les dates de versement, le solde est supposé présent depuis le 1er janvier."') + '>' +
-            '+' + fmt(acq.net) + ' acquis' + (acq.exact ? '' : '<i class="liv-approx">~</i>') +
+          '<span class="liv-int"' +
+            (acq.releve ? ' title="D’après le relevé de votre banque du ' + _attr(_depDateCourt(l.releve.le)) + '"'
+              : acq.exact ? ''
+              : ' title="Estimation : sans les dates de versement, le solde est supposé présent depuis le 1er janvier."') + '>' +
+            '+' + fmt(acq.net) + ' acquis' +
+            (acq.releve ? '<i class="liv-releve-tag" aria-hidden="true">banque</i>'
+              : acq.exact ? '' : '<i class="liv-approx">~</i>') +
             '<small>+' + fmt(int.net) + ' au 31 déc.</small></span>' +
         '</div>' +
         (pct === null ? '' :
@@ -18791,6 +18853,10 @@ window.livOpenModal = function(id) {
   _depSet('liv-f-banque', l ? (l.banque || '') : '');
   _depSet('liv-f-fin', l ? (l.fin || '') : '');
   _depSet('liv-f-ouverture', l ? (l.ouverture || '') : '');
+  const rel = (l && l.releve) || {};
+  _depSet('liv-f-r-acquis',  rel.acquis  != null ? String(rel.acquis).replace('.', ',')  : '');
+  _depSet('liv-f-r-projete', rel.projete != null ? String(rel.projete).replace('.', ',') : '');
+  _depSet('liv-f-r-le',      rel.le || '');
   // Reprise des lignes créées avant ce modèle : leur solde devient un premier
   // mouvement daté de l'ouverture, sinon il disparaîtrait à la réouverture.
   let source = (l && Array.isArray(l.mouvements) && l.mouvements.length) ? l.mouvements : [];
@@ -18957,6 +19023,20 @@ function _livMvtsPropres() {
     .sort((a, b) => (a.d < b.d ? -1 : 1));
 }
 // Solde courant du brouillon : somme algébrique des lignes saisies.
+// Relevé saisi, ou null. La date est obligatoire dès qu'un montant est posé :
+// sans elle, on ne saurait pas depuis quand faire courir l'acquis.
+function _livReleveSaisi() {
+  const le = _depVal('liv-f-r-le');
+  const a  = _depParse(_depVal('liv-f-r-acquis'));
+  const p  = _depParse(_depVal('liv-f-r-projete'));
+  if (!le || (!Number.isFinite(a) && !Number.isFinite(p))) return null;
+  return {
+    le,
+    acquis:  Number.isFinite(a) ? a : null,
+    projete: Number.isFinite(p) ? p : null,
+  };
+}
+
 function _livSoldeBrouillon() {
   return _livMvtsPropres().reduce((s, m) => s + m.m, 0);
 }
@@ -19106,6 +19186,7 @@ window.livRecalc = function() {
     type: _livType, taux: perso,
     ouverture: _depVal('liv-f-ouverture'),
     mouvements: mvts,
+    releve: _livReleveSaisi(),
   };
   const acquis  = _livAcquis(brouillon).net;
   const projete = _livProjete(brouillon).net;
@@ -19173,6 +19254,10 @@ window.livSave = function() {
   const avant = mvts.find(m => m.d < ouverture);
   if (avant) return _livErr('Un mouvement est daté du ' + _depDateCourt(avant.d) +
     ', avant l’ouverture du livret.');
+  const relA = _depVal('liv-f-r-acquis'), relP = _depVal('liv-f-r-projete');
+  if ((relA || relP) && !_depVal('liv-f-r-le')) {
+    return _livErr('Indiquez la date à laquelle vous avez lu ces montants : l’acquis court à partir de là.');
+  }
   const doublon = getLivrets().some(l => l.id !== _livEditId && l.type === _livType && t.unique);
   if (doublon) return _livErr('Vous avez déjà un ' + t.label + ', et il n\'en est autorisé qu\'un par personne.');
 
@@ -19188,6 +19273,7 @@ window.livSave = function() {
     fin: finValid || null,
     ouverture,
     mouvements: mvts,
+    releve: _livReleveSaisi(),
   };
 
   const all = getLivrets().slice();
