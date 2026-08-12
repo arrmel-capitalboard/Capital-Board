@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814b';
+const APP_VERSION = '20260814c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -14877,7 +14877,7 @@ const _PROFIL_LIBELLES = {
   goal: { epargne: 'Faire fructifier', retraite: 'Retraite', revenus: 'Revenus', projet: 'Projet', apprendre: 'Apprendre' },
   amount: { lt5k: '< 5 k€', '5k25k': '5–25 k€', '25k100k': '25–100 k€', gt100k: '> 100 k€', nsp: 'Sans réponse' },
   expectation: { perf: 'Performances', central: 'Centraliser', dividendes: 'Dividendes', alertes: 'Alertes', budget: 'Budget' },
-  source: { bouche: 'Bouche-à-oreille', reseaux: 'Réseaux sociaux', recherche: 'Recherche web', discord: 'Discord', autre: 'Autre' },
+  source: { bouche: 'Bouche-à-oreille', reseaux: 'Réseaux sociaux', recherche: 'Recherche web', ia: 'Une IA', discord: 'Discord', autre: 'Autre' },
   wrappers: { pea: 'PEA', cto: 'CTO', av: 'Assurance-vie', per: 'PER', livrets: 'Livrets', crypto: 'Crypto', immo: 'Immobilier', or: 'Or', rien: 'Rien encore' },
 };
 const _profLib = (champ, v) => (_PROFIL_LIBELLES[champ] || {})[v] || v;
@@ -15314,6 +15314,16 @@ async function adminToggleOnboarding(quoi, el) {
     await _setAppConfig({ [champ]: on });
     _audit('onboarding_' + quoi, on ? 'on' : 'off');
     _adminOnboardingStatus();
+    // Activer, c'est ouvrir aux membres : le parcours se lance aussitôt ici
+    // pour être vu avant eux. En mode essai — rien n'est écrit, les réponses de
+    // l'admin ne comptent pas dans les statistiques.
+    if (on && window.CBOnboarding) {
+      showPage('portfolio');
+      setTimeout(() => {
+        if (quoi === 'survey') window.CBOnboarding.testSurvey();
+        else window.CBOnboarding.testTour();
+      }, 220);
+    }
   } catch (e) {
     console.error('[admin] onboarding:', e);
     el.checked = !on;

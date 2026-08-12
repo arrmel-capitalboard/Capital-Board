@@ -96,6 +96,7 @@
         ['bouche',   'Bouche-à-oreille'],
         ['reseaux',  'Réseaux sociaux'],
         ['recherche','Moteur de recherche'],
+        ['ia',       'Une IA', 'ChatGPT, Claude, Perplexity…'],
         ['discord',  'Discord ou une communauté'],
         ['autre',    'Autrement'],
       ],
@@ -118,7 +119,7 @@
     {
       target: () => (mobile() ? q('#nav-add-btn') : q('.table-header .btn-add:last-of-type')),
       title: 'Ajouter une ligne',
-      text: 'Saisissez un titre, une quantité et un prix d’achat : la performance se calcule toute seule ensuite.',
+      text: 'Pour l’instant, la saisie est manuelle : un titre, une quantité, un prix d’achat, et la performance se calcule toute seule ensuite. L’import direct depuis votre courtier arrive bientôt.',
       page: 'portfolio',
     },
     {
