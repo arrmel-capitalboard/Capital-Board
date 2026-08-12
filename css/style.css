@@ -2279,21 +2279,18 @@ body.sb-collapsed .main { margin-left: 58px; }
   #page-portfolio table { table-layout: fixed; }
   #page-portfolio table th.hide-mobile { width: 0; padding: 0; }
   #page-portfolio table th:first-child      { width: 100%; }
-  #page-portfolio table th:nth-child(5)     { width: 84px; }
-  #page-portfolio table th#th-perf-jour     { width: 62px; }
-  #page-portfolio table th:last-child       { width: 34px; }
+  #page-portfolio table th:nth-child(5)     { width: 76px; }
+  #page-portfolio table th#th-perf-jour     { width: 54px; }
+  #page-portfolio table th:last-child       { width: 42px; }
   #page-portfolio table td { padding: 12px 6px; }
   #page-portfolio table th:first-child,
   #page-portfolio table td:first-child { padding-left: 12px; }
 
-  /* Le nom passe à la ligne, mais pas au-delà de deux : un intitulé d'ETF
-     complet occuperait sinon six lignes dans une colonne de 150px. L'attribut
-     title garde le nom entier. */
-  #page-portfolio .ticker-name {
-    overflow-wrap: anywhere;
-    display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical;
-    overflow: hidden;
-  }
+  /* Le nom est écrit en entier, sur autant de lignes qu'il en faut. */
+  #page-portfolio .ticker-name { overflow-wrap: anywhere; line-height: 1.25; }
+  /* Les en-têtes tiennent sur une ligne : « JOUR % » se coupait en deux, son
+     interlettrage de 1,6px ne passant pas dans une colonne de 54px. */
+  #page-portfolio table th { font-size: 8.5px; letter-spacing: .6px; white-space: nowrap; padding: 10px 6px; }
 
   /* Boutons mobile only */
   .show-mobile-inline { display: inline-flex !important; }
@@ -2311,7 +2308,7 @@ body.sb-collapsed .main { margin-left: 58px; }
     background: var(--s2); color: var(--text2);
     font-size: 14px; cursor: pointer;
   }
-  #portfolio-tbody td:last-child { padding-right: 10px !important; }
+  #portfolio-tbody td:last-child { padding-right: 14px !important; }
   .btn-portfolio-actions { display: none !important; }
   .portfolio-detail-content { padding: 10px 8px 14px; }
   .portfolio-detail-grid {
