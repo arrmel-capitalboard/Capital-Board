@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814a';
+const APP_VERSION = '20260814b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -14355,6 +14355,13 @@ async function renderAdminPage() {
   renderAdminStats();
   renderAdminUsers();
   renderAdminProfiles();
+
+  // Accueil des nouveaux
+  const surveyT = document.getElementById('admin-survey-toggle');
+  const tourT   = document.getElementById('admin-tour-toggle');
+  if (surveyT) surveyT.checked = cfg.onboardingSurvey === true;
+  if (tourT)   tourT.checked   = cfg.onboardingTour === true;
+  _adminOnboardingStatus();
   adminLoadScheduled();
   _startHealthAuto();
 }
@@ -15293,6 +15300,39 @@ async function adminToggleSignup(el) {
     const s = document.getElementById('admin-signup-status');
     if (s) s.textContent = 'Échec de l\'enregistrement.';
   } finally { el.disabled = false; }
+}
+
+// ─── Accueil des nouveaux : questionnaire + visite guidée ───
+// Deux drapeaux distincts dans config/app, fermés par défaut : le parcours est
+// écrit et déployé, mais rien ne s'affiche tant qu'ils ne sont pas ouverts ici.
+async function adminToggleOnboarding(quoi, el) {
+  if (!isAdmin()) return;
+  const on = el.checked;
+  const champ = quoi === 'survey' ? 'onboardingSurvey' : 'onboardingTour';
+  el.disabled = true;
+  try {
+    await _setAppConfig({ [champ]: on });
+    _audit('onboarding_' + quoi, on ? 'on' : 'off');
+    _adminOnboardingStatus();
+  } catch (e) {
+    console.error('[admin] onboarding:', e);
+    el.checked = !on;
+    const s = document.getElementById('admin-onboarding-status');
+    if (s) s.textContent = 'Échec de l\'enregistrement.';
+  } finally { el.disabled = false; }
+}
+
+async function _adminOnboardingStatus() {
+  const s = document.getElementById('admin-onboarding-status');
+  if (!s) return;
+  let cfg = {};
+  try { cfg = await _getAppConfig(); } catch (_) {}
+  const q = cfg.onboardingSurvey === true, t = cfg.onboardingTour === true;
+  const etat = (v) => v
+    ? '<span style="color:var(--positive)">affiché</span>'
+    : '<span style="color:var(--text3)">masqué</span>';
+  s.innerHTML = 'Questionnaire : ' + etat(q) + ' · Visite : ' + etat(t)
+    + (q || t ? '' : ' — rien n\'est proposé aux membres pour l\'instant.');
 }
 
 function _adminPinStatusText(disabled) {

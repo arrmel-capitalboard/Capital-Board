@@ -4254,3 +4254,12 @@ body.has-demo-banner { padding-top: 40px; }
   .ob-spot { transition: none; }
   .ob-bar i { transition: none; }
 }
+
+/* Bandeau des essais lancés depuis la page Admin : sans lui, rien ne distingue
+   un parcours de test d'un vrai — et les réponses de test ne sont pas écrites. */
+.ob-test {
+  margin: -4px 0 12px; padding: 5px 9px; border-radius: 7px;
+  background: rgba(245,183,49,.12); border: 1px solid rgba(245,183,49,.28);
+  color: var(--gold); font-size: 10.5px; font-weight: 700;
+  letter-spacing: .3px; text-align: center;
+}

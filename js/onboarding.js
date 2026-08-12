@@ -162,18 +162,40 @@
   // ── Enchaînement ──────────────────────────────────────────────────────────
   // Appelé après le modal prénom/nom. Ne fait rien en démo, pour l'admin, ou
   // si l'utilisateur a déjà tout vu.
+  //
+  // Les deux étapes sont commandées depuis la page Admin (config/app :
+  // onboardingSurvey, onboardingTour) et sont FERMÉES par défaut : tant que
+  // rien n'est activé, aucun membre ne voit quoi que ce soit, même déjà
+  // inscrit. Une fois activées, elles s'appliquent aussi aux comptes existants
+  // qui n'ont pas encore répondu.
   async function maybeStart(uid) {
     if (window.IS_DEMO || !uid || !db) return;
+
+    let cfg = {};
+    try { cfg = await _getAppConfig(); } catch (_) { return; }
+    const surveyOn = cfg.onboardingSurvey === true;
+    const tourOn   = cfg.onboardingTour === true;
+
+    // « Revoir la visite guidée » n'apparaît dans le menu que si la visite est
+    // ouverte : une entrée qui lance un parcours que personne n'a jamais vu
+    // n'aurait aucun sens.
+    const btn = document.getElementById('btn-replay-tour');
+    if (btn) btn.style.display = tourOn ? '' : 'none';
+
+    if (!surveyOn && !tourOn) return;
+    // L'admin garde l'entrée de menu mais n'est jamais interrompu : il déclenche
+    // les parcours quand il veut, depuis sa page.
     try { if (typeof isAdmin === 'function' && isAdmin()) return; } catch (_) {}
 
     let p;
     try { p = await readProfile(uid); }
     catch (_) { return; } // pas de confirmation serveur → on ne montre rien
 
-    const doitRepondre = !p.completedAt
+    const doitRepondre = surveyOn && !p.completedAt
       && (!p.skippedAt || (Date.now() - p.skippedAt > RELANCE_MS && (p.skipCount || 0) < 2));
 
-    if (doitRepondre) { openQuestionnaire(uid, p); return; }
+    if (doitRepondre) { openQuestionnaire(uid, p, { tourEnsuite: tourOn }); return; }
+    if (!tourOn) return;
 
     let tourVu = !!(p.tourDoneAt || p.tourSkippedAt);
     try { tourVu = tourVu || localStorage.getItem(LS_TOUR) === '1'; } catch (_) {}
@@ -181,7 +203,13 @@
   }
 
   // ── Questionnaire : rendu ─────────────────────────────────────────────────
-  function openQuestionnaire(uid, profil) {
+  // opts.test : rien n'est écrit dans Firestore, et un bandeau le dit. C'est le
+  // mode utilisé depuis la page Admin pour juger le parcours sans se compter
+  // soi-même dans les réponses ni se fermer la porte à un second essai.
+  function openQuestionnaire(uid, profil, opts) {
+    const o = opts || {};
+    const test = o.test === true;
+    const tourEnsuite = o.tourEnsuite !== false;
     const answers = {};
     let step = 0;
 
@@ -200,7 +228,8 @@
       const choisi = (v) => (qn.multi ? (val || []).includes(v) : val === v);
 
       card.innerHTML =
-        '<div class="ob-head">'
+        (test ? '<div class="ob-test">Mode test — aucune réponse n’est enregistrée</div>' : '')
+        + '<div class="ob-head">'
         +   '<div class="ob-step">Question ' + (step + 1) + ' sur ' + QUESTIONS.length + '</div>'
         +   '<button class="ob-skip" type="button">Plus tard</button>'
         + '</div>'
@@ -254,26 +283,41 @@
     }
 
     async function termine() {
-      card.innerHTML = '<div class="ob-done"><div class="ob-check">✓</div>'
+      card.innerHTML = (test ? '<div class="ob-test">Mode test — rien n’a été enregistré</div>' : '')
+        + '<div class="ob-done"><div class="ob-check">✓</div>'
         + '<h2 class="ob-title">Merci</h2>'
-        + '<p class="ob-hint">Vos réponses nous servent à orienter la suite. On vous montre l’app ?</p>'
+        + '<p class="ob-hint">' + (tourEnsuite
+            ? 'Vos réponses nous servent à orienter la suite. On vous montre l’app ?'
+            : 'Vos réponses nous servent à orienter la suite.') + '</p>'
         + '<div class="ob-foot ob-foot-end">'
-        +   '<button type="button" class="ob-back" id="ob-no-tour">Non merci</button>'
-        +   '<button type="button" class="ob-next" id="ob-yes-tour">Faire le tour</button>'
+        +   (tourEnsuite ? '<button type="button" class="ob-back" id="ob-no-tour">Non merci</button>' : '')
+        +   '<button type="button" class="ob-next" id="ob-yes-tour">'
+        +     (tourEnsuite ? 'Faire le tour' : 'Terminer') + '</button>'
         + '</div></div>';
-      save(uid, { ...answers, completedAt: Date.now() }).catch((e) => console.warn('[onboarding] save:', e.message));
-      card.querySelector('#ob-yes-tour').onclick = () => { close(); startTour(uid); };
-      card.querySelector('#ob-no-tour').onclick  = () => { close(); markTour(uid, 'tourSkippedAt'); };
+      if (!test) {
+        save(uid, { ...answers, completedAt: Date.now() }).catch((e) => console.warn('[onboarding] save:', e.message));
+      } else {
+        console.log('[onboarding] test — réponses non enregistrées :', answers);
+      }
+      card.querySelector('#ob-yes-tour').onclick = () => {
+        close();
+        if (tourEnsuite) startTour(uid, { test });
+      };
+      const non = card.querySelector('#ob-no-tour');
+      if (non) non.onclick = () => { close(); if (!test) markTour(uid, 'tourSkippedAt'); };
     }
 
     function plusTard() {
       close();
-      save(uid, { skippedAt: Date.now(), skipCount: (profil.skipCount || 0) + 1 })
-        .catch((e) => console.warn('[onboarding] skip:', e.message));
+      if (!test) {
+        save(uid, { skippedAt: Date.now(), skipCount: (profil.skipCount || 0) + 1 })
+          .catch((e) => console.warn('[onboarding] skip:', e.message));
+      }
       // La visite, elle, reste proposée : elle ne demande rien à personne.
+      if (!tourEnsuite) return;
       let tourVu = !!(profil.tourDoneAt || profil.tourSkippedAt);
       try { tourVu = tourVu || localStorage.getItem(LS_TOUR) === '1'; } catch (_) {}
-      if (!tourVu) setTimeout(() => startTour(uid), 400);
+      if (test || !tourVu) setTimeout(() => startTour(uid, { test }), 400);
     }
 
     render();
@@ -288,13 +332,15 @@
     if (uid && db) save(uid, { [champ]: Date.now() }).catch(() => {});
   }
 
-  function startTour(uid) {
+  function startTour(uid, opts) {
     if (tourEtat) return;
+    const test = !!(opts && opts.test);
     const ov = document.createElement('div');
     ov.className = 'ob-tour';
     ov.innerHTML =
       '<div class="ob-spot"></div>'
       + '<div class="ob-tip" role="dialog" aria-live="polite">'
+      +   (test ? '<div class="ob-test">Mode test</div>' : '')
       +   '<div class="ob-tip-step"></div>'
       +   '<div class="ob-tip-title"></div>'
       +   '<div class="ob-tip-text"></div>'
@@ -308,7 +354,7 @@
       + '</div>';
     document.body.appendChild(ov);
 
-    tourEtat = { uid, i: 0, ov, spot: ov.querySelector('.ob-spot'), tip: ov.querySelector('.ob-tip'), raf: 0 };
+    tourEtat = { uid, test, i: 0, ov, spot: ov.querySelector('.ob-spot'), tip: ov.querySelector('.ob-tip'), raf: 0 };
 
     ov.querySelector('.ob-tip-skip').onclick = () => endTour('tourSkippedAt');
     ov.querySelector('.ob-tip-prev').onclick = () => go(tourEtat.i - 1);
@@ -393,14 +439,14 @@
 
   function endTour(champ) {
     if (!tourEtat) return;
-    const { uid, ov } = tourEtat;
+    const { uid, ov, test } = tourEtat;
     document.removeEventListener('keydown', onKey);
     window.removeEventListener('resize', replace);
     window.removeEventListener('scroll', replace, true);
     cancelAnimationFrame(tourEtat.raf);
     ov.remove();
     tourEtat = null;
-    markTour(uid, champ);
+    if (!test) markTour(uid, champ);
   }
 
   // ── API publique ──────────────────────────────────────────────────────────
@@ -413,6 +459,10 @@
     },
     // Questionnaire à la demande (profil déjà rempli : les réponses écrasent).
     openQuestionnaire(uid) { openQuestionnaire(uid || currentUser, {}); },
+    // Essais depuis la page Admin : parcours complet, aucune écriture, et le
+    // drapeau global n'a pas besoin d'être activé.
+    testSurvey() { openQuestionnaire(currentUser, {}, { test: true, tourEnsuite: true }); },
+    testTour()   { startTour(currentUser, { test: true }); },
   };
   window.replayGuidedTour = () => window.CBOnboarding.replayTour();
 

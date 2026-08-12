@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260814a">
+<link rel="stylesheet" href="css/style.css?v=20260814b">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -658,7 +658,7 @@
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="12" cy="7" r="4"/></svg>
           Mon profil
         </button>
-        <button class="sm-account-item" onclick="closeSidebarMore();replayGuidedTour()">
+        <button class="sm-account-item" id="btn-replay-tour" style="display:none" onclick="closeSidebarMore();replayGuidedTour()">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
           Revoir la visite guidée
         </button>
@@ -1254,6 +1254,39 @@
           <button class="pf-btn ghost" onclick="adminNavAddCategory()" style="font-size:11.5px">＋ Nouvelle catégorie</button>
           <button class="pf-btn ghost" onclick="adminNavReset()" style="font-size:11.5px">Réinitialiser</button>
         </div>
+      </div>
+
+      <div class="section-card" style="max-width:560px;margin-top:16px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Accueil des nouveaux</div>
+        <div style="font-size:12px;color:var(--text3);line-height:1.6;max-width:420px;margin-bottom:14px">Questionnaire de bienvenue et visite guidée. Désactivés, <strong>personne</strong> ne les voit — ni les nouveaux comptes, ni les membres déjà inscrits. Activés, ils s'affichent aussi aux inscrits qui n'ont pas encore répondu. Les essais ci-dessous n'enregistrent rien.</div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--border)">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text)">Questionnaire de profil</div>
+            <div style="font-size:11.5px;color:var(--text3)">6 questions, passable</div>
+          </div>
+          <label class="toggle-switch" style="flex-shrink:0">
+            <input type="checkbox" id="admin-survey-toggle" onchange="adminToggleOnboarding('survey', this)">
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--border)">
+          <div>
+            <div style="font-size:13px;font-weight:600;color:var(--text)">Visite guidée</div>
+            <div style="font-size:11.5px;color:var(--text3)">6 étapes surlignées dans l'app</div>
+          </div>
+          <label class="toggle-switch" style="flex-shrink:0">
+            <input type="checkbox" id="admin-tour-toggle" onchange="adminToggleOnboarding('tour', this)">
+            <span class="toggle-track"></span>
+          </label>
+        </div>
+
+        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+          <button class="pf-btn ghost" onclick="showPage('portfolio');setTimeout(()=>CBOnboarding.testSurvey(),150)" style="font-size:11.5px">Tester le questionnaire</button>
+          <button class="pf-btn ghost" onclick="showPage('portfolio');setTimeout(()=>CBOnboarding.testTour(),150)" style="font-size:11.5px">Tester la visite</button>
+        </div>
+        <div id="admin-onboarding-status" style="margin-top:12px;font-size:12px;color:var(--text3)">Chargement…</div>
       </div>
 
       <div class="section-card" style="max-width:680px;margin-top:16px">
@@ -2809,9 +2842,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260814a"></script>
+<script src="js/app.js?v=20260814b"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260814a"></script>
+<script src="js/onboarding.js?v=20260814b"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
