@@ -2250,16 +2250,23 @@ body.sb-collapsed .main { margin-left: 58px; }
   .ticker-name .badge-action,
   .ticker-name .badge-etf { display: none; }
 
-  /* Sur le portefeuille, le badge ETF revient — seul. L'action est le cas par
-     défaut d'une ligne détenue : la baliser reviendrait à marquer toutes les
-     lignes pour distinguer la minorité qui le mérite. Et le vert de
-     .badge-action est celui de la performance positive, à deux colonnes de là :
-     sur une largeur de 390px il se lit comme un gain. Le badge est resserré,
-     chaque pixel pris ici en coûtant un au nom. */
-  #page-portfolio .ticker-name .badge-etf {
-    display: inline-flex;
+  /* Sur le portefeuille, les deux badges reviennent, posés sur leur propre
+     ligne sous le nom : display:flex et non inline-flex. En inline, le badge
+     se plaçait en bout de titre quand il restait de la place et tombait seul à
+     la ligne sinon — un alignement qui changeait d'une ligne à l'autre. */
+  #page-portfolio .ticker-name .badge-etf,
+  #page-portfolio .ticker-name .badge-action {
+    display: flex; width: fit-content;
+    margin: 4px 0 0; padding: 1px 5px;
     font-size: 8.5px; letter-spacing: .7px;
-    padding: 0 5px; margin-left: 5px;
+  }
+  /* Le vert de .badge-action est celui de la performance positive, à deux
+     colonnes de là : sur 390px de large il se lisait comme un gain. Sur mobile
+     il passe en gris — le badge nomme une catégorie, pas une variation. */
+  #page-portfolio .ticker-name .badge-action {
+    background: rgba(255,255,255,0.05);
+    color: var(--text2);
+    border-color: var(--border2);
   }
 
   /* Le nom est affiché en entier : c'est lui qu'on lit, pas le ticker, qui
