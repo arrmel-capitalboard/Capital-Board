@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260814x">
+<link rel="stylesheet" href="css/style.css?v=20260814y">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2472,15 +2472,9 @@
       <div class="dep-cats liv-types" id="liv-f-types"></div>
     </div>
 
-    <div class="dep-row2">
-      <div class="form-group">
-        <label class="form-label" for="liv-f-solde">Solde actuel</label>
-        <input class="form-input" id="liv-f-solde" type="text" inputmode="decimal" placeholder="12 500" oninput="livRecalc()">
-      </div>
-      <div class="form-group">
-        <label class="form-label" for="liv-f-taux">Taux annuel <span class="dep-opt" id="liv-f-taux-opt"></span></label>
-        <input class="form-input" id="liv-f-taux" type="text" inputmode="decimal" placeholder="1,7" oninput="livRecalc()">
-      </div>
+    <div class="form-group">
+      <label class="form-label" for="liv-f-taux">Taux annuel <span class="dep-opt" id="liv-f-taux-opt"></span></label>
+      <input class="form-input" id="liv-f-taux" type="text" inputmode="decimal" placeholder="1,7" oninput="livRecalc()">
     </div>
 
     <div class="form-group">
@@ -2510,13 +2504,19 @@
     <div class="dep-help" id="liv-f-dates-help"></div>
 
     <div class="form-group liv-mvts-group">
-      <span class="form-label">Versements de l'année <span class="dep-opt">facultatif</span></span>
+      <span class="form-label">Mouvements</span>
       <div id="liv-f-mvts"></div>
-      <button type="button" class="liv-mvt-add" onclick="livAddMvt()">
-        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
-        Ajouter un versement
-      </button>
-      <div class="dep-help">Sans eux, les intérêts acquis sont estimés comme si le solde était là depuis le 1er janvier. Avec leurs dates, le calcul est juste : un versement ne rapporte qu'à partir du 1er ou du 16 qui suit.</div>
+      <div class="liv-mvt-actions">
+        <button type="button" class="liv-mvt-add" onclick="livAddMvt(1)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Versement
+        </button>
+        <button type="button" class="liv-mvt-add retrait" onclick="livAddMvt(-1)">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg>
+          Retrait
+        </button>
+      </div>
+      <div class="dep-help">Le solde se déduit de ces lignes. Un versement rapporte à partir du 1er ou du 16 qui suit ; un retrait cesse de rapporter dès la quinzaine en cours. Pour un livret ancien, une première ligne à la date d'ouverture suffit.</div>
     </div>
 
     <div class="liv-ecart" id="liv-f-ecart" hidden></div>
@@ -3227,9 +3227,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260814x"></script>
+<script src="js/app.js?v=20260814y"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260814x"></script>
+<script src="js/onboarding.js?v=20260814y"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

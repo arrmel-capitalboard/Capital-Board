@@ -4725,8 +4725,26 @@ body.has-demo-banner { padding-top: 40px; }
 /* Versements de l'année */
 .liv-mvts-group { margin-top: 18px; }
 .liv-mvt {
-  display: grid; grid-template-columns: 1fr 110px 30px;
+  display: grid; grid-template-columns: 30px 1fr 110px 30px;
   gap: 8px; margin-bottom: 8px; align-items: center;
+}
+/* Le sens se bascule d'un clic plutôt que par un menu : il n'a que deux
+   valeurs, et la couleur le dit avant le signe. */
+.liv-mvt-sens {
+  width: 30px; height: 30px; border-radius: 8px;
+  border: 1px solid rgba(0,224,158,.3); background: rgba(0,224,158,.10);
+  color: var(--positive); font-family: var(--mono); font-size: 15px; font-weight: 700;
+  cursor: pointer; transition: all .15s;
+}
+.liv-mvt-sens:hover { filter: brightness(1.25); }
+.liv-mvt-sens.retrait {
+  border-color: rgba(255,77,106,.3); background: rgba(255,77,106,.10);
+  color: var(--negative);
+}
+.liv-mvt-vide { font-size: 12px; color: var(--text3); padding: 4px 0 10px; line-height: 1.5; }
+.liv-mvt-actions { display: flex; gap: 8px; flex-wrap: wrap; }
+.liv-mvt-add.retrait:hover {
+  color: var(--negative); border-color: var(--negative); background: var(--negative-d);
 }
 .liv-mvt .form-input { padding: 9px 11px; font-size: 12.5px; }
 .liv-mvt-del {
