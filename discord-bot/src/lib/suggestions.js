@@ -185,7 +185,11 @@ async function finalizeDecision(interaction) {
   const msg = interaction.message;
   const suggestionText = msg && msg.embeds[0] ? (msg.embeds[0].description || '') : '';
   // Capture jointe à la suggestion (si présente) → on la remet dans le DM.
-  const suggestionImg = msg && msg.embeds[0] && msg.embeds[0].image ? msg.embeds[0].image.url : null;
+  // On repart de la pièce jointe du message, pas de l'URL de l'embed : celle-ci
+  // vaut « attachment://sugg0.png », une référence interne au message de
+  // validation qui ne veut rien dire ailleurs — d'où l'image vide côté auteur.
+  // Le fichier est donc réenvoyé avec le DM, et l'embed le désigne à son tour.
+  const reviewAtt = msg ? msg.attachments.first() : null;
 
   // DM à l'auteur.
   let dmOk = false;
@@ -200,10 +204,15 @@ async function finalizeDecision(interaction) {
           ? "Bonne nouvelle : votre suggestion a été retenue par l'équipe. Merci de votre contribution !"
           : "Votre suggestion n'a pas été retenue cette fois-ci. Merci quand même de votre participation !"),
       );
-    if (suggestionImg) dm.setImage(suggestionImg);
+    const dmFiles = [];
+    if (reviewAtt) {
+      const name = `suggestion.${imageExt(reviewAtt)}`;
+      dmFiles.push(new AttachmentBuilder(reviewAtt.url, { name }));
+      dm.setImage(`attachment://${name}`);
+    }
     if (note) dm.addFields({ name: "Note de l'équipe", value: note });
     dm.setFooter({ text: 'CapitalBoard - https://capitalboard.fr' });
-    await user.send({ embeds: [dm] });
+    await user.send({ embeds: [dm], files: dmFiles });
     dmOk = true;
   } catch (_) { /* DM fermés */ }
 
