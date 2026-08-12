@@ -2250,6 +2250,18 @@ body.sb-collapsed .main { margin-left: 58px; }
   .ticker-name .badge-action,
   .ticker-name .badge-etf { display: none; }
 
+  /* Sur le portefeuille, le badge ETF revient — seul. L'action est le cas par
+     défaut d'une ligne détenue : la baliser reviendrait à marquer toutes les
+     lignes pour distinguer la minorité qui le mérite. Et le vert de
+     .badge-action est celui de la performance positive, à deux colonnes de là :
+     sur une largeur de 390px il se lit comme un gain. Le badge est resserré,
+     chaque pixel pris ici en coûtant un au nom. */
+  #page-portfolio .ticker-name .badge-etf {
+    display: inline-flex;
+    font-size: 8.5px; letter-spacing: .7px;
+    padding: 0 5px; margin-left: 5px;
+  }
+
   /* Le nom est affiché en entier : c'est lui qu'on lit, pas le ticker, qui
      disparaît de la ligne. Pour qu'un nom long ne s'empile pas sur huit
      lignes, la colonne du titre prend toute la place laissée par les colonnes
