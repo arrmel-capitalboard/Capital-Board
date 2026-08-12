@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814y';
+const APP_VERSION = '20260814z';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18726,6 +18726,15 @@ function _livRenderListe(livrets, total, nets) {
             ? 'Plafond de ' + fmt(p) + ' atteint'
             : fmt(p - s) + ' encore possibles sur ' + fmt(p)) + '</div>') +
       '</div>' +
+      // stopPropagation : sans lui, le clic remonterait à la ligne et
+      // ouvrirait la modale de modification par-dessus la confirmation.
+      '<button type="button" class="liv-del" data-id="' + _attr(l.id) + '" onclick="livRowDelete(event)" ' +
+        'title="Supprimer ce livret" aria-label="Supprimer ' + _attr(t.label) + '">' +
+        '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' +
+        '<path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/>' +
+        '<path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>' +
+        '<line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>' +
+      '</button>' +
     '</div>';
   }).join('');
 }
@@ -19219,17 +19228,65 @@ window.livSave = function() {
   _livRender();
 };
 
-window.livDelete = function() {
-  if (!_livEditId) return;
-  const l = getLivrets().find(x => x.id === _livEditId);
-  if (!confirm('Supprimer ce ' + _livType_(l && l.type).label + ' ?')) return;
-  saveLivrets(currentUser, getLivrets().filter(x => x.id !== _livEditId));
+let _livDelId = null;   // livret visé par la confirmation en cours
+
+/**
+ * Confirmation de suppression.
+ *
+ * On montre ce qui disparaît plutôt que de demander « êtes-vous sûr » : le
+ * solde, le nombre de mouvements et les intérêts déjà acquis. Un livret
+ * supprimé emporte tout son historique, et rien ne le reconstitue.
+ */
+// Le clic ne doit pas remonter à la ligne, qui ouvrirait la modale de
+// modification par-dessus la confirmation.
+window.livRowDelete = function(ev) {
+  ev.stopPropagation();
+  const b = ev.currentTarget;
+  if (b && b.dataset.id) livAskDelete(b.dataset.id);
+};
+
+window.livAskDelete = function(id) {
+  const l = getLivrets().find(x => x.id === (id || _livEditId));
+  if (!l) return;
+  _livDelId = l.id;
+  const t    = _livType_(l.type);
+  const acq  = _livAcquis(l);
+  const mvts = Array.isArray(l.mouvements) ? l.mouvements.length : 0;
+
+  _depText('liv-confirm-title', 'Supprimer votre ' + t.label + ' ?');
+  const body = document.getElementById('liv-confirm-body');
+  if (body) {
+    const bouts = ['<b>' + fmt(_livSolde(l)) + '</b>'];
+    if (mvts) bouts.push('<b>' + mvts + ' mouvement' + (mvts > 1 ? 's' : '') + '</b>');
+    if (acq.net > 0) bouts.push('<b>' + fmt(acq.net) + '</b> d’intérêts acquis');
+    body.innerHTML = 'Vous perdez ' + bouts.join(', ') +
+      '. Rien ne les reconstitue, et le total de votre patrimoine baissera d’autant.';
+  }
+  document.getElementById('liv-confirm').classList.add('open');
+};
+
+window.livConfirmClose = function() {
+  const m = document.getElementById('liv-confirm');
+  if (m) m.classList.remove('open');
+  _livDelId = null;
+};
+
+window.livDeleteConfirmed = function() {
+  if (!_livDelId) return;
+  saveLivrets(currentUser, getLivrets().filter(x => x.id !== _livDelId));
+  livConfirmClose();
   livCloseModal();
   _livRender();
 };
 
+// Bouton « Supprimer ce livret » au bas de la modale de saisie : même chemin.
+window.livDelete = function() { if (_livEditId) livAskDelete(_livEditId); };
+
 document.addEventListener('keydown', function(e) {
   if (e.key !== 'Escape') return;
+  // La confirmation est posée par-dessus la saisie : elle se ferme d'abord.
+  const c = document.getElementById('liv-confirm');
+  if (c && c.classList.contains('open')) { livConfirmClose(); return; }
   const m = document.getElementById('liv-modal');
   if (m && m.classList.contains('open')) livCloseModal();
 });

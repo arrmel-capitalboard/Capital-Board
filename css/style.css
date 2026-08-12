@@ -4671,6 +4671,26 @@ body.has-demo-banner { padding-top: 40px; }
 .liv-chip-logo { background: var(--logo-bg) !important; border: 1px solid var(--logo-border); }
 .liv-chip-logo img { width: 100%; height: 100%; object-fit: contain; padding: 5px; }
 .liv-main { flex: 1; min-width: 0; }
+
+/* Corbeille : la place lui est réservée en permanence, sinon son apparition
+   au survol décalerait toute la ligne. Elle ne se montre qu'au survol sur
+   ordinateur — il n'y a pas de survol au doigt, d'où l'affichage constant en
+   dessous de 640 px. */
+.liv-del {
+  width: 32px; height: 32px; flex-shrink: 0; align-self: center;
+  border-radius: 9px; border: 1px solid transparent;
+  background: transparent; color: var(--text3);
+  display: flex; align-items: center; justify-content: center;
+  cursor: pointer; opacity: 0;
+  transition: opacity .15s, color .15s, background .15s, border-color .15s;
+}
+.liv-row:hover .liv-del,
+.liv-del:focus-visible { opacity: 1; }
+.liv-del:hover {
+  color: var(--negative);
+  background: var(--negative-d);
+  border-color: rgba(255,77,106,.3);
+}
 .liv-top {
   display: flex; align-items: baseline; justify-content: space-between;
   gap: 12px; margin-bottom: 8px;
@@ -4803,6 +4823,8 @@ body.has-demo-banner { padding-top: 40px; }
 @media (max-width: 640px) {
   .liv-row { padding: 13px 8px; margin: 0 -8px; gap: 11px; }
   .liv-chip { width: 34px; height: 34px; }
+  /* Pas de survol au doigt : la corbeille reste visible, en retrait. */
+  .liv-del { opacity: .55; width: 30px; height: 30px; }
   .liv-solde { font-size: 14px; }
   .liv-meta { flex-direction: column; align-items: flex-start; gap: 4px; }
   .liv-marge-row { grid-template-columns: 9px 1fr 84px; }

@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260814y">
+<link rel="stylesheet" href="css/style.css?v=20260814z">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -459,7 +459,7 @@
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a29bfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span>PER <span class="nav-soon">Bientôt</span>
       </div>
       <div class="mobile-drawer-item" onclick="showPageMobile('livrets');closeMobileDrawer()" data-mob="livrets">
-        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="M3 10h18"/><circle cx="17" cy="14.5" r="1.3"/></svg></span>Livrets &amp; épargne <span class="nav-soon">Bientôt</span>
+        <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="M3 10h18"/><circle cx="17" cy="14.5" r="1.3"/></svg></span>Livrets &amp; épargne
       </div>
       <div class="mobile-drawer-item" onclick="showPageMobile('immo');closeMobileDrawer()" data-mob="immo">
         <span class="mobile-drawer-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></svg></span>Immobilier &amp; SCPI <span class="nav-soon">Bientôt</span>
@@ -577,7 +577,7 @@
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#a29bfe" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/></svg></span> PER <span class="nav-soon">Bientôt</span>
       </div>
       <div class="nav-item" onclick="showPage('livrets')" id="nav-livrets">
-        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="M3 10h18"/><circle cx="17" cy="14.5" r="1.3"/></svg></span> Livrets &amp; épargne <span class="nav-soon">Bientôt</span>
+        <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 5H5a2 2 0 0 0-2 2v10a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2V7a2 2 0 0 0-2-2z"/><path d="M3 10h18"/><circle cx="17" cy="14.5" r="1.3"/></svg></span> Livrets &amp; épargne
       </div>
       <div class="nav-item" onclick="showPage('immo')" id="nav-immo">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 10.5 12 3l9 7.5"/><path d="M5 9.5V21h14V9.5"/><path d="M10 21v-6h4v6"/></svg></span> Immobilier &amp; SCPI <span class="nav-soon">Bientôt</span>
@@ -2461,6 +2461,21 @@
 
 
 <!-- ═══ MODAL DÉTAIL RÉSULTAT (earnings) ════════════ -->
+<!-- ═══ LIVRETS — confirmation de suppression ══════ -->
+<div class="modal-overlay dep-confirm-overlay" id="liv-confirm" onclick="if(event.target===this)livConfirmClose()" role="alertdialog" aria-modal="true" aria-labelledby="liv-confirm-title">
+  <div class="modal dep-confirm">
+    <div class="dep-confirm-ico">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>
+    </div>
+    <div class="dep-confirm-title" id="liv-confirm-title">Supprimer ce livret ?</div>
+    <div class="dep-confirm-body" id="liv-confirm-body"></div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="livConfirmClose()">Annuler</button>
+      <button class="dep-btn-danger" onclick="livDeleteConfirmed()">Supprimer</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ LIVRETS — saisie ════════════════════════════ -->
 <div class="modal-overlay" id="liv-modal" onclick="if(event.target===this)livCloseModal()" role="dialog" aria-modal="true" aria-labelledby="liv-modal-title">
   <div class="modal dep-modal">
@@ -3227,9 +3242,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260814y"></script>
+<script src="js/app.js?v=20260814z"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260814y"></script>
+<script src="js/onboarding.js?v=20260814z"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
