@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814h';
+const APP_VERSION = '20260814i';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2458,6 +2458,7 @@ async function startApp(user) {
     // Journal des connexions : en arriere-plan, jamais bloquant. Le mode demo
     // n'a pas de session Firebase, rien a enregistrer.
     if (!window.IS_DEMO) _logSession();
+    if (!window.IS_DEMO) _bumpActivity(user.uid);
     document.getElementById('user-avatar').textContent = (displayName[0] || '?').toUpperCase();
     document.getElementById('user-name-display').textContent = displayName;
 
@@ -14335,6 +14336,28 @@ function _isStandaloneDisplay() {
 }
 
 // Heartbeat presence : écrit online + lastSeen toutes les 30s.
+// Compteurs d'activité, posés sur le doc de présence — le seul que l'admin
+// puisse lire pour tous les comptes (users/{uid}/data reste privé, y compris
+// pour lui). Deux mesures : le nombre de sessions ouvertes, et le nombre de
+// jours distincts de venue, qui dit mieux l'habitude qu'un total de sessions
+// gonflé par les rechargements d'un même après-midi.
+//
+// Une lecture avant écriture, une fois par session : le jour de la dernière
+// venue doit venir du serveur, sinon deux appareils comptent deux jours.
+async function _bumpActivity(uid) {
+  if (window.IS_DEMO || !db || !uid) return;
+  try {
+    const ref = firestoreDoc(db, 'presence', uid);
+    const snap = await getFirestoreDoc(ref);
+    const d = snap.exists() ? (snap.data() || {}) : {};
+    const jour = new Date().toISOString().slice(0, 10);
+    const patch = { sessions: (Number(d.sessions) || 0) + 1, lastDay: jour };
+    if (d.lastDay !== jour) patch.days = (Number(d.days) || 0) + 1;
+    if (!d.firstDay) patch.firstDay = jour;
+    await setFirestoreDoc(ref, patch, { merge: true });
+  } catch (e) { console.warn('[presence] activité:', e.message); }
+}
+
 function _startPresenceHeartbeat() {
   if (window.IS_DEMO || !db || !currentUser) return;
   if (_presenceHeartbeat) clearInterval(_presenceHeartbeat);
@@ -14400,6 +14423,7 @@ async function renderAdminPage() {
   // Stats + liste utilisateurs
   renderAdminStats();
   renderAdminUsers();
+  renderAdminActive();
   renderAdminProfiles();
 
   // Accueil des nouveaux
@@ -14913,6 +14937,86 @@ async function renderAuditLog() {
     });
     box.innerHTML = rows.length ? rows.join('') : 'Aucune action enregistrée.';
   } catch (e) { box.innerHTML = 'Journal indisponible (droits Firestore ?).'; }
+}
+
+// ─── Top utilisateurs actifs ───
+// Les compteurs vivent sur presence/{uid} (voir _bumpActivity). Ils partent de
+// zéro à la mise en place : un compte ancien mais inactif depuis peut donc
+// apparaître bas, c'est voulu — la carte mesure l'habitude en cours, pas
+// l'ancienneté.
+async function renderAdminActive() {
+  if (!isAdmin()) return;
+  const box = document.getElementById('admin-active');
+  if (!box) return;
+  box.innerHTML = 'Chargement…';
+  const empty = { forEach() {} };
+  try {
+    const [presSnap, rolesSnap] = await Promise.all([
+      getDocs(firestoreCollection(db, 'presence')).catch(() => empty),
+      getDocs(firestoreCollection(db, 'roles')).catch(() => empty),
+    ]);
+    const noms = {};
+    rolesSnap.forEach(d => {
+      const r = d.data() || {};
+      noms[d.id] = ((r.firstName || '') + ' ' + (r.lastName || '')).trim()
+        || (r.username ? '@' + r.username : '');
+    });
+
+    const users = [];
+    presSnap.forEach(d => {
+      const p = d.data() || {};
+      const lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null;
+      users.push({
+        uid: d.id,
+        days: Number(p.days) || 0,
+        sessions: Number(p.sessions) || 0,
+        firstDay: p.firstDay || null,
+        lastSeen,
+        online: !!(lastSeen && (Date.now() - lastSeen.getTime()) < 70000),
+      });
+    });
+
+    const actifs = users
+      .filter(u => u.sessions > 0 || u.days > 0)
+      .sort((a, b) => (b.days - a.days) || (b.sessions - a.sessions)
+        || ((b.lastSeen ? b.lastSeen.getTime() : 0) - (a.lastSeen ? a.lastSeen.getTime() : 0)))
+      .slice(0, 10);
+
+    if (!actifs.length) {
+      box.innerHTML = '<div style="font-size:12px;color:var(--text3)">'
+        + 'Aucune mesure pour l\'instant. Le comptage démarre à la prochaine connexion de chaque membre.</div>';
+      return;
+    }
+
+    const maxJours = Math.max(...actifs.map(u => u.days), 1);
+    box.innerHTML = actifs.map((u, rang) => {
+      const qui = noms[u.uid] || (u.uid.slice(0, 10) + '…');
+      const largeur = Math.round((u.days / maxJours) * 100);
+      const dot = u.online
+        ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--positive);box-shadow:0 0 8px var(--positive);flex-shrink:0"></span>'
+        : '';
+      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)">'
+        + '<span style="width:18px;font-family:var(--mono);font-size:11px;color:' + (rang < 3 ? 'var(--accent)' : 'var(--text3)') + ';flex-shrink:0">'
+        +   String(rang + 1).padStart(2, '0') + '</span>'
+        + '<div style="flex:1;min-width:0">'
+        +   '<div style="display:flex;align-items:center;gap:6px">'
+        +     '<span style="font-size:12.5px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _attr(qui) + '</span>' + dot
+        +   '</div>'
+        +   '<div style="height:4px;border-radius:2px;background:var(--s3);margin-top:5px;overflow:hidden">'
+        +     '<i style="display:block;height:100%;width:' + largeur + '%;background:var(--accent)"></i>'
+        +   '</div>'
+        + '</div>'
+        + '<div style="text-align:right;flex-shrink:0;font-family:var(--mono);font-size:10.5px;line-height:1.5">'
+        +   '<div style="color:var(--text)">' + u.days + ' j</div>'
+        +   '<div style="color:var(--text3)">' + u.sessions + ' sess.</div>'
+        + '</div>'
+        + '<div style="width:74px;text-align:right;flex-shrink:0;font-size:10.5px;color:var(--text3)">' + _relTime(u.lastSeen) + '</div>'
+        + '</div>';
+    }).join('');
+  } catch (e) {
+    console.error('[admin] actifs:', e);
+    box.innerHTML = 'Classement indisponible (droits Firestore ?).';
+  }
 }
 
 // ─── Profils des inscrits (questionnaire de bienvenue) ───
