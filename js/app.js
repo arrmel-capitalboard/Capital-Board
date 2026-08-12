@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814z';
+const APP_VERSION = '20260815a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18502,11 +18502,10 @@ function _livDebutQuinzaine(dateIso, annee, retrait) {
  * que l'écran l'annonce plutôt que de faire passer une approximation pour un
  * relevé.
  */
-function _livAcquis(l) {
+function _livInteretsQ(l, jusqu) {
   const taux    = _livTaux(l);
   const imposee = _livType_(l && l.type).fisc;
   const annee   = new Date().getFullYear();
-  const ecoule  = _livQuinzaines();
   const mvts    = Array.isArray(l && l.mouvements) ? l.mouvements : [];
 
   let brut = 0, exact = false;
@@ -18516,7 +18515,7 @@ function _livAcquis(l) {
       const montant = Number(m && m.m);
       if (!Number.isFinite(montant) || montant === 0) return;
       const debut = _livDebutQuinzaine(m.d, annee, montant < 0);
-      const q = Math.max(0, ecoule - debut);
+      const q = Math.max(0, jusqu - debut);
       brut += montant * taux / 100 * q / 24;
     });
     // Un retrait plus ancien que les versements restants peut faire passer le
@@ -18527,14 +18526,31 @@ function _livAcquis(l) {
     // Un livret ouvert en cours d'année ne produit pas avant son ouverture :
     // c'est le seul raffinement possible sans historique.
     const debut = _livDebutQuinzaine(l && l.ouverture, annee);
-    brut = _livSolde(l) * taux / 100 * Math.max(0, ecoule - debut) / 24;
+    brut = _livSolde(l) * taux / 100 * Math.max(0, jusqu - debut) / 24;
   }
   const net = imposee ? brut * (1 - LIV_PFU) : brut;
-  return { brut, net, exact, quinzaines: ecoule };
+  return { brut, net, exact };
 }
 
+function _livAcquis(l) {
+  const q = _livQuinzaines();
+  return Object.assign(_livInteretsQ(l, q), { quinzaines: q });
+}
+
+/**
+ * Intérêts projetés au 31 décembre, date à laquelle ils sont crédités.
+ *
+ * C'est le chiffre que la banque appelle « prévisionnel », et il n'a rien à
+ * voir avec douze mois glissants : sur un livret alimenté le 16 mai, l'année
+ * en cours ne compte que quinze quinzaines sur vingt-quatre. Projeter une
+ * année pleine annonçait 31,88 € là où la banque en verse 19,94.
+ *
+ * Le calcul suppose qu'aucun mouvement n'intervient d'ici la fin de l'année.
+ */
+function _livProjete(l) { return _livInteretsQ(l, 24); }
+
 function _livTotal(user)     { return getLivrets(user).reduce((s, l) => s + _livSolde(l), 0); }
-function _livInteretsNets()  { return getLivrets().reduce((s, l) => s + _livInterets(l).net, 0); }
+function _livInteretsNets()  { return getLivrets().reduce((s, l) => s + _livProjete(l).net, 0); }
 /**
  * Fin de validité : un Livret Jeune se ferme à 25 ans, un PEL a un terme.
  * Renvoie null si aucune date n'est posée, sinon le nombre de jours restants,
@@ -18596,14 +18612,15 @@ function renderLivrets() {
 function _livRender() {
   const livrets = getLivrets().slice().sort((a, b) => _livSolde(b) - _livSolde(a));
   const total   = livrets.reduce((s, l) => s + _livSolde(l), 0);
-  const nets    = livrets.reduce((s, l) => s + _livInterets(l).net, 0);
+  const nets    = livrets.reduce((s, l) => s + _livProjete(l).net, 0);
   const b       = _livB();
 
   _depText('liv-bareme-note',
     'Plafonds et taux en vigueur depuis le ' + b.effet + ', applicables jusqu\'au ' + b.jusqu + '. ' +
-    'Les intérêts acquis sont comptés par quinzaines depuis le 1er janvier, sur le solde et le taux du jour : ' +
-    'un versement en cours d’année ou une révision de taux déplacent le résultat. Le prévisionnel projette ' +
-    'douze mois au taux actuel. Capital Board ne fournit aucun conseil en investissement.');
+    'Les intérêts sont comptés par quinzaines : l’acquis jusqu’à aujourd’hui, la projection ' +
+    'jusqu’au 31 décembre, date à laquelle ils sont crédités. Elle suppose qu’aucun mouvement ' +
+    'n’intervient d’ici là, et une révision de taux la déplacerait. ' +
+    'Capital Board ne fournit aucun conseil en investissement.');
 
   _livRenderKpis(livrets, total, nets);
   _livRenderListe(livrets, total, nets);
@@ -18623,8 +18640,8 @@ function _livRenderKpis(livrets, total, nets) {
   }
   const estimes = livrets.filter(l => _livSolde(l) > 0 && !_livAcquis(l).exact).length;
   if (hint) hint.textContent = total > 0
-    ? 'prévisionnel +' + fmt(nets) + ' sur douze mois · ' +
-      (nets / total * 100).toFixed(2).replace('.', ',') + ' % net' +
+    ? '+' + fmt(nets) + ' attendus au 31 décembre · ' +
+      _livPct(_livTauxMoyen(livrets, total)) + ' net en moyenne' +
       (estimes ? ' · ' + estimes + ' estimé' + (estimes > 1 ? 's' : '') : '')
     : 'Ajoutez un livret pour démarrer.';
 
@@ -18687,7 +18704,7 @@ function _livRenderListe(livrets, total, nets) {
     const p    = _livPlafond(l);
     const pct  = p ? Math.min(100, (s / p) * 100) : null;
     const plein = p !== null && s >= p;
-    const int  = _livInterets(l);
+    const int  = _livProjete(l);
     const acq  = _livAcquis(l);
     const jours = _livJoursRestants(l);
     const meta = [_livTauxTxt(l) + ' par an'];
@@ -18719,7 +18736,7 @@ function _livRenderListe(livrets, total, nets) {
           '<span>' + meta.join('<span class="sep">·</span>') + '</span>' +
           '<span class="liv-int"' + (acq.exact ? '' : ' title="Estimation : sans les dates de versement, le solde est supposé présent depuis le 1er janvier."') + '>' +
             '+' + fmt(acq.net) + ' acquis' + (acq.exact ? '' : '<i class="liv-approx">~</i>') +
-            '<small>+' + fmt(int.net) + ' / an</small></span>' +
+            '<small>+' + fmt(int.net) + ' au 31 déc.</small></span>' +
         '</div>' +
         (pct === null ? '' :
           '<div class="liv-reste">' + (plein
@@ -19139,23 +19156,32 @@ window.livRecalc = function() {
   const taux = Number.isFinite(perso) && perso > 0 ? perso : t.taux;
   if (solde <= 0 || !taux) { box.hidden = true; return; }
 
-  const brut   = solde * taux / 100;
-  const net    = t.fisc ? brut * (1 - LIV_PFU) : brut;
   const reste  = t.plafond === null ? null : Math.max(0, t.plafond - solde);
-  const acquis = _livAcquis({
+  const brouillon = {
     type: _livType, taux: perso,
     ouverture: _depVal('liv-f-ouverture'),
     mouvements: mvts,
-  }).net;
+  };
+  const acquis  = _livAcquis(brouillon).net;
+  const projete = _livProjete(brouillon).net;
 
   box.hidden = false;
   box.innerHTML =
     '<span class="dep-recap-l"><b>' + fmt(solde) + '</b> · ' + _livPct(taux) +
-      ' · +' + fmt(net) + ' sur douze mois' +
+      ' · +' + fmt(projete) + ' attendus au 31 décembre' +
       (reste === null ? '' : reste > 0 ? ' · ' + fmt(reste) + ' encore possibles' : ' · plafond atteint') +
     '</span>' +
     '<span class="dep-recap-v">+' + fmt(acquis) + '</span>';
 };
+
+// Taux net moyen du portefeuille, calculé en régime de croisière. Le rapporter
+// à la projection de fin d'année donnerait un taux artificiellement bas sur un
+// livret alimenté en cours d'année, alors que son taux, lui, n'a pas bougé.
+function _livTauxMoyen(livrets, total) {
+  if (!total) return 0;
+  const plein = livrets.reduce((s, l) => s + _livInterets(l).net, 0);
+  return plein / total * 100;
+}
 
 function _livPct(t) { return Number(t).toFixed(2).replace('.', ',').replace(/,00$/, '') + ' %'; }
 
