@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260814q">
+<link rel="stylesheet" href="css/style.css?v=20260814r">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2407,8 +2407,8 @@
         <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/><path d="m9 16 2 2 4-4"/></svg>
       </span>
       <span>
-        <b>Plutôt le résilier</b>
-        <small>Il s'arrête à la date choisie et garde tout son historique.</small>
+        <b id="dep-confirm-alt-t">Plutôt le résilier</b>
+        <small id="dep-confirm-alt-s">Il s'arrête à la date choisie et garde tout son historique.</small>
       </span>
       <span class="dep-confirm-alt-go">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m9 18 6-6-6-6"/></svg>
@@ -2492,16 +2492,16 @@
       </div>
       <div class="dep-row2">
         <div class="form-group">
-          <label class="form-label" for="dep-f-jour">Prélevé le</label>
+          <label class="form-label" for="dep-f-jour" id="dep-f-jour-label">Prélevé le</label>
           <select class="form-input dep-select" id="dep-f-jour" onchange="depRecalc()"></select>
         </div>
         <div class="form-group">
-          <label class="form-label" for="dep-f-fin">Résilié le <span class="dep-opt">facultatif</span></label>
+          <label class="form-label" for="dep-f-fin" id="dep-f-fin-label">Résilié le <span class="dep-opt">facultatif</span></label>
           <input class="form-input" id="dep-f-fin" type="date" onchange="depRecalc()">
         </div>
       </div>
       <div class="dep-recap" id="dep-f-recap" hidden></div>
-      <div class="dep-help">Une date de résiliation arrête le décompte après ce mois, sans effacer l'abonnement des mois qu'il a réellement coûtés.</div>
+      <div class="dep-help" id="dep-f-recur-help"></div>
     </div>
 
     <div class="form-group dep-notefield">
@@ -3085,9 +3085,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260814q"></script>
+<script src="js/app.js?v=20260814r"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260814q"></script>
+<script src="js/onboarding.js?v=20260814r"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

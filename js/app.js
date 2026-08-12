@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814q';
+const APP_VERSION = '20260814r';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -17313,6 +17313,45 @@ const DEP_TABS = {
   aide:       { type: 'revenu',  cat: 'aides',       titre: 'Nouvelle aide',     sous: 'APL, Mobili-Jeune, prime d\'activité, bourse.' },
 };
 
+/**
+ * Vocabulaire de la récurrence, par onglet.
+ *
+ * On ne « prélève » pas une aide, on la verse ; on n'est pas « abonné » à une
+ * APL. Les mêmes champs racontent donc deux histoires opposées selon le sens du
+ * flux, et un libellé de sortie posé sur une entrée sonne immédiatement faux.
+ */
+const DEP_LEX = {
+  depense: {
+    debut: 'Date', jour: 'Prélevé le', fin: 'Terminé le',
+    unite: 'échéance', premier: 'Première échéance à venir',
+    aide: 'Une date de fin arrête le décompte après ce mois, sans effacer les mois déjà passés.',
+    altT: 'Plutôt y mettre fin', altS: 'Elle s\'arrête à la date choisie et garde tout son historique.',
+    note: 'Avec Léa, remboursé à moitié…',
+  },
+  abonnement: {
+    debut: 'Abonné depuis', jour: 'Prélevé le', fin: 'Résilié le',
+    unite: 'échéance', premier: 'Première échéance à venir',
+    aide: 'Une date de résiliation arrête le décompte après ce mois, sans effacer l\'abonnement des mois qu\'il a réellement coûtés.',
+    altT: 'Plutôt le résilier', altS: 'Il s\'arrête à la date choisie et garde tout son historique.',
+    note: 'Formule famille, partagé à trois, augmenté en mars…',
+  },
+  revenu: {
+    debut: 'Perçu depuis', jour: 'Versé le', fin: 'Jusqu\'au',
+    unite: 'versement', premier: 'Premier versement à venir',
+    aide: 'Une date de fin arrête le décompte après ce mois, sans effacer les versements déjà perçus.',
+    altT: 'Plutôt y mettre fin', altS: 'Il s\'arrête à la date choisie et garde tout son historique.',
+    note: 'Prime incluse, mission de trois mois…',
+  },
+  aide: {
+    debut: 'Perçue depuis', jour: 'Versée le', fin: 'Fin des droits',
+    unite: 'versement', premier: 'Premier versement à venir',
+    aide: 'Une fin de droits arrête le décompte après ce mois, sans effacer les versements déjà perçus.',
+    altT: 'Plutôt clore les droits', altS: 'L\'aide s\'arrête à la date choisie et garde tout son historique.',
+    note: 'Notifiée en juin, révisable en octobre…',
+  },
+};
+function _depLex(tab) { return DEP_LEX[tab || _depForm.tab] || DEP_LEX.depense; }
+
 // L'onglet d'une opération existante se déduit de ce qui est stocké.
 function _depTabOf(e) {
   if (!e) return 'depense';
@@ -17809,7 +17848,7 @@ window.depToggleRecur = function() {
   // la première échéance. Le libellé doit le dire, sinon on ne sait pas quoi
   // saisir — et c'est de cette date que découle le total versé.
   const lab = document.getElementById('dep-f-date-label');
-  if (lab) lab.textContent = on ? 'Abonné depuis' : 'Date';
+  if (lab) lab.textContent = on ? _depLex().debut : 'Date';
   if (!on) { depRecalc(); return; }
   depSetFreq(_depForm.freq);
   // Le jour de prélèvement part de la date saisie : c'est vrai dans la plupart
@@ -17839,16 +17878,17 @@ window.depRecalc = function() {
     jour: _depVal('dep-f-jour') || null,
     dateFin: _depVal('dep-f-fin') || null,
   };
+  const lex = _depLex();
   const v = _depVersements(e);
   if (!v.count) {
     box.hidden = false;
-    box.innerHTML = '<span class="dep-recap-l">Première échéance à venir</span>';
+    box.innerHTML = '<span class="dep-recap-l">' + _escapeHtmlChat(lex.premier) + '</span>';
     return;
   }
   box.hidden = false;
   box.innerHTML =
     '<span class="dep-recap-l">Depuis ' + _escapeHtmlChat(_depMoisAn(date)) + ' — ' +
-      v.count + (v.count > 1 ? ' échéances' : ' échéance') + '</span>' +
+      v.count + ' ' + _escapeHtmlChat(lex.unite) + (v.count > 1 ? 's' : '') + '</span>' +
     '<span class="dep-recap-v">' + fmt(v.total) + '</span>';
 };
 
@@ -17876,6 +17916,16 @@ function _depSyncTab() {
   };
   const nom = document.getElementById('dep-f-nom');
   if (nom) nom.placeholder = exemples[_depForm.tab] || exemples.depense;
+
+  // Tout le vocabulaire de la récurrence bascule avec le sens du flux.
+  const lex = _depLex();
+  const jl = document.getElementById('dep-f-jour-label');
+  if (jl) jl.textContent = lex.jour;
+  const fl = document.getElementById('dep-f-fin-label');
+  if (fl) fl.innerHTML = _escapeHtmlChat(lex.fin) + ' <span class="dep-opt">facultatif</span>';
+  _depText('dep-f-recur-help', lex.aide);
+  const note = document.getElementById('dep-f-note');
+  if (note) note.placeholder = lex.note;
 
   _depRenderCatChips();
   _depSuggClear();
@@ -18101,12 +18151,17 @@ window.depDelete = function() {
   const body = document.getElementById('dep-confirm-body');
   const alt  = document.getElementById('dep-confirm-alt');
   if (e.recurrent) {
+    // La sortie de secours prend les mots de l'onglet : on ne « résilie » pas
+    // une APL, on en clôt les droits.
+    const lex = _depLex(_depTabOf(e));
     const v = _depVersements(e);
     const compte = v.count > 0
-      ? 'Il est compté sur <b>' + v.count + (v.count > 1 ? ' mois' : ' mois') +
-        '</b>, pour <b>' + fmt(v.total) + '</b> depuis ' + _escapeHtmlChat(_depMoisAn(e.date)) + '. '
+      ? 'Compté sur <b>' + v.count + ' mois</b>, pour <b>' + fmt(v.total) +
+        '</b> depuis ' + _escapeHtmlChat(_depMoisAn(e.date)) + '. '
       : '';
     if (body) body.innerHTML = compte + 'Le supprimer l\'efface aussi de tous ces mois passés.';
+    _depText('dep-confirm-alt-t', lex.altT);
+    _depText('dep-confirm-alt-s', lex.altS);
     if (alt) alt.hidden = false;
   } else {
     if (body) body.innerHTML = 'Cette opération sera retirée de ' +
