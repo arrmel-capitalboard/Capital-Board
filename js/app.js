@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260815a';
+const APP_VERSION = '20260815b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1628,55 +1628,30 @@ function showMaintenanceScreen(msg) {
 }
 
 // ─── Prénom + Nom obligatoires (comptes existants sans nom) ───
-async function _ensureUserName(user) {
+/**
+ * Amorce l'onboarding après connexion.
+ *
+ * Cette fonction réclamait prénom, nom et pseudo à tout compte dont le
+ * document roles/ n'en portait pas — c'est-à-dire à tous ceux créés avant que
+ * le formulaire d'inscription ne les demande. Une modale bloquante à chaque
+ * connexion, pour une donnée déjà facultative ailleurs.
+ *
+ * Ces trois champs sont désormais collectés à l'inscription, et nulle part
+ * ailleurs. Un membre plus ancien qui veut un pseudo le pose depuis son profil,
+ * quand il le décide.
+ */
+function _ensureUserName(user) {
   if (window.IS_DEMO || !user) return;
-  if (isAdmin()) { window._nameSetupDone = true; return; } // admin identifié par UID : pas d'onboarding nom
-  if (window._nameSetupDone) return; // déjà validé pendant cette session
-  const ref = firestoreDoc(db, 'roles', user.uid);
-  let snap;
-  try {
-    // Lecture serveur autoritative UNIQUEMENT. Si elle échoue (réseau, session
-    // Firestore pas encore prête juste après le login), on NE montre PAS le
-    // modal : un repli sur le cache local lirait un doc pas encore synchronisé
-    // et rouvrirait le modal à tort à un utilisateur déjà renseigné.
-    snap = await getDocFromServer(ref);
-  } catch (_) { return; } // pas de confirmation serveur → on ne bloque pas
-  const d = snap.exists() ? (snap.data() || {}) : {};
-  if (d.firstName && d.lastName && d.username) {
-    window._nameSetupDone = true;
-    _startOnboarding(user.uid);
-    return;
-  }
-  showNameSetupModal(user);
+  window._nameSetupDone = true;
+  if (isAdmin()) return;
+  _startOnboarding(user.uid);
 }
 
-// Questionnaire de profil puis visite guidée (js/onboarding.js). Lancé une
-// fois le nom connu : les deux modals se seraient sinon recouverts.
+// Questionnaire de profil puis visite guidée (js/onboarding.js).
 function _startOnboarding(uid) {
   if (window.IS_DEMO || !uid) return;
   try { window.CBOnboarding && window.CBOnboarding.maybeStart(uid); }
   catch (e) { console.warn('onboarding:', e); }
-}
-function showNameSetupModal(user) {
-  let el = document.getElementById('name-setup-modal');
-  if (!el) { el = document.createElement('div'); el.id = 'name-setup-modal'; document.body.appendChild(el); }
-  el.style.cssText = 'position:fixed;inset:0;z-index:100000;display:flex;align-items:center;justify-content:center;background:rgba(0,0,0,.78);backdrop-filter:blur(6px);padding:20px;box-sizing:border-box';
-  const inp = 'width:100%;box-sizing:border-box;background:#0a0c14;border:1px solid rgba(255,255,255,.10);border-radius:10px;color:#f0f2f8;font-size:14px;padding:11px 13px;outline:none;font-family:inherit';
-  el.innerHTML =
-    '<div style="max-width:400px;width:100%;box-sizing:border-box;background:#12141e;border:1px solid rgba(255,255,255,.09);border-radius:20px;padding:28px;box-shadow:0 24px 60px -20px rgba(0,0,0,.8);font-family:var(--sans,sans-serif)">' +
-      '<div style="font-size:20px;font-weight:800;color:#f0f2f8;margin-bottom:8px">Bienvenue 👋</div>' +
-      '<div style="font-size:13px;color:#98a1b5;line-height:1.6;margin-bottom:20px">Choisissez comment vous apparaissez sur Capital Board pour continuer.</div>' +
-      '<div style="display:flex;gap:10px;margin-bottom:11px">' +
-        '<input id="name-setup-first" placeholder="Prénom" autocomplete="given-name" style="' + inp + '">' +
-        '<input id="name-setup-last" placeholder="Nom" autocomplete="family-name" style="' + inp + '">' +
-      '</div>' +
-      '<div style="position:relative;margin-bottom:11px">' +
-        '<span style="position:absolute;left:13px;top:50%;transform:translateY(-50%);color:#5b6377;font-size:14px;pointer-events:none">@</span>' +
-        '<input id="name-setup-username" placeholder="nom_utilisateur" autocomplete="off" style="' + inp + ';padding-left:26px">' +
-      '</div>' +
-      '<div id="name-setup-error" style="display:none;color:#ff5d78;font-size:12px;margin-bottom:10px"></div>' +
-      '<button id="name-setup-btn" onclick="saveNameSetup(\'' + user.uid + '\')" style="width:100%;box-sizing:border-box;padding:12px;border:none;border-radius:12px;background:#7c6df5;color:#fff;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit">Continuer</button>' +
-    '</div>';
 }
 
 // Disponibilité demandée au Worker : le client ne lit plus la collection roles,
@@ -1696,36 +1671,6 @@ async function _isUsernameTaken(username, _selfUid) {
   return data.available === false;
 }
 
-async function saveNameSetup(uid) {
-  const f = (document.getElementById('name-setup-first').value || '').trim();
-  const l = (document.getElementById('name-setup-last').value || '').trim();
-  const uRaw = (document.getElementById('name-setup-username').value || '').trim().toLowerCase();
-  const errEl = document.getElementById('name-setup-error');
-  const btn = document.getElementById('name-setup-btn');
-  const fail = m => { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } };
-  if (errEl) errEl.style.display = 'none';
-  if (!f || !l) return fail('Prénom et nom requis.');
-  if (/capitalboard/i.test((f + l).replace(/[\s._-]/g, ''))) return fail("Ce nom n'est pas autorisé.");
-  if (!/^[a-z0-9._-]{3,20}$/.test(uRaw)) return fail('Nom d\'utilisateur : 3–20 caractères (lettres, chiffres, . - _).');
-  if (btn) { btn.disabled = true; btn.textContent = 'Vérification…'; }
-  try {
-    if (await _isUsernameTaken(uRaw, uid)) { if (btn) { btn.disabled = false; btn.textContent = 'Continuer'; } return fail('Ce nom d\'utilisateur est déjà pris.'); }
-    await setFirestoreDoc(firestoreDoc(db, 'roles', uid), { firstName: f, lastName: l, username: uRaw }, { merge: true });
-    window._nameSetupDone = true;
-    try { if (auth.updateProfile && fbAuth.currentUser) await auth.updateProfile(fbAuth.currentUser, { displayName: f + ' ' + l }); } catch (_) {}
-    const el = document.getElementById('name-setup-modal'); if (el) el.remove();
-    try {
-      const nd = document.getElementById('user-name-display'); if (nd) nd.textContent = f;
-      const av = document.getElementById('user-avatar'); if (av) av.textContent = (f[0] || '?').toUpperCase();
-    } catch (_) {}
-    // Nouveau compte : le questionnaire enchaîne sur le nom, pas avant.
-    setTimeout(() => _startOnboarding(uid), 350);
-  } catch (e) {
-    console.error('[name] save:', e);
-    if (btn) { btn.disabled = false; btn.textContent = 'Continuer'; }
-    fail('Échec de l\'enregistrement, réessayez.');
-  }
-}
 
 // Le code part au Worker, qui le dérive en PBKDF2 et garde le condensat hors de
 // portée du navigateur. Avant, le client calculait un SHA-256 et l'écrivait dans
