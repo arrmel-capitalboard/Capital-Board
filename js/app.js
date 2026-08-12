@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260814e';
+const APP_VERSION = '20260814f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4077,7 +4077,7 @@ function renderPortfolio() {
       // sur une largeur en dur, pour rester d'accord avec le CSS.
       tr.style.cursor = 'pointer';
       tr.addEventListener('click', (ev) => {
-        if (ev.target.closest('button, a, select, input, textarea, .perf-total-sub, .drag-handle')) return;
+        if (ev.target.closest('button, a, select, input, textarea, .perf-total-sub, .perf-jour-cell, .drag-handle')) return;
         const voirPlus = tr.querySelector('.btn-voir-plus');
         if (voirPlus && voirPlus.offsetParent !== null) togglePortfolioDetail(i, row.ticker);
         else toggleWatchlistChart('pf' + i, row.ticker);
@@ -4406,21 +4406,24 @@ function renderTxHistory() {
 let editRowIndex = -1;
 let _perfJourMode = 'pct';
 let _perfTotalMode = 'pct';
-function togglePerfTotalMode() {
-  _perfTotalMode = _perfTotalMode === 'pct' ? 'eur' : 'pct';
+// Les deux colonnes chiffrées basculent ensemble : un tableau où la
+// plus-value est en euros et la variation du jour en pourcentage se lit de
+// travers. Cliquer l'une ou l'autre pose donc la même unité partout.
+function _applyPerfMode(mode) {
+  _perfTotalMode = mode;
+  _perfJourMode  = mode;
   document.querySelectorAll('.perf-total-sub').forEach(el => {
-    el.textContent = el.dataset[_perfTotalMode];
+    el.textContent = el.dataset[mode];
   });
-}
-function togglePerfJourMode() {
-  _perfJourMode = _perfJourMode === 'pct' ? 'eur' : 'pct';
   document.querySelectorAll('.perf-jour-cell').forEach(el => {
-    el.textContent = el.dataset[_perfJourMode];
+    el.textContent = el.dataset[mode];
   });
   const th = document.getElementById('th-perf-jour');
   // « Jour » suffit : l'en-tête mangeait la largeur du nom des titres.
-  if (th) th.textContent = _perfJourMode === 'pct' ? 'Jour %' : 'Jour €';
+  if (th) th.textContent = mode === 'pct' ? 'Jour %' : 'Jour €';
 }
+function togglePerfTotalMode() { _applyPerfMode(_perfTotalMode === 'pct' ? 'eur' : 'pct'); }
+function togglePerfJourMode()  { _applyPerfMode(_perfJourMode === 'pct' ? 'eur' : 'pct'); }
 
 function togglePortfolioDetail(i, ticker) {
   const detail = document.getElementById('portfolio-detail-' + i);
