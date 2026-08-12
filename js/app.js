@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260813u';
+const APP_VERSION = '20260813v';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4065,7 +4065,7 @@ function renderPortfolio() {
       tr.addEventListener('click', (ev) => {
         if (ev.target.closest('button, a, select, input, textarea, .perf-total-sub, .drag-handle')) return;
         const voirPlus = tr.querySelector('.btn-voir-plus');
-        if (voirPlus && voirPlus.offsetParent !== null) togglePortfolioDetail(i);
+        if (voirPlus && voirPlus.offsetParent !== null) togglePortfolioDetail(i, row.ticker);
         else toggleWatchlistChart('pf' + i, row.ticker);
       });
       // Repères pour l'animation de refresh : on compare ces valeurs d'un
@@ -4113,7 +4113,7 @@ function renderPortfolio() {
             <button class="btn-edit" onclick="openEditModal(${i})" title="Modifier" style="display:inline-flex;align-items:center;justify-content:center">${IC.edit}</button>
             <button class="btn-del" onclick="deleteRow(${i})" title="Supprimer">✕</button>
           </div>
-          <button class="btn-voir-plus" onclick="togglePortfolioDetail(${i})" title="Voir plus">▾</button>
+          <button class="btn-voir-plus" onclick="togglePortfolioDetail(${i},'${row.ticker}')" title="Voir plus">▾</button>
         </td>
       `;
       tbody.appendChild(tr);
@@ -4131,13 +4131,21 @@ function renderPortfolio() {
               <span><label>+/- Value</label><span class="${isPos ? 'badge-pos' : 'badge-neg'}">${isPos ? '▲' : '▼'} ${fmt(Math.abs(pnl))} (${isPos ? '+' : ''}${pct.toFixed(2)}%)</span></span>
             </div>
             <div class="portfolio-detail-actions">
-              <button class="btn-edit" onclick="toggleWatchlistChart('pf${i}','${row.ticker}')" style="display:inline-flex;align-items:center;gap:5px">${IC.chartLine}Courbe</button>
               <button class="btn-edit" onclick="openEditModal(${i})" style="display:inline-flex;align-items:center;gap:5px">${IC.edit}Modifier</button>
               <button class="btn-del" onclick="deleteRow(${i})">✕ Supprimer</button>
             </div>
           </div>
         </td>
       `;
+      // Le tiroir suit la courbe au rafraîchissement des cours, qui reconstruit
+      // le tableau : la courbe, elle, est conservée telle quelle plus bas. Sans
+      // ça le détail se refermerait seul toutes les minutes.
+      if (_preserved['pf' + i] && _pfOpenCharts['pf' + i]
+          && _pfOpenCharts['pf' + i].ticker === row.ticker) {
+        detailTr.classList.add('open');
+        const _vp = tr.querySelector('.btn-voir-plus');
+        if (_vp) _vp.textContent = '▴';
+      }
       tbody.appendChild(detailTr);
 
       // Courbe de la ligne, repliée par défaut. Même moteur que la watchlist :
@@ -4400,11 +4408,24 @@ function togglePerfJourMode() {
   if (th) th.textContent = _perfJourMode === 'pct' ? 'Jour %' : 'Jour €';
 }
 
-function togglePortfolioDetail(i) {
+function togglePortfolioDetail(i, ticker) {
   const detail = document.getElementById('portfolio-detail-' + i);
   const btn = detail.previousElementSibling.querySelector('.btn-voir-plus');
   const open = detail.classList.toggle('open');
   if (btn) btn.textContent = open ? '▴' : '▾';
+  // La courbe suit le tiroir : sur mobile, la ligne dépliée montre d'emblée le
+  // détail et le graphique, il n'y a plus de bouton « Courbe » pour l'appeler.
+  // On aligne l'état au lieu de basculer, les deux pouvant déjà diverger.
+  const chartRow = document.getElementById('wl-chart-row-pf' + i);
+  if (chartRow && (chartRow.style.display !== 'none') !== open) {
+    toggleWatchlistChart('pf' + i, ticker || _pfTickerAt(i));
+  }
+}
+
+// Le ticker de la ligne, relu dans le DOM quand l'appelant ne l'a pas passé.
+function _pfTickerAt(i) {
+  const tr = document.getElementById('wl-row-pf' + i);
+  return tr ? (tr.dataset.tk || '') : '';
 }
 
 let _reorderTmp = [];
