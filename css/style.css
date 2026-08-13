@@ -5030,7 +5030,20 @@ body.has-demo-banner { padding-top: 40px; }
   margin-bottom: 14px; padding: 10px 13px; border-radius: 10px;
   background: rgba(255,77,106,.08); border: 1px solid rgba(255,77,106,.25);
   color: var(--negative); font-size: 12px; line-height: 1.55;
+  /* Plusieurs fichiers, plusieurs échecs : un par ligne. */
+  white-space: pre-line;
 }
+
+/* Un échec de lecture n'est pas un cul-de-sac : le formulaire attend derrière,
+   avec ce qui y était déjà saisi. Le bouton le dit. */
+.imp-erreur-main {
+  margin-top: 10px; padding: 7px 13px; border-radius: 9px;
+  background: rgba(255,255,255,.05); border: 1px solid var(--border2);
+  color: var(--text); font-family: var(--sans); font-size: 11.5px; font-weight: 600;
+  white-space: normal; cursor: pointer;
+  transition: background .15s, border-color .15s;
+}
+.imp-erreur-main:hover { background: rgba(255,255,255,.09); border-color: var(--border3); }
 
 /* Les trois garanties. Écrites à l'écran, pas seulement dans les CGU. */
 .imp-garanties {
@@ -5192,6 +5205,9 @@ body.has-demo-banner { padding-top: 40px; }
 }
 .imp-fiche-l b { font-family: var(--mono); font-size: 12px; color: var(--text); font-weight: 700; }
 .imp-fiche-s { margin-top: 8px; font-size: 11px; color: var(--text3); line-height: 1.55; }
+/* Ce qui n'a pas été trouvé se lit avant le reste : sans cela, une lecture
+   partielle passe pour une lecture complète. */
+.imp-fiche-s b { color: var(--gold); font-weight: 700; }
 
 /* Fichiers d'un lot restés sur le carreau. En rouge : c'est une perte, pas une
    information de confort. */

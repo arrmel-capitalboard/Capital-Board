@@ -202,10 +202,21 @@ window.CBImport = (function () {
     if (!lignes.length && !_taux.length && !_fiche) {
       _etape('depot');
       _hide('imp-erreur', false);
-      _text('imp-erreur', echecs.length
-        ? echecs.join('\n')
-        : 'Aucune opération trouvée. Vérifiez que le fichier contient bien un ' +
-          'relevé, avec une date et un montant par ligne.');
+      // Un échec de lecture ne doit pas être un cul-de-sac. Le formulaire est
+      // derrière, intact : on le dit, et on donne le bouton pour y retourner.
+      // Sans lui, la seule issue visible est « Annuler », qui donne
+      // l'impression d'avoir perdu la saisie en cours.
+      const el = document.getElementById('imp-erreur');
+      if (el) {
+        el.innerHTML =
+          '<div>' + _esc(echecs.length
+            ? echecs.join('\n')
+            : 'Rien n’a pu être lu. Vérifiez que le fichier est bien un relevé, ' +
+              'avec une date et un montant par ligne — ou qu’une capture montre ' +
+              'l’écran des opérations ou celui des caractéristiques du livret.') + '</div>' +
+          '<button type="button" class="imp-erreur-main" onclick="CBImport.close()">' +
+          'Saisir à la main</button>';
+      }
       return;
     }
 
@@ -440,12 +451,26 @@ window.CBImport = (function () {
                   : _fmtMontant(v) + ' €';
         return '<span><i>' + _esc(lib) + '</i><b>' + _esc(txt) + '</b></span>';
       }).join('');
+    // Ce qui n'a pas été trouvé est dit aussi. Une lecture partielle ressemble
+    // sinon à une lecture complète : le membre enregistre sans voir qu'il
+    // manque le prévisionnel, et se demande plus tard pourquoi le chiffre
+    // diffère de celui de sa banque. Ces deux-là seulement — le taux et le
+    // plafond viennent du barème, les dates se saisissent en deux secondes.
+    const manque = [['acquis', 'les intérêts à ce jour'], ['projete', 'les intérêts prévisionnels']]
+      .filter(([cle]) => _fiche[cle] === undefined || _fiche[cle] === null)
+      .map(([, lib]) => lib);
+
     box.innerHTML =
       '<div class="imp-fiche-t">Fiche du livret reconnue</div>' +
       '<div class="imp-fiche-l">' + cases + '</div>' +
       '<div class="imp-fiche-s">Ces valeurs viennent de votre banque et ' +
       'remplaceront le calcul : c’est ce qui rend l’affichage exact. ' +
-      'Vous pourrez les corriger avant d’enregistrer.</div>';
+      'Vous pourrez les corriger avant d’enregistrer.' +
+      (manque.length
+        ? ' <b>Non trouvé : ' + _esc(manque.join(' et ')) + '</b> — à recopier à la main ' +
+          'dans « Taux, révisions et relevé de la banque », si votre banque les affiche.'
+        : '') +
+      '</div>';
   }
 
   // Une même révision peut figurer deux fois — deux relevés qui se recouvrent,
