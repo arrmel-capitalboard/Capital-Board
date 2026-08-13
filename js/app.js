@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260815p';
+const APP_VERSION = '20260815q';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18544,6 +18544,11 @@ function _livInteretsQ(l, jusqu, courant) {
 function _livReleve(l) {
   const r = l && l.releve;
   if (!r || !r.le) return null;
+  // Les intérêts sont crédités le 31 décembre et le compteur repart à zéro :
+  // un relevé de l'an dernier ne parle plus de l'année en cours. Le garder
+  // ajoutait ses intérêts de l'an passé à ceux de l'année neuve, et figeait le
+  // prévisionnel sur une projection déjà versée.
+  if (Number(String(r.le).slice(0, 4)) < new Date().getFullYear()) return null;
   // Number(null) vaut 0, et 0 est un nombre fini : convertir avant de tester
   // transformait un champ vide en « zéro intérêt » au lieu de « non renseigné ».
   const nb = (v) => (v === null || v === undefined || v === '' || !Number.isFinite(Number(v))) ? null : Number(v);

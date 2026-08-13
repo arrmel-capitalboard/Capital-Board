@@ -149,6 +149,19 @@ const ancien = { type: 'jeune', taux: 3.75,
   mouvements: [{ d: '2026-05-05', m: 850 }, { d: '2026-08-13', m: 500 }],
   releve: { le: '2026-07-14', acquis: 4, projete: 19.94 } };
 chk('acquis : couru sur le capital réel', X._livAcquis(ancien).net, 4 + 850 * r * 2 / 24);
+
+// Un relevé de l'année précédente ne vaut plus rien : les intérêts ont été
+// crédités le 31 décembre et le compteur est reparti de zéro. Le garder
+// ajoutait les intérêts de l'an passé à ceux de l'année neuve.
+const anPasse = { type: 'jeune', taux: 3.75,
+  mouvements: [{ d: '2026-05-05', m: 850 }],
+  releve: { le: '2025-08-13', acquis: 6.58, projete: 19.94 } };
+chk('relevé de l’an dernier : ignoré pour l’acquis',
+    X._livAcquis(anPasse).releve ? 1 : 0, 0);
+chk('relevé de l’an dernier : acquis recalculé',
+    X._livAcquis(anPasse).net, 850 * r * 5 / 24);
+chk('relevé de l’an dernier : prévisionnel recalculé',
+    X._livProjete(anPasse).net, 850 * r * 15 / 24);
 const pel = { type: 'pel', taux: 2, mouvements: [{ d: '2020-01-01', m: 20000 }],
               releve: { le: '2026-08-12', acquis: 250, projete: 400 } };
 chk('relevé brut, affichage net', X._livAcquis(pel).net, 250 * 0.7);
