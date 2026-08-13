@@ -4801,6 +4801,10 @@ body.has-demo-banner { padding-top: 40px; }
   color: var(--text2); font-size: 12px; line-height: 1.55;
 }
 
+/* Relevé périmé par un mouvement postérieur : le prévisionnel affiché est
+   redevenu une estimation, et cela doit se voir. */
+.liv-perime { color: var(--gold) !important; }
+
 .liv-fin.proche { color: var(--gold); font-weight: 600; }
 .liv-fin.echu   { color: var(--negative); font-weight: 600; }
 .liv-plein.echu { background: rgba(255,77,106,.14); color: var(--negative); }

@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260815n';
+const APP_VERSION = '20260815o';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18588,15 +18588,31 @@ function _livQuinzainesDe(iso) {
  *
  * Le calcul suppose qu'aucun mouvement n'intervient d'ici la fin de l'année.
  */
+/**
+ * Un mouvement postérieur au relevé le périme.
+ *
+ * Le prévisionnel de la banque suppose qu'aucun versement ni retrait
+ * n'intervient d'ici le 31 décembre. Un seul mouvement après la date de
+ * lecture invalide donc son chiffre — et sur un livret vivant, cela arrive en
+ * quelques jours.
+ */
+function _livReleveDepasse(l) {
+  const r = _livReleve(l);
+  if (!r || !r.le) return false;
+  return (l && Array.isArray(l.mouvements) ? l.mouvements : []).some(m => m.d > r.le);
+}
+
 function _livProjete(l) {
   const r = _livReleve(l);
   // Le prévisionnel vise le 31 décembre : il ne vieillit pas, on le reprend tel
-  // quel. Il ne vaut plus rien en revanche si un mouvement survient après.
-  if (r && r.projete !== null) {
+  // quel — sauf si un mouvement est survenu depuis, auquel cas il porte sur un
+  // capital qui n'existe plus. Mieux vaut alors notre estimation, qui tient
+  // compte du mouvement, qu'un chiffre exact pour une situation périmée.
+  if (r && r.projete !== null && !_livReleveDepasse(l)) {
     const net = _livType_(l && l.type).fisc ? r.projete * (1 - LIV_PFU) : r.projete;
     return { brut: r.projete, net, exact: true, releve: true };
   }
-  return _livInteretsQ(l, 24, true);
+  return Object.assign(_livInteretsQ(l, 24, true), { depasse: _livReleveDepasse(l) });
 }
 
 function _livTotal(user)     { return getLivrets(user).reduce((s, l) => s + _livSolde(l), 0); }
@@ -18796,7 +18812,15 @@ function _livRenderListe(livrets, total, nets) {
             '+' + fmt(acq.net) + ' acquis' +
             (acq.releve ? '<i class="liv-releve-tag" aria-hidden="true">banque</i>'
               : acq.exact ? '' : '<i class="liv-approx">~</i>') +
-            '<small>+' + fmt(int.net) + ' au 31 déc.</small></span>' +
+            // Un mouvement postérieur au relevé périme le prévisionnel de la
+            // banque : il portait sur un capital qui n'existe plus. On repasse
+            // à l'estimation, et on le dit plutôt que de laisser croire à un
+            // chiffre exact.
+            (int.depasse
+              ? '<small class="liv-perime" title="Votre relevé date d’avant vos derniers mouvements. Recopiez-le à nouveau, ou déposez une capture de la fiche de votre banque, pour retrouver le chiffre exact.">' +
+                '+' + fmt(int.net) + ' au 31 déc. · relevé à rafraîchir</small>'
+              : '<small>+' + fmt(int.net) + ' au 31 déc.</small>') +
+          '</span>' +
         '</div>' +
         (pct === null ? '' :
           '<div class="liv-reste">' + (plein
