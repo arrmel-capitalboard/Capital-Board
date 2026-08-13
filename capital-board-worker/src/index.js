@@ -430,6 +430,24 @@ function b64url(str) {
   return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
 }
 
+// Nom de modèle abrégé : « @cf/meta/llama-4-scout-17b-16e-instruct » devient
+// « llama-4-scout… ». Le diagnostic tient sur une ligne lisible.
+function _court(modele) {
+  const nom = String(modele || '').split('/').pop();
+  return nom.length > 28 ? nom.slice(0, 28) + '…' : nom;
+}
+
+// Message d'erreur réduit à ce qui aide sans rien révéler : les longues suites
+// de caractères sans espace sont écartées, ce qui couvre un fragment de base64
+// qu'un message d'erreur recopierait.
+function _sansDonnees(msg) {
+  return String(msg || 'erreur')
+    .split(/\s+/)
+    .filter((mot) => mot.length <= 24)
+    .join(' ')
+    .slice(0, 90);
+}
+
 // Texte utile d'une réponse de modèle de vision. Chaque modèle a sa clé —
 // `answer` pour une question, `response` pour un généraliste, `caption` pour
 // une légende — et rien ne garantit qu'un nouveau s'y tienne. On cherche donc
@@ -1427,24 +1445,38 @@ export default {
         if (bytes.length > VISION_MAX_BYTES) return json({ error: 'image trop lourde' }, 413);
 
         const b64 = `data:${type};base64,${bytesToBase64(bytes)}`;
-        // Deux modèles, deux schémas d'appel incompatibles. Le premier est
-        // spécialisé dans la lecture de texte ; le second est un généraliste
-        // multimodal, plus bavard mais qui répond quand l'autre rend une chaîne
-        // vide. On tente l'un puis l'autre plutôt que d'imposer un choix à
-        // l'aveugle : la disponibilité d'un modèle varie d'un compte à l'autre.
-        const essais = [
-          {
-            modele: env.VISION_MODEL || VISION_MODEL,
-            corps: { task: 'query', image: b64, question: VISION_PROMPT },
-          },
-          {
-            modele: VISION_MODEL_REPLI,
-            corps: {
-              messages: [{ role: 'user', content: `${b64}\n\n${VISION_PROMPT}` }],
-              max_tokens: 1024,
-            },
-          },
+
+        // Workers AI n'a pas UN schéma d'entrée pour les images, il en a trois,
+        // selon l'âge et la famille du modèle :
+        //   • le schéma « image-to-text » historique — un tableau d'octets et
+        //     un prompt, réponse dans `description` ;
+        //   • le schéma OpenAI — des parties de contenu typées, réponse dans
+        //     `response` ;
+        //   • le schéma propre à Moondream — task/question, réponse dans
+        //     `answer`.
+        // Et la disponibilité d'un modèle varie d'un compte à l'autre. Plutôt
+        // que de parier, on descend la liste jusqu'à ce qu'un texte sorte : le
+        // premier qui répond a raison. Un seul appel aboutit en pratique, les
+        // suivants ne coûtent rien.
+        const octets = Array.from(bytes);
+        const partiesOpenAI = [
+          { type: 'text', text: VISION_PROMPT },
+          { type: 'image_url', image_url: { url: b64 } },
         ];
+        const essais = env.VISION_MODEL
+          ? [{ modele: env.VISION_MODEL, corps: { image: octets, prompt: VISION_PROMPT, max_tokens: 1024 } }]
+          : [
+              { modele: '@cf/meta/llama-3.2-11b-vision-instruct',
+                corps: { image: octets, prompt: VISION_PROMPT, max_tokens: 1024 } },
+              { modele: '@cf/meta/llama-4-scout-17b-16e-instruct',
+                corps: { messages: [{ role: 'user', content: partiesOpenAI }], max_tokens: 1024 } },
+              { modele: '@cf/mistralai/mistral-small-3.1-24b-instruct',
+                corps: { messages: [{ role: 'user', content: partiesOpenAI }], max_tokens: 1024 } },
+              { modele: '@cf/llava-hf/llava-1.5-7b-hf',
+                corps: { image: octets, prompt: VISION_PROMPT, max_tokens: 1024 } },
+              { modele: VISION_MODEL,
+                corps: { task: 'query', image: b64, question: VISION_PROMPT } },
+            ];
 
         const vus = [];
         for (const essai of essais) {
@@ -1452,21 +1484,24 @@ export default {
           try {
             out = await env.AI.run(essai.modele, essai.corps);
           } catch (e) {
-            // e.message peut porter un fragment de la requête, donc de l'image :
-            // on ne retient que le nom du modèle, jamais le détail.
-            vus.push(essai.modele + ':erreur');
+            vus.push(_court(essai.modele) + ':!' + _sansDonnees(e && e.message));
             continue;
           }
           const texte = texteDeReponse(out);
-          if (texte) return json({ texte });
-          // Les CLÉS de la réponse, jamais son contenu : de quoi diagnostiquer
-          // un schéma inattendu sans faire fuiter une ligne de relevé.
-          vus.push(essai.modele + ':' + Object.keys(out || {}).join('|'));
+          if (texte) return json({ texte, modele: essai.modele });
+          // Le TYPE et les CLÉS de la réponse, jamais son contenu : de quoi
+          // diagnostiquer un schéma inattendu sans faire fuiter une ligne de
+          // relevé. Un objet sans clé est le symptôme d'un schéma d'entrée
+          // refusé en silence.
+          const forme = out === null ? 'null'
+            : typeof out !== 'object' ? typeof out
+            : (Object.keys(out).join('|') || (out.constructor && out.constructor.name) || 'vide');
+          vus.push(_court(essai.modele) + ':' + forme);
         }
 
         return json({
           error: 'Aucun texte lu dans cette image.',
-          diagnostic: vus.join(' ; ').slice(0, 300),
+          diagnostic: vus.join(' ; ').slice(0, 400),
         }, 502);
       }
 
