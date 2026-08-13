@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260815u';
+const APP_VERSION = '20260815v';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18624,7 +18624,15 @@ function _livProjeteApres(l, apres) {
   const annee = new Date().getFullYear();
   const taux  = _livTaux(l) / 100;
   return (l && Array.isArray(l.mouvements) ? l.mouvements : []).reduce((s, m) => {
-    if (!m || !(m.d > apres)) return s;
+    // Comparaison large : un mouvement daté du JOUR MÊME du relevé compte.
+    //
+    // Le cas est ambigu — la banque l'avait peut-être déjà intégré — mais les
+    // deux erreurs possibles n'ont pas le même poids. Ignorer un versement du
+    // jour laisse un prévisionnel figé, qui ne signale rien et qu'on prend
+    // pour un bug. Le compter deux fois donne un chiffre trop haut, visible
+    // et corrigeable en rafraîchissant le relevé. On préfère l'erreur qui se
+    // voit à celle qui se tait.
+    if (!m || !(m.d >= apres)) return s;
     const montant = Number(m.m);
     if (!Number.isFinite(montant) || montant === 0) return s;
     const debut = _livDebutQuinzaine(m.d, annee, montant < 0);

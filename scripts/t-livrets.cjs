@@ -126,6 +126,26 @@ const verse = { type: 'jeune', taux: 3.75,
   releve: { le: '2026-08-12', acquis: 6.58, projete: 19.94 } };
 chk('versement après le relevé : ajouté au prévisionnel',
     X._livProjete(verse).net, 19.94 + 500 * r * 9 / 24);
+
+// Le jour même du relevé, le mouvement compte aussi. Sans quoi verser le jour
+// où l'on saisit son relevé laisserait le prévisionnel figé — un chiffre qui
+// ne bouge pas ne signale rien, alors qu'un chiffre trop haut se voit.
+const memeJour = { type: 'jeune', taux: 3.75,
+  mouvements: [{ d: '2026-05-05', m: 850 }, { d: '2026-08-12', m: 500 }],
+  releve: { le: '2026-08-12', acquis: 6.58, projete: 19.94 } };
+// Le 12 août tombe dans la quinzaine 14 ; un versement démarre à la suivante,
+// soit 9 quinzaines restantes sur 24 — pas 10.
+chk('versement le jour du relevé : compté',
+    X._livProjete(memeJour).net, 19.94 + 500 * r * 9 / 24);
+chk('versement le jour du relevé : reste le chiffre de la banque',
+    X._livProjete(memeJour).releve ? 1 : 0, 1);
+
+// La veille en revanche appartient au passé du relevé : la banque l'avait.
+const veille = { type: 'jeune', taux: 3.75,
+  mouvements: [{ d: '2026-05-05', m: 850 }, { d: '2026-08-11', m: 500 }],
+  releve: { le: '2026-08-12', acquis: 6.58, projete: 19.94 } };
+chk('versement de la veille : déjà dans le chiffre de la banque',
+    X._livProjete(veille).net, 19.94);
 chk('versement après le relevé : reste le chiffre de la banque',
     X._livProjete(verse).releve ? 1 : 0, 1);
 
