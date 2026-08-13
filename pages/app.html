@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260815r">
+<link rel="stylesheet" href="css/style.css?v=20260815s">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2485,17 +2485,23 @@
 <div class="modal-overlay" id="liv-modal" onclick="if(event.target===this)livCloseModal()" role="dialog" aria-modal="true" aria-labelledby="liv-modal-title">
   <div class="modal dep-modal">
     <div class="modal-title" id="liv-modal-title">Nouveau livret</div>
-    <div class="modal-sub">Le solde d'aujourd'hui suffit — le plafond et le taux viennent du barème.</div>
+    <div class="modal-sub">Le plafond et le taux viennent du barème. Le solde se déduit des mouvements.</div>
 
     <div class="form-group">
       <span class="form-label">Type de livret</span>
       <div class="dep-cats liv-types" id="liv-f-types"></div>
     </div>
 
-    <div class="form-group">
-      <label class="form-label" for="liv-f-taux">Taux annuel <span class="dep-opt" id="liv-f-taux-opt"></span></label>
-      <input class="form-input" id="liv-f-taux" type="text" inputmode="decimal" placeholder="1,7" oninput="livRecalc()">
-    </div>
+    <!-- Le chemin court, en tête : un relevé remplit les mouvements, les dates,
+         les révisions de taux et les deux chiffres de la banque. Tout ce qui
+         suit ne sert qu'à compléter ou corriger. -->
+    <button type="button" class="liv-import-cta" onclick="livImporterReleve()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span>
+        <b>Importer un relevé</b>
+        <i>CSV, PDF ou capture d’écran — remplit tout ce qui suit</i>
+      </span>
+    </button>
 
     <div class="form-group">
       <label class="form-label" for="liv-f-banque">Banque <span class="dep-opt">facultatif</span></label>
@@ -2535,12 +2541,22 @@
           <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M5 12h14"/></svg>
           Retrait
         </button>
-        <button type="button" class="liv-mvt-add import" onclick="livImporterReleve()">
-          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-          Importer un relevé
-        </button>
       </div>
       <div class="dep-help">Le solde se déduit de ces lignes. Un versement rapporte à partir du 1er ou du 16 qui suit ; un retrait cesse de rapporter dès la quinzaine en cours. Pour un livret ancien, une première ligne à la date d'ouverture suffit. L'import lit un relevé sans rien téléverser : tout se passe dans votre navigateur.</div>
+    </div>
+
+    <!-- Repliés : trois blocs que l'import remplit seul, et qu'on ne saisit à
+         la main que pour corriger. Ouverts d'office à la modification d'un
+         livret qui en porte déjà (livOpenModal). -->
+    <details class="liv-avance" id="liv-f-avance">
+      <summary>
+        Taux, révisions et relevé de la banque
+        <span>renseignés par l’import</span>
+      </summary>
+
+    <div class="form-group">
+      <label class="form-label" for="liv-f-taux">Taux annuel <span class="dep-opt" id="liv-f-taux-opt"></span></label>
+      <input class="form-input" id="liv-f-taux" type="text" inputmode="decimal" placeholder="1,7" oninput="livRecalc()">
     </div>
 
     <div class="form-group liv-mvts-group">
@@ -2560,8 +2576,9 @@
         <input class="form-input" id="liv-f-r-projete" type="text" inputmode="decimal" placeholder="intérêts prévisionnels" oninput="livRecalc()">
       </div>
       <input class="form-input" id="liv-f-r-le" type="date" onchange="livRecalc()" style="margin-top:8px">
-      <div class="dep-help">Recopiez les deux montants affichés par votre banque, et la date à laquelle vous les avez lus. Ils remplacent l'estimation : aucun modèle ne reproduit au centime les conventions de chaque établissement. L'acquis continue de courir depuis cette date. Recopiez les montants bruts — la fiscalité est appliquée ensuite si le livret y est soumis.</div>
+      <div class="dep-help">Recopiez les deux montants affichés par votre banque, et la date à laquelle vous les avez lus. Ils remplacent l'estimation : aucun modèle ne reproduit au centime les conventions de chaque établissement. L'acquis continue de courir depuis cette date, et vos mouvements suivants s'y ajoutent — il n'y a donc pas à les recopier à chaque versement. Recopiez les montants bruts, la fiscalité est appliquée ensuite si le livret y est soumis.</div>
     </div>
+    </details>
 
     <div class="liv-ecart" id="liv-f-ecart" hidden></div>
     <div class="dep-recap" id="liv-f-recap" hidden></div>
@@ -3397,11 +3414,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260815r"></script>
+<script src="js/app.js?v=20260815s"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260815r"></script>
+<script src="js/onboarding.js?v=20260815s"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260815r"></script>
+<script src="js/import.js?v=20260815s"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260815r';
+const APP_VERSION = '20260815s';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18980,6 +18980,11 @@ window.livOpenModal = function(id) {
 
   _livRenderTypes();
   _livRenderLogo();
+  // Le bloc replié ne s'ouvre que s'il a quelque chose à montrer : un taux
+  // dérogatoire, des révisions, ou un relevé déjà saisi. Sur un livret neuf il
+  // reste fermé, et le formulaire tient en trois blocs.
+  _livSetAvance(!!(l && (l.taux || (l.tauxHist && l.tauxHist.length) ||
+                         (l.releve && l.releve.le))));
   livRecalc();
   document.getElementById('liv-modal').classList.add('open');
   setTimeout(() => { const s = document.getElementById('liv-f-taux'); if (s) s.focus(); }, 60);
@@ -18987,6 +18992,11 @@ window.livOpenModal = function(id) {
 
 // Les livrets réglementés sont uniques par personne : on présélectionne le
 // premier qui n'est pas déjà détenu, plutôt que d'ouvrir sur un doublon.
+function _livSetAvance(ouvert) {
+  const d = document.getElementById('liv-f-avance');
+  if (d) d.open = !!ouvert;
+}
+
 function _livPremierLibre() {
   const pris = getLivrets().map(l => l.type);
   const libre = Object.keys(_livB().types).find(k => _livB().types[k].unique && !pris.includes(k));
@@ -19164,6 +19174,7 @@ window.livImporterReleve = function() {
         });
         _livTx.sort((a, b) => (a.depuis < b.depuis ? -1 : 1));
         _livRenderTaux();
+        _livSetAvance(true);
         // Le taux courant du livret est celui de la dernière révision : la
         // fiche l'affiche en haut, il doit suivre.
         const derniere = _livTx[_livTx.length - 1];
@@ -19187,6 +19198,9 @@ window.livImporterReleve = function() {
         if (fiche.taux      !== undefined) _depSet('liv-f-taux', nb(fiche.taux));
         if (fiche.ouverture) _depSet('liv-f-ouverture', fiche.ouverture);
         if (fiche.fin)       _depSet('liv-f-fin', fiche.fin);
+        // Ce que l'import vient de remplir ne doit pas rester caché : le bloc
+        // s'ouvre pour que le membre voie les valeurs avant d'enregistrer.
+        _livSetAvance(true);
 
         // Le solde ne se saisit pas, il se déduit des mouvements — et une fiche
         // n'en contient aucun. Sans cette ligne, importer la fiche seule menait
