@@ -4,8 +4,12 @@ Dernière mise à jour : 13 août 2026.
 
 > **Prochaine séance : le Livret A.** Tout ce qui suit a été construit et
 > vérifié sur un **Livret Jeune au CIC**. Le Livret A est le cas le plus
-> répandu, et celui par lequel la plupart des membres entreront. Détail à
-> vérifier en priorité en tête de la section 6.
+> répandu, et celui par lequel la plupart des membres entreront.
+>
+> Une vraie fiche a montré le 13/08 que le sujet est plus large qu'un plafond à
+> desserrer : un Livret A au CIC porte **deux compartiments**, 1,70 % exonéré
+> jusqu'à 22 950 € puis 0,30 % imposé jusqu'à 77 050 €. Le calcul ne connaît
+> qu'un taux à la fois, et la fiscalité qu'un booléen par type. Section 6.1.
 
 ---
 
@@ -156,27 +160,65 @@ se lisait 30,00 €), et le taux lu qui écrasait le barème — une capture du
 compartiment de dépassement affiche 0,30 % et aurait rémunéré le livret à ce
 taux. Détail dans [`afaire-import.md`](afaire-import.md).
 
+#### Le point qui change le modèle : un Livret A a deux étages
+
+Les deux captures du 13/08 ne montrent pas un livret et un accident, mais **un
+produit à deux compartiments**, et c'est le CIC qui l'écrit :
+
+| Compartiment | Assiette | Taux | Fiscalité |
+|---|---|---|---|
+| LIVRET A SUP | jusqu'à 22 950 € | 1,70 % (réglementé) | exonéré |
+| LIVRET SUP | de 22 950 € à 77 050 € | **0,30 %** (au contrat) | **imposé** |
+
+77 050 + 22 950 = 100 000 € : le vrai plafond du produit. Et la note ¹ de la
+fiche est explicite — « non fiscalisé **dans la limite du plafond
+réglementaire**. Au-delà, intérêts soumis à fiscalité selon la réglementation
+applicable ».
+
+Trois conséquences, et aucune n'est cosmétique :
+
+- **Le plafond n'est pas un mur, c'est une frontière de taux.** Le solde le
+  dépasse légitimement, et le surplus rapporte — moins, et imposé.
+- **Un livret peut porter deux taux en même temps**, sur deux tranches de
+  capital. Le calcul par quinzaines ne connaît aujourd'hui qu'un taux à la
+  fois : c'est lui qu'il faut ouvrir, pas seulement l'écran.
+- **La fiscalité devient partielle.** `fisc: false` sur le Livret A est vrai
+  jusqu'à 22 950 € et faux au-delà. Aujourd'hui c'est un booléen par type.
+
+Le second étage est **propre à chaque banque** — son taux, son plafond, son
+existence même. Il n'a donc pas sa place dans `LIV_BAREME`, qui porte la loi :
+plutôt un couple `surTaux` / `surPlafond` saisi sur le livret, et lu sur la
+fiche quand l'import la trouve.
+
+Ce que la capitalisation impose par ailleurs reste vrai : un Livret A au
+plafond continue de produire des intérêts, et leur versement au 31 décembre
+porte le solde au-dessus de 22 950 € même sans compartiment de dépassement.
+
 Points à reprendre :
 
-1. **Le plafond et les intérêts capitalisés.** Un Livret A au plafond continue
-   de produire des intérêts, et leur versement au 31 décembre peut porter le
-   solde **au-dessus** de 22 950 €. C'est légal et fréquent. Or `livSave()`
-   refuse un solde supérieur au plafond : sur un livret rempli, l'écriture du
-   1<sup>er</sup> janvier sera **rejetée**. À corriger avant l'ouverture.
-2. **La jauge de remplissage** affichera plus de 100 % dans ce cas. Décider
-   quoi montrer : un dépassement assumé, ou un plafonnement visuel.
-3. **Le « reste à verser »** doit devenir zéro, pas un nombre négatif.
-4. **Un vrai export de Livret A** — idéalement d'une autre banque que le CIC,
+1. **`livSave()` refuse un solde supérieur au plafond.** Sur un livret rempli,
+   l'écriture du 1<sup>er</sup> janvier est **rejetée** — et un Livret A du CIC
+   au-delà de 22 950 € ne peut tout simplement pas être saisi. C'est le premier
+   correctif, et il conditionne les suivants.
+2. **La jauge de remplissage** dépassera 100 %. Elle devrait montrer les deux
+   tranches plutôt qu'un débordement : le réglementé plein, puis le surplus sur
+   sa propre échelle.
+3. **Le « reste à verser »** doit devenir zéro, pas un nombre négatif — ou
+   basculer sur le second plafond quand il y en a un.
+4. **Le calcul à deux taux**, une fois 1 à 3 posés : à chaque quinzaine, la
+   part du capital sous 22 950 € au taux réglementé, le reste au taux du
+   contrat, et la fiscalité appliquée à la seule seconde part.
+5. **Un vrai export de Livret A** — idéalement d'une autre banque que le CIC,
    pour éprouver le parseur sur un second format. **C'est ce qui manque le
    plus** : les deux bugs du 13/08 étaient invisibles avant qu'une vraie fiche
    n'arrive.
-5. **Le LEP** a une condition de revenu et un taux distinct ; vérifier que son
+6. **Le LEP** a une condition de revenu et un taux distinct ; vérifier que son
    barème est juste avant de le proposer.
-6. **Deux livrets sur une même capture.** L'écran du CIC affiche le Livret A
-   puis son compartiment de dépassement, chacun avec son solde, son taux et son
-   plafond. Le premier bloc rencontré l'emporte, ce qui est juste quand les
-   captures arrivent dans l'ordre — et faux si le membre n'envoie que la
-   seconde. Aucun garde-fou aujourd'hui.
+7. **Deux compartiments sur une même capture.** L'import ne retient
+   aujourd'hui que le premier bloc rencontré : juste quand les captures
+   arrivent dans l'ordre, faux si le membre n'envoie que la seconde, et de
+   toute façon incomplet une fois le point 4 posé — il faudra lire les deux
+   blocs et les distinguer, pas en choisir un.
 
 ### 6.2 Ensuite
 
