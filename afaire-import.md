@@ -4,8 +4,12 @@ Note de conception, 12 août 2026.
 
 **État au 13 août 2026 : les trois voies sont livrées**, branchées sur les
 livrets. Le socle vit dans `js/import.js`, la suite de tests dans
-`scripts/t-import.cjs` (76 cas, en CI). Ce qui reste à faire est en fin de
+`scripts/t-import.cjs` (163 cas, en CI). Ce qui reste à faire est en fin de
 document.
+
+> **Séance du 13 août** — la lecture d'image ne dépend plus des libellés d'une
+> banque : voir « Reconnaître une fiche sans connaître la banque » plus bas.
+> Deux bugs trouvés sur une vraie fiche de Livret A y sont consignés.
 
 | Voie | État | Où |
 |---|---|---|
@@ -140,6 +144,88 @@ le premier branchement, et la seule qui soit payante et réglementée.
 
 ---
 
+## Reconnaître une fiche sans connaître la banque
+
+Fait le 13 août 2026. C'était le vrai sujet : que **n'importe quelle banque**
+marche, et non que le modèle marche.
+
+### Le mur
+
+La fiche d'un livret était reconnue par ses libellés, recopiés du CIC :
+« Intérêts à ce jour », « Date de fin de validité ». Ailleurs, la même chose
+s'appelle « intérêts courus », « rémunération servie », « échéance ». La liste
+n'a pas de fin, et une banque absente échouait **en silence** : `analyserFiche`
+rendait `null`, le texte partait dans `analyserTexte` qui n'y voyait rien, et
+l'import avait l'air d'avoir marché.
+
+Allonger la liste ne règle rien. Demander un JSON au modèle non plus : c'est
+exactement ce que la note écarte plus haut, et pour de bonnes raisons.
+
+### Ce qui a été fait — le modèle désigne, il ne produit pas
+
+Trois étages, du moins cher au plus cher :
+
+1. **Les libellés**, élargis aux formulations courantes. Gratuit, instantané,
+   couvre le CIC et les banques qui parlent comme lui.
+2. **Une deuxième passe**, seulement si la première n'a rien donné *et* que
+   moins de trois opérations ont été trouvées. Le texte **déjà transcrit**
+   repart au Worker — pas l'image, c'est dix fois moins cher — avec pour
+   consigne de **recopier** les valeurs demandées, pas de les calculer.
+   `POST /lire-releve`, en-tête `X-Etape: champs`.
+3. **Le contrôle**, dans `ficheDepuisChamps()` : chaque valeur rendue est
+   cherchée **mot pour mot** dans la transcription. Absente, elle est jetée.
+
+Le troisième étage est le seul qui compte. Une valeur inventée n'est, par
+définition, pas dans le texte transcrit — le cas llava du 13/08, « +225,65 € »
+sur une image qui n'en portait aucun, est couvert par un test nommé. La seule
+liberté qui reste au modèle est de désigner la mauvaise valeur, ce qui se voit
+à l'écran de validation, contrairement à une valeur inventée.
+
+La conversion en nombres n'a pas bougé : ce sont les mêmes regex que la voie
+par libellés. **L'IA lit les pixels et pointe, le code fait les chiffres** —
+la règle de `afaire-livrets.md`, section 5, tient toujours.
+
+### Ce que la première vraie fiche a révélé
+
+Deux captures d'un Livret A au CIC, le 13/08. Les deux bugs étaient invisibles
+sans elles :
+
+- **Le renvoi de note se collait au montant.** « Intérêts prévisionnels³ »
+  revient aplati en `previsionnels3`, et ce 3 se recollait à la valeur
+  suivante : `3 0,00 EUR` se lisait **30,00 €** là où la fiche affiche 0. Sur
+  un livret qui rapporte vraiment, le chiffre aurait été faux et crédible.
+- **Le taux lu écrasait le barème.** Le recopier en faisait un taux figé, qui
+  n'aurait plus suivi les révisions du 1<sup>er</sup> février et du
+  1<sup>er</sup> août. Pire : la deuxième capture montrait le **compartiment de
+  dépassement** du Livret A, à 0,30 % — elle aurait rémunéré le livret à ce
+  taux sans rien signaler. Le taux n'est désormais repris que là où le barème
+  ne sait pas : PEL, CEL, livret bancaire, Livret Jeune.
+
+Au passage, la valeur est découpée sur la ligne **normalisée** et non sur la
+brute : `_norm` réduit les suites d'espaces, donc un index calculé sur l'une ne
+vaut pas sur l'autre, et un tableau largement espacé coupait au milieu du
+montant.
+
+### La banque est devenue obligatoire
+
+Dans la fiche du livret, elle passe **avant** le bouton d'import et n'est plus
+facultative. Elle ne sert à rien aujourd'hui dans le parseur — la deuxième
+passe se débrouille sans — mais elle est le préalable de tout adaptateur par
+banque, et elle coûte trois secondes au membre.
+
+### Et si rien n'est trouvé
+
+Un échec n'est plus un cul-de-sac :
+
+- lecture **partielle** — les deux montants que rien ne remplace (acquis,
+  prévisionnel) sont **nommés quand ils manquent**, avec l'endroit où les
+  recopier. Sans cela, une lecture partielle passe pour une lecture complète ;
+- lecture **vide** — un bouton « Saisir à la main » referme l'import et rend le
+  formulaire, intact. La seule issue visible était « Annuler », qui donne
+  l'impression de perdre sa saisie.
+
+---
+
 ## Recommandation, et ce qui a été fait
 
 La note recommandait « le PDF, et rien d'autre pour commencer ». Trois voies ont
@@ -197,6 +283,25 @@ et réservée au repli.
    Débit / Crédit / Montant / Solde par leur position en X, ce qui couvre la
    forme habituelle d'un relevé. Aucun adaptateur nommé n'est écrit : à faire
    quand un vrai PDF résiste, banque par banque, pas avant.
+
+   **Prochaine séance.** Trois hypothèses de la voie image restent celles de
+   l'application mobile du CIC, et ne valent que pour l'écran des **opérations**
+   — la fiche, elle, est traitée. Dans `analyserTexte()` :
+
+   - `RE_MONTANT` exige `€` ou `EUR` sur chaque montant. Une banque qui ne
+     répète pas le symbole donne **zéro opération** ;
+   - la date est attendue en **en-tête de groupe**, sur une ligne seule. Un
+     relevé en tableau, date en début de ligne, date tout au jour même ;
+   - le signe `+` / `-` est **obligatoire** pour connaître le sens. Deux
+     colonnes Débit / Crédit, et tout devient versement.
+
+   Moins urgent que la fiche : les opérations existent aussi en CSV, qui est
+   déjà générique.
+
+   **Ce qui manque vraiment : une capture d'une autre banque.** Tout a été
+   éprouvé sur le CIC. Les deux bugs du 13/08 étaient invisibles avant qu'une
+   vraie fiche n'arrive — il n'y a pas de raison que ce soit différent
+   ailleurs.
 
 4. ~~**Le relevé annuel donne-t-il le solde au 31 décembre ?**~~ **Résolu, et
    sans relevé annuel.** La colonne `Solde` d'un export ordinaire porte l'état

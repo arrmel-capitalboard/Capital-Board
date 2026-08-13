@@ -58,10 +58,19 @@ Détaillé dans [`afaire-import.md`](afaire-import.md). En résumé : CSV, PDF e
 captures d'écran, plusieurs fichiers à la fois, avec écran de validation ligne
 à ligne. Le solde d'ouverture et les révisions de taux sont déduits du fichier.
 
+Depuis le 13/08, **la fiche d'un livret est reconnue quelle que soit la
+banque** : les libellés élargis d'abord, puis le modèle qui désigne les valeurs
+dans sa propre transcription, et un contrôle mot pour mot qui jette ce qui n'y
+figure pas. Un échec renvoie à la saisie manuelle au lieu d'un mur.
+
+La **banque** est passée avant le bouton d'import dans la fiche, et n'est plus
+facultative.
+
 ### Les tests
 
 - `scripts/t-livrets.cjs` — 46 cas sur le calcul (quinzaines, taux, relevé)
-- `scripts/t-import.cjs` — 140 cas sur les trois voies d'import
+- `scripts/t-import.cjs` — 163 cas sur les trois voies d'import, dont la fiche
+  réelle du Livret A et le rejet des valeurs inventées par le modèle
 
 Les deux tournent en CI (`.github/workflows/checks.yml`).
 
@@ -139,7 +148,15 @@ les taux changent.
 
 ### 6.1 Le Livret A — prochaine séance
 
-Le module n'a jamais tourné que sur un Livret Jeune. Points à reprendre :
+Le module n'a jamais tourné que sur un Livret Jeune.
+
+**Déjà traité le 13/08**, sur une vraie fiche de Livret A au CIC : le renvoi de
+note en exposant qui se collait au montant (« Intérêts prévisionnels³ 0,00 EUR »
+se lisait 30,00 €), et le taux lu qui écrasait le barème — une capture du
+compartiment de dépassement affiche 0,30 % et aurait rémunéré le livret à ce
+taux. Détail dans [`afaire-import.md`](afaire-import.md).
+
+Points à reprendre :
 
 1. **Le plafond et les intérêts capitalisés.** Un Livret A au plafond continue
    de produire des intérêts, et leur versement au 31 décembre peut porter le
@@ -150,9 +167,16 @@ Le module n'a jamais tourné que sur un Livret Jeune. Points à reprendre :
    quoi montrer : un dépassement assumé, ou un plafonnement visuel.
 3. **Le « reste à verser »** doit devenir zéro, pas un nombre négatif.
 4. **Un vrai export de Livret A** — idéalement d'une autre banque que le CIC,
-   pour éprouver le parseur sur un second format.
+   pour éprouver le parseur sur un second format. **C'est ce qui manque le
+   plus** : les deux bugs du 13/08 étaient invisibles avant qu'une vraie fiche
+   n'arrive.
 5. **Le LEP** a une condition de revenu et un taux distinct ; vérifier que son
    barème est juste avant de le proposer.
+6. **Deux livrets sur une même capture.** L'écran du CIC affiche le Livret A
+   puis son compartiment de dépassement, chacun avec son solde, son taux et son
+   plafond. Le premier bloc rencontré l'emporte, ce qui est juste quand les
+   captures arrivent dans l'ordre — et faux si le membre n'envoie que la
+   seconde. Aucun garde-fou aujourd'hui.
 
 ### 6.2 Ensuite
 
