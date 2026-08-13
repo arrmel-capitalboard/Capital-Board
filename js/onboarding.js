@@ -152,6 +152,77 @@
     },
   ];
 
+  // ── Visite du module Livrets & épargne ────────────────────────────────────
+  //
+  // Une visite à part, lancée depuis la page elle-même. Le module demande une
+  // explication que les autres n'exigent pas : les intérêts d'un livret se
+  // comptent par quinzaines, un solde seul ne suffit donc pas, et l'import
+  // existe précisément pour éviter d'avoir à saisir cinquante lignes.
+  //
+  // Les quatre dernières étapes se passent dans la fiche de saisie : elles
+  // l'ouvrent elles-mêmes, sur le premier livret s'il en existe un.
+  const livModalOuvert = () => {
+    const m = document.getElementById('liv-modal');
+    return !!(m && m.classList.contains('open'));
+  };
+  const ouvrirFiche = () => {
+    if (livModalOuvert() || typeof livOpenModal !== 'function') return;
+    const liste = (typeof getLivrets === 'function') ? getLivrets() : [];
+    livOpenModal(liste.length ? liste[0].id : undefined);
+  };
+  const fermerFiche = () => {
+    if (livModalOuvert() && typeof livCloseModal === 'function') livCloseModal();
+  };
+
+  const STEPS_LIVRETS = [
+    {
+      target: () => q('#livrets-app .dep-kpis') || q('#livrets-app'),
+      title: 'Ce que votre épargne vous rapporte',
+      text: 'Le montant disponible, les intérêts déjà acquis depuis le 1er janvier, et ce qui sera versé au 31 décembre. Les intérêts d’un livret se comptent par quinzaines : un versement ne rapporte qu’à partir du 1er ou du 16 qui suit, un retrait cesse de rapporter dès celui qui précède.',
+      page: 'livrets',
+      avant: fermerFiche,
+    },
+    {
+      target: () => q('#livrets-app .dep-addbtn'),
+      title: 'Ajouter un livret',
+      text: 'Choisissez son type : Livret A, LDDS, LEP, Livret Jeune, PEL ou livret bancaire. Le plafond et le taux viennent du barème en vigueur, vous n’avez rien à chercher. Les livrets réglementés sont uniques par personne.',
+      page: 'livrets',
+      // En revenant de l'étape suivante, la fiche est ouverte et masquerait
+      // le bouton qu'on désigne.
+      avant: fermerFiche,
+    },
+    {
+      target: () => q('#liv-modal .liv-import-cta'),
+      title: 'Importer plutôt que saisir',
+      text: 'Pour qu’un seul livret tombe juste, il faut les dates de chaque mouvement — souvent une cinquantaine de lignes. Déposez plutôt l’export CSV de votre banque, un relevé PDF, ou une capture d’écran. Le solde d’ouverture et les changements de taux en sont déduits automatiquement.',
+      avant: ouvrirFiche,
+    },
+    {
+      target: () => q('#liv-modal .liv-mvt-actions'),
+      title: 'Un versement, un retrait',
+      text: 'Ensuite, tout se résume à ces deux boutons. Indiquez la date de l’opération — pas celle de la saisie, c’est elle qui fixe la quinzaine — et son montant. Le solde en découle : il ne se saisit jamais directement.',
+      avant: ouvrirFiche,
+    },
+    {
+      target: () => q('#liv-f-avance'),
+      title: 'Les chiffres exacts de votre banque',
+      text: 'Chaque établissement a ses conventions d’arrondi, qu’aucun calcul ne reproduit au centime. Recopiez ici les intérêts acquis et prévisionnels affichés par votre banque — ou déposez une capture de son écran « Caractéristiques », qui remplit tout ce bloc d’un coup.',
+      // Le bloc est replié par défaut : le déplier, sinon on ne désignerait
+      // qu'un titre de section.
+      avant: () => {
+        ouvrirFiche();
+        const d = document.getElementById('liv-f-avance');
+        if (d) d.open = true;
+      },
+    },
+    {
+      target: () => q('#liv-modal .modal-footer .btn-primary'),
+      title: 'Rien n’est écrit avant ce bouton',
+      text: 'Un import remplit le formulaire, il n’enregistre pas. Vous gardez la main sur chaque ligne jusqu’au bout. Et une fois le relevé saisi, vos mouvements suivants s’y ajoutent tout seuls : il n’y a pas à le recopier à chaque versement, seulement à le rafraîchir en janvier.',
+      avant: ouvrirFiche,
+    },
+  ];
+
   // ── Accès Firestore ───────────────────────────────────────────────────────
   const ref = (uid) => firestoreDoc(db, COL, uid);
 
@@ -413,7 +484,11 @@
       + '</div>';
     document.body.appendChild(ov);
 
-    tourEtat = { uid, test, i: 0, ov, spot: ov.querySelector('.ob-spot'), tip: ov.querySelector('.ob-tip'), raf: 0 };
+    tourEtat = { uid, test, i: 0, ov, spot: ov.querySelector('.ob-spot'), tip: ov.querySelector('.ob-tip'), raf: 0,
+      // Jeu d'étapes : la visite d'accueil par défaut, ou celle d'un module.
+      steps: (opts && opts.steps) || STEPS,
+      // Une visite de module ne doit pas marquer l'accueil comme vu.
+      marque: !(opts && opts.steps) };
 
     ov.querySelector('.ob-tip-skip').onclick = () => endTour('tourSkippedAt');
     ov.querySelector('.ob-tip-prev').onclick = () => go(tourEtat.i - 1);
@@ -437,13 +512,19 @@
   function go(i) {
     if (!tourEtat) return;
     if (i < 0) return;
+    const STEPS = tourEtat.steps;
     if (i >= STEPS.length) { endTour('tourDoneAt'); return; }
+    const avance = i > tourEtat.i;
     tourEtat.i = i;
     const s = STEPS[i];
     // Certaines étapes vivent sur une page précise : on y va d'abord.
     if (s.page && typeof showPage === 'function') {
       try { showPage(s.page); } catch (_) {}
     }
+    // D'autres ont besoin qu'une modale soit ouverte pour avoir une cible.
+    // `avance` distingue l'aller du retour : revenir en arrière ne doit pas
+    // rouvrir ce que l'étape précédente vient de refermer.
+    try { if (s.avant) s.avant(avance); } catch (_) {}
     const { tip } = tourEtat;
     tip.querySelector('.ob-tip-step').innerHTML =
       'Étape <b>' + String(i + 1).padStart(2, '0') + '</b><s></s><span>' + String(STEPS.length).padStart(2, '0') + '</span>';
@@ -451,8 +532,8 @@
     tip.querySelector('.ob-tip-text').textContent = s.text;
     tip.querySelector('.ob-tip-prev').style.visibility = i === 0 ? 'hidden' : 'visible';
     tip.querySelector('.ob-tip-next').textContent = i === STEPS.length - 1 ? 'Terminer' : 'Suivant';
-    // Laisse la page changer d'onglet avant de mesurer la cible.
-    setTimeout(() => place(true), 60);
+    // Laisse la page changer d'onglet, ou la modale s'ouvrir, avant de mesurer.
+    setTimeout(() => place(true), s.avant ? 220 : 60);
   }
 
   // Position du trou et de la bulle. Le trou est un simple bloc au-dessus du
@@ -465,7 +546,7 @@
     if (!tourEtat) return;
     cancelAnimationFrame(tourEtat.raf);
     tourEtat.raf = requestAnimationFrame(() => {
-      const s = STEPS[tourEtat.i];
+      const s = tourEtat.steps[tourEtat.i];
       const el = s.target();
       const { spot, tip } = tourEtat;
 
@@ -515,8 +596,9 @@
     window.removeEventListener('scroll', replace, true);
     cancelAnimationFrame(tourEtat.raf);
     ov.remove();
+    const marque = tourEtat.marque;
     tourEtat = null;
-    if (!test) markTour(uid, champ);
+    if (!test && marque) markTour(uid, champ);
   }
 
   // ── API publique ──────────────────────────────────────────────────────────
@@ -533,7 +615,14 @@
     // drapeau global n'a pas besoin d'être activé.
     testSurvey() { openQuestionnaire(currentUser, {}, { test: true, tourEnsuite: true }); },
     testTour()   { startTour(currentUser, { test: true }); },
+    // Visite du module Livrets, lancée depuis sa page. Elle ne marque rien :
+    // elle se rejoue autant de fois qu'on la demande.
+    tourLivrets() {
+      startTour(typeof currentUser !== 'undefined' ? currentUser : null,
+                { steps: STEPS_LIVRETS });
+    },
   };
   window.replayGuidedTour = () => window.CBOnboarding.replayTour();
+  window.livTour = () => window.CBOnboarding.tourLivrets();
 
 })();

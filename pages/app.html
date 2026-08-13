@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260815s">
+<link rel="stylesheet" href="css/style.css?v=20260815t">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -1827,6 +1827,10 @@
           <div class="page-subtitle">Votre matelas de sécurité, et ce qu'il rapporte</div>
         </div>
         <div class="dep-header-tools">
+          <button class="liv-aide" onclick="livTour()" title="Visite guidée du module">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.1 9a3 3 0 0 1 5.8 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12" y2="17"/></svg>
+            <span>Comment ça marche</span>
+          </button>
           <button class="dep-addbtn" onclick="livOpenModal()">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             Ajouter un livret
@@ -3414,11 +3418,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260815s"></script>
+<script src="js/app.js?v=20260815t"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260815s"></script>
+<script src="js/onboarding.js?v=20260815t"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260815s"></script>
+<script src="js/import.js?v=20260815t"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

@@ -4841,6 +4841,22 @@ body.has-demo-banner { padding-top: 40px; }
 .liv-mvt-add.import { border-style: solid; }
 .liv-mvt-add.import:hover { color: var(--text); border-color: var(--accent); background: var(--accent-d); }
 
+/* Visite guidée du module, à côté du bouton d'ajout. Discrète : elle sert la
+   première fois, et doit s'effacer ensuite sans disparaître. */
+.liv-aide {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 8px 13px; border-radius: 9px;
+  background: transparent; border: 1px solid var(--border2);
+  color: var(--text3); font-family: var(--sans); font-size: 12.5px; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+}
+.liv-aide:hover { color: var(--text); border-color: var(--accent); background: var(--accent-d); }
+@media (max-width: 640px) {
+  /* Sur mobile l'en-tête est déjà chargé : l'icône seule suffit. */
+  .liv-aide { padding: 8px 10px; }
+  .liv-aide span { display: none; }
+}
+
 /* Le chemin court, en tête de la fiche : un relevé remplit six des sept blocs
    du formulaire. Il doit se voir avant qu'on commence à taper. */
 .liv-import-cta {
