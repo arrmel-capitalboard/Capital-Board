@@ -1243,23 +1243,45 @@ window.CBImport.ocr = (function () {
   // de relevé mérite d'être redemandé, pas coché une fois pour toutes.
   let _accepte = false;
 
-  const TEXTE_CONSENTEMENT =
-    'Pour lire une capture d’écran, l’image est envoyée à Capital Board, qui la ' +
-    'confie à un modèle de reconnaissance de texte hébergé par Cloudflare — ' +
-    'déjà l’hébergeur de l’application.\n\n' +
-    '• L’image n’est enregistrée nulle part, ni chez nous ni chez lui.\n' +
-    '• Elle ne sert pas à entraîner de modèle.\n' +
-    '• Seul le texte lu revient, et vous le validez ligne par ligne.\n\n' +
-    'Les fichiers CSV et PDF, eux, restent lus dans votre navigateur, sans rien ' +
-    'envoyer. Préférez-les si votre banque les propose.\n\n' +
-    'Envoyer cette image pour lecture ?';
+  /**
+   * Demande de consentement, en modale propre.
+   *
+   * Un `confirm()` natif ferait l'affaire fonctionnellement, mais c'est le
+   * seul écran de l'application où l'on demande à sortir une donnée bancaire :
+   * il mérite d'être lisible, et de ressembler au reste. Une boîte système
+   * grise, sans mise en forme, donne l'impression d'un avertissement de
+   * navigateur qu'on écarte sans lire.
+   *
+   * Rend une promesse : la lecture attend la réponse.
+   */
+  function _demanderConsentement() {
+    return new Promise(resolve => {
+      const ov = document.getElementById('imp-consent');
+      if (!ov) return resolve(false);   // pas de modale : on ne devine pas un accord
+      let fini = false;
+      const clore = (ok) => {
+        if (fini) return;
+        fini = true;
+        ov.classList.remove('open');
+        document.removeEventListener('keydown', onEsc);
+        resolve(ok);
+      };
+      const onEsc = (e) => { if (e.key === 'Escape') clore(false); };
+      ov.querySelector('.imp-consent-non').onclick = () => clore(false);
+      ov.querySelector('.imp-consent-oui').onclick = () => clore(true);
+      // Un clic dans le vide vaut refus : sur une demande de ce genre, le
+      // silence ne peut pas valoir accord.
+      ov.onclick = (e) => { if (e.target === ov) clore(false); };
+      document.addEventListener('keydown', onEsc);
+      ov.classList.add('open');
+      setTimeout(() => { const b = ov.querySelector('.imp-consent-oui'); if (b) b.focus(); }, 40);
+    });
+  }
 
   async function lire(file, progres) {
     if (!_accepte) {
-      // confirm() plutôt qu'une modale maison : le consentement doit bloquer,
-      // et une troisième couche de modale par-dessus la fiche et l'import
-      // deviendrait illisible.
-      if (!window.confirm(TEXTE_CONSENTEMENT)) {
+      const ok = await _demanderConsentement();
+      if (!ok) {
         throw new Error('Lecture annulée. Vous pouvez déposer un CSV ou un PDF, ' +
                         'qui sont lus sans rien envoyer.');
       }

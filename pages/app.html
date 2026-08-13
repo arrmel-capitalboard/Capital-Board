@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260815v">
+<link rel="stylesheet" href="css/style.css?v=20260815w">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2727,6 +2727,40 @@
   </div>
 </div>
 
+<!-- ═══ IMPORT — consentement avant l'envoi d'une image ════
+     Le seul écran où l'on demande à faire sortir une donnée bancaire de
+     l'appareil. Il passe au-dessus de l'import, qui passe lui-même au-dessus
+     de la fiche : d'où le z-index le plus haut des trois. -->
+<div class="modal-overlay imp-consent-overlay" id="imp-consent"
+     role="alertdialog" aria-modal="true" aria-labelledby="imp-consent-title">
+  <div class="modal imp-consent">
+    <div class="imp-consent-ico" aria-hidden="true">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="M9 12l2 2 4-4"/>
+      </svg>
+    </div>
+    <div class="imp-consent-title" id="imp-consent-title">Envoyer cette image pour lecture ?</div>
+    <p class="imp-consent-lead">
+      Votre appareil ne sait pas déchiffrer une image seul. Elle est envoyée à
+      Capital Board, qui la confie à un modèle de reconnaissance de texte hébergé
+      par <b>Cloudflare</b> — déjà l’hébergeur de l’application.
+    </p>
+    <ul class="imp-consent-pts">
+      <li>L’image n’est enregistrée nulle part, ni chez nous ni chez lui.</li>
+      <li>Elle ne sert pas à entraîner de modèle.</li>
+      <li>Seul le texte lu revient, et vous le validez ligne par ligne.</li>
+    </ul>
+    <div class="imp-consent-note">
+      Les fichiers <b>CSV</b> et <b>PDF</b> restent lus dans votre navigateur, sans rien
+      envoyer. Préférez-les si votre banque les propose.
+    </div>
+    <div class="modal-footer">
+      <button class="btn-secondary imp-consent-non" type="button">Annuler</button>
+      <button class="btn-primary imp-consent-oui" type="button">Envoyer l’image</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ DÉPENSES — confirmation de suppression ═════ -->
 <!-- Au-dessus de la modale de saisie (z-index), qui reste ouverte derrière :
      annuler doit ramener sur le formulaire, pas le refermer. -->
@@ -3421,11 +3455,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260815v"></script>
+<script src="js/app.js?v=20260815w"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260815v"></script>
+<script src="js/onboarding.js?v=20260815w"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260815v"></script>
+<script src="js/import.js?v=20260815w"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

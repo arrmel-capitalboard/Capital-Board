@@ -8,6 +8,11 @@ avant toute nouvelle fonctionnalité.
 > **Import de relevés** — la piste pour arrêter la saisie manuelle, PDF ou
 > captures d'écran, sans agrégation bancaire : [`afaire-import.md`](afaire-import.md).
 >
+> **Livrets & épargne** a son propre fichier : [`afaire-livrets.md`](afaire-livrets.md).
+> Module livré, en bêta, vérifié sur un Livret Jeune au CIC. **Prochaine
+> séance : le Livret A** — un livret au plafond dépasse ce plafond une fois les
+> intérêts crédités, et `livSave()` refuse aujourd'hui cette écriture.
+>
 > **Dépenses & abonnements** a son propre fichier : [`afaire-depenses.md`](afaire-depenses.md).
 > Module livré et ouvrable en bêta depuis le 12 août 2026 ; la suite du sujet —
 > arrêter la saisie manuelle, agrégation bancaire via Enable Banking — y est

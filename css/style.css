@@ -4895,6 +4895,51 @@ body.has-demo-banner { padding-top: 40px; }
   .liv-avance > summary span { display: none; }
 }
 
+/* ─── Consentement avant l'envoi d'une image ───
+   Au-dessus de l'import (1100), lui-même au-dessus de la fiche (1000). */
+.imp-consent-overlay { z-index: 1200; }
+.imp-consent { width: 430px; max-width: calc(100vw - 32px); text-align: left; }
+.imp-consent-ico {
+  width: 44px; height: 44px; border-radius: 13px; margin-bottom: 16px;
+  display: flex; align-items: center; justify-content: center;
+  background: var(--positive-d); border: 1px solid rgba(0,224,158,.24);
+  color: var(--positive);
+}
+.imp-consent-title {
+  font-family: var(--display, var(--sans)); font-size: 17px; font-weight: 700;
+  color: var(--text); margin-bottom: 10px;
+}
+.imp-consent-lead { font-size: 13px; color: var(--text2); line-height: 1.65; margin: 0 0 14px; }
+.imp-consent-lead b { color: var(--text); font-weight: 600; }
+
+/* Les trois garanties, chacune précédée d'une coche dessinée en CSS : une
+   liste à puces ferait lire « conditions », une coche fait lire « acquis ». */
+.imp-consent-pts { list-style: none; margin: 0 0 14px; padding: 0; }
+.imp-consent-pts li {
+  position: relative; padding: 0 0 0 24px; margin: 8px 0;
+  font-size: 12.5px; color: var(--text2); line-height: 1.55;
+}
+.imp-consent-pts li::before {
+  content: ''; position: absolute; left: 3px; top: 5px;
+  width: 5px; height: 9px; border: solid var(--positive);
+  border-width: 0 1.8px 1.8px 0; transform: rotate(42deg);
+}
+.imp-consent-note {
+  padding: 11px 13px; border-radius: 10px;
+  background: var(--s2); border: 1px solid var(--border);
+  font-size: 12px; color: var(--text3); line-height: 1.6;
+}
+.imp-consent-note b { color: var(--text2); font-weight: 600; }
+
+@media (max-width: 640px) {
+  .imp-consent {
+    width: 100%; border-radius: 20px 20px 0 0;
+    padding: 24px 18px calc(18px + env(safe-area-inset-bottom));
+  }
+  .imp-consent .modal-footer { flex-direction: column-reverse; gap: 8px; }
+  .imp-consent .modal-footer button { width: 100%; }
+}
+
 /* ─── Zone de dépôt ─── */
 .imp-drop {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
