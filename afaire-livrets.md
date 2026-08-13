@@ -162,18 +162,38 @@ taux. Détail dans [`afaire-import.md`](afaire-import.md).
 
 #### Le point qui change le modèle : un Livret A a deux étages
 
-Les deux captures du 13/08 ne montrent pas un livret et un accident, mais **un
-produit à deux compartiments**, et c'est le CIC qui l'écrit :
+Tout est écrit sur les deux captures du 13/08, renvois de notes compris. Un
+Livret A au CIC est **un produit à deux compartiments** :
 
 | Compartiment | Assiette | Taux | Fiscalité |
 |---|---|---|---|
 | LIVRET A SUP | jusqu'à 22 950 € | 1,70 % (réglementé) | exonéré |
 | LIVRET SUP | de 22 950 € à 77 050 € | **0,30 %** (au contrat) | **imposé** |
 
-77 050 + 22 950 = 100 000 € : le vrai plafond du produit. Et la note ¹ de la
-fiche est explicite — « non fiscalisé **dans la limite du plafond
-réglementaire**. Au-delà, intérêts soumis à fiscalité selon la réglementation
-applicable ».
+22 950 + 77 050 = 100 000 € : le vrai plafond du produit.
+
+Les trois renvois de notes de la fiche disent le reste, et deux d'entre eux
+confirment des choix déjà faits ici :
+
+> ¹ Livret réglementé, non fiscalisé **dans la limite du plafond
+> réglementaire**. Au-delà, intérêts soumis à fiscalité selon la réglementation
+> applicable.
+>
+> ² Pour les livrets réglementés, les intérêts sont exonérés de l'impôt sur le
+> revenu et des prélèvements sociaux […]. **Le calcul des intérêts est effectué
+> par quinzaines.**
+>
+> ³ **Calculés au 31/12 selon les caractéristiques actuelles du livret. Seront
+> recalculés en cas d'apport, de retrait ou de changement de taux.**
+
+La note ² confirme le calcul par quinzaines, déjà en place et vérifié sur les
+dates de valeur. La note ³ confirme la façon dont le prévisionnel de la banque
+est prolongé (section 1, « Les deux chiffres de la banque ») : il vaut pour un
+livret qui ne bouge plus, et un mouvement postérieur s'y **ajoute** au lieu de
+l'invalider. La banque le dit dans les mêmes termes.
+
+Reste la note ¹, qui est celle qui coûte : la fiscalité n'est pas un attribut
+du livret mais de la **tranche**.
 
 Trois conséquences, et aucune n'est cosmétique :
 
