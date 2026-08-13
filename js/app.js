@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260815m';
+const APP_VERSION = '20260815n';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -19141,6 +19141,26 @@ window.livImporterReleve = function() {
         if (fiche.taux      !== undefined) _depSet('liv-f-taux', nb(fiche.taux));
         if (fiche.ouverture) _depSet('liv-f-ouverture', fiche.ouverture);
         if (fiche.fin)       _depSet('liv-f-fin', fiche.fin);
+
+        // Le solde ne se saisit pas, il se déduit des mouvements — et une fiche
+        // n'en contient aucun. Sans cette ligne, importer la fiche seule menait
+        // à une impasse : tous les champs remplis, et l'enregistrement refusé
+        // faute de mouvement.
+        //
+        // Le solde de la fiche en fait donc un, daté de l'ouverture du livret.
+        // C'est la même convention que le premier mouvement ajouté à la main,
+        // et elle est juste pour un livret dont l'argent dort depuis des
+        // années : un mouvement antérieur au 1er janvier rapporte sur les
+        // vingt-quatre quinzaines de l'année.
+        if (!_livMvtsPropres().length && fiche.solde > 0) {
+          _livMvts.push({
+            d: fiche.ouverture || _depVal('liv-f-ouverture') ||
+               new Date().toISOString().slice(0, 10),
+            m: nb(fiche.solde),
+            s: 1,
+          });
+          _livRenderMvts();
+        }
       }
       livRecalc();
     },
