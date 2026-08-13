@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260815x">
+<link rel="stylesheet" href="css/style.css?v=20260815y">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2518,23 +2518,35 @@
     <!-- Le chemin court : un relevé remplit les mouvements, les dates,
          les révisions de taux et les deux chiffres de la banque. Tout ce qui
          suit ne sert qu'à compléter ou corriger. -->
-    <button type="button" class="liv-import-cta" onclick="livImporterReleve()">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      <span>
-        <b>Importer un relevé</b>
-        <i>CSV, PDF ou capture d’écran — remplit tout ce qui suit</i>
-      </span>
-    </button>
-    <!-- Le détail est dit ici, et pas seulement dans la modale de consentement :
-         le membre décide de cliquer AVANT de la voir. Et il est dit exactement :
-         le CSV et le PDF ne sortent pas du navigateur, l'image si. Écrire
-         « tout est local » serait faux pour une capture. -->
-    <div class="liv-import-note">
-      <b>CSV et PDF</b> sont lus dans votre navigateur : le fichier ne part nulle part.
-      Une <b>capture d’écran</b> est lue par une IA sur notre serveur, qui ne la garde
-      pas — votre accord est demandé avant l’envoi.
+    <div class="liv-import">
+      <button type="button" class="liv-import-cta" onclick="livImporterReleve()">
+        <span class="liv-import-ico" aria-hidden="true">
+          <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+        </span>
+        <span class="liv-import-txt">
+          <b>Importer un relevé</b>
+          <i>CSV, PDF ou capture d’écran — remplit tout ce qui suit</i>
+        </span>
+        <svg class="liv-import-go" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><polyline points="9 6 15 12 9 18"/></svg>
+      </button>
+
+      <!-- Le détail est dit ici, et pas seulement dans la modale de consentement :
+           le membre décide de cliquer AVANT de la voir. Et il est dit exactement,
+           en deux pastilles qui se lisent d'un coup d'œil : le CSV et le PDF ne
+           sortent pas du navigateur, l'image si. Écrire « tout est local »
+           serait faux pour une capture, et un paragraphe gris ne se lit pas. -->
+      <div class="liv-import-facts">
+        <div class="liv-fact liv-fact-local">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+          <span><b>CSV et PDF</b>Lus dans votre navigateur. Le fichier ne part nulle part.</span>
+        </div>
+        <div class="liv-fact liv-fact-ia">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 3v4M12 17v4M3 12h4M17 12h4M5.6 5.6l2.8 2.8M15.6 15.6l2.8 2.8M18.4 5.6l-2.8 2.8M8.4 15.6l-2.8 2.8"/></svg>
+          <span><b>Capture d’écran</b>Lue par une IA sur notre serveur, qui ne la garde pas. Votre accord est demandé avant.</span>
+        </div>
+      </div>
     </div>
-    <div class="liv-import-ou">ou remplissez les champs à la main</div>
+    <div class="liv-import-ou"><span>ou remplissez les champs à la main</span></div>
 
     <div class="dep-row2">
       <div class="form-group">
@@ -3470,11 +3482,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260815x"></script>
+<script src="js/app.js?v=20260815y"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260815x"></script>
+<script src="js/onboarding.js?v=20260815y"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260815x"></script>
+<script src="js/import.js?v=20260815y"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

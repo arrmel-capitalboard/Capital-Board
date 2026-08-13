@@ -4859,36 +4859,81 @@ body.has-demo-banner { padding-top: 40px; }
 
 /* Le chemin court, en tête de la fiche : un relevé remplit six des sept blocs
    du formulaire. Il doit se voir avant qu'on commence à taper. */
-.liv-import-cta {
-  display: flex; align-items: center; gap: 11px; width: 100%;
-  margin: 0 0 18px; padding: 12px 14px; border-radius: 12px;
-  background: var(--accent-d); border: 1px solid rgba(124,109,245,.3);
-  color: var(--accent); cursor: pointer; text-align: left;
-  font-family: var(--sans); transition: border-color .15s, background .15s;
+/* La carte entière : le bouton et les deux garanties ne font qu'un bloc. Les
+   séparer laissait un paragraphe gris flottant sous le bouton, que personne ne
+   lisait — alors que c'est précisément l'information qui fait déposer, ou non,
+   un relevé bancaire. */
+.liv-import {
+  margin: 0 0 12px; border-radius: var(--radius-lg); overflow: hidden;
+  border: 1px solid rgba(124,109,245,.28);
+  background:
+    linear-gradient(180deg, rgba(124,109,245,.13) 0%, rgba(124,109,245,.04) 100%),
+    var(--s2);
+  transition: border-color .16s;
 }
-.liv-import-cta:hover { border-color: var(--accent); background: rgba(124,109,245,.14); }
-.liv-import-cta > span { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
-.liv-import-cta b { font-size: 13px; font-weight: 700; color: var(--text); }
-.liv-import-cta i { font-style: normal; font-size: 11.5px; color: var(--text3); }
+.liv-import:hover { border-color: rgba(124,109,245,.5); }
 
-/* Le bouton perd sa marge basse : la note et le « ou » la reprennent, pour que
-   les trois se lisent comme un seul bloc. */
-.liv-import-cta { margin-bottom: 9px; }
-.liv-import-note {
-  margin: 0 0 14px; padding: 0 2px;
-  font-size: 11.5px; line-height: 1.55; color: var(--text3);
+.liv-import-cta {
+  display: flex; align-items: center; gap: 13px; width: 100%;
+  padding: 15px 16px; border: 0; background: none;
+  color: var(--accent); cursor: pointer; text-align: left;
+  font-family: var(--sans); transition: background .16s;
 }
-.liv-import-note b { font-weight: 650; color: var(--text2); }
+.liv-import-cta:hover { background: rgba(124,109,245,.08); }
+.liv-import-cta:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+/* Pastille d'icône : donne un point d'ancrage visuel, et évite l'icône qui
+   flotte à côté du texte. */
+.liv-import-ico {
+  flex: none; width: 36px; height: 36px; border-radius: 11px;
+  display: flex; align-items: center; justify-content: center;
+  background: rgba(124,109,245,.16); border: 1px solid rgba(124,109,245,.24);
+  color: var(--accent);
+  transition: background .16s, transform .16s;
+}
+.liv-import-cta:hover .liv-import-ico { background: rgba(124,109,245,.26); transform: translateY(-1px); }
+
+.liv-import-txt { display: flex; flex-direction: column; gap: 3px; min-width: 0; flex: 1; }
+.liv-import-cta b { font-size: 13.5px; font-weight: 700; color: var(--text); letter-spacing: -.1px; }
+.liv-import-cta i { font-style: normal; font-size: 11.5px; line-height: 1.45; color: var(--text2); }
+
+/* Le chevron dit que ça ouvre quelque chose, pas que ça valide. */
+.liv-import-go { flex: none; color: var(--text3); transition: transform .16s, color .16s; }
+.liv-import-cta:hover .liv-import-go { transform: translateX(2px); color: var(--accent); }
+
+/* Les deux garanties, côte à côte : elles se comparent, donc elles se lisent en
+   colonnes et non en paragraphe. Le vert dit « ne sort pas », le violet dit
+   « sort, et voilà à quelles conditions ». */
+.liv-import-facts {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 1px;
+  background: var(--border); border-top: 1px solid var(--border);
+}
+.liv-fact {
+  display: flex; align-items: flex-start; gap: 9px;
+  padding: 12px 14px 13px; background: rgba(4,6,11,.55);
+}
+.liv-fact svg { flex: none; margin-top: 1px; }
+.liv-fact span {
+  display: flex; flex-direction: column; gap: 2px; min-width: 0;
+  font-size: 11px; line-height: 1.5; color: var(--text3);
+}
+.liv-fact b {
+  font-size: 10.5px; font-weight: 700; letter-spacing: .5px; text-transform: uppercase;
+}
+.liv-fact-local svg, .liv-fact-local b { color: var(--positive); }
+.liv-fact-ia    svg, .liv-fact-ia    b { color: var(--accent2); }
 
 /* Séparateur : l'import est le chemin court, la saisie reste ouverte. */
 .liv-import-ou {
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; gap: 12px;
   margin: 0 0 18px;
-  font-size: 11px; color: var(--text3); text-transform: lowercase;
+  font-size: 10.5px; font-weight: 600; letter-spacing: .3px;
+  color: var(--text3);
 }
 .liv-import-ou::before,
 .liv-import-ou::after {
-  content: ''; flex: 1; height: 1px; background: var(--border);
+  content: ''; flex: 1; height: 1px;
+  background: linear-gradient(90deg, transparent, var(--border2), transparent);
 }
 
 /* Ce que l'import remplit seul : replié tant qu'il n'y a rien à y voir. */
@@ -4911,9 +4956,14 @@ body.has-demo-banner { padding-top: 40px; }
 .liv-avance[open] > summary { margin-bottom: 16px; }
 
 @media (max-width: 640px) {
-  .liv-import-cta { padding: 11px 12px; }
-  .liv-import-note { font-size: 11px; line-height: 1.5; margin-bottom: 12px; }
-  .liv-import-ou { margin-bottom: 15px; }
+  .liv-import-cta { padding: 13px 13px; gap: 11px; }
+  .liv-import-ico { width: 32px; height: 32px; border-radius: 10px; }
+  /* Deux colonnes de 11 px deviennent illisibles sous 640 px : elles s'empilent,
+     et le filet passe de la verticale à l'horizontale tout seul (gap: 1px sur
+     un fond de bordure). */
+  .liv-import-facts { grid-template-columns: 1fr; }
+  .liv-fact { padding: 11px 13px; }
+  .liv-import-ou { margin-bottom: 15px; gap: 10px; }
   .liv-avance > summary span { display: none; }
 }
 
