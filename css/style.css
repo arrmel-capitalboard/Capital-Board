@@ -4869,6 +4869,13 @@ body.has-demo-banner { padding-top: 40px; }
 .imp-gar-t { font-size: 12px; font-weight: 700; color: var(--positive); margin-bottom: 6px; }
 .imp-garanties ul { margin: 0; padding-left: 16px; }
 .imp-garanties li { font-size: 11.5px; color: var(--text2); line-height: 1.6; }
+/* Une image ne suit pas le même chemin qu'un CSV : elle sort de l'appareil.
+   Le pavé change de couleur pour que la différence se voie avant d'être lue. */
+.imp-garanties.image {
+  margin-top: 10px;
+  background: rgba(245,183,49,.07); border-color: rgba(245,183,49,.22);
+}
+.imp-garanties.image .imp-gar-t { color: var(--gold); }
 
 .imp-aide {
   margin-top: 12px; font-size: 11.5px; color: var(--text3); line-height: 1.6;

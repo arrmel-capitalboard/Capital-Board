@@ -13,11 +13,15 @@
 //
 //  LE POINT QUI NE SE NÉGOCIE PAS
 //  Un relevé bancaire est plus intime qu'une ligne d'ETF.
-//    • le fichier est lu dans le navigateur et n'est JAMAIS téléversé ;
-//    • seules les lignes cochées par le membre sont écrites ;
-//    • le fichier d'origine n'est jamais conservé, aucune copie, aucun cache.
-//  Ces trois points sont affichés sur l'écran d'import, pas seulement dans les
-//  CGU : c'est ce qui fait accepter le dépôt d'un relevé.
+//    • un CSV ou un PDF est lu dans le navigateur et n'est JAMAIS téléversé ;
+//    • une image, elle, doit sortir : un navigateur ne déchiffre pas des pixels
+//      seul. Elle part au Worker, qui la donne à un modèle de vision de Workers
+//      AI, et le membre doit y consentir avant le premier envoi ;
+//    • rien n'est conservé, aucune copie, aucun cache, aucun journal ;
+//    • seules les lignes cochées par le membre sont écrites.
+//  Ces points sont affichés sur l'écran d'import, pas seulement dans les CGU,
+//  et la différence entre fichier et image y est dite : c'est ce qui fait
+//  accepter le dépôt d'un relevé.
 //
 //  Chargé après app.js, dont il utilise les globales (_depParse, _attr…).
 // ═══════════════════════════════════════════════════════════════════════════
@@ -806,71 +810,103 @@ window.CBImport.pdf = (function () {
 })();
 
 // ═══════════════════════════════════════════════════════════════════════════
-//  VOIE 3 — CAPTURES D'ÉCRAN, LUES EN LOCAL
+//  VOIE 3 — CAPTURES D'ÉCRAN, LUES PAR UN MODÈLE DE VISION
 //
-//  Le repli, et il est classé dernier pour une raison : sur une capture de
-//  téléphone la reconnaissance du texte est correcte, mais sur les chiffres
-//  elle ne l'est pas assez. Un 8 lu 3 fausse un solde sans rien signaler.
-//  D'où l'écran de validation, obligatoire ici plus qu'ailleurs.
+//  Le repli, et le seul recours quand la banque n'expose son relevé que dans
+//  son application mobile — cas du CIC, dont l'appli affiche les opérations
+//  sans jamais proposer de fichier.
 //
-//  Cela dit c'est la seule voie disponible quand la banque n'expose son relevé
-//  que dans son application mobile — cas du CIC, dont l'appli affiche les
-//  opérations sans jamais proposer de fichier.
+//  Cette voie a d'abord été écrite avec tesseract.js, en local. Sur du texte il
+//  tient ; sur des chiffres, non, et un 8 lu 3 fausse un solde sans rien
+//  signaler. Le dictionnaire pesait 6,5 Mo pour un résultat qu'il fallait
+//  relire ligne à ligne de toute façon.
+//
+//  L'image part donc au Worker, qui la donne à un modèle de vision de Workers
+//  AI. afaire-import.md classait cette voie en dernier parce que « l'image part
+//  chez un tiers » — le raisonnement visait un fournisseur externe. Cloudflare
+//  héberge déjà le Worker, le KV et R2 : ce n'est pas un nouveau sous-traitant,
+//  et sa documentation dit que les entrées ne servent ni à entraîner ses
+//  modèles ni à améliorer ses services.
+//
+//  Ce qui ne change pas : le consentement est demandé avant le premier envoi,
+//  l'image n'est stockée nulle part, et l'écran de validation reste obligatoire.
+//
+//  Le modèle ne rend QUE du texte. Toute la structuration — dates héritées d'un
+//  en-tête de groupe, signes, montants — reste dans analyserTexte() ci-dessous,
+//  qui est testée. Un modèle n'a pas à inventer un montant.
 //
 //  Une capture d'appli mobile n'a pas la forme d'un relevé : pas de colonnes,
 //  et surtout pas de date par ligne. La date est un en-tête de groupe — « 06
-//  août » — sous lequel se rangent plusieurs opérations. L'analyse en tient
-//  compte, sans quoi aucune ligne n'aurait de date.
-//
-//  tesseract.js (Apache-2.0) et son dictionnaire français sont hébergés chez
-//  nous. 6,5 Mo, chargés une seule fois, et seulement si une image est déposée.
+//  août » — sous lequel se rangent plusieurs opérations.
 // ═══════════════════════════════════════════════════════════════════════════
 
 window.CBImport.ocr = (function () {
   'use strict';
 
-  const DIR = 'assets/vendor/tesseract/';
-  let _worker = null;
+  // Consentement donné pour la session. Volontairement non persisté : un envoi
+  // de relevé mérite d'être redemandé, pas coché une fois pour toutes.
+  let _accepte = false;
 
-  function _url(f) { return new URL(DIR + f, document.baseURI).href; }
-
-  async function _charger(progres) {
-    if (_worker) return _worker;
-    if (!window.Tesseract) {
-      if (progres) progres('Chargement du lecteur de texte…');
-      await new Promise((ok, ko) => {
-        const s = document.createElement('script');
-        s.src = _url('tesseract.min.js');
-        s.onload = ok;
-        s.onerror = () => ko(new Error('Le lecteur de texte n’a pas pu être chargé.'));
-        document.head.appendChild(s);
-      });
-    }
-    if (progres) progres('Préparation du dictionnaire français…');
-    // workerBlobURL: false — le worker est servi depuis notre domaine plutôt
-    // que recopié dans une URL blob:, qu'un script-src futur refuserait.
-    _worker = await window.Tesseract.createWorker('fra', 1, {
-      workerPath: _url('worker.min.js'),
-      corePath:   _url(''),
-      langPath:   _url(''),
-      workerBlobURL: false,
-      logger: m => {
-        if (progres && m && m.status === 'recognizing text') {
-          progres('Lecture de l’image… ' + Math.round((m.progress || 0) * 100) + ' %');
-        }
-      },
-    });
-    return _worker;
-  }
+  const TEXTE_CONSENTEMENT =
+    'Pour lire une capture d’écran, l’image est envoyée à Capital Board, qui la ' +
+    'confie à un modèle de reconnaissance de texte hébergé par Cloudflare — ' +
+    'déjà l’hébergeur de l’application.\n\n' +
+    '• L’image n’est enregistrée nulle part, ni chez nous ni chez lui.\n' +
+    '• Elle ne sert pas à entraîner de modèle.\n' +
+    '• Seul le texte lu revient, et vous le validez ligne par ligne.\n\n' +
+    'Les fichiers CSV et PDF, eux, restent lus dans votre navigateur, sans rien ' +
+    'envoyer. Préférez-les si votre banque les propose.\n\n' +
+    'Envoyer cette image pour lecture ?';
 
   async function lire(file, progres) {
-    const worker = await _charger(progres);
-    if (progres) progres('Lecture de l’image…');
-    const res = await worker.recognize(file);
-    // Le worker est relâché : rien de l'image ne reste en mémoire.
-    await worker.terminate();
-    _worker = null;
-    return analyserTexte((res && res.data && res.data.text) || '');
+    if (!_accepte) {
+      // confirm() plutôt qu'une modale maison : le consentement doit bloquer,
+      // et une troisième couche de modale par-dessus la fiche et l'import
+      // deviendrait illisible.
+      if (!window.confirm(TEXTE_CONSENTEMENT)) {
+        throw new Error('Lecture annulée. Vous pouvez déposer un CSV ou un PDF, ' +
+                        'qui sont lus sans rien envoyer.');
+      }
+      _accepte = true;
+    }
+
+    if (progres) progres('Envoi de l’image…');
+    const jeton = await _jeton();
+    if (!jeton) throw new Error('Reconnectez-vous pour utiliser la lecture d’image.');
+
+    const res = await fetch(_worker() + '/lire-releve', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + jeton,
+        'X-File-Type': file.type || 'image/png',
+        'Content-Type': 'application/octet-stream',
+      },
+      body: file,
+    });
+
+    let data = null;
+    try { data = await res.json(); } catch (_) { /* réponse non JSON */ }
+    if (!res.ok) {
+      throw new Error((data && data.error) || 'La lecture de l’image a échoué.');
+    }
+    if (progres) progres('Analyse du texte lu…');
+    return analyserTexte((data && data.texte) || '');
+  }
+
+  // WORKER_URL et fbAuth sont des globales de app.js. WORKER_URL est un `const`
+  // de haut niveau : il vit dans la portée globale mais n'est PAS une propriété
+  // de window, d'où la référence nue plutôt que window.WORKER_URL, qui vaudrait
+  // undefined. Même convention que onboarding.js pour isAdmin et showPage.
+  function _worker() {
+    return (typeof WORKER_URL === 'string' && WORKER_URL) || 'https://api.capitalboard.fr';
+  }
+
+  async function _jeton() {
+    try {
+      if (typeof fbAuth === 'undefined' || !fbAuth) return null;
+      const u = fbAuth.currentUser;
+      return u ? await u.getIdToken() : null;
+    } catch (_) { return null; }
   }
 
   // ─── Analyse du texte reconnu ────────────────────────────────────────────
@@ -907,9 +943,11 @@ window.CBImport.ocr = (function () {
     return faire(an);
   }
 
-  // Tesseract confond volontiers O et 0, l et 1. La correction se fait mot par
-  // mot, et seulement sur un mot qui contient déjà un chiffre : « Solde » ne
-  // doit pas devenir « 501de », mais « 1O5,OO » doit devenir « 105,00 ».
+  // Toute lecture d'image confond un jour O et 0, l et 1 — un OCR classique
+  // souvent, un modèle de vision plus rarement, mais aucun jamais. La
+  // correction se fait mot par mot, et seulement sur un mot qui contient déjà
+  // un chiffre : « Solde » ne doit pas devenir « 501de », mais « 1O5,OO » doit
+  // devenir « 105,00 ».
   //
   // Écrit sans lookbehind à dessein : `(?<=…)` n'existe qu'à partir de
   // Safari 16.4, et une erreur de syntaxe ici emporterait tout le fichier, donc

@@ -26,6 +26,45 @@ RÈGLES STRICTES :
 BASE DE CONNAISSANCE :
 ${KB}`;
 
+// ── Lecture d'un relevé en image (POST /lire-releve) ───────────────────────
+// Transcription d'une capture d'écran de relevé bancaire par un modèle de
+// vision de Workers AI.
+//
+// POURQUOI ICI ET PAS DANS LE NAVIGATEUR
+// La lecture se faisait par tesseract.js, en local. Sur du texte, il tient ;
+// sur des chiffres, non — et un 8 lu 3 fausse un solde sans rien signaler.
+// Un modèle de vision fait nettement mieux sur une capture de téléphone, qui
+// est la seule ressource disponible quand la banque n'expose son relevé que
+// dans son application mobile.
+//
+// POURQUOI C'EST ACCEPTABLE
+// Le modèle tourne sur Workers AI. Cloudflare héberge déjà ce Worker, le KV et
+// R2 : ce n'est pas un nouveau sous-traitant, et sa documentation est explicite
+// — les entrées ne servent ni à entraîner ses modèles ni à améliorer ses
+// services. C'est ce qui distingue cette voie de l'envoi à un tiers, écarté
+// dans afaire-import.md.
+//
+// CE QUI NE SE NÉGOCIE PAS
+// L'image n'est écrite nulle part : ni R2, ni KV, ni Firestore, ni les logs.
+// Elle vit le temps de l'appel, et rien de son contenu ne doit apparaître dans
+// une trace d'erreur. Le membre doit être authentifié et avoir consenti.
+//
+// Le modèle ne rend QUE du texte : la structuration — dates, signes, montants —
+// reste au code client, qui est testé. Demander un JSON à un modèle de 9 Md de
+// paramètres reviendrait à lui laisser inventer des montants.
+const VISION_MODEL     = '@cf/moondream/moondream3.1-9B-A2B';
+const VISION_MAX_BYTES = 6 * 1024 * 1024;
+const VISION_RL_MAX    = 30;    // images max par compte et par fenêtre
+const VISION_RL_WINDOW = 3600;  // fenêtre rate-limit (s)
+const VISION_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
+
+const VISION_PROMPT =
+  'Transcris tout le texte visible de cette capture de relevé bancaire, ' +
+  'ligne par ligne, dans l\'ordre où il apparaît. Recopie les montants et les ' +
+  'dates exactement, sans les corriger, sans les convertir et sans en ajouter. ' +
+  'Conserve le signe + ou - devant chaque montant. Ne commente pas, ne résume ' +
+  'pas, ne réponds rien d\'autre que le texte lu.';
+
 const CORS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   // Authorization : /username-available accepte le jeton du demandeur pour
@@ -386,6 +425,19 @@ async function buildFavoris(env) {
 
 function b64url(str) {
   return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+// Octets → base64 standard. Découpé en tranches parce que
+// String.fromCharCode(...tableau) dépasse la taille maximale de la pile
+// d'appels sur une image de quelques mégaoctets — ailleurs dans ce fichier
+// l'étalement suffit, les buffers y font quelques centaines d'octets.
+function bytesToBase64(bytes) {
+  let bin = '';
+  const PAS = 0x8000;
+  for (let i = 0; i < bytes.length; i += PAS) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + PAS));
+  }
+  return btoa(bin);
 }
 
 function pemToBytes(pem) {
@@ -1313,6 +1365,52 @@ export default {
         h.set('Cache-Control', 'private, max-age=86400');
         h.set('X-Content-Type-Options', 'nosniff');
         return new Response(obj.body, { headers: h });
+      }
+
+      // ── POST /lire-releve ───────────────────────────────────────────────
+      // Transcription d'une capture de relevé. Voir le bloc VISION_* en tête
+      // de fichier : rien n'est stocké, rien n'est journalisé.
+      if (url.pathname === '/lire-releve' && request.method === 'POST') {
+        if (!env.AI) return json({ error: 'lecture assistée indisponible' }, 503);
+
+        // Authentification exigée, contrairement à /chat qui est public : un
+        // relevé bancaire n'est pas une question sur le site, et le compte
+        // donne un rate-limit qui vaut mieux qu'une IP partagée.
+        const auth = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
+        let user;
+        try { user = await verifyIdToken(auth, env); }
+        catch { return json({ error: 'non authentifié' }, 401); }
+        if (!user.emailVerified) return json({ error: 'email non vérifié' }, 403);
+
+        const rlKey = `vision:rl:${user.localId}`;
+        const count = parseInt((await env.EARNINGS.get(rlKey)) || '0', 10);
+        if (count >= VISION_RL_MAX) {
+          return json({ error: 'Trop d’images lues récemment, réessayez plus tard.' }, 429);
+        }
+        await env.EARNINGS.put(rlKey, String(count + 1), { expirationTtl: VISION_RL_WINDOW });
+
+        const type = (request.headers.get('X-File-Type') || '').toLowerCase().split(';')[0].trim();
+        if (!VISION_MIME.has(type)) return json({ error: 'type de fichier refusé' }, 415);
+
+        const bytes = new Uint8Array(await request.arrayBuffer());
+        if (!bytes.length) return json({ error: 'image vide' }, 400);
+        if (bytes.length > VISION_MAX_BYTES) return json({ error: 'image trop lourde' }, 413);
+
+        try {
+          const out = await env.AI.run(env.VISION_MODEL || VISION_MODEL, {
+            task: 'query',
+            image: `data:${type};base64,${bytesToBase64(bytes)}`,
+            question: VISION_PROMPT,
+            max_tokens: 1024,
+          });
+          const texte = String(out?.answer ?? out?.response ?? out?.description ?? '').trim();
+          if (!texte) return json({ error: 'Aucun texte lu dans cette image.' }, 502);
+          return json({ texte });
+        } catch (e) {
+          // e.message peut contenir un fragment de la requête, donc de l'image
+          // ou de son contenu : on ne le renvoie pas et on ne le journalise pas.
+          return json({ error: 'Lecture assistée indisponible pour le moment.' }, 502);
+        }
       }
 
       // ── POST /chat ──────────────────────────────────────────────────────

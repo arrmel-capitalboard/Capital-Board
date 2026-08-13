@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260815i">
+<link rel="stylesheet" href="css/style.css?v=20260815j">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2605,14 +2605,28 @@
 
       <div class="imp-erreur" id="imp-erreur" hidden></div>
 
-      <!-- Les trois garanties sont écrites ici, pas seulement dans les CGU :
-           c'est ce qui fait accepter le dépôt d'un relevé bancaire. -->
+      <!-- Les garanties sont écrites ici, pas seulement dans les CGU : c'est ce
+           qui fait accepter le dépôt d'un relevé bancaire.
+           Elles ne sont PAS les mêmes selon le format, et le dire est le
+           minimum : un CSV ou un PDF est lu sur l'appareil, une image part au
+           serveur pour y être déchiffrée par un modèle de vision. -->
       <div class="imp-garanties">
-        <div class="imp-gar-t">Ce fichier ne quitte pas votre navigateur</div>
+        <div class="imp-gar-t">CSV et PDF : rien ne quitte votre navigateur</div>
         <ul>
-          <li>Il est lu sur votre appareil. Rien n’est envoyé, ni à nous, ni à un tiers.</li>
+          <li>Le fichier est lu sur votre appareil. Rien n’est envoyé, ni à nous, ni à un tiers.</li>
           <li>Seules les lignes que vous cochez sont enregistrées.</li>
           <li>Le fichier d’origine n’est jamais conservé, ni copié, ni mis en cache.</li>
+        </ul>
+      </div>
+
+      <div class="imp-garanties image">
+        <div class="imp-gar-t">Captures d’écran : l’image est envoyée pour être lue</div>
+        <ul>
+          <li>Votre appareil ne sait pas déchiffrer une image seul. Elle part à
+              Capital Board, qui la confie à un modèle de reconnaissance de texte
+              hébergé par Cloudflare — déjà l’hébergeur de l’application.</li>
+          <li>L’image n’est enregistrée nulle part et ne sert à entraîner aucun modèle.</li>
+          <li>Votre accord vous est demandé avant le premier envoi.</li>
         </ul>
       </div>
 
@@ -2620,7 +2634,8 @@
         <b>Où trouver le fichier ?</b> Sur le site de votre banque, depuis un ordinateur :
         ouvrez le compte, puis « Télécharger les opérations » ou « Exporter ».
         Choisissez le CSV si le format vous est demandé. L’application mobile ne
-        propose en général que l’affichage — d’où la lecture des captures, moins fiable.
+        propose en général que l’affichage — d’où la lecture des captures, à
+        n’utiliser que si votre banque ne donne aucun fichier.
       </div>
     </div>
 
@@ -3356,11 +3371,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260815i"></script>
+<script src="js/app.js?v=20260815j"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260815i"></script>
+<script src="js/onboarding.js?v=20260815j"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260815i"></script>
+<script src="js/import.js?v=20260815j"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

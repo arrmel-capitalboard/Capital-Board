@@ -136,8 +136,8 @@
         </tr>
         <tr>
           <td><strong style="color:var(--text)">Cloudflare</strong><br><a href="https://www.cloudflare.com/privacypolicy/" target="_blank" rel="noopener" style="font-size:11px">Politique →</a></td>
-          <td>DNS, routage email, Worker API (vérification PIN + envoi OTP)</td>
-          <td>Adresse IP, données en transit</td>
+          <td>DNS, routage email, Worker API (vérification PIN + envoi OTP), assistant d'aide et lecture des captures d'écran de relevés (Workers AI)</td>
+          <td>Adresse IP, données en transit, et&nbsp;— uniquement si vous l'utilisez et l'acceptez&nbsp;— l'image de relevé que vous déposez</td>
           <td>USA / UE</td>
         </tr>
         <tr>
@@ -148,6 +148,15 @@
         </tr>
       </tbody>
     </table>
+
+    <h3 style="font-size:14px;font-weight:600;color:var(--text);margin:20px 0 10px">Import de relevés bancaires</h3>
+    <p>Capital Board permet d'importer les opérations d'un compte plutôt que de les saisir à la main. Le traitement diffère selon le format, et cette différence est la seule qui compte :</p>
+    <ul>
+      <li><strong style="color:var(--text)">Fichiers CSV et PDF</strong> : lus <strong style="color:var(--text)">dans votre navigateur</strong>. Le fichier n'est jamais transmis, ni à nous, ni à un tiers. Seules les lignes que vous cochez sont enregistrées dans votre compte.</li>
+      <li><strong style="color:var(--text)">Captures d'écran</strong> : un navigateur ne peut pas déchiffrer une image seul. L'image est transmise à notre Worker, qui la confie à un modèle de reconnaissance de texte de <strong style="color:var(--text)">Cloudflare Workers AI</strong>. Votre accord vous est demandé avant le premier envoi, et vous pouvez le refuser sans perdre l'accès au reste de l'application.</li>
+    </ul>
+    <p>Dans les deux cas, aucun fichier ni aucune image n'est conservé : ni sur nos serveurs, ni dans un cache, ni dans un journal. L'image vit le temps de sa lecture. Cloudflare <a href="https://developers.cloudflare.com/workers-ai/platform/data-usage/" target="_blank" rel="noopener">indique</a> ne pas utiliser les contenus transmis à Workers AI pour entraîner ses modèles ni améliorer ses services.</p>
+    <p>Seul le texte lu vous est renvoyé, et vous le validez ligne par ligne avant tout enregistrement. Si votre banque propose un export CSV ou PDF, préférez-le : rien ne sort alors de votre appareil.</p>
 
     <h3 style="font-size:14px;font-weight:600;color:var(--text);margin:20px 0 10px">Transferts hors UE</h3>
     <p>Les transferts vers les États-Unis (Google Firebase, GitHub, Tavily) sont encadrés par :</p>

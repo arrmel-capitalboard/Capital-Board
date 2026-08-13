@@ -12,8 +12,8 @@ document.
 | Relevé saisi | livré avant | fiche du livret, bloc « Relevé de la banque » |
 | **CSV** | **livré** | `CBImport.csv` |
 | **PDF** | **livré** | `CBImport.pdf`, pdf.js 6.2.108 hébergé chez nous |
-| **Captures (OCR)** | **livré** | `CBImport.ocr`, tesseract.js + dictionnaire fr |
-| Capture → modèle de vision | écarté | fait sortir le relevé de l'appareil |
+| **Captures → modèle de vision** | **livré** | `CBImport.ocr` + `POST /lire-releve`, Workers AI |
+| ~~Captures (OCR local)~~ | remplacé | tesseract.js, 6,5 Mo, trop faible sur les chiffres |
 | Agrégation bancaire | ailleurs | `afaire-depenses.md`, section 6 |
 
 ---
@@ -89,38 +89,48 @@ main quand le format n'est pas reconnu.
 Angle mort : les relevés scannés, qui existent encore chez quelques réseaux. Ils
 relèvent alors de la voie 3.
 
-### 3. Les captures d'écran, lues en local
+### 3. Les captures d'écran, lues en local — essayée, puis retirée
 
-`tesseract.js` fait de l'OCR dans le navigateur. Il faut embarquer le moteur et
-le dictionnaire français — une dizaine de mégaoctets, chargés à la demande, une
-seule fois.
+`tesseract.js` fait de l'OCR dans le navigateur. Livré le 13 août 2026, retiré
+le jour même.
 
 Sur une capture de téléphone, propre et bien contrastée, la reconnaissance du
 texte est correcte. **Sur les chiffres, elle ne l'est pas assez.** Un `8` lu `3`
-ou un séparateur décimal manqué fausse un solde sans rien signaler.
+ou un séparateur décimal manqué fausse un solde sans rien signaler. Le moteur et
+le dictionnaire français pesaient 6,5 Mo dans le dépôt, pour un résultat qu'il
+fallait de toute façon relire ligne à ligne.
 
-Utilisable donc, mais **jamais sans écran de validation ligne à ligne**, avec
-les montants pré-remplis et corrigeables. C'est-à-dire : on remplace la saisie
-par de la relecture. Gain réel, mais moitié moindre qu'avec le PDF.
+Le code reste dans l'historique (`e7c3a11`) si le besoin d'un mode entièrement
+hors-ligne réapparaît.
 
-### 4. Capture envoyée à un modèle de vision
+### 4. Capture envoyée à un modèle de vision — c'est la voie retenue
 
-Un modèle multimodal lit une capture de relevé bien mieux qu'un OCR classique :
-il comprend la structure du tableau, distingue débit et crédit, rattache une
-opération à sa date même quand elle est portée par un en-tête de groupe.
+Un modèle multimodal lit une capture de relevé bien mieux qu'un OCR classique.
 
-Le Worker existe déjà et porterait l'appel, la clé restant côté serveur.
+**Cette note affirmait que « l'image part chez un tiers », et c'était faux dans
+notre cas.** Le raisonnement visait un fournisseur externe — accord de
+sous-traitance à négocier, nouveau destinataire à déclarer. Or le Worker tourne
+déjà sur Cloudflare, avec le KV, R2 et l'assistant d'aide : **Workers AI n'ajoute
+aucun sous-traitant.** Et sa
+[documentation](https://developers.cloudflare.com/workers-ai/platform/data-usage/)
+est explicite — les entrées ne servent ni à entraîner ses modèles ni à améliorer
+ses services.
 
-**Mais l'image part chez un tiers.** Ce n'est plus un détail technique : c'est un
-relevé bancaire nominatif qui sort de l'appareil du membre. Cela impose un
-consentement explicite et spécifique, une mention dans la politique de
-confidentialité, un accord de sous-traitance, et une position claire sur la
-non-conservation des images.
+Ce qui restait dû a été fait : consentement explicite avant le premier envoi,
+mention dans la politique de confidentialité, non-conservation garantie côté
+Worker (ni R2, ni KV, ni Firestore, ni journal — le message d'erreur du modèle
+n'est même pas propagé, il pourrait contenir un fragment de l'image).
 
-Le coût par image est faible. Le coût réel est réglementaire.
+**Le modèle ne rend que du texte.** La structuration — dates héritées d'un
+en-tête de groupe, signes, montants — reste dans `analyserTexte()`, qui est
+testée. Demander un JSON à un modèle reviendrait à le laisser inventer des
+montants ; lui demander de lire des pixels, c'est ce qu'il fait le mieux.
 
-À réserver, si on y vient, au repli des formats non reconnus — et jamais par
-défaut.
+Coût : palier gratuit de 10 000 Neurons par jour, puis 0,011 $ les 1 000. Une
+capture pèse ~1 500 jetons d'entrée, soit de l'ordre de 0,0005 € l'image.
+
+Reste par défaut le dernier recours : une image ne se lit bien que faute de
+fichier.
 
 ### 5. L'agrégation bancaire
 
