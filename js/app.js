@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816a';
+const APP_VERSION = '20260816b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -19203,7 +19203,21 @@ window.livImporterReleve = function() {
         if (fiche.acquis !== undefined || fiche.projete !== undefined) {
           _depSet('liv-f-r-le', new Date().toISOString().slice(0, 10));
         }
-        if (fiche.taux      !== undefined) _depSet('liv-f-taux', nb(fiche.taux));
+        // Le taux lu ne sert que là où le barème ne sait pas : PEL, CEL et
+        // livret bancaire, dont le taux est au contrat, et Livret Jeune, dont
+        // chaque banque fixe le sien.
+        //
+        // Sur un Livret A, le recopier serait une régression : il deviendrait
+        // un taux figé, et les révisions du 1er février et du 1er août ne
+        // s'appliqueraient plus. Le barème les porte, lui.
+        //
+        // Cette fiche-là le montrait bien : une capture du compartiment de
+        // dépassement d'un Livret A affiche 0,30 %, qui n'est pas le taux du
+        // livret. Elle aurait rémunéré un Livret A à 0,30 % sans rien signaler.
+        const _t = _livType_(_livType);
+        if (fiche.taux !== undefined && (_t.taux === null || _t.min)) {
+          _depSet('liv-f-taux', nb(fiche.taux));
+        }
         if (fiche.ouverture) _depSet('liv-f-ouverture', fiche.ouverture);
         if (fiche.fin)       _depSet('liv-f-fin', fiche.fin);
         // Ce que l'import vient de remplir ne doit pas rester caché : le bloc

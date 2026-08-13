@@ -1489,7 +1489,12 @@ window.CBImport.ocr = (function () {
         // La valeur suit le libellé sur la même ligne, ou occupe la suivante :
         // l'OCR d'un tableau à deux colonnes rend l'un ou l'autre selon
         // l'espacement.
-        const apres = lignes[i].slice(_indexApres(lignes[i], champ.mots));
+        //
+        // Le découpage se fait sur la ligne NORMALISÉE, pas sur la brute : le
+        // libellé a été cherché dans la première, et `_norm` réduit les suites
+        // d'espaces. Un tableau largement espacé décalait donc l'index, et la
+        // coupe tombait au milieu du montant.
+        const apres = n.slice(_indexApres(n, champ.mots));
         const candidats = [apres, lignes[i + 1] || ''];
         for (const c of candidats) {
           const v = _valeur(c, champ.type);
@@ -1584,11 +1589,20 @@ window.CBImport.ocr = (function () {
     return _valeur(s, type);
   }
 
-  function _indexApres(ligne, mots) {
-    const n = _norm(ligne);
+  // Position où commence la valeur, sur une ligne DÉJÀ normalisée.
+  function _indexApres(n, mots) {
     let fin = 0;
     mots.forEach(mot => { if (n.indexOf(mot) === 0) fin = Math.max(fin, mot.length); });
-    return fin;
+    if (!fin) return 0;
+
+    // Renvoi de note collé au libellé. Une fiche porte « Intérêts
+    // prévisionnels³ », et l'exposant revient aplati : « previsionnels3 ». Ce 3
+    // se recolle alors au montant suivant, et « 3 0,00 EUR » se lit 30,00 € —
+    // vu sur une vraie fiche de Livret A, où les intérêts valaient 0.
+    // Deux chiffres au plus, et seulement s'ils sont suivis d'une espace : un
+    // libellé qui finirait par un vrai nombre collé n'existe pas.
+    const m = /^\d{1,2}(?=\s|$)/.exec(n.slice(fin));
+    return fin + (m ? m[0].length : 0);
   }
 
   function _valeur(s, type) {

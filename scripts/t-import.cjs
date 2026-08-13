@@ -591,6 +591,43 @@ chk('fusion : lot vide', FUS([]).length, 0);
 chk('fusion : montants différents le même jour',
   FUS([{ _f: 0, d: '2026-04-03', m: 150 }, { _f: 0, d: '2026-04-03', m: 250 }]).length, 2);
 
+// ── Fiche réelle : Livret A au CIC, 13/08/2026 ──────────────────────────────
+// Deux captures d'un même écran « Caractéristiques ». Elles portent DEUX
+// livrets : le Livret A, puis le compartiment de dépassement, qui a son propre
+// taux et son propre plafond. Les libellés y traînent leur renvoi de note en
+// exposant, aplati par la transcription.
+const FICHE_LIVRET_A = [
+  '03:30', 'Retour', 'Livret A Sup', 'Opérations', 'Caractéristiques',
+  'Caractéristiques générales',
+  'Solde +11,54 EUR',
+  'Date d’ouverture 17/05/2023',
+  'Fiscalité1 Livret réglementé',
+  'Caractéristiques détaillées',
+  'LIVRET A SUP',
+  'Solde +11,54 EUR',
+  'Taux2 1,70 %',
+  'Plafond +22 950,00 EUR',
+  'Intérêts à ce jour 0,00 EUR',
+  'Intérêts prévisionnels3 0,00 EUR',
+].join('\n');
+
+const F1 = CB.ocr.analyserFiche(FICHE_LIVRET_A);
+
+// L'exposant du renvoi de note se collait au montant : « prévisionnels3 » suivi
+// de « 0,00 EUR » se lisait « 3 0,00 » soit 30,00 €, là où la fiche affiche 0.
+chk('fiche réelle : prévisionnels à zéro',   F1.projete, 0);
+chk('fiche réelle : acquis à zéro',          F1.acquis, 0);
+chk('fiche réelle : solde',                  F1.solde, 11.54);
+chk('fiche réelle : taux',                   F1.taux, 1.7);
+// Séparateur de milliers en espace, sur un montant à cinq chiffres.
+chk('fiche réelle : plafond 22 950',         F1.plafond, 22950);
+chk('fiche réelle : date d’ouverture',       F1.ouverture, '2023-05-17');
+
+// Le libellé garde la main sur son propre renvoi : un chiffre isolé ne doit pas
+// être avalé quand il EST la valeur.
+chk('renvoi de note : valeur entière préservée',
+  CB.ocr.analyserFiche('Plafond2 22 950,00 EUR\nIntérêts acquis 19,94 EUR').plafond, 22950);
+
 // ── Deuxième passe : le modèle désigne, le code vérifie ─────────────────────
 // La voie par libellés ne connaît que les banques dont on a recopié les mots.
 // Quand elle échoue, le modèle pointe les valeurs dans sa propre transcription,
