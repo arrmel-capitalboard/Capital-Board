@@ -52,7 +52,10 @@ ${KB}`;
 // Le modèle ne rend QUE du texte : la structuration — dates, signes, montants —
 // reste au code client, qui est testé. Demander un JSON à un modèle de 9 Md de
 // paramètres reviendrait à lui laisser inventer des montants.
-const VISION_MODEL     = '@cf/moondream/moondream3.1-9B-A2B';
+const VISION_MODEL       = '@cf/moondream/moondream3.1-9B-A2B';
+// Repli : généraliste multimodal, schéma d'appel différent (messages, pas
+// task/question) et sortie dans `response` au lieu de `answer`.
+const VISION_MODEL_REPLI = '@cf/meta/llama-3.2-11b-vision-instruct';
 const VISION_MAX_BYTES = 6 * 1024 * 1024;
 const VISION_RL_MAX    = 30;    // images max par compte et par fenêtre
 const VISION_RL_WINDOW = 3600;  // fenêtre rate-limit (s)
@@ -425,6 +428,33 @@ async function buildFavoris(env) {
 
 function b64url(str) {
   return btoa(str).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+}
+
+// Texte utile d'une réponse de modèle de vision. Chaque modèle a sa clé —
+// `answer` pour une question, `response` pour un généraliste, `caption` pour
+// une légende — et rien ne garantit qu'un nouveau s'y tienne. On cherche donc
+// les noms connus, puis, à défaut, la plus longue chaîne de l'objet : une
+// transcription est toujours plus longue qu'un `finish_reason`.
+function texteDeReponse(out) {
+  if (typeof out === 'string') return out.trim();
+  if (!out || typeof out !== 'object') return '';
+  for (const cle of ['answer', 'response', 'caption', 'description', 'text', 'output']) {
+    const v = out[cle];
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
+  // Certains modèles emboîtent leur charge utile d'un cran.
+  for (const cle of ['result', 'data', 'choices']) {
+    if (out[cle]) {
+      const v = texteDeReponse(Array.isArray(out[cle]) ? out[cle][0] : out[cle]);
+      if (v) return v;
+    }
+  }
+  let meilleur = '';
+  for (const v of Object.values(out)) {
+    if (typeof v === 'string' && v.trim().length > meilleur.length) meilleur = v.trim();
+  }
+  // Trois caractères ne sont pas une transcription : c'est un code de statut.
+  return meilleur.length > 3 ? meilleur : '';
 }
 
 // Octets → base64 standard. Découpé en tranches parce que
@@ -1396,21 +1426,48 @@ export default {
         if (!bytes.length) return json({ error: 'image vide' }, 400);
         if (bytes.length > VISION_MAX_BYTES) return json({ error: 'image trop lourde' }, 413);
 
-        try {
-          const out = await env.AI.run(env.VISION_MODEL || VISION_MODEL, {
-            task: 'query',
-            image: `data:${type};base64,${bytesToBase64(bytes)}`,
-            question: VISION_PROMPT,
-            max_tokens: 1024,
-          });
-          const texte = String(out?.answer ?? out?.response ?? out?.description ?? '').trim();
-          if (!texte) return json({ error: 'Aucun texte lu dans cette image.' }, 502);
-          return json({ texte });
-        } catch (e) {
-          // e.message peut contenir un fragment de la requête, donc de l'image
-          // ou de son contenu : on ne le renvoie pas et on ne le journalise pas.
-          return json({ error: 'Lecture assistée indisponible pour le moment.' }, 502);
+        const b64 = `data:${type};base64,${bytesToBase64(bytes)}`;
+        // Deux modèles, deux schémas d'appel incompatibles. Le premier est
+        // spécialisé dans la lecture de texte ; le second est un généraliste
+        // multimodal, plus bavard mais qui répond quand l'autre rend une chaîne
+        // vide. On tente l'un puis l'autre plutôt que d'imposer un choix à
+        // l'aveugle : la disponibilité d'un modèle varie d'un compte à l'autre.
+        const essais = [
+          {
+            modele: env.VISION_MODEL || VISION_MODEL,
+            corps: { task: 'query', image: b64, question: VISION_PROMPT },
+          },
+          {
+            modele: VISION_MODEL_REPLI,
+            corps: {
+              messages: [{ role: 'user', content: `${b64}\n\n${VISION_PROMPT}` }],
+              max_tokens: 1024,
+            },
+          },
+        ];
+
+        const vus = [];
+        for (const essai of essais) {
+          let out;
+          try {
+            out = await env.AI.run(essai.modele, essai.corps);
+          } catch (e) {
+            // e.message peut porter un fragment de la requête, donc de l'image :
+            // on ne retient que le nom du modèle, jamais le détail.
+            vus.push(essai.modele + ':erreur');
+            continue;
+          }
+          const texte = texteDeReponse(out);
+          if (texte) return json({ texte });
+          // Les CLÉS de la réponse, jamais son contenu : de quoi diagnostiquer
+          // un schéma inattendu sans faire fuiter une ligne de relevé.
+          vus.push(essai.modele + ':' + Object.keys(out || {}).join('|'));
         }
+
+        return json({
+          error: 'Aucun texte lu dans cette image.',
+          diagnostic: vus.join(' ; ').slice(0, 300),
+        }, 502);
       }
 
       // ── POST /chat ──────────────────────────────────────────────────────

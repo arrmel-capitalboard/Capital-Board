@@ -1005,7 +1005,12 @@ window.CBImport.ocr = (function () {
     let data = null;
     try { data = await res.json(); } catch (_) { /* réponse non JSON */ }
     if (!res.ok) {
-      throw new Error((data && data.error) || 'La lecture de l’image a échoué.');
+      // Le diagnostic ne porte que des noms de modèles et de champs, jamais de
+      // contenu : il est affichable sans risque, et sans lui un échec de
+      // lecture ne se distingue pas d'un autre.
+      if (data && data.diagnostic) console.warn('[import] vision :', data.diagnostic);
+      throw new Error(((data && data.error) || 'La lecture de l’image a échoué.') +
+        (data && data.diagnostic ? '\n\n' + data.diagnostic : ''));
     }
     if (progres) progres('Analyse du texte lu…');
     const texte = (data && data.texte) || '';
