@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260815q">
+<link rel="stylesheet" href="css/style.css?v=20260815r">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2648,6 +2648,29 @@
       </div>
     </div>
 
+    <!-- ── Étape 2 bis : désigner les colonnes ──
+         Filet de sécurité qui rend l'import indépendant de la banque. Aucun
+         dictionnaire ne couvrira tous les établissements ; ici le membre voit
+         son fichier tel qu'il est découpé et dit ce qu'est chaque colonne. -->
+    <div id="imp-etape-colonnes" hidden>
+      <div class="imp-erreur" style="background:rgba(245,183,49,.07);border-color:rgba(245,183,49,.25);color:var(--text2)">
+        Les colonnes de ce fichier ne portent pas de nom reconnu. Indiquez
+        ci-dessous ce que contient chaque colonne — ce sera lu correctement
+        ensuite, quelle que soit votre banque.
+      </div>
+      <div class="imp-cols" id="imp-cols"></div>
+      <div class="imp-cols-pied">
+        <label for="imp-cols-depuis">Première ligne de données</label>
+        <input class="form-input" id="imp-cols-depuis" type="number" min="0" max="20" step="1"
+               value="0" onchange="CBImport.setDepuis(this.value)">
+        <span class="imp-cols-etat" id="imp-cols-etat"></span>
+      </div>
+      <div class="imp-bar">
+        <button type="button" class="imp-mini" onclick="CBImport.retour()">Changer de fichier</button>
+        <button type="button" class="imp-mini" id="imp-cols-ok" onclick="CBImport.relire()">Lire avec ces colonnes</button>
+      </div>
+    </div>
+
     <!-- ── Étape 3 : validation ligne à ligne ── -->
     <div id="imp-etape-validation" hidden>
       <div class="imp-bar">
@@ -3374,11 +3397,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260815q"></script>
+<script src="js/app.js?v=20260815r"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260815q"></script>
+<script src="js/onboarding.js?v=20260815r"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260815q"></script>
+<script src="js/import.js?v=20260815r"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

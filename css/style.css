@@ -4965,6 +4965,43 @@ body.has-demo-banner { padding-top: 40px; }
 .imp-taux-l b { color: var(--text); font-weight: 700; }
 .imp-taux-s { margin-top: 8px; font-size: 11px; color: var(--text3); line-height: 1.55; }
 
+/* Rattrapage : désigner les colonnes d'un format inconnu. La table déborde
+   volontiers — un relevé a jusqu'à huit colonnes — d'où le défilement propre
+   à la boîte plutôt qu'à la page. */
+.imp-cols { margin: 14px 0 10px; }
+.imp-cols-scroll {
+  overflow-x: auto; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--s2);
+}
+.imp-cols-t { border-collapse: collapse; width: 100%; font-size: 11.5px; }
+.imp-cols-t th { padding: 7px 6px; border-bottom: 1px solid var(--border2); }
+.imp-cols-t th select {
+  width: 100%; min-width: 92px; padding: 5px 7px; border-radius: 7px;
+  background: var(--s1); border: 1px solid var(--border2); color: var(--text);
+  font-family: var(--sans); font-size: 11.5px; outline: none; cursor: pointer;
+}
+.imp-cols-t td {
+  padding: 6px; border-bottom: 1px solid var(--border);
+  font-family: var(--mono); color: var(--text2); white-space: nowrap;
+}
+.imp-cols-t tbody tr:last-child td { border-bottom: none; }
+/* Les lignes d'entête que le membre a choisi d'ignorer restent visibles, mais
+   en retrait : il doit voir ce qu'il exclut. */
+.imp-cols-t tr.ignoree td { opacity: .38; text-decoration: line-through; }
+
+.imp-cols-pied {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  font-size: 11.5px; color: var(--text3);
+}
+.imp-cols-pied .form-input { width: 72px; padding: 6px 9px; font-size: 12px; }
+.imp-cols-etat { flex: 1; min-width: 180px; }
+#imp-cols-ok:disabled { opacity: .4; cursor: not-allowed; }
+
+@media (max-width: 640px) {
+  .imp-cols-pied { gap: 7px; }
+  .imp-cols-etat { flex-basis: 100%; }
+}
+
 /* Fiche « Caractéristiques » reconnue sur une capture. Vert : ce sont les
    chiffres de la banque, ceux qui priment sur tout calcul. */
 .imp-fiche {

@@ -35,6 +35,10 @@ window.CBImport = (function () {
   let _lignes = [];     // { d, m, label, ok }
   let _taux   = [];     // { depuis, taux } lus dans les libellés du relevé
   let _fiche  = null;   // caractéristiques lues sur une capture de fiche
+  // Rattrapage manuel : le texte du fichier et les colonnes désignées. Vivent
+  // en mémoire le temps de l'écran, relâchés à la fermeture.
+  let _texte  = null;
+  let _cols   = null;
   let _source = '';     // nom du parseur qui a produit les lignes, pour l'entête
 
   // ─── Ouverture ───────────────────────────────────────────────────────────
@@ -52,6 +56,8 @@ window.CBImport = (function () {
     _lignes = [];
     _taux   = [];
     _fiche  = null;
+    _texte  = null;
+    _cols   = null;
     _source = '';
     _text('imp-title', _dest.titre || 'Importer un relevé');
     _text('imp-sub',   _dest.sous  || '');
@@ -70,6 +76,8 @@ window.CBImport = (function () {
     _lignes = [];
     _taux   = [];
     _fiche  = null;
+    _texte  = null;
+    _cols   = null;
     _source = '';
     const input = document.getElementById('imp-file');
     if (input) input.value = '';
@@ -129,6 +137,17 @@ window.CBImport = (function () {
         throw new Error('Format non reconnu. Déposez un CSV, un PDF ou une capture d’écran.');
       }
 
+      // Colonnes non reconnues : plutôt que d'échouer sur un format qu'on n'a
+      // jamais vu, on montre le fichier découpé et on laisse le membre
+      // désigner ses colonnes. Aucun dictionnaire ne couvrira toutes les
+      // banques ; celui-ci n'a pas à le faire.
+      if (res && res.colonnesInconnues && res.texte) {
+        _texte = res.texte;
+        _rendreColonnes();
+        _etape('colonnes');
+        return;
+      }
+
       const lignes = (res && res.lignes) || [];
       _taux  = _dedoublonnerTaux((res && res.taux) || []);
       _fiche = (res && res.fiche) || null;
@@ -158,6 +177,113 @@ window.CBImport = (function () {
       _hide('imp-erreur', false);
       _text('imp-erreur', e && e.message ? e.message : 'Lecture impossible.');
     }
+  }
+
+  // ─── Écran de rattrapage : désigner les colonnes ─────────────────────────
+  //
+  // Le filet de sécurité qui rend l'import indépendant de la banque. Aucun
+  // dictionnaire ne couvrira tous les établissements, et écrire un adaptateur
+  // par banque est une course perdue. Ici le membre voit son fichier tel qu'il
+  // est découpé et dit lui-même ce qu'est chaque colonne.
+
+  const ROLES = [
+    ['',        '—'],
+    ['date',    'Date'],
+    ['label',   'Libellé'],
+    ['montant', 'Montant'],
+    ['debit',   'Débit'],
+    ['credit',  'Crédit'],
+    ['solde',   'Solde'],
+  ];
+
+  function _rendreColonnes() {
+    const box = document.getElementById('imp-cols');
+    if (!box || !_texte) return;
+    const ap = window.CBImport.csv.apercu(_texte);
+    if (!ap) return;
+
+    // Proposition de départ : la première ligne qui ressemble à des données,
+    // et des rôles devinés sur le contenu de chaque colonne.
+    if (!_cols) {
+      _cols = { date: -1, label: -1, montant: -1, debit: -1, credit: -1, solde: -1,
+                depuis: ap.entete ? 1 : 0 };
+      for (let c = 0; c < ap.colonnes; c++) {
+        const vals = ap.table.slice(ap.entete ? 1 : 0).map(r => r[c]);
+        if (_cols.date === -1 && vals.some(v => window.CBImport.csv.parseDate(v))) { _cols.date = c; continue; }
+        if (_cols.montant === -1 && vals.some(v => isFinite(window.CBImport.csv.parseMontant(v)))) { _cols.montant = c; continue; }
+        if (_cols.label === -1 && vals.some(v => String(v || '').length > 4)) _cols.label = c;
+      }
+    }
+
+    const roleDe = (c) => {
+      for (const [cle] of ROLES) { if (cle && _cols[cle] === c) return cle; }
+      return '';
+    };
+
+    const entetes = Array.from({ length: ap.colonnes }, (_, c) =>
+      '<th><select onchange="CBImport.setColonne(' + c + ',this.value)">' +
+      ROLES.map(([cle, lib]) =>
+        '<option value="' + cle + '"' + (roleDe(c) === cle ? ' selected' : '') + '>' +
+        _esc(lib) + '</option>').join('') +
+      '</select></th>').join('');
+
+    const corps = ap.table.map((r, i) =>
+      '<tr' + (i < _cols.depuis ? ' class="ignoree"' : '') + '>' +
+      Array.from({ length: ap.colonnes }, (_, c) =>
+        '<td>' + _esc(String(r[c] === undefined ? '' : r[c]).slice(0, 22)) + '</td>').join('') +
+      '</tr>').join('');
+
+    box.innerHTML =
+      '<div class="imp-cols-scroll"><table class="imp-cols-t">' +
+        '<thead><tr>' + entetes + '</tr></thead><tbody>' + corps + '</tbody></table></div>';
+
+    _text('imp-cols-etat', _colonnesCompletes()
+      ? 'Prêt : ' + (_cols.depuis ? _cols.depuis + ' ligne(s) d’entête ignorée(s)' : 'aucune entête à ignorer')
+      : 'Désignez au moins la colonne Date et une colonne de montant.');
+    const btn = document.getElementById('imp-cols-ok');
+    if (btn) btn.disabled = !_colonnesCompletes();
+    const saut = document.getElementById('imp-cols-depuis');
+    if (saut) saut.value = String(_cols.depuis);
+  }
+
+  function _colonnesCompletes() {
+    return !!_cols && _cols.date >= 0 &&
+      (_cols.montant >= 0 || _cols.debit >= 0 || _cols.credit >= 0);
+  }
+
+  // Un rôle ne vaut que pour une colonne : le poser ailleurs le libère.
+  function setColonne(c, role) {
+    if (!_cols) return;
+    ROLES.forEach(([cle]) => { if (cle && _cols[cle] === c) _cols[cle] = -1; });
+    if (role) _cols[role] = c;
+    _rendreColonnes();
+  }
+
+  function setDepuis(v) {
+    if (!_cols) return;
+    const n = parseInt(v, 10);
+    _cols.depuis = Number.isFinite(n) && n >= 0 ? n : 0;
+    _rendreColonnes();
+  }
+
+  function relire() {
+    if (!_texte || !_colonnesCompletes()) return;
+    const res = window.CBImport.csv.analyser(_texte, _cols);
+    const lignes = (res && res.lignes) || [];
+    if (!lignes.length) {
+      _text('imp-cols-etat', 'Aucune opération lue avec ces colonnes. ' +
+        'Vérifiez la colonne Date et la première ligne de données.');
+      return;
+    }
+    _taux  = _dedoublonnerTaux((res && res.taux) || []);
+    _fiche = null;
+    if (res.report && isFinite(res.report.m) && res.report.m !== 0) {
+      lignes.unshift(Object.assign({ report: true }, res.report));
+    }
+    lignes.sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+    _lignes = lignes.map(l => Object.assign({}, l, { ok: !l.doublon }));
+    _rendre();
+    _etape('validation');
   }
 
   // ─── Écran de validation ─────────────────────────────────────────────────
@@ -313,7 +439,7 @@ window.CBImport = (function () {
   // ─── Rouages d'affichage ─────────────────────────────────────────────────
 
   function _etape(nom) {
-    ['depot', 'lecture', 'validation'].forEach(e => {
+    ['depot', 'lecture', 'colonnes', 'validation'].forEach(e => {
       const el = document.getElementById('imp-etape-' + e);
       if (el) el.hidden = (e !== nom);
     });
@@ -359,6 +485,7 @@ window.CBImport = (function () {
   return {
     open, close, onFile, onDrop, onDragOver, dragOff: _dragOff,
     setOk, set, toutCocher, valider, retour, revisionTaux,
+    setColonne, setDepuis, relire,
     // Les parseurs s'accrochent ici. Seul le CSV est livré pour l'instant.
     csv: null, pdf: null, ocr: null,
     // Exposés pour les tests hors navigateur.
@@ -387,7 +514,12 @@ window.CBImport.csv = (function () {
 
   async function lire(file) {
     const texte = _decoder(await file.arrayBuffer());
-    return analyser(texte);
+    const res = analyser(texte);
+    // Le texte accompagne le résultat pour qu'un rattrapage manuel puisse
+    // relire le fichier sans le redemander. Il ne vit qu'en mémoire, et le
+    // socle le relâche dès la fermeture — rien n'est écrit nulle part.
+    if (res.colonnesInconnues) res.texte = texte;
+    return res;
   }
 
   // UTF-8 d'abord. Le caractère de remplacement U+FFFD signale un décodage raté :
@@ -544,10 +676,46 @@ window.CBImport.csv = (function () {
     return -1;
   }
 
-  function analyser(texte) {
+  /**
+   * Aperçu d'un fichier dont les colonnes n'ont pas été reconnues.
+   *
+   * Aucun dictionnaire ne couvrira toutes les banques, et un adaptateur par
+   * établissement est une course perdue d'avance. Plutôt que d'échouer, on
+   * montre le fichier tel qu'il est découpé et on laisse le membre désigner
+   * ses colonnes : cela couvre tout format tabulaire, y compris ceux qu'on
+   * n'a jamais vus.
+   */
+  function apercu(texte) {
+    const brut = String(texte || '').split(/\r\n|\r|\n/).filter(l => l.trim() !== '');
+    if (!brut.length) return null;
+    const sep = _separateur(brut);
+    const table = brut.slice(0, 8).map(l => _decouper(l, sep));
+    const n = Math.max.apply(null, table.map(r => r.length));
+    // La première ligne est-elle une entête ? Si elle ne porte ni date ni
+    // montant alors que la suivante en porte, oui — et il ne faut pas
+    // l'importer comme une opération.
+    const estEntete = table.length > 1 &&
+      !table[0].some(v => parseDate(v) || isFinite(parseMontant(v))) &&
+      table[1].some(v => parseDate(v) || isFinite(parseMontant(v)));
+    return { sep, table, colonnes: n, entete: estEntete };
+  }
+
+  /**
+   * @param texte   contenu du fichier
+   * @param forcees mapping imposé par le membre : { date, label, montant,
+   *                debit, credit, solde, depuis } — index de colonne, -1 pour
+   *                « aucune », `depuis` étant la première ligne de données.
+   */
+  function analyser(texte, forcees) {
     const brut = texte.split(/\r\n|\r|\n/).filter(l => l.trim() !== '');
     if (brut.length < 2) return { lignes: [], taux: [] };
     const sep = _separateur(brut);
+
+    // Colonnes désignées à la main : on saute toute la détection.
+    if (forcees && forcees.date >= 0) {
+      const depuis = Number.isFinite(forcees.depuis) ? forcees.depuis : 0;
+      return _extraire(brut.slice(depuis).map(l => _decouper(l, sep)), forcees);
+    }
 
     // Plusieurs banques posent un préambule (nom du compte, IBAN, période) avant
     // l'entête. La vraie entête est la première ligne qui nomme une date ET un
@@ -573,14 +741,28 @@ window.CBImport.csv = (function () {
     // Sans entête reconnue, on devine les colonnes sur le contenu : celle qui
     // ressemble le plus à des dates, celle qui ressemble le plus à des montants.
     if (!cols) cols = _deviner(brut.map(l => _decouper(l, sep)));
-    if (!cols) return { lignes: [], taux: [] };
+    // Toujours rien : le fichier n'est pas perdu pour autant, l'appelant
+    // proposera au membre de désigner les colonnes lui-même.
+    if (!cols) return { lignes: [], taux: [], colonnesInconnues: true };
 
+    return _extraire(iEntete >= 0 ? corps : brut.map(l => _decouper(l, sep)), cols);
+  }
+
+  // Extraction proprement dite, une fois les colonnes connues — qu'elles aient
+  // été reconnues, devinées, ou désignées à la main.
+  function _extraire(table, brutes) {
+    // Une désignation manuelle ne renseigne que ce que le membre a choisi :
+    // les autres colonnes valent « aucune », pas `undefined`, sinon
+    // `vals[undefined]` remonterait en silence.
+    const cols = Object.assign(
+      { date: -1, label: -1, debit: -1, credit: -1, montant: -1, solde: -1 },
+      brutes || {});
     const lignes = [], taux = [];
     // Toutes les lignes datées, y compris celles à zéro euro : le solde
     // d'ouverture se déduit de la plus ancienne, quelle qu'elle soit.
     const datees = [];
 
-    (iEntete >= 0 ? corps : brut.map(l => _decouper(l, sep))).forEach(vals => {
+    table.forEach(vals => {
       if (!vals || vals.length < 2) return;
       const d = parseDate(vals[cols.date]);
       if (!d) return;
@@ -703,7 +885,7 @@ window.CBImport.csv = (function () {
     return { date: iDate, label: iLab, montant: iMont, debit: -1, credit: -1, solde: -1 };
   }
 
-  return { lire, analyser, parseDate, parseMontant, _decouper, _separateur, _report };
+  return { lire, analyser, apercu, parseDate, parseMontant, _decouper, _separateur, _report };
 })();
 
 

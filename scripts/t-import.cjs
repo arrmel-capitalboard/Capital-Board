@@ -477,6 +477,73 @@ chk('fiche : libellé en milieu de phrase ignoré',
 chk('fiche : taux aberrant écarté', O.analyserFiche(
   'Taux 3750 %\nIntérêts à ce jour +6,58 EUR\nPlafond +1 600,00 EUR').taux, undefined);
 
+// ── Rattrapage : colonnes désignées à la main ───────────────────────────────
+// Aucun dictionnaire ne couvrira toutes les banques. Quand rien n'est reconnu,
+// l'analyse le dit au lieu d'échouer, et accepte un mapping imposé.
+
+// Entêtes dans une langue et un ordre inconnus, colonnes inversées.
+const exotique = [
+  'Buchungstag;Verwendungszweck;Betrag;Kontostand',
+  '06.08.2026;Ueberweisung Armel;735,00;850,00',
+  '30.07.2026;Dauerauftrag;-150,00;115,00',
+].join('\n');
+
+const auto = C.analyser(exotique);
+// Le devineur s'en sort ici — les dates et les montants se reconnaissent au
+// contenu, quelle que soit la langue de l'entête.
+chk('exotique : deviné sans dictionnaire', auto.lignes.length, 2);
+chk('exotique : montants',  auto.lignes.map(l => l.m), [735, -150]);
+
+// Un fichier où même le devineur échoue : pas assez de dates reconnaissables.
+const opaque = [
+  'ref|texte|valeur',
+  'A1|Paiement|735,00',
+  'A2|Retrait|-150,00',
+].join('\n');
+const illisible = C.analyser(opaque);
+chk('opaque : aucune ligne',         illisible.lignes.length, 0);
+chk('opaque : signalé à l’appelant', illisible.colonnesInconnues, true);
+
+// Le même fichier, colonnes désignées à la main. C'est ce que fait l'écran de
+// rattrapage : la date manque, mais le membre peut pointer une colonne qui en
+// contient dans un autre fichier — ici on vérifie surtout le passage du
+// mapping.
+const force = [
+  'reference;intitule;somme;jour',
+  'A1;Paiement carte;735,00;06/08/2026',
+  'A2;Retrait especes;-150,00;30/07/2026',
+].join('\n');
+const manuel = C.analyser(force, { date: 3, label: 1, montant: 2, depuis: 1 });
+chk('manuel : deux opérations',   manuel.lignes.length, 2);
+chk('manuel : dates lues',        manuel.lignes.map(l => l.d), ['2026-08-06', '2026-07-30']);
+chk('manuel : montants signés',   manuel.lignes.map(l => l.m), [735, -150]);
+chk('manuel : libellés',          manuel.lignes[0].label, 'Paiement carte');
+
+// La ligne d'entête doit être exclue, sinon elle ressort en opération.
+const avecEntete = C.analyser(force, { date: 3, label: 1, montant: 2, depuis: 0 });
+chk('manuel : entête non datée, écartée seule', avecEntete.lignes.length, 2);
+
+// Débit et crédit désignés séparément.
+const dc = [
+  'quand;quoi;sortie;entree',
+  '06/08/2026;Virement;;735,00',
+  '30/07/2026;Prelevement;150,00;',
+].join('\n');
+const rdc = C.analyser(dc, { date: 0, label: 1, debit: 2, credit: 3, depuis: 1 });
+chk('manuel : débit et crédit séparés', rdc.lignes.map(l => l.m), [735, -150]);
+
+// Les colonnes non désignées ne doivent pas être lues par accident.
+chk('manuel : colonne solde absente sans dégât', rdc.report, null);
+
+// Aperçu servi à l'écran de rattrapage.
+const ap = C.apercu(force);
+chk('aperçu : nombre de colonnes', ap.colonnes, 4);
+chk('aperçu : entête détectée',    ap.entete, true);
+chk('aperçu : première cellule',   ap.table[0][0], 'reference');
+const apSansEntete = C.apercu('06/08/2026;Virement;735,00\n30/07/2026;Retrait;-150,00');
+chk('aperçu : sans entête',        apSansEntete.entete, false);
+chk('aperçu : fichier vide',       C.apercu(''), null);
+
 console.log(t.join('\n'));
 const ko = t.filter(x => x.startsWith('FAIL')).length;
 console.log('\n' + (t.length - ko) + '/' + t.length + (ko ? '  >>> ECHEC' : '  >>> tout passe'));
