@@ -21,7 +21,7 @@ const bundle = [
   g(/function _livReleve\(l\) \{[\s\S]*?\n\}/),
   g(/function _livAcquis\(l\) \{[\s\S]*?\n\}/),
   g(/function _livQuinzainesDe\(iso\) \{[\s\S]*?\n\}/),
-  g(/function _livReleveDepasse\(l\) \{[\s\S]*?\n\}/),
+  g(/function _livProjeteApres\(l, apres\) \{[\s\S]*?\n\}/),
   g(/function _livProjete\(l\) \{[\s\S]*?\n\}/),
   g(/function _livReste\(l\) \{[\s\S]*?\n\}/),
   g(/function _livPlafond\(l\)[^\n]*\n/),
@@ -109,30 +109,46 @@ chk('relevé ancien : l’acquis court', X._livAcquis(vieux).net, 4 + 850 * r * 
 const partiel = Object.assign({}, mai, { releve: { le: '2026-08-12', acquis: 6.58, projete: null } });
 chk('champ vide : calcul repris', X._livProjete(partiel).net, 850 * r * 15 / 24);
 
-// Le prévisionnel de la banque suppose qu'aucun mouvement n'intervient d'ici le
-// 31 décembre. Un versement postérieur au relevé le périme : on revient à
-// l'estimation, qui tient compte du mouvement, plutôt que de garder un chiffre
-// exact pour une situation qui n'existe plus.
-const bouge = { type: 'jeune', taux: 3.75,
-  mouvements: [{ d: '2026-05-05', m: 850 }, { d: '2026-08-13', m: 500 }],
-  releve: { le: '2026-08-12', acquis: 6.58, projete: 19.94 } };
-chk('relevé dépassé : prévisionnel recalculé',
-    X._livProjete(bouge).net, 850 * r * 15 / 24 + 500 * r * 9 / 24);
-chk('relevé dépassé : signalé', X._livProjete(bouge).depasse ? 1 : 0, 1);
-chk('relevé dépassé : ce n’est plus le chiffre de la banque',
-    X._livProjete(bouge).releve ? 1 : 0, 0);
-// L'acquis, lui, reste ancré sur le relevé : il mesure le passé, que le
-// mouvement du 13 août ne réécrit pas.
-chk('relevé dépassé : acquis toujours d’après la banque',
-    X._livAcquis(bouge).releve ? 1 : 0, 1);
-
+// ── Un mouvement postérieur au relevé le PROLONGE ───────────────────────────
+// Les intérêts sont linéaires en le capital : la contribution d'un mouvement
+// s'ajoute à ce que la banque a déjà projeté. On garde donc son chiffre — ses
+// conventions, ses arrondis, sa base — et on n'ajoute que ce qu'elle ne pouvait
+// pas connaître.
 const stable = { type: 'jeune', taux: 3.75,
   mouvements: [{ d: '2026-05-05', m: 850 }],
   releve: { le: '2026-08-12', acquis: 6.58, projete: 19.94 } };
-chk('sans mouvement postérieur : chiffre de la banque gardé',
+chk('sans mouvement postérieur : chiffre de la banque intact',
     X._livProjete(stable).net, 19.94);
-chk('sans mouvement postérieur : rien à rafraîchir',
-    X._livProjete(stable).depasse ? 1 : 0, 0);
+
+// Versement du 13 août : quinzaine de départ 15, donc 9 quinzaines sur 24.
+const verse = { type: 'jeune', taux: 3.75,
+  mouvements: [{ d: '2026-05-05', m: 850 }, { d: '2026-08-13', m: 500 }],
+  releve: { le: '2026-08-12', acquis: 6.58, projete: 19.94 } };
+chk('versement après le relevé : ajouté au prévisionnel',
+    X._livProjete(verse).net, 19.94 + 500 * r * 9 / 24);
+chk('versement après le relevé : reste le chiffre de la banque',
+    X._livProjete(verse).releve ? 1 : 0, 1);
+
+// Un retrait compte négativement — ce que _livInteretsQ ne saurait pas faire,
+// sa garde interdisant un capital négatif.
+const retireApres = { type: 'jeune', taux: 3.75,
+  mouvements: [{ d: '2026-05-05', m: 850 }, { d: '2026-08-13', m: -300 }],
+  releve: { le: '2026-08-12', acquis: 6.58, projete: 19.94 } };
+chk('retrait après le relevé : retranché du prévisionnel',
+    X._livProjete(retireApres).net, 19.94 - 300 * r * (24 - 14) / 24);
+
+// L'acquis court sur le capital RÉEL de chaque quinzaine, pas sur le solde
+// d'aujourd'hui appliqué rétroactivement. Le relevé du 12 août tombant sur la
+// quinzaine 14, et la date figée du test étant le 12 août, rien n'a couru.
+chk('acquis : rien couru depuis un relevé du jour', X._livAcquis(verse).net, 6.58);
+chk('acquis : toujours celui de la banque', X._livAcquis(verse).releve ? 1 : 0, 1);
+
+// Un relevé plus ancien : deux quinzaines ont couru sur les 850 € seuls, le
+// versement du 13 août n'ayant pas encore commencé à produire.
+const ancien = { type: 'jeune', taux: 3.75,
+  mouvements: [{ d: '2026-05-05', m: 850 }, { d: '2026-08-13', m: 500 }],
+  releve: { le: '2026-07-14', acquis: 4, projete: 19.94 } };
+chk('acquis : couru sur le capital réel', X._livAcquis(ancien).net, 4 + 850 * r * 2 / 24);
 const pel = { type: 'pel', taux: 2, mouvements: [{ d: '2020-01-01', m: 20000 }],
               releve: { le: '2026-08-12', acquis: 250, projete: 400 } };
 chk('relevé brut, affichage net', X._livAcquis(pel).net, 250 * 0.7);

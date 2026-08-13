@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260815o';
+const APP_VERSION = '20260815p';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18559,7 +18559,15 @@ function _livAcquis(l) {
   // et on ajoute ce qui a couru depuis, sinon il vieillirait en silence.
   if (r && r.acquis !== null) {
     const depuis = _livQuinzainesDe(r.le);
-    const brut = r.acquis + _livSolde(l) * _livTaux(l) / 100 * Math.max(0, q - depuis) / 24;
+    // Ce qui a couru depuis la lecture, sur le capital RÉEL de chaque
+    // quinzaine. La version précédente appliquait le solde d'aujourd'hui à
+    // toute la période écoulée : un versement de la semaine dernière rapportait
+    // alors rétroactivement depuis la date du relevé.
+    //
+    // La différence de deux cumuls donne exactement l'intervalle, chaque
+    // quinzaine y étant comptée avec son propre taux.
+    const courus = Math.max(0, _livInteretsQ(l, q).brut - _livInteretsQ(l, depuis).brut);
+    const brut = r.acquis + courus;
     // Une banque affiche le brut. Toute la page raisonne en net, sinon un PEL
     // et un Livret A cesseraient d'être comparables.
     const net = _livType_(l && l.type).fisc ? brut * (1 - LIV_PFU) : brut;
@@ -18589,30 +18597,46 @@ function _livQuinzainesDe(iso) {
  * Le calcul suppose qu'aucun mouvement n'intervient d'ici la fin de l'année.
  */
 /**
- * Un mouvement postérieur au relevé le périme.
+ * Un mouvement postérieur au relevé le prolonge — il ne l'invalide pas.
  *
  * Le prévisionnel de la banque suppose qu'aucun versement ni retrait
- * n'intervient d'ici le 31 décembre. Un seul mouvement après la date de
- * lecture invalide donc son chiffre — et sur un livret vivant, cela arrive en
- * quelques jours.
+ * n'intervient d'ici le 31 décembre. Sur un livret vivant, l'hypothèse tient
+ * quelques jours. Mais elle ne demande pas de jeter son chiffre pour autant :
+ * les intérêts sont linéaires en le capital, donc la contribution d'un
+ * mouvement s'AJOUTE à ce que la banque a déjà projeté.
+ *
+ *     projeté = projeté de la banque + Σ montant × taux × quinzaines restantes / 24
+ *
+ * On garde ainsi tout ce que la banque sait du passé — ses conventions, ses
+ * arrondis, sa base de calcul, qu'aucun modèle ne reproduit — et on n'y ajoute
+ * que ce qu'elle ne pouvait pas connaître : ce qui s'est passé après.
+ *
+ * Un retrait compte négativement, d'où le calcul mouvement par mouvement
+ * plutôt qu'un appel à _livInteretsQ, dont la garde « un livret ne produit
+ * jamais d'intérêts négatifs » vaut pour un capital, pas pour un écart.
  */
-function _livReleveDepasse(l) {
-  const r = _livReleve(l);
-  if (!r || !r.le) return false;
-  return (l && Array.isArray(l.mouvements) ? l.mouvements : []).some(m => m.d > r.le);
+function _livProjeteApres(l, apres) {
+  const annee = new Date().getFullYear();
+  const taux  = _livTaux(l) / 100;
+  return (l && Array.isArray(l.mouvements) ? l.mouvements : []).reduce((s, m) => {
+    if (!m || !(m.d > apres)) return s;
+    const montant = Number(m.m);
+    if (!Number.isFinite(montant) || montant === 0) return s;
+    const debut = _livDebutQuinzaine(m.d, annee, montant < 0);
+    return s + montant * taux * Math.max(0, 24 - debut) / 24;
+  }, 0);
 }
 
 function _livProjete(l) {
   const r = _livReleve(l);
-  // Le prévisionnel vise le 31 décembre : il ne vieillit pas, on le reprend tel
-  // quel — sauf si un mouvement est survenu depuis, auquel cas il porte sur un
-  // capital qui n'existe plus. Mieux vaut alors notre estimation, qui tient
-  // compte du mouvement, qu'un chiffre exact pour une situation périmée.
-  if (r && r.projete !== null && !_livReleveDepasse(l)) {
-    const net = _livType_(l && l.type).fisc ? r.projete * (1 - LIV_PFU) : r.projete;
-    return { brut: r.projete, net, exact: true, releve: true };
+  // Le prévisionnel vise le 31 décembre : il ne vieillit pas. On le reprend tel
+  // quel, augmenté des mouvements survenus depuis la lecture.
+  if (r && r.projete !== null) {
+    const brut = r.projete + _livProjeteApres(l, r.le);
+    const net = _livType_(l && l.type).fisc ? brut * (1 - LIV_PFU) : brut;
+    return { brut, net, exact: true, releve: true };
   }
-  return Object.assign(_livInteretsQ(l, 24, true), { depasse: _livReleveDepasse(l) });
+  return _livInteretsQ(l, 24, true);
 }
 
 function _livTotal(user)     { return getLivrets(user).reduce((s, l) => s + _livSolde(l), 0); }
@@ -18812,14 +18836,7 @@ function _livRenderListe(livrets, total, nets) {
             '+' + fmt(acq.net) + ' acquis' +
             (acq.releve ? '<i class="liv-releve-tag" aria-hidden="true">banque</i>'
               : acq.exact ? '' : '<i class="liv-approx">~</i>') +
-            // Un mouvement postérieur au relevé périme le prévisionnel de la
-            // banque : il portait sur un capital qui n'existe plus. On repasse
-            // à l'estimation, et on le dit plutôt que de laisser croire à un
-            // chiffre exact.
-            (int.depasse
-              ? '<small class="liv-perime" title="Votre relevé date d’avant vos derniers mouvements. Recopiez-le à nouveau, ou déposez une capture de la fiche de votre banque, pour retrouver le chiffre exact.">' +
-                '+' + fmt(int.net) + ' au 31 déc. · relevé à rafraîchir</small>'
-              : '<small>+' + fmt(int.net) + ' au 31 déc.</small>') +
+            '<small>+' + fmt(int.net) + ' au 31 déc.</small>' +
           '</span>' +
         '</div>' +
         (pct === null ? '' :
