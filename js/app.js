@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260815k';
+const APP_VERSION = '20260815l';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -19093,7 +19093,7 @@ window.livImporterReleve = function() {
     sous: 'CSV, PDF ou capture d’écran de votre ' + t.label + '. ' +
           'Les montants restent modifiables avant d’être ajoutés.',
     existant: _livMvtsPropres(),
-    onValider: function(lignes, taux) {
+    onValider: function(lignes, taux, fiche) {
       lignes.forEach(l => _livMvts.push({
         d: l.d,
         m: String(Math.abs(l.m)).replace('.', ','),
@@ -19122,6 +19122,25 @@ window.livImporterReleve = function() {
         // fiche l'affiche en haut, il doit suivre.
         const derniere = _livTx[_livTx.length - 1];
         if (derniere && !_depVal('liv-f-taux')) _depSet('liv-f-taux', derniere.taux);
+      }
+
+      // Capture de l'écran « Caractéristiques » : elle porte les deux chiffres
+      // qu'aucun calcul ne reproduit — l'acquis et le prévisionnel — plus le
+      // taux et les dates. C'est ce qui rend l'affichage exact, et c'est la
+      // seule information qui n'existe nulle part ailleurs qu'à l'écran de la
+      // banque : ni le CSV ni le PDF ne la contiennent.
+      if (fiche) {
+        const nb = (v) => String(v).replace('.', ',');
+        if (fiche.acquis  !== undefined) _depSet('liv-f-r-acquis',  nb(fiche.acquis));
+        if (fiche.projete !== undefined) _depSet('liv-f-r-projete', nb(fiche.projete));
+        // La date du relevé n'est pas écrite sur la fiche : c'est celle du jour
+        // où le membre l'a lue, donc aujourd'hui. L'acquis court à partir de là.
+        if (fiche.acquis !== undefined || fiche.projete !== undefined) {
+          _depSet('liv-f-r-le', new Date().toISOString().slice(0, 10));
+        }
+        if (fiche.taux      !== undefined) _depSet('liv-f-taux', nb(fiche.taux));
+        if (fiche.ouverture) _depSet('liv-f-ouverture', fiche.ouverture);
+        if (fiche.fin)       _depSet('liv-f-fin', fiche.fin);
       }
       livRecalc();
     },

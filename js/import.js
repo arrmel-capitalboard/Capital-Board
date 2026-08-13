@@ -34,6 +34,7 @@ window.CBImport = (function () {
   let _dest   = null;
   let _lignes = [];     // { d, m, label, ok }
   let _taux   = [];     // { depuis, taux } lus dans les libellés du relevé
+  let _fiche  = null;   // caractéristiques lues sur une capture de fiche
   let _source = '';     // nom du parseur qui a produit les lignes, pour l'entête
 
   // ─── Ouverture ───────────────────────────────────────────────────────────
@@ -50,6 +51,7 @@ window.CBImport = (function () {
     _dest   = dest || {};
     _lignes = [];
     _taux   = [];
+    _fiche  = null;
     _source = '';
     _text('imp-title', _dest.titre || 'Importer un relevé');
     _text('imp-sub',   _dest.sous  || '');
@@ -67,6 +69,7 @@ window.CBImport = (function () {
     _dest   = null;
     _lignes = [];
     _taux   = [];
+    _fiche  = null;
     _source = '';
     const input = document.getElementById('imp-file');
     if (input) input.value = '';
@@ -127,7 +130,8 @@ window.CBImport = (function () {
       }
 
       const lignes = (res && res.lignes) || [];
-      _taux = _dedoublonnerTaux((res && res.taux) || []);
+      _taux  = _dedoublonnerTaux((res && res.taux) || []);
+      _fiche = (res && res.fiche) || null;
 
       // Le solde d'ouverture n'est pas une opération : c'est ce qu'il y avait
       // avant que le fichier commence. Il passe en tête, coché, et signalé —
@@ -137,7 +141,7 @@ window.CBImport = (function () {
         lignes.unshift(Object.assign({ report: true }, res.report));
       }
 
-      if (!lignes.length && !_taux.length) {
+      if (!lignes.length && !_taux.length && !_fiche) {
         throw new Error('Aucune opération trouvée dans ce fichier. ' +
           'Vérifiez qu’il contient bien un relevé, avec une date et un montant par ligne.');
       }
@@ -187,7 +191,42 @@ window.CBImport = (function () {
       '</div>'
     ).join('');
     _rendreTaux();
+    _rendreFiche();
     _majPied();
+  }
+
+  // Étiquettes des caractéristiques lues sur une capture de fiche, dans l'ordre
+  // où elles comptent : les deux chiffres qu'aucun calcul ne reproduit d'abord.
+  const FICHE_LIB = [
+    ['acquis',    'Intérêts à ce jour', '€'],
+    ['projete',   'Intérêts prévisionnels', '€'],
+    ['taux',      'Taux', '%'],
+    ['solde',     'Solde', '€'],
+    ['plafond',   'Plafond', '€'],
+    ['ouverture', 'Ouvert le', 'date'],
+    ['fin',       'Fin de validité', 'date'],
+  ];
+
+  function _rendreFiche() {
+    const box = document.getElementById('imp-fiche');
+    if (!box) return;
+    box.hidden = !_fiche;
+    if (!_fiche) return;
+    const cases = FICHE_LIB
+      .filter(([cle]) => _fiche[cle] !== undefined && _fiche[cle] !== null)
+      .map(([cle, lib, unite]) => {
+        const v = _fiche[cle];
+        const txt = unite === 'date' ? String(v).split('-').reverse().join('/')
+                  : unite === '%'    ? String(v).replace('.', ',') + ' %'
+                  : _fmtMontant(v) + ' €';
+        return '<span><i>' + _esc(lib) + '</i><b>' + _esc(txt) + '</b></span>';
+      }).join('');
+    box.innerHTML =
+      '<div class="imp-fiche-t">Fiche du livret reconnue</div>' +
+      '<div class="imp-fiche-l">' + cases + '</div>' +
+      '<div class="imp-fiche-s">Ces valeurs viennent de votre banque et ' +
+      'remplaceront le calcul : c’est ce qui rend l’affichage exact. ' +
+      'Vous pourrez les corriger avant d’enregistrer.</div>';
   }
 
   // Une même révision peut figurer deux fois — deux relevés qui se recouvrent,
@@ -224,10 +263,12 @@ window.CBImport = (function () {
     _text('imp-count',
       retenues.length + ' ligne' + (retenues.length > 1 ? 's' : '') + ' sur ' + _lignes.length +
       ' · solde ' + (somme >= 0 ? '+' : '') + _fmtMontant(somme) + ' €' +
-      (_taux.length ? ' · ' + _taux.length + ' taux' : ''));
+      (_taux.length ? ' · ' + _taux.length + ' taux' : '') +
+      (_fiche ? ' · fiche' : ''));
     const btn = document.getElementById('imp-ok');
-    // Un relevé peut n'apporter que des révisions de taux : il reste utile.
-    if (btn) btn.disabled = !retenues.length && !_taux.length;
+    // Un relevé peut n'apporter que des révisions de taux, ou que la fiche du
+    // livret : il reste utile.
+    if (btn) btn.disabled = !retenues.length && !_taux.length && !_fiche;
   }
 
   function setOk(i, v) {
@@ -259,11 +300,12 @@ window.CBImport = (function () {
     const retenues = _lignes
       .filter(l => l.ok && l.d && isFinite(l.m) && l.m !== 0)
       .map(l => ({ d: l.d, m: l.m, label: l.label || '' }));
-    const taux = _taux.slice();
-    if (!retenues.length && !taux.length) return;
+    const taux  = _taux.slice();
+    const fiche = _fiche ? Object.assign({}, _fiche) : null;
+    if (!retenues.length && !taux.length && !fiche) return;
     const fn = _dest && _dest.onValider;
     close();
-    if (fn) fn(retenues, taux);
+    if (fn) fn(retenues, taux, fiche);
   }
 
   function retour() { _etape('depot'); }
@@ -790,9 +832,14 @@ window.CBImport.pdf = (function () {
     solde:  ['solde'],
   };
 
+  // L'apostrophe devient une espace : « Date d'ouverture » et « Date d
+  // ouverture » doivent tomber sur la même entrée, et une lecture d'image rend
+  // indifféremment l'apostrophe droite, la typographique, ou rien du tout.
   function _norm(s) {
     return String(s || '').toLowerCase().normalize('NFD')
-      .replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/['’`]/g, ' ')
+      .replace(/\s+/g, ' ').trim();
   }
 
   // Position en X des colonnes de montants, lue sur la ligne d'entête. C'est
@@ -961,7 +1008,14 @@ window.CBImport.ocr = (function () {
       throw new Error((data && data.error) || 'La lecture de l’image a échoué.');
     }
     if (progres) progres('Analyse du texte lu…');
-    return analyserTexte((data && data.texte) || '');
+    const texte = (data && data.texte) || '';
+
+    // Deux écrans possibles, et ils n'ont rien à voir : la liste des opérations
+    // ou la fiche « Caractéristiques ». La seconde se reconnaît à ses libellés
+    // et ne contient aucune opération — inutile de lui chercher des dates.
+    const fiche = analyserFiche(texte);
+    if (fiche) return { lignes: [], taux: [], fiche };
+    return analyserTexte(texte);
   }
 
   // WORKER_URL et fbAuth sont des globales de app.js. WORKER_URL est un `const`
@@ -988,9 +1042,14 @@ window.CBImport.ocr = (function () {
     janv: 1, fev: 2, avr: 4, juil: 7, sept: 9, oct: 10, nov: 11, dec: 12,
   };
 
+  // L'apostrophe devient une espace : « Date d'ouverture » et « Date d
+  // ouverture » doivent tomber sur la même entrée, et une lecture d'image rend
+  // indifféremment l'apostrophe droite, la typographique, ou rien du tout.
   function _norm(s) {
     return String(s || '').toLowerCase().normalize('NFD')
-      .replace(/[̀-ͯ]/g, '').replace(/\s+/g, ' ').trim();
+      .replace(/[̀-ͯ]/g, '')
+      .replace(/['’`]/g, ' ')
+      .replace(/\s+/g, ' ').trim();
   }
 
   // « 06 août », « 31 décembre 2025 », « 06/08/2026 ». Sans année, c'est
@@ -1012,6 +1071,89 @@ window.CBImport.ocr = (function () {
       if (d.getTime() > today.getTime()) an -= 1;
     }
     return faire(an);
+  }
+
+  /**
+   * Fiche « Caractéristiques » d'un livret, lue sur une capture.
+   *
+   * L'autre écran de l'application bancaire, et de loin le plus utile : il
+   * porte les deux chiffres qu'aucun calcul ne reproduit — les intérêts acquis
+   * et les prévisionnels — plus le taux, le plafond et les dates.
+   *
+   * C'est ici que la lecture d'image gagne vraiment. Une liste d'opérations
+   * existe déjà en CSV ; cette fiche-là n'existe nulle part ailleurs qu'à
+   * l'écran, et sans elle il faut recopier sept champs à la main.
+   */
+  const CHAMPS = [
+    { cle: 'acquis',   type: 'montant', mots: ['interets a ce jour', 'interets acquis', 'interets au'] },
+    { cle: 'projete',  type: 'montant', mots: ['interets previsionnels', 'interets previsionnels', 'previsionnel'] },
+    { cle: 'plafond',  type: 'montant', mots: ['plafond'] },
+    { cle: 'solde',    type: 'montant', mots: ['solde'] },
+    { cle: 'taux',     type: 'taux',    mots: ['taux'] },
+    { cle: 'fin',      type: 'date',    mots: ['date de fin de validite', 'fin de validite'] },
+    { cle: 'ouverture',type: 'date',    mots: ['date d ouverture', 'date douverture', 'ouverture'] },
+  ];
+
+  const RE_VAL_MONTANT = /([+\-−–])?\s*(\d[\d  .]*(?:[,.]\d{2})?)\s*(?:€|EUR)/i;
+  const RE_VAL_TAUX    = /(\d{1,2}(?:[,.]\d{1,3})?)\s*%/;
+  const RE_VAL_DATE    = /(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/;
+
+  function analyserFiche(texte) {
+    const lignes = String(texte || '').split(/\r?\n/).map(l => _redresser(l.trim())).filter(Boolean);
+    const out = {};
+
+    CHAMPS.forEach(champ => {
+      for (let i = 0; i < lignes.length; i++) {
+        const n = _norm(lignes[i]);
+        // Le libellé doit ouvrir la ligne : « Plafond » ne doit pas être
+        // trouvé dans « Plafond atteint sur votre autre livret ».
+        if (!champ.mots.some(mot => n.indexOf(mot) === 0)) continue;
+
+        // La valeur suit le libellé sur la même ligne, ou occupe la suivante :
+        // l'OCR d'un tableau à deux colonnes rend l'un ou l'autre selon
+        // l'espacement.
+        const apres = lignes[i].slice(_indexApres(lignes[i], champ.mots));
+        const candidats = [apres, lignes[i + 1] || ''];
+        for (const c of candidats) {
+          const v = _valeur(c, champ.type);
+          if (v !== null) { out[champ.cle] = v; break; }
+        }
+        if (out[champ.cle] !== undefined) break;
+      }
+    });
+
+    // Deux repères au minimum, sinon c'est une capture d'autre chose : un
+    // écran d'opérations contient « Solde », et cela ne suffit pas à en faire
+    // une fiche.
+    const forts = ['acquis', 'projete', 'plafond', 'ouverture', 'fin']
+      .filter(k => out[k] !== undefined).length;
+    return forts >= 2 ? out : null;
+  }
+
+  function _indexApres(ligne, mots) {
+    const n = _norm(ligne);
+    let fin = 0;
+    mots.forEach(mot => { if (n.indexOf(mot) === 0) fin = Math.max(fin, mot.length); });
+    return fin;
+  }
+
+  function _valeur(s, type) {
+    if (type === 'taux') {
+      const m = RE_VAL_TAUX.exec(s);
+      const v = m ? Number(m[1].replace(',', '.')) : NaN;
+      return (isFinite(v) && v > 0 && v <= 20) ? v : null;
+    }
+    if (type === 'date') {
+      const m = RE_VAL_DATE.exec(s);
+      return m ? window.CBImport.csv.parseDate(m[1]) : null;
+    }
+    const m = RE_VAL_MONTANT.exec(s);
+    if (!m) return null;
+    const v = window.CBImport.csv.parseMontant(m[2]);
+    if (!isFinite(v)) return null;
+    // Le signe d'une fiche est décoratif : « +850,00 EUR » est un solde, pas un
+    // versement. On rend la valeur absolue, le sens n'a pas de place ici.
+    return Math.abs(v);
   }
 
   // Toute lecture d'image confond un jour O et 0, l et 1 — un OCR classique
@@ -1104,7 +1246,7 @@ window.CBImport.ocr = (function () {
     };
   }
 
-  return { lire, analyserTexte, enTeteDate, _redresser };
+  return { lire, analyserTexte, analyserFiche, enTeteDate, _redresser };
 })();
 
 // Exposé pour la suite de tests hors navigateur (scripts/t-import.cjs).

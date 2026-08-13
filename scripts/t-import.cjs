@@ -415,6 +415,68 @@ const anNeuf = [
 ].join('\n');
 chk('report : veille passe l’année', C.analyser(anNeuf).report.d, '2025-12-31');
 
+// ── Fiche « Caractéristiques » lue sur une capture ──────────────────────────
+// C'est le seul écran qui porte les intérêts acquis et prévisionnels : ni le
+// CSV ni le PDF ne les contiennent, et aucun calcul ne les reproduit.
+const ficheCic = [
+  'Livret Jeune',
+  'Opérations    Caractéristiques',
+  'Caractéristiques générales',
+  'Solde +850,00 EUR',
+  'Taux 3,75 %',
+  'Intérêts à ce jour +6,58 EUR',
+  'Intérêts prévisionnels +19,94 EUR',
+  'Plafond +1 600,00 EUR',
+  'Fiscalité Livret réglementé, non fiscalisé',
+  'Date de fin de validité 31/12/2031',
+  'Compte de repli Non renseigné',
+  "Date d'ouverture 18/09/2018",
+].join('\n');
+const F = O.analyserFiche(ficheCic);
+chk('fiche : intérêts acquis',       F.acquis, 6.58);
+chk('fiche : intérêts prévisionnels', F.projete, 19.94);
+chk('fiche : taux',                  F.taux, 3.75);
+chk('fiche : solde',                 F.solde, 850);
+chk('fiche : plafond',               F.plafond, 1600);
+chk('fiche : date d’ouverture',      F.ouverture, '2018-09-18');
+chk('fiche : fin de validité',       F.fin, '2031-12-31');
+
+// Mise en page à deux colonnes : l'OCR rend souvent la valeur sur la ligne
+// suivante plutôt qu'après le libellé.
+const surDeuxLignes = [
+  'Solde', '+850,00 EUR',
+  'Intérêts à ce jour', '+6,58 EUR',
+  'Intérêts prévisionnels', '+19,94 EUR',
+  "Date d'ouverture", '18/09/2018',
+].join('\n');
+const F2 = O.analyserFiche(surDeuxLignes);
+chk('fiche : valeur sur la ligne suivante', F2.acquis, 6.58);
+chk('fiche : prévisionnel sur deux lignes', F2.projete, 19.94);
+chk('fiche : date sur deux lignes',         F2.ouverture, '2018-09-18');
+
+// Le signe d'une fiche est décoratif : « +850,00 » est un solde, pas un
+// versement. Il ne doit pas ressortir en négatif sur un plafond ou un solde.
+chk('fiche : signe ignoré', O.analyserFiche(
+  'Intérêts à ce jour +6,58 EUR\nIntérêts prévisionnels +19,94 EUR\nSolde -850,00 EUR').solde, 850);
+
+// Un écran d'opérations contient « Solde » lui aussi : un seul repère ne suffit
+// pas à en faire une fiche, sans quoi toute capture serait mal aiguillée.
+chk('fiche : écran d’opérations refusé',
+  O.analyserFiche('Solde :\n+ 850,00 €\n06 août\nVir De M Armel Plantier\n+ 735,00 €'), null);
+chk('fiche : texte quelconque refusé', O.analyserFiche('bonjour\nau revoir'), null);
+
+// Le libellé doit ouvrir la ligne, sinon « Plafond » se ferait voler par une
+// phrase qui le mentionne.
+chk('fiche : libellé en milieu de phrase ignoré',
+  O.analyserFiche('Vous avez atteint le plafond de 1 600,00 EUR sur ce livret\n' +
+                  "Date d'ouverture 18/09/2018\nIntérêts à ce jour +6,58 EUR").plafond,
+  undefined);
+
+// Le taux d'un livret ne dépasse pas 20 % : au-delà, c'est autre chose qui a
+// été lu.
+chk('fiche : taux aberrant écarté', O.analyserFiche(
+  'Taux 3750 %\nIntérêts à ce jour +6,58 EUR\nPlafond +1 600,00 EUR').taux, undefined);
+
 console.log(t.join('\n'));
 const ko = t.filter(x => x.startsWith('FAIL')).length;
 console.log('\n' + (t.length - ko) + '/' + t.length + (ko ? '  >>> ECHEC' : '  >>> tout passe'));
