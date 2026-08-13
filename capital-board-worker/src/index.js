@@ -52,10 +52,32 @@ ${KB}`;
 // Le modèle ne rend QUE du texte : la structuration — dates, signes, montants —
 // reste au code client, qui est testé. Demander un JSON à un modèle de 9 Md de
 // paramètres reviendrait à lui laisser inventer des montants.
-const VISION_MODEL       = '@cf/moondream/moondream3.1-9B-A2B';
-// Repli : généraliste multimodal, schéma d'appel différent (messages, pas
-// task/question) et sortie dans `response` au lieu de `answer`.
-const VISION_MODEL_REPLI = '@cf/meta/llama-3.2-11b-vision-instruct';
+// Modèles retenus, dans l'ordre. Mesuré le 13/08/2026 sur une fiche de livret
+// synthétique portant sept valeurs — montants, taux et dates — que le modèle
+// devait transcrire à l'identique :
+//
+//   llama-4-scout        7/7   1,8 s   ← retenu en premier
+//   mistral-small-3.1    7/7   2,4 s
+//   gemma-4-26b          6/7  12,3 s   (tronque, et lent)
+//   llava-1.5-7b         0/7   1,1 s   ÉCARTÉ — a inventé « +225,65 € »
+//   llama-3.2-11b-vision  —     —      ÉCARTÉ — 403, accord de licence Meta
+//   moondream3.1          —     —      ÉCARTÉ — répond 200 avec un objet vide
+//
+// Le cas llava est le plus instructif : il n'a pas échoué, il a rendu un
+// montant plausible et faux. C'est la raison d'être de l'écran de validation,
+// et la raison pour laquelle les chiffres d'un CSV ne passeront jamais par un
+// modèle.
+//
+// Tous les modèles retenus acceptent le schéma OpenAI : un tableau de parties
+// typées, l'image en data URI. Les autres conventions de Workers AI — octets
+// bruts, task/question — ne servent plus.
+const VISION_MODELES = [
+  '@cf/meta/llama-4-scout-17b-16e-instruct',
+  '@cf/mistralai/mistral-small-3.1-24b-instruct',
+  '@cf/google/gemma-4-26b-a4b-it',
+];
+// env.VISION_MODEL, si elle est posée, court-circuite la liste — de quoi
+// changer de modèle sans toucher au code.
 const VISION_MAX_BYTES = 6 * 1024 * 1024;
 const VISION_RL_MAX    = 30;    // images max par compte et par fenêtre
 const VISION_RL_WINDOW = 3600;  // fenêtre rate-limit (s)
@@ -460,8 +482,15 @@ function texteDeReponse(out) {
     const v = out[cle];
     if (typeof v === 'string' && v.trim()) return v.trim();
   }
+  // Forme OpenAI : le texte est dans choices[0].message.content. Sans ce cas,
+  // gemma rendait « stop » — son finish_reason, seule chaîne de l'objet.
+  if (Array.isArray(out.choices) && out.choices[0]) {
+    const c = out.choices[0];
+    const v = (c.message && c.message.content) || c.text || c.delta?.content;
+    if (typeof v === 'string' && v.trim()) return v.trim();
+  }
   // Certains modèles emboîtent leur charge utile d'un cran.
-  for (const cle of ['result', 'data', 'choices']) {
+  for (const cle of ['result', 'data']) {
     if (out[cle]) {
       const v = texteDeReponse(Array.isArray(out[cle]) ? out[cle][0] : out[cle]);
       if (v) return v;
@@ -1458,25 +1487,17 @@ export default {
         // que de parier, on descend la liste jusqu'à ce qu'un texte sorte : le
         // premier qui répond a raison. Un seul appel aboutit en pratique, les
         // suivants ne coûtent rien.
-        const octets = Array.from(bytes);
         const partiesOpenAI = [
           { type: 'text', text: VISION_PROMPT },
           { type: 'image_url', image_url: { url: b64 } },
         ];
+        const openai = (modele) => ({
+          modele,
+          corps: { messages: [{ role: 'user', content: partiesOpenAI }], max_tokens: 1024 },
+        });
         const essais = env.VISION_MODEL
-          ? [{ modele: env.VISION_MODEL, corps: { image: octets, prompt: VISION_PROMPT, max_tokens: 1024 } }]
-          : [
-              { modele: '@cf/meta/llama-3.2-11b-vision-instruct',
-                corps: { image: octets, prompt: VISION_PROMPT, max_tokens: 1024 } },
-              { modele: '@cf/meta/llama-4-scout-17b-16e-instruct',
-                corps: { messages: [{ role: 'user', content: partiesOpenAI }], max_tokens: 1024 } },
-              { modele: '@cf/mistralai/mistral-small-3.1-24b-instruct',
-                corps: { messages: [{ role: 'user', content: partiesOpenAI }], max_tokens: 1024 } },
-              { modele: '@cf/llava-hf/llava-1.5-7b-hf',
-                corps: { image: octets, prompt: VISION_PROMPT, max_tokens: 1024 } },
-              { modele: VISION_MODEL,
-                corps: { task: 'query', image: b64, question: VISION_PROMPT } },
-            ];
+          ? [openai(env.VISION_MODEL)]
+          : VISION_MODELES.map(openai);
 
         const vus = [];
         for (const essai of essais) {
