@@ -1320,7 +1320,50 @@ window.CBImport.ocr = (function () {
     // et ne contient aucune opération — inutile de lui chercher des dates.
     const fiche = analyserFiche(texte);
     if (fiche) return { lignes: [], taux: [], fiche };
-    return analyserTexte(texte);
+
+    const lu = analyserTexte(texte);
+
+    // Rien, ou presque : c'est le symptôme d'une fiche dont on ne connaît pas
+    // les libellés. Plutôt que d'allonger indéfiniment CHAMPS banque par
+    // banque, on demande au modèle de désigner les valeurs dans le texte qu'il
+    // vient lui-même de transcrire — et on vérifie chacune contre ce texte.
+    //
+    // Le seuil : au-delà de deux opérations, c'est une vraie liste, et une
+    // fiche n'en produit pas autant. Sans lui, une capture d'opérations
+    // déclencherait un appel inutile à chaque import.
+    if (lu.lignes.length < 3 && !lu.taux.length) {
+      if (progres) progres('Reconnaissance des champs…');
+      let rendu = null;
+      try { rendu = await _champsParIA(texte); } catch (_) { /* le repli reste lu */ }
+      const parIA = rendu ? ficheDepuisChamps(texte, rendu) : null;
+      if (parIA) return { lignes: [], taux: [], fiche: parIA };
+    }
+
+    return lu;
+  }
+
+  /**
+   * Deuxième passe : le texte transcrit repart au Worker, qui demande au modèle
+   * de pointer les valeurs. Voir le bloc VISION_CHAMPS_* du Worker.
+   *
+   * Rend le texte brut du modèle, jamais un objet : la conversion en nombres
+   * reste ici, dans du code testé.
+   */
+  async function _champsParIA(texte) {
+    const jeton = await _jeton();
+    if (!jeton) return null;
+    const res = await fetch(_worker() + '/lire-releve', {
+      method: 'POST',
+      headers: {
+        'Authorization': 'Bearer ' + jeton,
+        'X-Etape': 'champs',
+        'Content-Type': 'text/plain; charset=utf-8',
+      },
+      body: texte,
+    });
+    if (!res.ok) return null;
+    const data = await res.json().catch(() => null);
+    return (data && data.champs) || null;
   }
 
   // WORKER_URL et fbAuth sont des globales de app.js. WORKER_URL est un `const`
@@ -1389,14 +1432,18 @@ window.CBImport.ocr = (function () {
    * existe déjà en CSV ; cette fiche-là n'existe nulle part ailleurs qu'à
    * l'écran, et sans elle il faut recopier sept champs à la main.
    */
+  // Les libellés ont été recopiés du CIC, puis élargis aux formulations les plus
+  // répandues. Cette liste n'a pas de fin — c'est un raccourci gratuit, pas la
+  // réponse : quand elle ne trouve rien, `_champsParIA` prend le relais et
+  // reconnaît la fiche quelle que soit la banque.
   const CHAMPS = [
-    { cle: 'acquis',   type: 'montant', mots: ['interets a ce jour', 'interets acquis', 'interets au'] },
-    { cle: 'projete',  type: 'montant', mots: ['interets previsionnels', 'interets previsionnels', 'previsionnel'] },
-    { cle: 'plafond',  type: 'montant', mots: ['plafond'] },
-    { cle: 'solde',    type: 'montant', mots: ['solde'] },
-    { cle: 'taux',     type: 'taux',    mots: ['taux'] },
-    { cle: 'fin',      type: 'date',    mots: ['date de fin de validite', 'fin de validite'] },
-    { cle: 'ouverture',type: 'date',    mots: ['date d ouverture', 'date douverture', 'ouverture'] },
+    { cle: 'acquis',   type: 'montant', mots: ['interets a ce jour', 'interets acquis', 'interets courus', 'interets au', 'interets percus', 'interets cumules'] },
+    { cle: 'projete',  type: 'montant', mots: ['interets previsionnels', 'interets projetes', 'interets estimes', 'previsionnel', 'projection'] },
+    { cle: 'plafond',  type: 'montant', mots: ['plafond', 'montant maximum', 'versement maximum'] },
+    { cle: 'solde',    type: 'montant', mots: ['solde', 'encours', 'capital'] },
+    { cle: 'taux',     type: 'taux',    mots: ['taux', 'remuneration'] },
+    { cle: 'fin',      type: 'date',    mots: ['date de fin de validite', 'fin de validite', 'echeance', 'date d echeance', 'date de cloture'] },
+    { cle: 'ouverture',type: 'date',    mots: ['date d ouverture', 'date douverture', 'ouverture', 'ouvert le', 'souscrit le', 'date de souscription'] },
   ];
 
   const RE_VAL_MONTANT = /([+\-−–])?\s*(\d[\d  .]*(?:[,.]\d{2})?)\s*(?:€|EUR)/i;
@@ -1433,6 +1480,83 @@ window.CBImport.ocr = (function () {
     const forts = ['acquis', 'projete', 'plafond', 'ouverture', 'fin']
       .filter(k => out[k] !== undefined).length;
     return forts >= 2 ? out : null;
+  }
+
+  const CHAMPS_TYPE = CHAMPS.reduce((a, c) => { a[c.cle] = c.type; return a; }, {});
+
+  // Les réponses vides que rendent les modèles quand la valeur manque, plutôt
+  // que d'omettre la ligne comme on le leur demande.
+  const RE_VIDE = /^(non|aucun|aucune|null|none|n\/?a|inconnu|absent|-{1,3}|\?)$/i;
+
+  /**
+   * Transforme la réponse de la deuxième passe en fiche — et jette tout ce qui
+   * ne se trouve pas dans la transcription.
+   *
+   * C'EST ICI QUE TIENT LA GARANTIE. Un modèle interrogé sur des chiffres finit
+   * par en produire un qui n'existe pas : le 13/08, llava a rendu « +225,65 € »
+   * sur une image qui n'en portait aucun. Plausible, faux, et rien ne le
+   * signalait. Une valeur inventée n'étant, par définition, pas dans le texte
+   * transcrit, la comparer à ce texte suffit à l'écarter.
+   *
+   * Le modèle ne fait donc que DÉSIGNER : il ne calcule pas, il ne reformate
+   * pas, et ce qu'il désigne est converti par les mêmes regex que la voie par
+   * libellés. Sa seule liberté est de se tromper de valeur — visible à l'écran
+   * de validation, contrairement à une valeur inventée.
+   *
+   * Exporté pour `scripts/t-import.cjs` : c'est la fonction à ne jamais casser.
+   */
+  function ficheDepuisChamps(texte, rendu) {
+    // La comparaison ignore les espaces : le modèle rend « 1 234,56 » là où la
+    // transcription porte « 1234,56 », et l'espace fine insécable d'un montant
+    // français survit rarement à un aller-retour. Le reste est comparé tel quel.
+    const foin = _sansEspaces(_redresser(String(texte || '')));
+    const out = {};
+
+    String(rendu || '').split(/\r?\n/).forEach(ligne => {
+      // « acquis=19,94 € », « - acquis : 19,94 € », « **acquis** = 19,94 € ».
+      const m = /^[\s\-*•]*\**\s*([a-zéè]+)\**\s*[=:]\s*(.+?)\s*$/i.exec(ligne);
+      if (!m) return;
+      const cle = _norm(m[1]);
+      const type = CHAMPS_TYPE[cle];
+      if (!type || out[cle] !== undefined) return;
+
+      const brut = m[2].replace(/^["'«»\s]+/, '').replace(/["'«».,;\s]+$/, '');
+      if (!brut || RE_VIDE.test(brut)) return;
+
+      // LE CONTRÔLE.
+      if (foin.indexOf(_sansEspaces(_redresser(brut))) === -1) return;
+
+      const v = _valeurLibre(brut, type);
+      if (v !== null) out[cle] = v;
+    });
+
+    // Au moins un repère fort, sinon c'est un solde isolé lu sur un écran
+    // quelconque : cela ne fait pas une fiche de livret.
+    const forts = ['acquis', 'projete', 'plafond', 'ouverture', 'fin']
+      .filter(k => out[k] !== undefined).length;
+    return forts >= 1 ? out : null;
+  }
+
+  function _sansEspaces(s) {
+    return String(s || '').toLowerCase().replace(/[\s  ]/g, '');
+  }
+
+  /**
+   * Comme `_valeur`, mais sur une valeur déjà isolée par le modèle.
+   *
+   * Deux différences, et elles ne valent que dans ce contexte : le symbole €
+   * n'est plus exigé — il sert à repérer un montant dans une ligne, pas à le
+   * valider une fois seul — et une date en toutes lettres est acceptée, parce
+   * qu'une fiche écrit « 12 mars 2020 » aussi souvent que « 12/03/2020 ».
+   */
+  function _valeurLibre(brut, type) {
+    const s = _redresser(brut);
+    if (type === 'montant' && !/€|EUR/i.test(s)) return _valeur(s + ' €', type);
+    if (type === 'date') {
+      const v = _valeur(s, type);
+      return v !== null ? v : enTeteDate(s);
+    }
+    return _valeur(s, type);
   }
 
   function _indexApres(ligne, mots) {
@@ -1551,7 +1675,7 @@ window.CBImport.ocr = (function () {
     };
   }
 
-  return { lire, analyserTexte, analyserFiche, enTeteDate, _redresser };
+  return { lire, analyserTexte, analyserFiche, ficheDepuisChamps, enTeteDate, _redresser };
 })();
 
 // Exposé pour la suite de tests hors navigateur (scripts/t-import.cjs).

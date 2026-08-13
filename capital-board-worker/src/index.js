@@ -90,13 +90,46 @@ const VISION_PROMPT =
   'Conserve le signe + ou - devant chaque montant. Ne commente pas, ne résume ' +
   'pas, ne réponds rien d\'autre que le texte lu.';
 
+// ── Deuxième passe : désigner les champs (X-Etape: champs) ─────────────────
+// Reconnaître la fiche d'un livret par ses libellés ne marche qu'à la banque
+// dont on a recopié les libellés. « Intérêts à ce jour » au CIC, « intérêts
+// acquis » ailleurs, « intérêts courus au 31/12 » ailleurs encore : la liste
+// n'a pas de fin, et une banque manquante échoue en silence.
+//
+// Le modèle, lui, comprend ce qu'est un intérêt acquis quelle que soit la
+// formulation. On lui donne donc LE TEXTE déjà transcrit — pas l'image, c'est
+// dix fois moins cher — et on lui demande de POINTER les valeurs.
+//
+// LA GARANTIE TIENT AILLEURS QUE DANS LE PROMPT
+// Le client vérifie que chaque valeur rendue figure MOT POUR MOT dans la
+// transcription. Une valeur inventée n'y est pas, donc elle est jetée. C'est ce
+// qui manquait le 13/08 quand llava a produit « +225,65 € » : plausible, faux,
+// et rien pour l'attraper. Le modèle désigne, il ne calcule pas.
+const VISION_CHAMPS_MAX = 8000;   // caractères de transcription acceptés
+const VISION_CHAMPS_PROMPT =
+  'Voici le texte d\'une fiche de livret d\'épargne, transcrite depuis une ' +
+  'capture d\'écran bancaire. Retrouve les valeurs demandées et recopie-les ' +
+  'EXACTEMENT comme elles apparaissent dans le texte, sans les reformater, ' +
+  'sans les convertir, sans les calculer.\n\n' +
+  'Réponds une ligne par valeur trouvée, au format cle=valeur, avec ces clés :\n' +
+  'acquis = les intérêts déjà acquis ou courus à ce jour\n' +
+  'projete = les intérêts prévisionnels, projetés ou estimés en fin d\'année\n' +
+  'solde = le solde ou l\'encours du livret\n' +
+  'plafond = le plafond de versement\n' +
+  'taux = le taux de rémunération annuel\n' +
+  'ouverture = la date d\'ouverture du livret\n' +
+  'fin = la date de fin de validité, d\'échéance ou de clôture\n\n' +
+  'N\'INVENTE RIEN. Si une valeur ne figure pas dans le texte, omets sa ligne. ' +
+  'Ne réponds rien d\'autre que ces lignes.';
+
 const CORS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
   // Authorization : /username-available accepte le jeton du demandeur pour
   // s'exclure lui-meme du controle d'unicite.
   // X-File-Name / X-File-Type / X-Target-Uid : metadonnees de /support-upload,
   // le corps de la requete etant les octets bruts du fichier.
-  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-File-Name, X-File-Type, X-Target-Uid',
+  // X-Etape : deuxième passe de /lire-releve, qui prend du texte et non une image.
+  'Access-Control-Allow-Headers': 'Content-Type, Authorization, X-File-Name, X-File-Type, X-Target-Uid, X-Etape',
 };
 
 // ── Pieces jointes du support (R2) ─────────────────────────────────────────
@@ -508,6 +541,39 @@ function texteDeReponse(out) {
 // String.fromCharCode(...tableau) dépasse la taille maximale de la pile
 // d'appels sur une image de quelques mégaoctets — ailleurs dans ce fichier
 // l'étalement suffit, les buffers y font quelques centaines d'octets.
+// Descend VISION_MODELES jusqu'à ce qu'un texte sorte. Partagé par les deux
+// passes de /lire-releve : la transcription d'une image et la désignation des
+// champs dans le texte obtenu.
+//
+// Workers AI n'a pas UN schéma d'entrée pour les images, il en a trois, selon
+// l'âge et la famille du modèle, et la disponibilité varie d'un compte à
+// l'autre. Plutôt que de parier, le premier qui répond a raison. Un seul appel
+// aboutit en pratique, les suivants ne coûtent rien.
+async function cascadeVision(env, faireEssai) {
+  const modeles = env.VISION_MODEL ? [env.VISION_MODEL] : VISION_MODELES;
+  const vus = [];
+  for (const modele of modeles) {
+    const essai = faireEssai(modele);
+    let out;
+    try {
+      out = await env.AI.run(essai.modele, essai.corps);
+    } catch (e) {
+      vus.push(_court(essai.modele) + ':!' + _sansDonnees(e && e.message));
+      continue;
+    }
+    const texte = texteDeReponse(out);
+    if (texte) return { texte, modele: essai.modele };
+    // Le TYPE et les CLÉS de la réponse, jamais son contenu : de quoi
+    // diagnostiquer un schéma inattendu sans faire fuiter une ligne de relevé.
+    // Un objet sans clé est le symptôme d'un schéma d'entrée refusé en silence.
+    const forme = out === null ? 'null'
+      : typeof out !== 'object' ? typeof out
+      : (Object.keys(out).join('|') || (out.constructor && out.constructor.name) || 'vide');
+    vus.push(_court(essai.modele) + ':' + forme);
+  }
+  return { texte: '', diagnostic: vus.join(' ; ').slice(0, 400) };
+}
+
 function bytesToBase64(bytes) {
   let bin = '';
   const PAS = 0x8000;
@@ -1466,6 +1532,23 @@ export default {
         }
         await env.EARNINGS.put(rlKey, String(count + 1), { expirationTtl: VISION_RL_WINDOW });
 
+        // Deuxième passe : le corps n'est plus une image mais la transcription
+        // rendue par la première. Rien de plus n'en sort — le texte a déjà fait
+        // l'aller-retour sous forme d'image, et il n'est pas davantage conservé.
+        if ((request.headers.get('X-Etape') || '').toLowerCase() === 'champs') {
+          const brut = (await request.text()).slice(0, VISION_CHAMPS_MAX).trim();
+          if (!brut) return json({ error: 'texte vide' }, 400);
+          const r = await cascadeVision(env, (modele) => ({
+            modele,
+            corps: {
+              messages: [{ role: 'user', content: VISION_CHAMPS_PROMPT + '\n\n---\n' + brut }],
+              max_tokens: 300,
+            },
+          }));
+          if (r.texte) return json({ champs: r.texte, modele: r.modele });
+          return json({ error: 'Champs non identifiés.', diagnostic: r.diagnostic }, 502);
+        }
+
         const type = (request.headers.get('X-File-Type') || '').toLowerCase().split(';')[0].trim();
         if (!VISION_MIME.has(type)) return json({ error: 'type de fichier refusé' }, 415);
 
@@ -1491,38 +1574,15 @@ export default {
           { type: 'text', text: VISION_PROMPT },
           { type: 'image_url', image_url: { url: b64 } },
         ];
-        const openai = (modele) => ({
+        const r = await cascadeVision(env, (modele) => ({
           modele,
           corps: { messages: [{ role: 'user', content: partiesOpenAI }], max_tokens: 1024 },
-        });
-        const essais = env.VISION_MODEL
-          ? [openai(env.VISION_MODEL)]
-          : VISION_MODELES.map(openai);
-
-        const vus = [];
-        for (const essai of essais) {
-          let out;
-          try {
-            out = await env.AI.run(essai.modele, essai.corps);
-          } catch (e) {
-            vus.push(_court(essai.modele) + ':!' + _sansDonnees(e && e.message));
-            continue;
-          }
-          const texte = texteDeReponse(out);
-          if (texte) return json({ texte, modele: essai.modele });
-          // Le TYPE et les CLÉS de la réponse, jamais son contenu : de quoi
-          // diagnostiquer un schéma inattendu sans faire fuiter une ligne de
-          // relevé. Un objet sans clé est le symptôme d'un schéma d'entrée
-          // refusé en silence.
-          const forme = out === null ? 'null'
-            : typeof out !== 'object' ? typeof out
-            : (Object.keys(out).join('|') || (out.constructor && out.constructor.name) || 'vide');
-          vus.push(_court(essai.modele) + ':' + forme);
-        }
+        }));
+        if (r.texte) return json({ texte: r.texte, modele: r.modele });
 
         return json({
           error: 'Aucun texte lu dans cette image.',
-          diagnostic: vus.join(' ; ').slice(0, 400),
+          diagnostic: r.diagnostic,
         }, 502);
       }
 

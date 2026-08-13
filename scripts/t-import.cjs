@@ -591,6 +591,77 @@ chk('fusion : lot vide', FUS([]).length, 0);
 chk('fusion : montants différents le même jour',
   FUS([{ _f: 0, d: '2026-04-03', m: 150 }, { _f: 0, d: '2026-04-03', m: 250 }]).length, 2);
 
+// ── Deuxième passe : le modèle désigne, le code vérifie ─────────────────────
+// La voie par libellés ne connaît que les banques dont on a recopié les mots.
+// Quand elle échoue, le modèle pointe les valeurs dans sa propre transcription,
+// et `ficheDepuisChamps` jette tout ce qui ne s'y trouve pas. Ces cas-là sont
+// la garantie anti-invention : ils ne doivent jamais être assouplis.
+const FIC = (texte, rendu) => CB.ocr.ficheDepuisChamps(texte, rendu);
+
+// Une fiche d'une banque dont aucun libellé n'est dans CHAMPS.
+const FICHE_INCONNUE = [
+  'Mon Livret Jeune',
+  'Rémunération servie au 13/08 : 19,94 EUR',
+  'Estimation au 31 décembre : 33,30 EUR',
+  'Encours : 850,00 EUR',
+  'Contrat souscrit le 04/09/2019',
+].join('\n');
+
+chk('IA : libellés inconnus, valeurs désignées',
+  FIC(FICHE_INCONNUE, 'acquis=19,94 EUR\nprojete=33,30 EUR\nsolde=850,00 EUR\nouverture=04/09/2019'),
+  { acquis: 19.94, projete: 33.3, solde: 850, ouverture: '2019-09-04' });
+
+// LE cas qui justifie tout le dispositif : llava, le 13/08, sur une image qui
+// ne portait aucun montant de ce genre.
+chk('IA : montant inventé rejeté',
+  FIC(FICHE_INCONNUE, 'acquis=225,65 EUR'), null);
+chk('IA : inventé rejeté, réel gardé',
+  FIC(FICHE_INCONNUE, 'acquis=19,94 EUR\nprojete=225,65 EUR'), { acquis: 19.94 });
+chk('IA : date inventée rejetée',
+  FIC(FICHE_INCONNUE, 'acquis=19,94 EUR\nouverture=01/01/2001'), { acquis: 19.94 });
+
+// Le modèle recopie souvent en reformatant les espaces : « 1 234,56 » pour
+// « 1234,56 ». La comparaison les ignore, et rien d'autre.
+chk('IA : espaces ignorés dans la comparaison',
+  FIC('Solde 1234,56 EUR\nIntérêts perçus 12,00 EUR', 'acquis=12,00 EUR\nsolde=1 234,56 EUR'),
+  { acquis: 12, solde: 1234.56 });
+
+// Le symbole € n'est exigé que pour repérer un montant dans une ligne. Isolé
+// par le modèle, il n'apporte rien.
+chk('IA : montant sans symbole',
+  FIC('Interets acquis 19,94', 'acquis=19,94'), { acquis: 19.94 });
+chk('IA : date en toutes lettres',
+  FIC('Ouvert le 4 septembre 2019\nInterets acquis 19,94', 'acquis=19,94\nouverture=4 septembre 2019'),
+  { acquis: 19.94, ouverture: '2019-09-04' });
+
+// Formes de réponse : puces, deux-points, gras. Un modèle ne s'en tient jamais
+// tout à fait au format demandé.
+chk('IA : puce et deux-points',
+  FIC(FICHE_INCONNUE, '- acquis : 19,94 EUR'), { acquis: 19.94 });
+chk('IA : gras markdown',
+  FIC(FICHE_INCONNUE, '**projete** = 33,30 EUR'), { projete: 33.3 });
+
+// Ce qu'on lui demande d'omettre, il l'écrit quand même.
+chk('IA : « non trouvé » ignoré',
+  FIC(FICHE_INCONNUE, 'acquis=19,94 EUR\nprojete=non trouvé\nfin=N/A'), { acquis: 19.94 });
+chk('IA : clé inconnue ignorée',
+  FIC(FICHE_INCONNUE, 'acquis=19,94 EUR\ntitulaire=Armel'), { acquis: 19.94 });
+chk('IA : bavardage ignoré',
+  FIC(FICHE_INCONNUE, 'Voici les valeurs demandées :\nacquis=19,94 EUR'), { acquis: 19.94 });
+
+// Un solde seul ne fait pas une fiche : c'est le symptôme d'une capture
+// d'autre chose, et l'accepter créerait un livret à partir de rien.
+chk('IA : solde seul refusé', FIC('Solde 850,00 EUR', 'solde=850,00 EUR'), null);
+chk('IA : réponse vide', FIC(FICHE_INCONNUE, ''), null);
+chk('IA : taux hors bornes rejeté',
+  FIC('Taux 99,00 %\nInterets acquis 19,94', 'acquis=19,94\ntaux=99,00 %'), { acquis: 19.94 });
+
+// Les libellés élargis doivent trouver seuls les formulations courantes, sans
+// appeler le modèle : c'est le chemin gratuit.
+chk('libellés élargis : « intérêts courus » et « ouvert le »',
+  CB.ocr.analyserFiche('Intérêts courus 19,94 EUR\nOuvert le 04/09/2019\nEncours 850,00 EUR'),
+  { acquis: 19.94, solde: 850, ouverture: '2019-09-04' });
+
 console.log(t.join('\n'));
 const ko = t.filter(x => x.startsWith('FAIL')).length;
 console.log('\n' + (t.length - ko) + '/' + t.length + (ko ? '  >>> ECHEC' : '  >>> tout passe'));
