@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260815w';
+const APP_VERSION = '20260815x';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -19487,6 +19487,12 @@ window.livSave = function() {
   // des versements et des retraits.
   const solde = mvts.reduce((a, m) => a + m.m, 0);
 
+  // La banque n'est plus facultative : c'est elle qui dit comment lire un
+  // relevé, et un livret sans banque ne pourra jamais en importer un. L'ordre
+  // des contrôles suit celui des champs à l'écran.
+  const banque = _depVal('liv-f-banque').trim();
+  if (!banque) return _livErr('Indiquez votre banque : c’est elle qui permet de lire correctement votre relevé.');
+
   if (!mvts.length) return _livErr('Ajoutez au moins un mouvement : le solde s’en déduit.');
   if (solde <= 0) return _livErr('Les retraits saisis annulent les versements — le solde obtenu est de ' + fmt(solde) + '.');
   const ouverture = _depVal('liv-f-ouverture');
@@ -19526,7 +19532,7 @@ window.livSave = function() {
     type: _livType,
     solde,
     taux: brut ? perso : null,          // null = on suit le barème, y compris ses révisions
-    banque: _depVal('liv-f-banque').slice(0, 60) || null,
+    banque: banque.slice(0, 60),
     // Domaine figé à l'enregistrement, comme pour les marchands : le logo
     // reste le bon même si le catalogue évolue.
     banqueDomaine: _livDomaine || null,

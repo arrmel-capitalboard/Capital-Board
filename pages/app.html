@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260815w">
+<link rel="stylesheet" href="css/style.css?v=20260815x">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2496,19 +2496,12 @@
       <div class="dep-cats liv-types" id="liv-f-types"></div>
     </div>
 
-    <!-- Le chemin court, en tête : un relevé remplit les mouvements, les dates,
-         les révisions de taux et les deux chiffres de la banque. Tout ce qui
-         suit ne sert qu'à compléter ou corriger. -->
-    <button type="button" class="liv-import-cta" onclick="livImporterReleve()">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
-      <span>
-        <b>Importer un relevé</b>
-        <i>CSV, PDF ou capture d’écran — remplit tout ce qui suit</i>
-      </span>
-    </button>
-
+    <!-- La banque passe AVANT l'import, et n'est plus facultative : chaque
+         établissement nomme les mêmes choses à sa façon, et c'est elle qui dit
+         quels libellés chercher dans un relevé. La deviner reviendrait à le
+         demander au modèle, donc à le laisser se tromper en silence. -->
     <div class="form-group">
-      <label class="form-label" for="liv-f-banque">Banque <span class="dep-opt">facultatif</span></label>
+      <label class="form-label" for="liv-f-banque">Banque</label>
       <div class="dep-nameline">
         <div class="dep-logo" id="liv-f-logo" aria-hidden="true"></div>
         <div class="dep-namefield">
@@ -2519,7 +2512,29 @@
           <div class="dep-sugg" id="liv-f-sugg" role="listbox"></div>
         </div>
       </div>
+      <div class="dep-help">Elle sert à lire votre relevé : chaque banque écrit les mêmes lignes autrement.</div>
     </div>
+
+    <!-- Le chemin court : un relevé remplit les mouvements, les dates,
+         les révisions de taux et les deux chiffres de la banque. Tout ce qui
+         suit ne sert qu'à compléter ou corriger. -->
+    <button type="button" class="liv-import-cta" onclick="livImporterReleve()">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/></svg>
+      <span>
+        <b>Importer un relevé</b>
+        <i>CSV, PDF ou capture d’écran — remplit tout ce qui suit</i>
+      </span>
+    </button>
+    <!-- Le détail est dit ici, et pas seulement dans la modale de consentement :
+         le membre décide de cliquer AVANT de la voir. Et il est dit exactement :
+         le CSV et le PDF ne sortent pas du navigateur, l'image si. Écrire
+         « tout est local » serait faux pour une capture. -->
+    <div class="liv-import-note">
+      <b>CSV et PDF</b> sont lus dans votre navigateur : le fichier ne part nulle part.
+      Une <b>capture d’écran</b> est lue par une IA sur notre serveur, qui ne la garde
+      pas — votre accord est demandé avant l’envoi.
+    </div>
+    <div class="liv-import-ou">ou remplissez les champs à la main</div>
 
     <div class="dep-row2">
       <div class="form-group">
@@ -2546,7 +2561,7 @@
           Retrait
         </button>
       </div>
-      <div class="dep-help">Le solde se déduit de ces lignes. Un versement rapporte à partir du 1er ou du 16 qui suit ; un retrait cesse de rapporter dès la quinzaine en cours. Pour un livret ancien, une première ligne à la date d'ouverture suffit. L'import lit un relevé sans rien téléverser : tout se passe dans votre navigateur.</div>
+      <div class="dep-help">Le solde se déduit de ces lignes. Un versement rapporte à partir du 1er ou du 16 qui suit ; un retrait cesse de rapporter dès la quinzaine en cours. Pour un livret ancien, une première ligne à la date d'ouverture suffit.</div>
     </div>
 
     <!-- Repliés : trois blocs que l'import remplit seul, et qu'on ne saisit à
@@ -3455,11 +3470,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260815w"></script>
+<script src="js/app.js?v=20260815x"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260815w"></script>
+<script src="js/onboarding.js?v=20260815x"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260815w"></script>
+<script src="js/import.js?v=20260815x"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
