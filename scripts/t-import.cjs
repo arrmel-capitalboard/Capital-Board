@@ -13,6 +13,13 @@ mod._compile(src, 'import.js');
 const CB = global.window.CBImport;
 const C  = CB.csv;
 
+// Les parseurs rendent { lignes, taux } : un relevé porte des opérations, et
+// parfois ses propres révisions de taux. La plupart des cas ne s'intéressent
+// qu'aux opérations — d'où ces trois raccourcis.
+const anaC = (s)    => C.analyser(s).lignes;
+const anaP = (l)    => CB.pdf.analyser(l).lignes;
+const anaO = (s, d) => CB.ocr.analyserTexte(s, d).lignes;
+
 const t = [];
 const chk = (l, a, b) => {
   const ok = (typeof a === 'number' && typeof b === 'number')
@@ -53,7 +60,7 @@ const cic = [
   '01/08/2026;01/08/2026;;0,00;Nouveau Taux Du Livret Jeune;220,00',
   '30/07/2026;30/07/2026;150,00;;Vir C/C Contrat Personnel Parcours;220,00',
 ].join('\n');
-const rCic = C.analyser(cic);
+const rCic = anaC(cic);
 chk('CIC : ligne à 0 € écartée', rCic.length, 3);
 chk('CIC : crédit positif',  rCic.find(r => r.m > 0).m, 735);
 chk('CIC : débit négatif',   rCic.filter(r => r.m < 0).map(r => r.m), [-105, -150]);
@@ -69,7 +76,7 @@ const unique = [
   '2026-01-06,Virement recu,900.00',
   '2026-01-17,Retrait,-50.00',
 ].join('\n');
-const rU = C.analyser(unique);
+const rU = anaC(unique);
 chk('montant unique : 2 lignes', rU.length, 2);
 chk('montant unique : signes',   rU.map(r => r.m), [900, -50]);
 
@@ -79,8 +86,8 @@ const guill = [
   '06/08/2026;"Vir De M Armel Plantier; solde";735,00',
 ].join('\n');
 chk('guillemets : libellé entier',
-  C.analyser(guill)[0].label, 'Vir De M Armel Plantier; solde');
-chk('guillemets : montant intact', C.analyser(guill)[0].m, 735);
+  anaC(guill)[0].label, 'Vir De M Armel Plantier; solde');
+chk('guillemets : montant intact', anaC(guill)[0].m, 735);
 
 // ── Préambule avant l’entête ────────────────────────────────────────────────
 const preambule = [
@@ -91,8 +98,8 @@ const preambule = [
   'Date;Libellé;Montant',
   '04/07/2026;Vir De M Armel Plantier;250,00',
 ].join('\n');
-chk('préambule ignoré', C.analyser(preambule).length, 1);
-chk('préambule : montant', C.analyser(preambule)[0].m, 250);
+chk('préambule ignoré', anaC(preambule).length, 1);
+chk('préambule : montant', anaC(preambule)[0].m, 250);
 
 // ── Sans entête du tout : détection par le contenu ──────────────────────────
 const brut = [
@@ -100,19 +107,19 @@ const brut = [
   '30/07/2026;Vir C/C Contrat Personnel;-150,00',
   '18/07/2026;Vir C/C Contrat Personnel;-100,00',
 ].join('\n');
-const rB = C.analyser(brut);
+const rB = anaC(brut);
 chk('sans entête : 3 lignes', rB.length, 3);
 chk('sans entête : montants', rB.map(r => r.m).sort((a, b) => a - b), [-150, -100, 735]);
 chk('sans entête : libellé deviné', rB.find(r => r.m === 735).label, 'Vir De M Armel Plantier');
 
 // ── Tabulation ──────────────────────────────────────────────────────────────
 const tab = 'Date\tLibellé\tMontant\n06/08/2026\tVirement\t735,00';
-chk('séparateur tabulation', C.analyser(tab)[0].m, 735);
+chk('séparateur tabulation', anaC(tab)[0].m, 735);
 
 // ── Robustesse ──────────────────────────────────────────────────────────────
-chk('fichier vide',        C.analyser(''), []);
-chk('une seule ligne',     C.analyser('Date;Montant'), []);
-chk('que du texte',        C.analyser('bonjour\nau revoir'), []);
+chk('fichier vide',        anaC(''), []);
+chk('une seule ligne',     anaC('Date;Montant'), []);
+chk('que du texte',        anaC('bonjour\nau revoir'), []);
 
 // ── Le vrai cas : 47 opérations rejouées, solde attendu 499,16 € ────────────
 const reel = ['Date;Libellé;Débit;Crédit'].concat([
@@ -165,7 +172,7 @@ const reel = ['Date;Libellé;Débit;Crédit'].concat([
   ['06/08/2026', 'Vir C/C Contrat Personnel Parcours', '105,00', ''],
 ].map(r => r.join(';'))).join('\n');
 
-const rReel = C.analyser(reel);
+const rReel = anaC(reel);
 chk('cas réel : 47 opérations', rReel.length, 47);
 chk('cas réel : somme 499,16 €',
   Math.round(rReel.reduce((s, r) => s + r.m, 0) * 100) / 100, 499.16);
@@ -191,7 +198,7 @@ const pdfCic = [
   L([['Report à nouveau', 90, 90], ['220,00', 446, 32]]),
   L([['Page 1 sur 2', 250, 60]]),
 ];
-const rP = P.analyser(pdfCic);
+const rP = anaP(pdfCic);
 chk('PDF : lignes sans date écartées', rP.length, 2);
 chk('PDF : crédit positif',  rP[0].m, 735);
 chk('PDF : débit négatif',   rP[1].m, -105);
@@ -204,14 +211,14 @@ const pdfMontant = [
   L([['04/07/2026', 40, 48], ['Virement recu', 90, 70], ['250,00', 356, 32]]),
   L([['18/07/2026', 40, 48], ['Retrait', 90, 40], ['-100,00', 350, 38]]),
 ];
-const rM = P.analyser(pdfMontant);
+const rM = anaP(pdfMontant);
 chk('PDF : colonne montant unique', rM.map(r => r.m), [250, -100]);
 
 // Sans entête du tout : le premier nombre de la ligne fait foi.
 const pdfBrut = [
   L([['06/08/2026', 40, 48], ['Virement', 90, 50], ['735,00', 300, 32], ['850,00', 400, 32]]),
 ];
-chk('PDF : sans entête, premier nombre', P.analyser(pdfBrut)[0].m, 735);
+chk('PDF : sans entête, premier nombre', anaP(pdfBrut)[0].m, 735);
 
 // Montant éclaté en deux fragments par le moteur de rendu.
 const frag = P._montantsDe([{ str: '1', x: 300, w: 6 }, { str: '234,56', x: 306, w: 34 }]);
@@ -254,7 +261,7 @@ const capture = [
   'Virements internes',
   '- 150,00 €',
 ].join('\n');
-const rO = O.analyserTexte(capture, LE13AOUT);
+const rO = anaO(capture, LE13AOUT);
 chk('OCR : ligne à 0 € écartée', rO.length, 2);
 chk('OCR : date héritée du groupe', rO[0].d, '2026-08-06');
 chk('OCR : versement positif',     rO[0].m, 735);
@@ -276,9 +283,9 @@ chk('OCR : libellé n’est pas une date', O.enTeteDate('Vir De M Armel Plantier
 
 // Signes malmenés par l'OCR : U+2212 et le tiret demi-cadratin.
 chk('OCR : signe moins Unicode',
-  O.analyserTexte('06 août\nRetrait\n− 105,00 €', LE13AOUT)[0].m, -105);
+  anaO('06 août\nRetrait\n− 105,00 €', LE13AOUT)[0].m, -105);
 chk('OCR : tiret demi-cadratin',
-  O.analyserTexte('06 août\nRetrait\n– 105,00 €', LE13AOUT)[0].m, -105);
+  anaO('06 août\nRetrait\n– 105,00 €', LE13AOUT)[0].m, -105);
 
 // Confusions de caractères sur les chiffres.
 chk('OCR : O lu pour zéro',  O._redresser('1O5,OO €'), '105,00 €');
@@ -287,14 +294,70 @@ chk('OCR : mot mêlé laissé tel quel', O._redresser('Vir C/C 2026'), 'Vir C/C 
 
 // Capture rognée : une opération lue avant tout en-tête garde la date du jour
 // plutôt que d'être perdue.
-const rognee = O.analyserTexte('Vir De M Armel Plantier\n+ 200,00 €', LE13AOUT);
+const rognee = anaO('Vir De M Armel Plantier\n+ 200,00 €', LE13AOUT);
 chk('OCR : sans en-tête, date du jour', rognee[0].d, '2026-08-13');
 chk('OCR : sans en-tête, montant gardé', rognee[0].m, 200);
 
 // Montant et libellé sur la même ligne — mise en page de tablette.
 chk('OCR : libellé sur la ligne du montant',
-  O.analyserTexte('06 août\nVir De M Armel Plantier + 735,00 €', LE13AOUT)[0].label,
+  anaO('06 août\nVir De M Armel Plantier + 735,00 €', LE13AOUT)[0].label,
   'Vir De M Armel Plantier');
+
+// ── Révisions de taux lues dans les libellés ────────────────────────────────
+// Le relevé journalise ses changements de taux sous forme d'opérations à zéro
+// euro. C'est la saisie la plus pénible du formulaire, et la seule information
+// qu'on ne peut lire nulle part ailleurs.
+const R = CB.revisionTaux;
+
+// Le libellé réel du CIC. Le séparateur décimal sort en espace : « 3 500% »
+// vaut 3,500 %, et non trois mille cinq cents.
+chk('taux : libellé CIC complet',
+  R('NOUVEAU TAUX DU LIVRET JEUNE 3 500% NET AU 01/02/2026', '2026-02-01'),
+  { depuis: '2026-02-01', taux: 3.5 });
+chk('taux : seconde révision',
+  R('NOUVEAU TAUX DU LIVRET JEUNE 3 750% NET AU 01/08/2026', '2026-08-01'),
+  { depuis: '2026-08-01', taux: 3.75 });
+chk('taux : séparateur virgule',
+  R('Nouveau taux du Livret A 1,70% au 01/08/2026', '2026-08-01').taux, 1.7);
+chk('taux : date prise sur la ligne à défaut',
+  R('Nouveau taux du livret 2,40%', '2026-02-01').depuis, '2026-02-01');
+chk('taux : une opération ordinaire n’en est pas une',
+  R('VIR DE M ARMEL PLANTIER', '2026-08-06'), null);
+// 3500 % n'existe pas sur un livret : la borne à 20 % lève l'ambiguïté toute
+// seule, et écarte au passage un libellé qui contiendrait un gros nombre.
+chk('taux : au-delà de 20 % refusé', R('Nouveau taux 3500%', '2026-02-01'), null);
+chk('taux : sans pourcentage', R('Nouveau taux du livret jeune', '2026-02-01'), null);
+
+// Bout en bout sur un CSV : les révisions sortent séparées des opérations.
+const avecTaux = [
+  'Date;Date de valeur;Débit;Crédit;Libellé;Solde',
+  '01/02/2026;01/02/2026;;0,00;NOUVEAU TAUX DU LIVRET JEUNE 3 500% NET AU 01/02/2026;220,00',
+  '06/08/2026;01/08/2026;;735,00;VIR DE M ARMEL PLANTIER;850,00',
+  '01/08/2026;01/08/2026;;0,00;NOUVEAU TAUX DU LIVRET JEUNE 3 750% NET AU 01/08/2026;115,00',
+].join('\n');
+const rT = C.analyser(avecTaux);
+chk('CSV : opérations et taux séparés', rT.lignes.length, 1);
+chk('CSV : deux révisions trouvées',    rT.taux.length, 2);
+chk('CSV : révisions dans l’ordre',     rT.taux.map(x => x.taux), [3.5, 3.75]);
+chk('CSV : dates des révisions',        rT.taux.map(x => x.depuis),
+  ['2026-02-01', '2026-08-01']);
+
+// La colonne « Date » prime sur « Date de valeur ». Ce n'est pas cosmétique :
+// la date de valeur intègre déjà la règle des quinzaines, et l'importer
+// reviendrait à l'appliquer deux fois.
+const deuxDates = [
+  'Date;Date de valeur;Débit;Crédit;Libellé;Solde',
+  '03/03/2026;16/03/2026;;100,00;VIR DE M PLANTIER ARMEL;300,00',
+].join('\n');
+chk('CSV : date d’opération, pas date de valeur', anaC(deuxDates)[0].d, '2026-03-03');
+
+// Sur une capture, la révision se lit au-dessus du montant à zéro.
+const capTaux = O.analyserTexte(
+  '01 août\nNouveau Taux Du Livret Jeune 3 750% net au 01/08/2026\nHors budget, divers\n+ 0,00 €',
+  LE13AOUT);
+chk('OCR : révision de taux trouvée', capTaux.taux.length, 1);
+chk('OCR : valeur du taux',           capTaux.taux[0].taux, 3.75);
+chk('OCR : aucune opération créée',   capTaux.lignes.length, 0);
 
 console.log(t.join('\n'));
 const ko = t.filter(x => x.startsWith('FAIL')).length;

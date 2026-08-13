@@ -29,6 +29,7 @@ window.CBImport = (function () {
   // qui vient du fichier ne survit à ce module.
   let _dest   = null;
   let _lignes = [];     // { d, m, label, ok }
+  let _taux   = [];     // { depuis, taux } lus dans les libellés du relevé
   let _source = '';     // nom du parseur qui a produit les lignes, pour l'entête
 
   // ─── Ouverture ───────────────────────────────────────────────────────────
@@ -37,11 +38,14 @@ window.CBImport = (function () {
   //   titre    : titre du modal
   //   sous     : sous-titre
   //   existant : [{ d, m }] déjà saisis, pour signaler les doublons
-  //   onValider: (lignes) => void, reçoit [{ d, m, label }]
+  //   onValider: (lignes, taux) => void
+  //              lignes = [{ d, m, label }] cochées
+  //              taux   = [{ depuis, taux }] lus dans les libellés du relevé
   // }
   function open(dest) {
     _dest   = dest || {};
     _lignes = [];
+    _taux   = [];
     _source = '';
     _text('imp-title', _dest.titre || 'Importer un relevé');
     _text('imp-sub',   _dest.sous  || '');
@@ -58,6 +62,7 @@ window.CBImport = (function () {
     // Le fichier n'est jamais conservé : on relâche tout à la fermeture.
     _dest   = null;
     _lignes = [];
+    _taux   = [];
     _source = '';
     const input = document.getElementById('imp-file');
     if (input) input.value = '';
@@ -100,24 +105,27 @@ window.CBImport = (function () {
     _text('imp-lecture-etat', 'Lecture en cours…');
 
     try {
-      let lignes;
+      let res;
       if (ext === 'csv' || ext === 'txt' || ext === 'tsv' ||
           mime === 'text/csv' || mime.indexOf('excel') >= 0 || mime.indexOf('spreadsheet') >= 0) {
-        lignes = await window.CBImport.csv.lire(file);
+        res = await window.CBImport.csv.lire(file);
         _source = 'CSV';
       } else if (ext === 'pdf' || mime === 'application/pdf') {
         if (!window.CBImport.pdf) throw new Error('La lecture des PDF n’est pas encore disponible.');
-        lignes = await window.CBImport.pdf.lire(file, m => _text('imp-lecture-etat', m));
+        res = await window.CBImport.pdf.lire(file, m => _text('imp-lecture-etat', m));
         _source = 'PDF';
       } else if (mime.indexOf('image/') === 0 || ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) {
         if (!window.CBImport.ocr) throw new Error('La lecture des captures n’est pas encore disponible.');
-        lignes = await window.CBImport.ocr.lire(file, m => _text('imp-lecture-etat', m));
+        res = await window.CBImport.ocr.lire(file, m => _text('imp-lecture-etat', m));
         _source = 'capture';
       } else {
         throw new Error('Format non reconnu. Déposez un CSV, un PDF ou une capture d’écran.');
       }
 
-      if (!lignes.length) {
+      const lignes = (res && res.lignes) || [];
+      _taux = _dedoublonnerTaux((res && res.taux) || []);
+
+      if (!lignes.length && !_taux.length) {
         throw new Error('Aucune opération trouvée dans ce fichier. ' +
           'Vérifiez qu’il contient bien un relevé, avec une date et un montant par ligne.');
       }
@@ -165,7 +173,36 @@ window.CBImport = (function () {
           ' onchange="CBImport.set(' + i + ',\'m\',this.value)">' +
       '</div>'
     ).join('');
+    _rendreTaux();
     _majPied();
+  }
+
+  // Une même révision peut figurer deux fois — deux relevés qui se recouvrent,
+  // ou la ligne répétée en tête de page. La plus récente pour une date donnée
+  // l'emporte, et le tout est rendu du plus ancien au plus récent.
+  function _dedoublonnerTaux(taux) {
+    const par = {};
+    (taux || []).forEach(t => {
+      if (t && t.depuis && isFinite(t.taux)) par[t.depuis] = t.taux;
+    });
+    return Object.keys(par).sort().map(d => ({ depuis: d, taux: par[d] }));
+  }
+
+  function _rendreTaux() {
+    const box = document.getElementById('imp-taux');
+    if (!box) return;
+    box.hidden = !_taux.length;
+    if (!_taux.length) return;
+    box.innerHTML =
+      '<div class="imp-taux-t">' +
+        _taux.length + ' révision' + (_taux.length > 1 ? 's' : '') + ' de taux trouvée' +
+        (_taux.length > 1 ? 's' : '') + ' dans le relevé' +
+      '</div>' +
+      '<div class="imp-taux-l">' + _taux.map(t =>
+        '<span><b>' + _esc(String(t.taux).replace('.', ',')) + ' %</b> au ' +
+        _esc(t.depuis.split('-').reverse().join('/')) + '</span>').join('') + '</div>' +
+      '<div class="imp-taux-s">Sans elles, l’acquis serait calculé au taux ' +
+      'd’aujourd’hui sur toute l’année. Elles seront ajoutées avec les lignes cochées.</div>';
   }
 
   function _majPied() {
@@ -173,9 +210,11 @@ window.CBImport = (function () {
     const somme = retenues.reduce((s, l) => s + l.m, 0);
     _text('imp-count',
       retenues.length + ' ligne' + (retenues.length > 1 ? 's' : '') + ' sur ' + _lignes.length +
-      ' · solde ' + (somme >= 0 ? '+' : '') + _fmtMontant(somme) + ' €');
+      ' · solde ' + (somme >= 0 ? '+' : '') + _fmtMontant(somme) + ' €' +
+      (_taux.length ? ' · ' + _taux.length + ' taux' : ''));
     const btn = document.getElementById('imp-ok');
-    if (btn) btn.disabled = !retenues.length;
+    // Un relevé peut n'apporter que des révisions de taux : il reste utile.
+    if (btn) btn.disabled = !retenues.length && !_taux.length;
   }
 
   function setOk(i, v) {
@@ -207,10 +246,11 @@ window.CBImport = (function () {
     const retenues = _lignes
       .filter(l => l.ok && l.d && isFinite(l.m) && l.m !== 0)
       .map(l => ({ d: l.d, m: l.m, label: l.label || '' }));
-    if (!retenues.length) return;
+    const taux = _taux.slice();
+    if (!retenues.length && !taux.length) return;
     const fn = _dest && _dest.onValider;
     close();
-    if (fn) fn(retenues);
+    if (fn) fn(retenues, taux);
   }
 
   function retour() { _etape('depot'); }
@@ -228,6 +268,32 @@ window.CBImport = (function () {
     _hide('imp-ok',    nom !== 'validation');
   }
 
+  // ─── Révisions de taux ───────────────────────────────────────────────────
+  //
+  // Un relevé de livret journalise ses changements de taux, sous forme d'une
+  // opération à zéro euro : « NOUVEAU TAUX DU LIVRET JEUNE 3 500% NET AU
+  // 01/02/2026 ». Ces lignes sont écartées du calcul — elles ne déplacent pas
+  // d'argent — mais elles portent précisément ce qu'il est le plus pénible de
+  // saisir à la main, et sans quoi tout l'acquis est calculé au taux du jour.
+  //
+  // Le séparateur décimal du taux sort souvent en espace : « 3 500% » vaut
+  // 3,500 %, pas trois mille cinq cents. Un taux au-delà de 20 % n'existant
+  // pas sur un livret, l'ambiguïté se lève seule.
+  function revisionTaux(label, dateLigne) {
+    const s = String(label || '');
+    if (!/nouveau\s+taux|taux\s+(?:du|de)\b|changement\s+de\s+taux/i.test(s)) return null;
+    const m = /(\d{1,2})[\s,.](\d{1,3})\s*%/.exec(s) || /(\d{1,2})\s*%/.exec(s);
+    if (!m) return null;
+    const taux = m[2] === undefined ? Number(m[1]) : Number(m[1] + '.' + m[2]);
+    if (!isFinite(taux) || taux <= 0 || taux > 20) return null;
+    // La date d'effet est dans le libellé quand la banque la précise ; sinon
+    // c'est celle de la ligne, qui tombe le jour du changement.
+    const dansLabel = /\b(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})\b/.exec(s);
+    const depuis = (dansLabel && window.CBImport.csv.parseDate(dansLabel[1])) || dateLigne || null;
+    if (!depuis) return null;
+    return { depuis, taux };
+  }
+
   function _text(id, t) { const el = document.getElementById(id); if (el) el.textContent = t; }
   function _hide(id, v) { const el = document.getElementById(id); if (el) el.hidden = !!v; }
   function _esc(s) { return String(s == null ? '' : s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;'); }
@@ -237,7 +303,7 @@ window.CBImport = (function () {
 
   return {
     open, close, onFile, onDrop, onDragOver, dragOff: _dragOff,
-    setOk, set, toutCocher, valider, retour,
+    setOk, set, toutCocher, valider, retour, revisionTaux,
     // Les parseurs s'accrochent ici. Seul le CSV est livré pour l'instant.
     csv: null, pdf: null, ocr: null,
     // Exposés pour les tests hors navigateur.
@@ -381,8 +447,16 @@ window.CBImport.csv = (function () {
   }
 
   const MOTS = {
-    date:   ['date de comptabilisation', 'date operation', 'date d operation', 'date valeur',
-             'date de valeur', 'date', 'jour'],
+    // La date d'opération d'abord, la date de valeur en dernier recours.
+    //
+    // Ce n'est pas un détail de nommage. Un relevé de livret porte les deux, et
+    // la date de valeur INTÈGRE DÉJÀ la règle des quinzaines — un versement du
+    // 3 mars y prend valeur au 16 mars, un retrait du 27 février au 16 février.
+    // L'importer reviendrait à appliquer la règle deux fois, puisque
+    // _livDebutQuinzaine la rejoue ensuite sur la date reçue : les intérêts
+    // seraient décalés d'une quinzaine sur chaque mouvement.
+    date:   ['date de comptabilisation', 'date operation', 'date d operation',
+             'date', 'jour', 'date valeur', 'date de valeur'],
     label:  ['libelle', 'libellé', 'label', 'description', 'nature', 'motif', 'intitule',
              'intitulé', 'operation', 'opération', 'detail', 'détail'],
     debit:  ['debit', 'débit', 'retrait', 'sortie', 'withdrawal'],
@@ -417,7 +491,7 @@ window.CBImport.csv = (function () {
 
   function analyser(texte) {
     const brut = texte.split(/\r\n|\r|\n/).filter(l => l.trim() !== '');
-    if (brut.length < 2) return [];
+    if (brut.length < 2) return { lignes: [], taux: [] };
     const sep = _separateur(brut);
 
     // Plusieurs banques posent un préambule (nom du compte, IBAN, période) avant
@@ -444,9 +518,9 @@ window.CBImport.csv = (function () {
     // Sans entête reconnue, on devine les colonnes sur le contenu : celle qui
     // ressemble le plus à des dates, celle qui ressemble le plus à des montants.
     if (!cols) cols = _deviner(brut.map(l => _decouper(l, sep)));
-    if (!cols) return [];
+    if (!cols) return { lignes: [], taux: [] };
 
-    const lignes = [];
+    const lignes = [], taux = [];
     (iEntete >= 0 ? corps : brut.map(l => _decouper(l, sep))).forEach(vals => {
       if (!vals || vals.length < 2) return;
       const d = parseDate(vals[cols.date]);
@@ -464,12 +538,19 @@ window.CBImport.csv = (function () {
         m = (isFinite(cre) ? Math.abs(cre) : 0) - (isFinite(deb) ? Math.abs(deb) : 0);
         if (!isFinite(deb) && !isFinite(cre)) m = NaN;
       }
-      if (!isFinite(m) || m === 0) return;
 
       const label = cols.label >= 0 ? String(vals[cols.label] || '').replace(/\s+/g, ' ').trim() : '';
+
+      // Une révision de taux est une opération à zéro euro : elle ne déplace
+      // pas d'argent, mais elle porte le taux, qu'on ne peut lire nulle part
+      // ailleurs.
+      const rev = window.CBImport.revisionTaux(label, d);
+      if (rev) { taux.push(rev); return; }
+
+      if (!isFinite(m) || m === 0) return;
       lignes.push({ d, m, label: label.slice(0, 80) });
     });
-    return lignes;
+    return { lignes, taux };
   }
 
   // Repli sans entête : on note chaque colonne sur sa proportion de dates et de
@@ -664,7 +745,7 @@ window.CBImport.pdf = (function () {
   function analyser(lignes) {
     const cols = _colonnes(lignes);
     const connues = Object.keys(cols);
-    const out = [];
+    const out = [], taux = [];
 
     lignes.forEach(l => {
       // Une ligne d'opération commence par une date. Le reste — pied de page,
@@ -705,16 +786,20 @@ window.CBImport.pdf = (function () {
         // à l'écran de validation, où elle sera corrigée ou décochée.
         m = montants[0].v;
       }
-      if (!isFinite(m) || m === 0) return;
-
       const label = l.items.slice(iDate + 1)
         .map(it => it.str.trim())
         .filter(s => !/^[\d,. ]*(?:€|EUR)?$/i.test(s))
         .join(' ').replace(/\s+/g, ' ').trim();
 
+      // Une révision de taux se lit aussi sur un relevé PDF, sous la même
+      // forme : une opération à zéro euro dont le libellé porte le taux.
+      const rev = window.CBImport.revisionTaux(label, d);
+      if (rev) { taux.push(rev); return; }
+
+      if (!isFinite(m) || m === 0) return;
       out.push({ d, m, label: label.slice(0, 80) });
     });
-    return out;
+    return { lignes: out, taux };
   }
 
   return { lire, analyser, _lignesDePage, _montantsDe, _colonnes };
@@ -846,7 +931,7 @@ window.CBImport.ocr = (function () {
 
   function analyserTexte(texte, aujourdHui) {
     const lignes = String(texte || '').split(/\r?\n/).map(l => l.trim()).filter(Boolean);
-    const out = [];
+    const out = [], taux = [];
     let dateCourante = null;
     let attente = [];        // libellés lus depuis le dernier montant
 
@@ -868,6 +953,14 @@ window.CBImport.ocr = (function () {
       }
 
       const val = window.CBImport.csv.parseMontant(m[2]);
+
+      // Sur une capture, la révision de taux apparaît comme partout ailleurs :
+      // une opération à 0,00 € dont le libellé porte le taux. Il est au-dessus
+      // du montant, dans les libellés en attente.
+      const rev = window.CBImport.revisionTaux(
+        (ligne.slice(0, m.index) + ' ' + attente.join(' ')).trim(), dateCourante);
+      if (rev) { taux.push(rev); attente = []; return; }
+
       if (!isFinite(val) || val === 0) return;
       // − (U+2212) et – (tiret demi-cadratin) sortent régulièrement d'un OCR à
       // la place du trait d'union.
@@ -892,11 +985,14 @@ window.CBImport.ocr = (function () {
     // été rognée au-dessus de l'en-tête de groupe. On la rend quand même, à la
     // date du jour, pour que le membre la corrige plutôt que de la perdre.
     const defaut = (aujourdHui || new Date()).toISOString().slice(0, 10);
-    return out.filter(o => o.m !== 0).map(o => ({
-      d: o.d || defaut,
-      m: o.m,
-      label: o.label,
-    }));
+    return {
+      lignes: out.filter(o => o.m !== 0).map(o => ({
+        d: o.d || defaut,
+        m: o.m,
+        label: o.label,
+      })),
+      taux: taux,
+    };
   }
 
   return { lire, analyserTexte, enTeteDate, _redresser };

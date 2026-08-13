@@ -4939,6 +4939,22 @@ body.has-demo-banner { padding-top: 40px; }
   text-transform: uppercase; letter-spacing: .4px;
 }
 
+/* Révisions de taux trouvées dans les libellés — la saisie la plus pénible du
+   formulaire, offerte par le relevé lui-même. */
+.imp-taux {
+  margin-top: 12px; padding: 11px 13px; border-radius: 11px;
+  background: var(--accent-d); border: 1px solid rgba(124,109,245,.25);
+}
+.imp-taux-t { font-size: 12px; font-weight: 700; color: var(--accent); margin-bottom: 7px; }
+.imp-taux-l { display: flex; flex-wrap: wrap; gap: 7px; }
+.imp-taux-l span {
+  padding: 4px 9px; border-radius: 7px;
+  background: var(--s2); border: 1px solid var(--border);
+  font-family: var(--mono); font-size: 11.5px; color: var(--text2);
+}
+.imp-taux-l b { color: var(--text); font-weight: 700; }
+.imp-taux-s { margin-top: 8px; font-size: 11px; color: var(--text3); line-height: 1.55; }
+
 .imp-help { margin-top: 10px; font-size: 11.5px; color: var(--text3); line-height: 1.6; }
 .imp-count {
   flex: 1; font-family: var(--mono); font-size: 11.5px; color: var(--text3);

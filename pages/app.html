@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260815h">
+<link rel="stylesheet" href="css/style.css?v=20260815i">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2644,6 +2644,10 @@
         <span></span><span>Date</span><span>Libellé</span><span>Montant</span>
       </div>
       <div class="imp-rows" id="imp-rows"></div>
+      <!-- Les révisions de taux lues dans les libellés du relevé. Elles ne se
+           cochent pas ligne à ligne : elles ne déplacent pas d'argent, et une
+           révision déjà saisie n'est jamais écrasée. -->
+      <div class="imp-taux" id="imp-taux" hidden></div>
       <div class="imp-help">
         Un montant négatif est un retrait. Corrigez ce qui doit l’être : rien n’est
         enregistré tant que vous n’avez pas validé la fiche du livret.
@@ -3352,11 +3356,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260815h"></script>
+<script src="js/app.js?v=20260815i"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260815h"></script>
+<script src="js/onboarding.js?v=20260815i"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260815h"></script>
+<script src="js/import.js?v=20260815i"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

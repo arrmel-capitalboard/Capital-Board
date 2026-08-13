@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260815h';
+const APP_VERSION = '20260815i';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -19093,7 +19093,7 @@ window.livImporterReleve = function() {
     sous: 'CSV, PDF ou capture d’écran de votre ' + t.label + '. ' +
           'Les montants restent modifiables avant d’être ajoutés.',
     existant: _livMvtsPropres(),
-    onValider: function(lignes) {
+    onValider: function(lignes, taux) {
       lignes.forEach(l => _livMvts.push({
         d: l.d,
         m: String(Math.abs(l.m)).replace('.', ','),
@@ -19101,6 +19101,28 @@ window.livImporterReleve = function() {
       }));
       _livMvts.sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
       _livRenderMvts();
+
+      // Le relevé journalise ses changements de taux : « NOUVEAU TAUX DU
+      // LIVRET JEUNE 3 500% NET AU 01/02/2026 ». C'est la saisie la plus
+      // pénible du formulaire, et la seule qu'on ne peut lire nulle part
+      // ailleurs — sans elle, tout l'acquis est calculé au taux du jour.
+      //
+      // Une révision déjà saisie n'est pas écrasée : ce qui vient du membre
+      // prime sur ce qui vient d'un libellé.
+      if (taux && taux.length) {
+        const connues = new Set(_livTx.map(t => t.depuis));
+        taux.forEach(t => {
+          if (connues.has(t.depuis)) return;
+          _livTx.push({ depuis: t.depuis, taux: String(t.taux).replace('.', ',') });
+          connues.add(t.depuis);
+        });
+        _livTx.sort((a, b) => (a.depuis < b.depuis ? -1 : 1));
+        _livRenderTaux();
+        // Le taux courant du livret est celui de la dernière révision : la
+        // fiche l'affiche en haut, il doit suivre.
+        const derniere = _livTx[_livTx.length - 1];
+        if (derniere && !_depVal('liv-f-taux')) _depSet('liv-f-taux', derniere.taux);
+      }
       livRecalc();
     },
   });
