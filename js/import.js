@@ -39,6 +39,7 @@ window.CBImport = (function () {
   // en mémoire le temps de l'écran, relâchés à la fermeture.
   let _texte  = null;
   let _cols   = null;
+  let _echecs = [];     // fichiers d'un lot qui n'ont pas pu être lus
   let _source = '';     // nom du parseur qui a produit les lignes, pour l'entête
 
   // ─── Ouverture ───────────────────────────────────────────────────────────
@@ -58,6 +59,7 @@ window.CBImport = (function () {
     _fiche  = null;
     _texte  = null;
     _cols   = null;
+    _echecs = [];
     _source = '';
     _text('imp-title', _dest.titre || 'Importer un relevé');
     _text('imp-sub',   _dest.sous  || '');
@@ -78,6 +80,7 @@ window.CBImport = (function () {
     _fiche  = null;
     _texte  = null;
     _cols   = null;
+    _echecs = [];
     _source = '';
     const input = document.getElementById('imp-file');
     if (input) input.value = '';
@@ -86,16 +89,16 @@ window.CBImport = (function () {
   // ─── Réception du fichier ────────────────────────────────────────────────
 
   function onFile(ev) {
-    const f = ev && ev.target && ev.target.files && ev.target.files[0];
-    if (f) lire(f);
-    if (ev && ev.target) ev.target.value = '';   // même fichier redéposable
+    const fs = ev && ev.target && ev.target.files;
+    if (fs && fs.length) lireLot(Array.from(fs));
+    if (ev && ev.target) ev.target.value = '';   // mêmes fichiers redéposables
   }
 
   function onDrop(ev) {
     ev.preventDefault();
     _dragOff();
-    const f = ev.dataTransfer && ev.dataTransfer.files && ev.dataTransfer.files[0];
-    if (f) lire(f);
+    const fs = ev.dataTransfer && ev.dataTransfer.files;
+    if (fs && fs.length) lireLot(Array.from(fs));
   }
 
   function onDragOver(ev) {
@@ -110,73 +113,147 @@ window.CBImport = (function () {
 
   // Aiguillage sur l'extension, puis sur le type MIME — un CSV exporté par une
   // banque remonte parfois en application/vnd.ms-excel.
-  async function lire(file) {
+  async function _lireUn(file, progres) {
     const nom = (file.name || '').toLowerCase();
     const ext = nom.slice(nom.lastIndexOf('.') + 1);
     const mime = file.type || '';
 
+    if (ext === 'csv' || ext === 'txt' || ext === 'tsv' ||
+        mime === 'text/csv' || mime.indexOf('excel') >= 0 || mime.indexOf('spreadsheet') >= 0) {
+      _source = 'CSV';
+      return window.CBImport.csv.lire(file);
+    }
+    if (ext === 'pdf' || mime === 'application/pdf') {
+      if (!window.CBImport.pdf) throw new Error('La lecture des PDF n’est pas encore disponible.');
+      _source = 'PDF';
+      return window.CBImport.pdf.lire(file, progres);
+    }
+    if (mime.indexOf('image/') === 0 || ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) {
+      if (!window.CBImport.ocr) throw new Error('La lecture des captures n’est pas encore disponible.');
+      _source = 'capture';
+      return window.CBImport.ocr.lire(file, progres);
+    }
+    throw new Error('Format non reconnu. Déposez un CSV, un PDF ou une capture d’écran.');
+  }
+
+  /**
+   * Lecture d'un lot. Les captures d'un relevé mobile arrivent par dizaines —
+   * une par écran — et un historique complet tient souvent en plusieurs
+   * exports. Les traiter un par un serait une corvée sans objet.
+   *
+   * Les fichiers sont lus l'un après l'autre, jamais en parallèle : la lecture
+   * d'une image passe par le serveur, et dix appels simultanés se feraient
+   * refuser par le limiteur de débit.
+   */
+  async function lireLot(files) {
     _etape('lecture');
-    _text('imp-lecture-nom', file.name || 'fichier');
-    _text('imp-lecture-etat', 'Lecture en cours…');
+    const tout = [];
+    const taux = [];
+    let fiche = null, report = null;
+    const echecs = [];
 
-    try {
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const rang = files.length > 1 ? ' (' + (i + 1) + ' sur ' + files.length + ')' : '';
+      _text('imp-lecture-nom', (file.name || 'fichier') + rang);
+      _text('imp-lecture-etat', 'Lecture en cours…');
+
       let res;
-      if (ext === 'csv' || ext === 'txt' || ext === 'tsv' ||
-          mime === 'text/csv' || mime.indexOf('excel') >= 0 || mime.indexOf('spreadsheet') >= 0) {
-        res = await window.CBImport.csv.lire(file);
-        _source = 'CSV';
-      } else if (ext === 'pdf' || mime === 'application/pdf') {
-        if (!window.CBImport.pdf) throw new Error('La lecture des PDF n’est pas encore disponible.');
-        res = await window.CBImport.pdf.lire(file, m => _text('imp-lecture-etat', m));
-        _source = 'PDF';
-      } else if (mime.indexOf('image/') === 0 || ['png', 'jpg', 'jpeg', 'webp', 'gif'].includes(ext)) {
-        if (!window.CBImport.ocr) throw new Error('La lecture des captures n’est pas encore disponible.');
-        res = await window.CBImport.ocr.lire(file, m => _text('imp-lecture-etat', m));
-        _source = 'capture';
-      } else {
-        throw new Error('Format non reconnu. Déposez un CSV, un PDF ou une capture d’écran.');
+      try {
+        res = await _lireUn(file, m => _text('imp-lecture-etat', m + rang));
+      } catch (e) {
+        console.error('[import]', file.name, e);
+        echecs.push((file.name || 'fichier') + ' — ' + ((e && e.message) || 'lecture impossible'));
+        continue;
       }
 
-      // Colonnes non reconnues : plutôt que d'échouer sur un format qu'on n'a
-      // jamais vu, on montre le fichier découpé et on laisse le membre
-      // désigner ses colonnes. Aucun dictionnaire ne couvrira toutes les
-      // banques ; celui-ci n'a pas à le faire.
+      // Colonnes non reconnues : on ne peut demander au membre de les désigner
+      // que pour un fichier à la fois. Seul, il passe à l'écran de rattrapage ;
+      // au milieu d'un lot, il est signalé et laissé de côté.
       if (res && res.colonnesInconnues && res.texte) {
-        _texte = res.texte;
-        _rendreColonnes();
-        _etape('colonnes');
-        return;
+        if (files.length === 1) {
+          _texte = res.texte;
+          _rendreColonnes();
+          _etape('colonnes');
+          return;
+        }
+        echecs.push((file.name || 'fichier') + ' — colonnes non reconnues, à déposer seul');
+        continue;
       }
 
-      const lignes = (res && res.lignes) || [];
-      _taux  = _dedoublonnerTaux((res && res.taux) || []);
-      _fiche = (res && res.fiche) || null;
-
-      // Le solde d'ouverture n'est pas une opération : c'est ce qu'il y avait
-      // avant que le fichier commence. Il passe en tête, coché, et signalé —
-      // sans lui le livret démarrerait à zéro et tout l'historique serait faux
-      // d'autant.
-      if (res && res.report && isFinite(res.report.m) && res.report.m !== 0) {
-        lignes.unshift(Object.assign({ report: true }, res.report));
+      (res.lignes || []).forEach(l => tout.push(Object.assign({ _f: i }, l)));
+      (res.taux  || []).forEach(t => taux.push(t));
+      // Une seule fiche : la première rencontrée, complétée par les suivantes.
+      if (res.fiche) fiche = Object.assign({}, res.fiche, fiche || {});
+      // Un seul report, le plus ancien. Celui d'un fichier plus récent
+      // recouvrirait des opérations déjà apportées par un autre.
+      if (res.report && isFinite(res.report.m) && res.report.m !== 0 &&
+          (!report || res.report.d < report.d)) {
+        report = res.report;
       }
+    }
 
-      if (!lignes.length && !_taux.length && !_fiche) {
-        throw new Error('Aucune opération trouvée dans ce fichier. ' +
-          'Vérifiez qu’il contient bien un relevé, avec une date et un montant par ligne.');
-      }
+    _taux  = _dedoublonnerTaux(taux);
+    _fiche = fiche;
 
-      // Les plus anciennes d'abord : c'est l'ordre dans lequel elles seront
-      // saisies, et celui du calcul par quinzaines.
-      lignes.sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
-      _lignes = lignes.map(l => Object.assign({}, l, { ok: !l.doublon }));
-      _rendre();
-      _etape('validation');
-    } catch (e) {
-      console.error('[import]', e);
+    const lignes = _fusionner(tout);
+    if (report) lignes.unshift(Object.assign({ report: true }, report));
+
+    if (!lignes.length && !_taux.length && !_fiche) {
       _etape('depot');
       _hide('imp-erreur', false);
-      _text('imp-erreur', e && e.message ? e.message : 'Lecture impossible.');
+      _text('imp-erreur', echecs.length
+        ? echecs.join('\n')
+        : 'Aucune opération trouvée. Vérifiez que le fichier contient bien un ' +
+          'relevé, avec une date et un montant par ligne.');
+      return;
     }
+
+    // Les plus anciennes d'abord : c'est l'ordre dans lequel elles seront
+    // saisies, et celui du calcul par quinzaines.
+    lignes.sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+    _lignes = lignes.map(l => Object.assign({}, l, { ok: !l.doublon }));
+    _echecs = echecs;
+    _rendre();
+    _etape('validation');
+  }
+
+  /**
+   * Fusion de plusieurs fichiers qui se recouvrent.
+   *
+   * Le piège : un relevé porte légitimement plusieurs fois la même opération —
+   * trois virements de 200 € le même jour, cela existe. Écarter les doublons
+   * par (date, montant) en supprimerait deux.
+   *
+   * On compte donc les occurrences PAR FICHIER, et on retient le maximum
+   * observé dans un seul d'entre eux. Deux exports qui se chevauchent
+   * rapportent les mêmes trois lignes : on en garde trois, pas six. Deux
+   * exports disjoints ne partagent aucune clé, et rien n'est perdu.
+   */
+  function _fusionner(lignes) {
+    const parFichier = {};   // clé -> { fichier -> nombre }
+    lignes.forEach(l => {
+      const k = l.d + '|' + Number(l.m).toFixed(2);
+      (parFichier[k] = parFichier[k] || {});
+      parFichier[k][l._f] = (parFichier[k][l._f] || 0) + 1;
+    });
+
+    const quota = {};
+    Object.keys(parFichier).forEach(k => {
+      quota[k] = Math.max.apply(null, Object.values(parFichier[k]));
+    });
+
+    const pris = {}, out = [];
+    lignes.forEach(l => {
+      const k = l.d + '|' + Number(l.m).toFixed(2);
+      pris[k] = (pris[k] || 0);
+      if (pris[k] >= quota[k]) return;
+      pris[k]++;
+      const copie = Object.assign({}, l);
+      delete copie._f;
+      out.push(copie);
+    });
+    return out;
   }
 
   // ─── Écran de rattrapage : désigner les colonnes ─────────────────────────
@@ -277,6 +354,7 @@ window.CBImport = (function () {
     }
     _taux  = _dedoublonnerTaux((res && res.taux) || []);
     _fiche = null;
+    _echecs = [];
     if (res.report && isFinite(res.report.m) && res.report.m !== 0) {
       lignes.unshift(Object.assign({ report: true }, res.report));
     }
@@ -318,7 +396,22 @@ window.CBImport = (function () {
     ).join('');
     _rendreTaux();
     _rendreFiche();
+    _rendreEchecs();
     _majPied();
+  }
+
+  // Un fichier illisible au milieu d'un lot ne doit pas passer inaperçu : le
+  // membre croirait avoir tout importé.
+  function _rendreEchecs() {
+    const box = document.getElementById('imp-echecs');
+    if (!box) return;
+    box.hidden = !_echecs.length;
+    if (!_echecs.length) return;
+    box.innerHTML =
+      '<div class="imp-echecs-t">' + _echecs.length +
+        ' fichier' + (_echecs.length > 1 ? 's' : '') + ' non lu' +
+        (_echecs.length > 1 ? 's' : '') + '</div>' +
+      '<ul>' + _echecs.map(e => '<li>' + _esc(e) + '</li>').join('') + '</ul>';
   }
 
   // Étiquettes des caractéristiques lues sur une capture de fiche, dans l'ordre
@@ -486,6 +579,9 @@ window.CBImport = (function () {
     open, close, onFile, onDrop, onDragOver, dragOff: _dragOff,
     setOk, set, toutCocher, valider, retour, revisionTaux,
     setColonne, setDepuis, relire,
+    // Exposée pour la suite de tests : c'est la règle la plus délicate du
+    // module, et elle se vérifie sans DOM.
+    _fusionner,
     // Les parseurs s'accrochent ici. Seul le CSV est livré pour l'instant.
     csv: null, pdf: null, ocr: null,
     // Exposés pour les tests hors navigateur.

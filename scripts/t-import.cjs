@@ -544,6 +544,53 @@ const apSansEntete = C.apercu('06/08/2026;Virement;735,00\n30/07/2026;Retrait;-1
 chk('aperçu : sans entête',        apSansEntete.entete, false);
 chk('aperçu : fichier vide',       C.apercu(''), null);
 
+// ── Fusion de plusieurs fichiers ────────────────────────────────────────────
+// Le piège : un relevé porte légitimement plusieurs fois la même opération —
+// trois virements de 200 € le même jour, c'est le cas réel du 31 mars. Écarter
+// les doublons par (date, montant) en supprimerait deux.
+const FUS = CB._fusionner;
+
+const troisFois = [
+  { _f: 0, d: '2026-03-31', m: -200, label: 'Vir' },
+  { _f: 0, d: '2026-03-31', m: -200, label: 'Vir' },
+  { _f: 0, d: '2026-03-31', m: -200, label: 'Vir' },
+];
+chk('fusion : trois lignes identiques d’un même fichier gardées',
+  FUS(troisFois.slice()).length, 3);
+
+// Deux exports qui se recouvrent rapportent les mêmes trois lignes.
+const recouvre = troisFois.concat(troisFois.map(l => Object.assign({}, l, { _f: 1 })));
+chk('fusion : recouvrement, on garde trois et pas six', FUS(recouvre).length, 3);
+
+// Deux exports disjoints ne partagent aucune clé.
+const disjoints = [
+  { _f: 0, d: '2026-01-06', m: 900 },
+  { _f: 1, d: '2026-08-06', m: 735 },
+];
+chk('fusion : fichiers disjoints, rien ne se perd', FUS(disjoints).length, 2);
+
+// Recouvrement partiel : le fichier B reprend une des trois lignes et en
+// apporte une nouvelle.
+const partiel2 = [
+  { _f: 0, d: '2026-03-31', m: -200 },
+  { _f: 0, d: '2026-03-31', m: -200 },
+  { _f: 1, d: '2026-03-31', m: -200 },
+  { _f: 1, d: '2026-04-03', m: 150 },
+];
+const rp = FUS(partiel2);
+chk('fusion : recouvrement partiel, deux occurrences retenues',
+  rp.filter(l => l.d === '2026-03-31').length, 2);
+chk('fusion : la ligne propre au second fichier survit',
+  rp.filter(l => l.d === '2026-04-03').length, 1);
+
+// Le marqueur de provenance ne doit pas fuiter dans le résultat.
+chk('fusion : marqueur interne retiré', FUS([{ _f: 0, d: '2026-01-06', m: 900 }])[0]._f, undefined);
+chk('fusion : lot vide', FUS([]).length, 0);
+
+// Même date, montants différents : deux opérations distinctes, jamais fusionnées.
+chk('fusion : montants différents le même jour',
+  FUS([{ _f: 0, d: '2026-04-03', m: 150 }, { _f: 0, d: '2026-04-03', m: 250 }]).length, 2);
+
 console.log(t.join('\n'));
 const ko = t.filter(x => x.startsWith('FAIL')).length;
 console.log('\n' + (t.length - ko) + '/' + t.length + (ko ? '  >>> ECHEC' : '  >>> tout passe'));

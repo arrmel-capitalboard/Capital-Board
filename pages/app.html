@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260815t">
+<link rel="stylesheet" href="css/style.css?v=20260815u">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -2613,15 +2613,15 @@
       <label class="imp-drop" id="imp-drop"
              ondragover="CBImport.onDragOver(event)" ondragleave="CBImport.dragOff()"
              ondrop="CBImport.onDrop(event)">
-        <input type="file" id="imp-file" accept=".csv,.txt,.tsv,.pdf,.png,.jpg,.jpeg,.webp,image/*,application/pdf,text/csv"
+        <input type="file" id="imp-file" accept=".csv,.txt,.tsv,.pdf,.png,.jpg,.jpeg,.webp,image/*,application/pdf,text/csv" multiple
                onchange="CBImport.onFile(event)" hidden>
         <div class="imp-drop-ico">
           <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round">
             <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
           </svg>
         </div>
-        <div class="imp-drop-t">Déposez votre relevé, ou cliquez pour le choisir</div>
-        <div class="imp-drop-s">CSV, PDF ou capture d’écran</div>
+        <div class="imp-drop-t">Déposez vos relevés, ou cliquez pour les choisir</div>
+        <div class="imp-drop-s">CSV, PDF ou captures d’écran — plusieurs fichiers à la fois</div>
       </label>
 
       <div class="imp-erreur" id="imp-erreur" hidden></div>
@@ -2710,6 +2710,9 @@
       <!-- Caractéristiques lues sur une capture de la fiche du livret. Elles
            portent les deux chiffres qu'aucun calcul ne reproduit. -->
       <div class="imp-fiche" id="imp-fiche" hidden></div>
+      <!-- Fichiers d'un lot qui n'ont pas pu être lus. Les taire laisserait
+           croire que tout a été importé. -->
+      <div class="imp-echecs" id="imp-echecs" hidden></div>
       <div class="imp-help">
         Un montant négatif est un retrait. Corrigez ce qui doit l’être : rien n’est
         enregistré tant que vous n’avez pas validé la fiche du livret.
@@ -3418,11 +3421,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260815t"></script>
+<script src="js/app.js?v=20260815u"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260815t"></script>
+<script src="js/onboarding.js?v=20260815u"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260815t"></script>
+<script src="js/import.js?v=20260815u"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
