@@ -359,6 +359,62 @@ chk('OCR : révision de taux trouvée', capTaux.taux.length, 1);
 chk('OCR : valeur du taux',           capTaux.taux[0].taux, 3.75);
 chk('OCR : aucune opération créée',   capTaux.lignes.length, 0);
 
+// ── Solde d'ouverture déduit de la colonne Solde ────────────────────────────
+// Un export liste des opérations, pas un état. Ce qu'il y avait avant la
+// première ligne ne figure que dans la colonne Solde, qui porte l'état APRÈS
+// chaque opération.
+const ouvert = [
+  'Date;Date de valeur;Débit;Crédit;Libellé;Solde',
+  '31/12/2024;01/01/2025;;23,83;INTERETS 2024;33,83',
+  '16/02/2025;01/03/2025;;300,00;VIR DE M PLANTIER ARMEL;333,83',
+  '27/02/2025;16/02/2025;-145,00;;VIR C/C CONTRAT PERSONNEL PARCO;188,83',
+].join('\n');
+const rOuv = C.analyser(ouvert);
+chk('report : montant déduit',    rOuv.report.m, 10);
+chk('report : veille de la 1re opération', rOuv.report.d, '2024-12-30');
+chk('report : libellé explicite',  rOuv.report.label, 'Solde avant le 31/12/2024');
+chk('report : opérations intactes', rOuv.lignes.length, 3);
+
+// Fichier descendant, du plus récent au plus ancien : le tri doit rattraper.
+const descendant = [
+  'Date;Débit;Crédit;Libellé;Solde',
+  '27/02/2025;-145,00;;VIR C/C;188,83',
+  '16/02/2025;;300,00;VIR DE M PLANTIER;333,83',
+  '31/12/2024;;23,83;INTERETS 2024;33,83',
+].join('\n');
+chk('report : fichier descendant', C.analyser(descendant).report.m, 10);
+
+// Le contrôle de cohérence est ce qui autorise à proposer le report : en
+// repartant de lui et en rejouant tout, on doit retomber sur le dernier solde.
+// Un solde trafiqué doit donc faire renoncer.
+const incoherent = [
+  'Date;Débit;Crédit;Libellé;Solde',
+  '31/12/2024;;23,83;INTERETS 2024;33,83',
+  '16/02/2025;;300,00;VIR;999,99',
+].join('\n');
+chk('report : incohérence détectée', C.analyser(incoherent).report, null);
+
+// Un compte qui part réellement de zéro n'a pas de report à proposer.
+const deZero = [
+  'Date;Débit;Crédit;Libellé;Solde',
+  '31/12/2024;;100,00;PREMIER VERSEMENT;100,00',
+  '16/02/2025;;300,00;VIR;400,00',
+].join('\n');
+chk('report : compte parti de zéro', C.analyser(deZero).report, null);
+
+// Sans colonne Solde, on ne devine pas.
+chk('report : pas de colonne solde', C.analyser(cic).report, null);
+chk('report : fichier trop court',   C.analyser('Date;Montant\n06/08/2026;735,00').report, null);
+
+// Le report franchit une année, donc un changement de mois et de siècle de
+// quinzaines : le 1er janvier doit reculer au 31 décembre précédent.
+const anNeuf = [
+  'Date;Débit;Crédit;Libellé;Solde',
+  '01/01/2026;;50,00;VIR;150,00',
+  '02/01/2026;;50,00;VIR;200,00',
+].join('\n');
+chk('report : veille passe l’année', C.analyser(anNeuf).report.d, '2025-12-31');
+
 console.log(t.join('\n'));
 const ko = t.filter(x => x.startsWith('FAIL')).length;
 console.log('\n' + (t.length - ko) + '/' + t.length + (ko ? '  >>> ECHEC' : '  >>> tout passe'));

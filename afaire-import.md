@@ -198,10 +198,17 @@ et réservée au repli.
    forme habituelle d'un relevé. Aucun adaptateur nommé n'est écrit : à faire
    quand un vrai PDF résiste, banque par banque, pas avant.
 
-4. **Le relevé annuel donne-t-il le solde au 31 décembre ?** Toujours ouvert —
-   à vérifier sur un vrai relevé annuel. C'est la ligne de report, celle qui
-   manque le plus, et l'obtenir automatiquement supprimerait le dernier calcul
-   à la main.
+4. ~~**Le relevé annuel donne-t-il le solde au 31 décembre ?**~~ **Résolu, et
+   sans relevé annuel.** La colonne `Solde` d'un export ordinaire porte l'état
+   après chaque opération : sur la ligne la plus ancienne,
+   `solde − montant` donne ce qu'il y avait avant que le fichier commence.
+
+   Le report n'est proposé que s'il se vérifie de bout en bout — en repartant
+   de lui et en rejouant toutes les opérations, on doit retomber sur le solde
+   de la ligne la plus récente. Un seul contrôle valide alors tout l'import :
+   la colonne a été comprise, le sens des débits est le bon, aucune ligne n'a
+   été perdue. Sur l'export CIC de test : 108 opérations + 10,00 € de report
+   = 850,00 €, le solde affiché par la banque.
 
 5. **Quelles banques d'abord ?** Il faut savoir où sont les comptes des
    membres. Une question dans le questionnaire d'accueil suffirait à trancher.

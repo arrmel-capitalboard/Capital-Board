@@ -4945,6 +4945,9 @@ body.has-demo-banner { padding-top: 40px; }
   font-family: var(--sans); font-size: 9px; font-style: normal;
   text-transform: uppercase; letter-spacing: .4px;
 }
+/* Le solde d'ouverture n'est pas une opération du relevé : il est déduit de la
+   colonne Solde. Il se distingue, parce qu'il se décoche à part. */
+.imp-tag.report { background: rgba(124,109,245,.16); color: var(--accent); }
 
 /* Révisions de taux trouvées dans les libellés — la saisie la plus pénible du
    formulaire, offerte par le relevé lui-même. */

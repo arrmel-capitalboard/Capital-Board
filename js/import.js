@@ -129,6 +129,14 @@ window.CBImport = (function () {
       const lignes = (res && res.lignes) || [];
       _taux = _dedoublonnerTaux((res && res.taux) || []);
 
+      // Le solde d'ouverture n'est pas une opération : c'est ce qu'il y avait
+      // avant que le fichier commence. Il passe en tête, coché, et signalé —
+      // sans lui le livret démarrerait à zéro et tout l'historique serait faux
+      // d'autant.
+      if (res && res.report && isFinite(res.report.m) && res.report.m !== 0) {
+        lignes.unshift(Object.assign({ report: true }, res.report));
+      }
+
       if (!lignes.length && !_taux.length) {
         throw new Error('Aucune opération trouvée dans ce fichier. ' +
           'Vérifiez qu’il contient bien un relevé, avec une date et un montant par ligne.');
@@ -170,6 +178,7 @@ window.CBImport = (function () {
           ' onchange="CBImport.set(' + i + ',\'d\',this.value)">' +
         '<span class="imp-lab" title="' + _attr(l.label || '') + '">' +
           _esc(l.label || '—') +
+          (l.report  ? '<i class="imp-tag report">solde d’ouverture</i>' : '') +
           (l.doublon ? '<i class="imp-tag">déjà saisi</i>' : '') +
         '</span>' +
         '<input class="imp-m' + (l.m < 0 ? ' neg' : '') + '" type="text" inputmode="decimal"' +
@@ -525,6 +534,10 @@ window.CBImport.csv = (function () {
     if (!cols) return { lignes: [], taux: [] };
 
     const lignes = [], taux = [];
+    // Toutes les lignes datées, y compris celles à zéro euro : le solde
+    // d'ouverture se déduit de la plus ancienne, quelle qu'elle soit.
+    const datees = [];
+
     (iEntete >= 0 ? corps : brut.map(l => _decouper(l, sep))).forEach(vals => {
       if (!vals || vals.length < 2) return;
       const d = parseDate(vals[cols.date]);
@@ -544,6 +557,8 @@ window.CBImport.csv = (function () {
       }
 
       const label = cols.label >= 0 ? String(vals[cols.label] || '').replace(/\s+/g, ' ').trim() : '';
+      const solde = cols.solde >= 0 ? parseMontant(vals[cols.solde]) : NaN;
+      if (isFinite(m)) datees.push({ d, m, solde });
 
       // Une révision de taux est une opération à zéro euro : elle ne déplace
       // pas d'argent, mais elle porte le taux, qu'on ne peut lire nulle part
@@ -554,7 +569,63 @@ window.CBImport.csv = (function () {
       if (!isFinite(m) || m === 0) return;
       lignes.push({ d, m, label: label.slice(0, 80) });
     });
-    return { lignes, taux };
+
+    return { lignes, taux, report: _report(datees) };
+  }
+
+  /**
+   * Solde d'ouverture, déduit de la colonne « Solde ».
+   *
+   * Un export liste des opérations, pas un état : ce qu'il y avait avant la
+   * première ligne n'y figure nulle part... sauf dans la colonne Solde, qui
+   * porte l'état APRÈS chaque opération. Sur la plus ancienne :
+   *
+   *     solde d'ouverture = solde de la ligne − montant de la ligne
+   *
+   * Cas réel : `31/12/2024 ; +23,83 ; INTERETS 2024 ; 33,83` donne 10,00 €.
+   * Sans cette ligne, le livret démarre à zéro et tout l'historique est faux
+   * d'autant.
+   *
+   * Le résultat n'est proposé que s'il se vérifie de bout en bout : en
+   * repartant de ce solde et en rejouant toutes les opérations, on doit
+   * retomber sur le solde de la ligne la plus récente. Si le compte est bon,
+   * c'est que la colonne a été comprise, que le sens des débits est le bon et
+   * qu'aucune ligne n'a été perdue — un seul contrôle valide tout l'import.
+   */
+  function _report(datees) {
+    if (datees.length < 2) return null;
+    const avecSolde = datees.filter(x => isFinite(x.solde));
+    if (avecSolde.length !== datees.length) return null;
+
+    // Un relevé descend du plus récent, un export monte : on trie plutôt que de
+    // supposer. À date égale, l'ordre du fichier fait foi, d'où le tri stable.
+    const trie = datees.slice().sort((a, b) => (a.d < b.d ? -1 : a.d > b.d ? 1 : 0));
+    const premiere = trie[0], derniere = trie[trie.length - 1];
+
+    const ouverture = premiere.solde - premiere.m;
+    const cumul = trie.reduce((s, x) => s + x.m, ouverture);
+    // Deux centimes de tolérance : les arrondis d'un export ne sont pas les
+    // nôtres, mais un écart réel se compte en euros.
+    if (Math.abs(cumul - derniere.solde) > 0.02) return null;
+
+    const arrondi = Math.round(ouverture * 100) / 100;
+    if (arrondi === 0) return null;   // rien à reporter, le compte partait de zéro
+
+    return {
+      // La veille de la première opération : le report existait avant elle, et
+      // une date antérieure au 1er janvier démarre à la quinzaine zéro.
+      d: _veille(premiere.d),
+      m: arrondi,
+      label: 'Solde avant le ' + premiere.d.split('-').reverse().join('/'),
+    };
+  }
+
+  function _veille(iso) {
+    const p = String(iso).split('-');
+    const d = new Date(Number(p[0]), Number(p[1]) - 1, Number(p[2]) - 1, 12);
+    return d.getFullYear() + '-' +
+      String(d.getMonth() + 1).padStart(2, '0') + '-' +
+      String(d.getDate()).padStart(2, '0');
   }
 
   // Repli sans entête : on note chaque colonne sur sa proportion de dates et de
@@ -590,7 +661,7 @@ window.CBImport.csv = (function () {
     return { date: iDate, label: iLab, montant: iMont, debit: -1, credit: -1, solde: -1 };
   }
 
-  return { lire, analyser, parseDate, parseMontant, _decouper, _separateur };
+  return { lire, analyser, parseDate, parseMontant, _decouper, _separateur, _report };
 })();
 
 
