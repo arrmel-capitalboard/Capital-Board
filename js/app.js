@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816f';
+const APP_VERSION = '20260816g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18951,7 +18951,12 @@ function _livRenderKpis(livrets, total, nets) {
     // Sans le module Dépenses, la réserve n'est pas calculable — et demander
     // de renseigner ses dépenses dans un onglet qui n'existe pas encore fait
     // chercher un écran introuvable. On dit alors ce qu'on attend.
-    _depText('liv-k-reserve-sub', _isModuleLive('depenses')
+    //
+    // La question n'est pas « puis-je y aller ? » mais « est-il ouvert ? » :
+    // en bêta, l'admin y accède quand personne d'autre ne le peut, et le
+    // message doit rester vrai pour celui qui le lit.
+    const depOuvert = _isFeatureOn('depenses') && !_isFeatureBeta('depenses');
+    _depText('liv-k-reserve-sub', depOuvert
       ? 'Renseignez vos dépenses pour connaître votre réserve en mois.'
       : 'Se calculera dès l’ouverture de l’onglet Dépenses & abonnements : ' +
         'c’est lui qui donne le montant de vos dépenses mensuelles.');
