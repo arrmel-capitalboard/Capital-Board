@@ -3809,6 +3809,13 @@ body.has-demo-banner { padding-top: 40px; }
   padding: 1px 6px; border-radius: 999px;
   margin-left: 6px; text-transform: uppercase;
 }
+/* Section qui vient d'ouvrir. Le doré dit « pas encore » ; ici c'est
+   l'inverse, d'où le vert de bout en bout — fond, bordure et texte. */
+.nav-soon.neuf {
+  background: rgba(0,224,158,0.12);
+  border-color: rgba(0,224,158,0.35);
+  color: var(--positive);
+}
 /* Sidebar repliée : le libellé disparaît, le badge doit suivre. */
 .sidebar.collapsed .nav-soon { display: none; }
 

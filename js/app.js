@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816e';
+const APP_VERSION = '20260816f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3399,13 +3399,17 @@ function _applyBetaBadges() {
       if (!oc.includes("showPage('" + key + "')") && !oc.includes("showPageMobile('" + key + "')")) return;
       const badge = el.querySelector('.nav-soon');
       if (!badge) return;
+      // La classe porte les trois couleurs d'un coup — fond, bordure, texte.
+      // Poser la seule couleur du texte laissait un « New » vert dans une
+      // pastille restée jaune.
+      badge.classList.toggle('neuf', neuf);
       if (beta && isAdmin()) {
         badge.textContent = 'Bêta';
         badge.style.color = '#f5b731';
         badge.hidden = false;
       } else if (neuf) {
         badge.textContent = 'New';
-        badge.style.color = 'var(--positive)';
+        badge.style.color = '';
         badge.hidden = false;
       } else if (live) {
         badge.hidden = true;
@@ -18944,15 +18948,25 @@ function _livRenderKpis(livrets, total, nets) {
   const dep = _livDepenseMensuelle();
   if (dep === null) {
     _depText('liv-k-reserve', '—');
-    _depText('liv-k-reserve-sub', 'Renseignez vos dépenses pour connaître votre réserve en mois.');
+    // Sans le module Dépenses, la réserve n'est pas calculable — et demander
+    // de renseigner ses dépenses dans un onglet qui n'existe pas encore fait
+    // chercher un écran introuvable. On dit alors ce qu'on attend.
+    _depText('liv-k-reserve-sub', _isModuleLive('depenses')
+      ? 'Renseignez vos dépenses pour connaître votre réserve en mois.'
+      : 'Se calculera dès l’ouverture de l’onglet Dépenses & abonnements : ' +
+        'c’est lui qui donne le montant de vos dépenses mensuelles.');
   } else if (total <= 0) {
     _depText('liv-k-reserve', '0 mois');
-    _depText('liv-k-reserve-sub', 'Aucune épargne enregistrée.');
+    // Le chiffre qui manque est plus utile que le constat : c'est celui qu'on
+    // se fixe comme objectif.
+    _depText('liv-k-reserve-sub', 'Aucune épargne enregistrée — il faudrait ' +
+      fmt(dep * LIV_RESERVE_MIN) + ' pour couvrir ' + LIV_RESERVE_MIN + ' mois de dépenses.');
   } else {
     const mois = total / dep;
     _depText('liv-k-reserve', mois.toFixed(1).replace('.', ',') + ' mois');
     _depText('liv-k-reserve-sub',
-      mois < LIV_RESERVE_MIN ? 'Réserve mince — moins de ' + LIV_RESERVE_MIN + ' mois de dépenses.'
+      mois < LIV_RESERVE_MIN ? 'Réserve mince — il manque ' + fmt(dep * LIV_RESERVE_MIN - total) +
+        ' pour couvrir ' + LIV_RESERVE_MIN + ' mois de dépenses.'
       : mois > LIV_RESERVE_MAX ? 'Au-delà de ' + LIV_RESERVE_MAX + ' mois : ' + fmt(total - dep * LIV_RESERVE_MAX) + ' dorment.'
       : 'Entre ' + LIV_RESERVE_MIN + ' et ' + LIV_RESERVE_MAX + ' mois — bien calibrée.');
   }
@@ -19958,10 +19972,12 @@ window.livBugClose = function() {
 };
 
 // Le bouton n'est actif qu'avec un texte : une capture seule ne dit pas ce
-// qu'on est censé y voir.
+// qu'on est censé y voir. Aucune longueur minimale en revanche — « le total
+// est faux » suffit à ouvrir la discussion, et un compteur qui refuse une
+// phrase courte fait renoncer plus qu'il ne fait détailler.
 window.livBugRecalc = function() {
   const btn = document.getElementById('liv-bug-send');
-  if (btn) btn.disabled = _depVal('liv-bug-texte').trim().length < 10;
+  if (btn) btn.disabled = !_depVal('liv-bug-texte').trim();
 };
 
 window.livBugImage = function(input) {
@@ -20010,7 +20026,7 @@ function _livBugErr(msg) {
 
 window.livBugSend = async function() {
   const texte = _depVal('liv-bug-texte').trim();
-  if (texte.length < 10) return _livBugErr('Décrivez le problème en une phrase au moins.');
+  if (!texte) return _livBugErr('Dites en un mot ce qui ne va pas.');
   const btn = document.getElementById('liv-bug-send');
   if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; }
   try {
@@ -20035,19 +20051,19 @@ window.livBugSend = async function() {
 
     await addFirestoreDoc(firestoreCollection(db, 'signalements'), {
       uid: currentUser,
+      // Le nom sert à répondre, l'email à retrouver le compte. Les deux
+      // ensemble évitent d'avoir à chercher qui a écrit.
+      nom: (fbAuth.currentUser && fbAuth.currentUser.displayName) || null,
       email: (fbAuth.currentUser && fbAuth.currentUser.email) || null,
       module: 'Livrets & épargne',
       texte,
-      // Le contexte évite un aller-retour : version du client et navigateur
-      // disent souvent à eux seuls pourquoi un écran diffère.
-      contexte: APP_VERSION + ' · ' + (navigator.userAgent || '').slice(0, 180),
       imageUrl,
       createdAt: Date.now(),
     });
 
     livBugClose();
     _showChatToast({ icon: IC.checkCirc, title: 'Signalement envoyé',
-      msg: 'Merci — l’équipe le voit tout de suite.' });
+      msg: 'Merci — l’équipe vous répondra bientôt.' });
   } catch (e) {
     console.warn('[livrets] signalement:', e && e.message);
     _livBugErr('Envoi impossible : ' + ((e && e.message) || 'réessayez dans un instant.'));

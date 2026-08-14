@@ -3,10 +3,9 @@
 // Signalements d'erreur envoyés depuis l'application.
 //
 //   signalements/{id} = {
-//     uid, email,               // auteur
+//     uid, nom, email,          // auteur
 //     module,                   // « Livrets & épargne », …
 //     texte,                    // ce que le membre décrit
-//     contexte,                 // version du client + navigateur
 //     imageUrl,                 // capture déposée dans R2, ou null
 //     createdAt,
 //     posteLe, messageId,       // posés ici une fois le message envoyé
@@ -39,12 +38,10 @@ function payload(data) {
     .setDescription(propre(data.texte).slice(0, 4000))
     .setTimestamp(data.createdAt || Date.now());
 
-  if (data.email || data.uid) {
-    embed.addFields({ name: 'Membre', value: propre(data.email || data.uid).slice(0, 300), inline: true });
-  }
-  if (data.contexte) {
-    embed.addFields({ name: 'Contexte', value: propre(data.contexte).slice(0, 300), inline: false });
-  }
+  // Nom et email sur la même ligne : le premier sert à répondre, le second à
+  // retrouver le compte. À défaut, l'uid, qui n'est jamais vide.
+  const qui = [data.nom, data.email].filter(Boolean).join(' — ') || data.uid;
+  if (qui) embed.addFields({ name: 'Membre', value: propre(qui).slice(0, 300), inline: false });
   // L'URL est signée et sans expiration : Discord la charge une fois pour son
   // aperçu, et le message reste lisible ensuite.
   if (data.imageUrl) embed.setImage(String(data.imageUrl));

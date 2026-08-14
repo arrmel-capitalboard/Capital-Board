@@ -70,7 +70,7 @@ service cloud.firestore {
       allow create: if _isVerified()
         && request.resource.data.uid == request.auth.uid
         && request.resource.data.texte is string
-        && request.resource.data.texte.size() >= 10
+        && request.resource.data.texte.size() > 0
         && request.resource.data.texte.size() <= 2000
         && request.resource.data.module is string
         && request.resource.data.module.size() <= 60;
