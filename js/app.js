@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816g';
+const APP_VERSION = '20260816h';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3302,7 +3302,12 @@ window.setAvatarHue = async function(deg) {
 };
 
 // ─── Feature flags (config/app.features) ───
-const FLAGGABLE = ['watchlist','dividendes','avantages','benchmark','projections','earnings','recap','actualites','favoris','idees','depenses','cto','crypto','fiscalite','av','per','livrets','immo','or','nonco'];
+// `livrets` n'y figure plus depuis le 16/08 : la section est ouverte, et le
+// seul réglage qui reste est celui des types de livrets (`bientot` dans
+// LIV_BAREME). Un interrupteur qui ne sert plus qu'à se tirer une balle dans
+// le pied vaut mieux retiré — l'éditeur affiche « core », comme pour les
+// sections qui font partie du socle.
+const FLAGGABLE = ['watchlist','dividendes','avantages','benchmark','projections','earnings','recap','actualites','favoris','idees','depenses','cto','crypto','fiscalite','av','per','immo','or','nonco'];
 
 // Sections qui portent DEUX vues dans la même page : le teaser « Bientôt » et
 // le module réel. Elles seules acceptent l'état bêta — ailleurs il ne voudrait
@@ -18878,12 +18883,13 @@ function renderLivrets() {
   const teaser = document.getElementById('livrets-teaser');
   const app    = document.getElementById('livrets-app');
   if (!teaser || !app) return;
+  // La section n'est plus pilotable : elle est ouverte. Le teaser reste dans la
+  // page pour le cas où elle serait refermée un jour, mais plus rien ne le
+  // montre — et le bandeau « Bêta » a disparu avec l'ouverture.
   const live = _isModuleLive('livrets');
   teaser.hidden = live;
   app.hidden    = !live;
   if (!live) return;
-  const note = document.getElementById('liv-beta-note');
-  if (note) note.hidden = !_isFeatureBeta('livrets');
   _livRender();
   // Premier passage : la visite guidée part d'elle-même. Elle se garde d'un
   // drapeau local, donc l'appel répété à chaque rendu ne la rejoue pas.
