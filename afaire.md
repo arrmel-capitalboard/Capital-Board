@@ -1,6 +1,6 @@
 # À faire — Capital Board
 
-Dernière mise à jour : 30 juillet 2026 (fin du balayage de sécurité).
+Dernière mise à jour : 14 août 2026.
 
 Priorité par ordre décroissant. Les points de sécurité sont en tête : ils passent
 avant toute nouvelle fonctionnalité.
@@ -9,9 +9,10 @@ avant toute nouvelle fonctionnalité.
 > captures d'écran, sans agrégation bancaire : [`afaire-import.md`](afaire-import.md).
 >
 > **Livrets & épargne** a son propre fichier : [`afaire-livrets.md`](afaire-livrets.md).
-> Module livré, en bêta, vérifié sur un Livret Jeune au CIC. **Prochaine
-> séance : le Livret A** — un livret au plafond dépasse ce plafond une fois les
-> intérêts crédités, et `livSave()` refuse aujourd'hui cette écriture.
+> Module public depuis le 16/08, sept types de livrets ouverts. Livret A
+> traité le 14/08 (double compartiment, fiscalité par tranche). Reste : le
+> parcours navigateur jamais testé en vrai, et un export d'une autre banque
+> que le CIC pour éprouver le parseur.
 >
 > **Dépenses & abonnements** a son propre fichier : [`afaire-depenses.md`](afaire-depenses.md).
 > Module livré et ouvrable en bêta depuis le 12 août 2026 ; la suite du sujet —
@@ -46,22 +47,11 @@ Effort : une soirée, dont l'essentiel est du DNS. Aucun changement de code.
 
 Posé le 30/07 : `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`.
 Manquent les deux directives qui limiteraient réellement une XSS. Elles demandent
-d'autoriser une quinzaine d'hôtes (Firebase, Turnstile, reCAPTCHA, Yahoo, ipapi,
-proxys CORS de secours) et une omission casse l'app en silence.
+d'autoriser une douzaine d'hôtes (Firebase, Turnstile, reCAPTCHA, Yahoo, ipapi)
+et une omission casse l'app en silence.
 
 À faire après le point A, en mode rapport seulement. Sinon, en direct avec la
 console ouverte et un `git revert` prêt.
-
-### C. Se passer des proxys CORS tiers pour les données financières
-
-`js/app.js` utilise quatre relais tiers en secours de Yahoo : `api.allorigins.win`,
-`corsproxy.io`, `cors.eu.org`, `api.codetabs.com`. Ces services voient les requêtes
-et **pourraient altérer les cours renvoyés** — sur une app de suivi de patrimoine,
-c'est un problème d'intégrité, pas seulement de confidentialité.
-
-Le Worker fait déjà proxy Yahoo proprement (`/yahoo`, allowlist d'hôtes). La piste :
-supprimer les relais tiers et accepter un échec propre quand le Worker ne répond
-pas, plutôt qu'une valeur venue d'un inconnu.
 
 ### D. MFA Firebase native (TOTP) à la place de la 2FA maison
 
@@ -71,59 +61,18 @@ MFA Firebase bloque au niveau de l'émission du jeton — aucun contournement cl
 n'est possible, par construction. Gain net de robustesse, coût : refonte du parcours
 de connexion, et l'enrôlement TOTP à expliquer aux membres.
 
-### E. Ré-verrouillage après inactivité
+### J. Sauvegardes Firestore — code fait, activation en attente
 
-Le code PIN est demandé au chargement et au rechargement, mais une session laissée
-ouverte reste ouverte indéfiniment. Redemander le code après 30 minutes d'inactivité
-couvrirait le cas de l'ordinateur laissé sans surveillance — qui est précisément la
-menace que le PIN est censé traiter.
+`scripts/backup-firestore.mjs` exporte tout Firestore (parcours récursif,
+aucune liste de collections à maintenir) et l'envoie sur R2 chaque lundi
+(`.github/workflows/backup-firestore.yml`). Le repo est **public** : jamais
+en artifact GitHub Actions, jamais commité — R2 est un bucket à part.
 
-### F. Durée de confiance d'un appareil : 90 jours
-
-`DEVICE_TRUST_DAYS = 90` dans `js/app.js`. Trois mois sans re-vérification, c'est
-long pour une app de finances. 30 jours serait un meilleur compromis. Arbitrage de
-confort, pas une faille — une ligne à changer.
-
-### G. Alerte à chaque connexion, et pas seulement sur appareil inconnu
-
-Un appareil déjà de confiance se connecte sans rien signaler. Le journal des
-connexions (posé le 30/07) permet de le constater après coup, mais pas d'être
-prévenu. Une push ou un email « nouvelle connexion depuis Lyon » rendrait la
-détection immédiate. Attention au bruit : à réserver aux connexions depuis un
-pays ou une IP inhabituels.
-
-### H. Rétention et purge
-
-- `auditLog` grandit sans limite. Une purge des entrées de plus d'un an, dans le
-  cron du Worker qui existe déjà.
-- `otpChallenges` : les défis abandonnés ne sont jamais supprimés. Inoffensifs
-  (inutilisables passé 10 minutes) mais ils s'accumulent.
-- `loginLog` est déjà borné à 30 entrées.
-
-### I. Limiteur de débit partagé côté Worker
-
-Chaque route se protège aujourd'hui à sa façon, ou pas du tout : `/chat` et
-`/username-available` comptent par IP, `/request-otp` et `/verify-pin` comptent par
-compte, `/set-pin` et `/revoke-sessions` ne comptent rien. `/set-pin` fait une
-dérivation PBKDF2 de 150 000 itérations, donc du CPU à chaque appel.
-
-Un helper unique `rateLimit(clé, max, fenêtre)` appliqué à toutes les routes
-d'écriture éviterait d'oublier le prochain endpoint ajouté. C'est comme ça que
-`/log-session` est né sans limite.
-
-### J. Sauvegardes Firestore
-
-Aucune sauvegarde aujourd'hui. Ce n'est pas de la sécurité au sens strict, mais une
-suppression accidentelle ou malveillante serait définitive. Les exports Firestore
-gérés demandent le plan Blaze ; un script d'export via la clé de service est
-possible, mais il ne doit **jamais** écrire dans un dépôt public.
-
-### K. Passer `firebase-admin` en v14 sur le bot
-
-8 alertes `npm audit` restantes, toutes le même avis `uuid` (bornes de buffer
-manquantes quand l'appelant fournit un `buf`) — jamais atteint par les librairies
-Google qui l'embarquent. Version majeure : à traiter à froid, en lançant le bot pour
-vérifier Firestore, Auth et les scripts GitHub Actions.
+**Reste à faire, côté toi (Cloudflare, pas du code) :** créer le bucket R2,
+un token API limité à ce bucket, poser les 4 secrets GitHub
+(`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`), et
+une règle de rétention (ex. 90 jours) dans les réglages du bucket. Sans ces
+secrets, le run échoue proprement (message explicite, pas d'échec silencieux).
 
 ### L. Surveiller la CI qui exécute du code de PR forkée
 
@@ -167,11 +116,11 @@ cadre en JavaScript contre le clickjacking. GitHub Pages ne permettant pas
 d'en-tête HTTP, tout passe par une balise `meta`.
 
 Ce qui manque, et qui limiterait vraiment les dégâts d'une XSS future :
-`script-src` et `connect-src`. Les poser demande d'autoriser une vingtaine
+`script-src` et `connect-src`. Les poser demande d'autoriser une douzaine
 d'hôtes — Firebase (gstatic, firestore, identitytoolkit, securetoken,
-fcmregistrations), Turnstile, reCAPTCHA, jsdelivr, les proxys CORS de secours,
-Yahoo, ipapi — et une erreur casse l'app en silence. À faire en gardant
-l'onglet ouvert sur la console, avec un `git revert` prêt.
+fcmregistrations), Turnstile, reCAPTCHA, Yahoo, ipapi — et une erreur casse
+l'app en silence. À faire en gardant l'onglet ouvert sur la console, avec un
+`git revert` prêt.
 
 Note : `frame-ancestors` et `report-only` sont ignorés dans une balise `meta`,
 seul un en-tête HTTP les accepte. Un jour derrière Cloudflare devant le site,
@@ -246,5 +195,3 @@ Signalement d'une idée déjà publiée, et commentaires sous les idées. Écart
   bloquée — mais la duplication reste.
 - **Mots-clés automod `mp` et `dm`** passés en poids faible le 30/07. Surveiller les
   faux négatifs, c'est-à-dire la pub qui passerait au travers.
-- **Défis OTP abandonnés** dans `otpChallenges` : jamais purgés automatiquement. Sans
-  conséquence, ils sont inutilisables passé 10 minutes.

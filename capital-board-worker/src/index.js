@@ -81,6 +81,15 @@ const VISION_MODELES = [
 const VISION_MAX_BYTES = 6 * 1024 * 1024;
 const VISION_RL_MAX    = 30;    // images max par compte et par fenêtre
 const VISION_RL_WINDOW = 3600;  // fenêtre rate-limit (s)
+
+const SET_PIN_RL_MAX    = 5;    // changements de code max par compte et par fenêtre
+const SET_PIN_RL_WINDOW = 300;  // `setPinSecret` dérive en PBKDF2 150 000 itérations : du CPU à chaque appel
+
+const REVOKE_RL_MAX    = 5;     // révocations max par compte et par fenêtre
+const REVOKE_RL_WINDOW = 300;
+
+const LOG_SESSION_RL_MAX    = 20;   // écritures max par compte et par fenêtre
+const LOG_SESSION_RL_WINDOW = 300;  // le dédoublonnage par IP+appareil ne suffit pas : un appareil variable le contourne
 const VISION_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 const VISION_PROMPT =
@@ -681,6 +690,20 @@ async function verifyIdToken(idToken, env) {
   };
 }
 
+// ── Limiteur de débit partagé (KV) ──────────────────────────────────────────
+// Un compteur par clé, fenêtre glissante approximée par un TTL KV. Lire-puis-
+// écrire : sous fort parallélisme, quelques requêtes peuvent passer au-delà de
+// `max` — acceptable pour un rate-limit (protège un quota ou du CPU),
+// contrairement à un compteur de sécurité (OTP, tentatives PIN) qui reste sur
+// `firestoreIncrement`, vraiment atomique.
+async function rateLimit(env, key, max, windowSeconds) {
+  const rlKey = `rl:${key}`;
+  const count = parseInt((await env.EARNINGS.get(rlKey)) || '0', 10);
+  if (count >= max) return false;
+  await env.EARNINGS.put(rlKey, String(count + 1), { expirationTtl: windowSeconds });
+  return true;
+}
+
 // ── Firestore REST ─────────────────────────────────────────────────────────
 
 async function firestoreGet(path, env) {
@@ -931,6 +954,7 @@ async function deleteAuthUser(uid, env) {
 // à l'inscription sur l'écran « Vérifiez votre email ». Un compte vérifié n'est
 // jamais touché, quelle que soit son ancienneté ou sa dernière connexion.
 const UNVERIFIED_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const AUDIT_LOG_TTL_MS  = 365 * 24 * 60 * 60 * 1000;
 
 async function purgeUnverifiedAccounts(env) {
   const users  = await listAuthUsers(env);
@@ -954,6 +978,39 @@ async function purgeUnverifiedAccounts(env) {
     }
   }
   return purged;
+}
+
+// Purge `auditLog` (>1 an) et `otpChallenges` abandonnés (code expiré). Les
+// deux collections ne grandissent que par écriture, jamais par suppression
+// côté client — sans ce passage elles accumulent indéfiniment.
+async function purgeAuditLogAndOtp(env) {
+  let deleted = 0;
+
+  try {
+    const cutoff = Date.now() - AUDIT_LOG_TTL_MS;
+    const docs = await firestoreList('auditLog', env);
+    for (const d of docs) {
+      const at = Date.parse(d.fields?.at?.timestampValue || '');
+      if (!at || at > cutoff) continue;
+      const id = d.name.split('/').pop();
+      try { await firestoreDelete(`auditLog/${id}`, env); deleted++; }
+      catch (e) { console.error(`purge auditLog/${id}: ${e.message}`); }
+    }
+  } catch (e) { console.error('purge auditLog: ' + e.message); }
+
+  try {
+    const now = Date.now();
+    const docs = await firestoreList('otpChallenges', env);
+    for (const d of docs) {
+      const expiresAt = fsNum(d, 'expiresAt');
+      if (!expiresAt || expiresAt > now) continue;
+      const id = d.name.split('/').pop();
+      try { await firestoreDelete(`otpChallenges/${id}`, env); deleted++; }
+      catch (e) { console.error(`purge otpChallenges/${id}: ${e.message}`); }
+    }
+  } catch (e) { console.error('purge otpChallenges: ' + e.message); }
+
+  return deleted;
 }
 
 // Génère un mot de passe temporaire lisible (sans caractères ambigus), avec au
@@ -1045,6 +1102,23 @@ function email2fa(code, deviceLabel, location) {
   </div>
   <p>Ce code est valable <strong>10 minutes</strong>.</p>
   <p class="warn">Si vous n'êtes pas à l'origine de cette connexion, changez immédiatement votre mot de passe.</p>
+  <div class="footer">Capital Board · Ne pas répondre à cet email.</div>
+</div></body></html>`;
+}
+
+function emailUnusualLogin(deviceLabel, location) {
+  deviceLabel = escapeHtml(deviceLabel);
+  location = escapeHtml(location);
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${CSS_BASE}</style></head><body>
+<div class="card">
+  <div class="logo">Capital Board</div>
+  <h2>Nouvelle connexion depuis un pays inhabituel</h2>
+  <p>Une connexion à votre compte vient d'avoir lieu depuis un pays où vous ne vous étiez jamais connecté :</p>
+  <div class="info">
+    <span>Appareil : <strong style="color:#e8eaf0">${deviceLabel || 'Inconnu'}</strong></span>
+    <span>Lieu : <strong style="color:#e8eaf0">${location || 'Inconnu'}</strong></span>
+  </div>
+  <p class="warn">Si c'est vous, ignorez cet email. Sinon, changez votre mot de passe et révoquez vos sessions depuis Profil → Sécurité.</p>
   <div class="footer">Capital Board · Ne pas répondre à cet email.</div>
 </div></body></html>`;
 }
@@ -1525,12 +1599,9 @@ export default {
         catch { return json({ error: 'non authentifié' }, 401); }
         if (!user.emailVerified) return json({ error: 'email non vérifié' }, 403);
 
-        const rlKey = `vision:rl:${user.localId}`;
-        const count = parseInt((await env.EARNINGS.get(rlKey)) || '0', 10);
-        if (count >= VISION_RL_MAX) {
+        if (!(await rateLimit(env, `vision:${user.localId}`, VISION_RL_MAX, VISION_RL_WINDOW))) {
           return json({ error: 'Trop d’images lues récemment, réessayez plus tard.' }, 429);
         }
-        await env.EARNINGS.put(rlKey, String(count + 1), { expirationTtl: VISION_RL_WINDOW });
 
         // Deuxième passe : le corps n'est plus une image mais la transcription
         // rendue par la première. Rien de plus n'en sort — le texte a déjà fait
@@ -1591,12 +1662,9 @@ export default {
       if (url.pathname === '/chat' && request.method === 'POST') {
         // Rate-limit léger par IP (protège le quota Workers AI).
         const ip = request.headers.get('CF-Connecting-IP') || 'anon';
-        const rlKey = `chat:rl:${ip}`;
-        const count = parseInt((await env.EARNINGS.get(rlKey)) || '0', 10);
-        if (count >= CHAT_RL_MAX) {
+        if (!(await rateLimit(env, `chat:${ip}`, CHAT_RL_MAX, CHAT_RL_WINDOW))) {
           return json({ error: 'Trop de requêtes, réessayez dans une minute.' }, 429);
         }
-        await env.EARNINGS.put(rlKey, String(count + 1), { expirationTtl: CHAT_RL_WINDOW });
 
         let body;
         try { body = await request.json(); } catch { return json({ error: 'JSON invalide' }, 400); }
@@ -1739,6 +1807,9 @@ export default {
         }
         const user = await verifyIdToken(idToken, env);
         if (!user.emailVerified) return json({ ok: false, error: 'Adresse email non vérifiée' }, 403);
+        if (!(await rateLimit(env, `set-pin:${user.localId}`, SET_PIN_RL_MAX, SET_PIN_RL_WINDOW))) {
+          return json({ ok: false, error: 'Trop de changements de code récemment, réessayez plus tard.' }, 429);
+        }
 
         await audit('set_pin', '', user.localId, request, env);
         await setPinSecret(user.localId, pin, env);
@@ -2105,6 +2176,9 @@ async function audit(action, details, uid, request, env) {
       if (url.pathname === '/log-session' && request.method === 'POST') {
         const { idToken, deviceLabel } = await request.json();
         const user = await verifyIdToken(idToken, env);
+        if (!(await rateLimit(env, `log-session:${user.localId}`, LOG_SESSION_RL_MAX, LOG_SESSION_RL_WINDOW))) {
+          return json({ ok: false, error: 'Trop d’écritures récemment, réessayez plus tard.' }, 429);
+        }
         const path = `users/${user.localId}/data/loginLog`;
 
         const entry = {
@@ -2141,10 +2215,44 @@ async function audit(action, details, uid, request, env) {
           if (memeContexte && recent) return json({ ok: true, skipped: true });
         }
 
+        // Alerte sur pays inédit, pas sur IP inédite : l'IP change à chaque
+        // session pour beaucoup de FAI/mobile, alerter dessus noierait le
+        // signal derrière du bruit. Le pays est stable — un pays jamais vu
+        // dans les 30 dernières entrées est un signal rare, donc lisible.
+        // `entries` ici est encore l'historique AVANT ce login.
+        const newCountry = entry.mapValue.fields.country.stringValue;
+        const priorCountries = new Set(
+          entries.map(e => e.mapValue?.fields?.country?.stringValue).filter(Boolean)
+        );
+        const isUnusualCountry = entries.length > 0 && newCountry && !priorCountries.has(newCountry);
+
         entries.push(entry);
         if (entries.length > 30) entries = entries.slice(-30);
 
         await firestoreUpdate(path, { entries: { arrayValue: { values: entries } } }, ['entries'], env);
+
+        if (isUnusualCountry) {
+          const city = entry.mapValue.fields.city.stringValue;
+          const location = [city, newCountry].filter(Boolean).join(', ');
+          const deviceLabel = entry.mapValue.fields.device.stringValue;
+          // Best-effort, jamais bloquant : une notif ratée ne doit pas faire
+          // échouer un login déjà journalisé avec succès.
+          try {
+            if (user.email) {
+              await sendEmail(user.email, 'Nouvelle connexion depuis un pays inhabituel — Capital Board',
+                emailUnusualLogin(deviceLabel, location), env);
+            }
+          } catch (e) { console.error('alerte connexion, email: ' + e.message); }
+          try {
+            const doc = await firestoreGet(`roles/${user.localId}`, env);
+            const fcmToken = fsStr(doc, 'fcmToken');
+            if (fcmToken) {
+              await sendFcm(fcmToken, 'Nouvelle connexion inhabituelle',
+                `Connexion depuis ${location || 'un lieu inconnu'}. Pas vous ? Vérifiez vos sessions.`, env);
+            }
+          } catch (e) { console.error('alerte connexion, push: ' + e.message); }
+        }
+
         return json({ ok: true });
       }
 
@@ -2163,6 +2271,9 @@ async function audit(action, details, uid, request, env) {
       if (url.pathname === '/revoke-sessions' && request.method === 'POST') {
         const { idToken } = await request.json();
         const user = await verifyIdToken(idToken, env);
+        if (!(await rateLimit(env, `revoke-sessions:${user.localId}`, REVOKE_RL_MAX, REVOKE_RL_WINDOW))) {
+          return json({ ok: false, error: 'Trop de révocations récemment, réessayez plus tard.' }, 429);
+        }
         const at = await getAccessToken(env);
         const res = await fetch(
           `https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:update`,
@@ -2730,6 +2841,20 @@ async function audit(action, details, uid, request, env) {
         const n = await purgeUnverifiedAccounts(env);
         if (n) console.log(`purge non vérifiés: ${n} compte(s) supprimé(s)`);
       } catch (e) { console.error('cron purge: ' + e.message); }
+    })());
+
+    // Purge auditLog (>1 an) + otpChallenges expirés. Rythme quotidien : ni
+    // l'un ni l'autre n'a d'urgence, et lister les deux collections à chaque
+    // tour de cron n'a aucun intérêt.
+    ctx.waitUntil((async () => {
+      const KEY = 'purge:auditlog-otp:lastRun';
+      try {
+        const last = Number(await env.EARNINGS.get(KEY)) || 0;
+        if (Date.now() - last < 24 * 60 * 60 * 1000) return;
+        await env.EARNINGS.put(KEY, String(Date.now()));
+        const n = await purgeAuditLogAndOtp(env);
+        if (n) console.log(`purge auditLog/otpChallenges: ${n} document(s) supprimé(s)`);
+      } catch (e) { console.error('cron purge auditLog/otp: ' + e.message); }
     })());
   },
 };

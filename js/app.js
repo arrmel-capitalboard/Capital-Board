@@ -110,7 +110,7 @@ function _resetTurnstile(containerId) {
 }
 
 // 2FA device-based — durée trust appareil
-const DEVICE_TRUST_DAYS = 90;
+const DEVICE_TRUST_DAYS = 30;
 const DEVICE_TRUST_MS   = DEVICE_TRUST_DAYS * 24 * 60 * 60 * 1000;
 
 let _splashWatchdog = null;
@@ -1364,6 +1364,46 @@ function _pinUnlockSuccess(user) {
   }, 560);
 }
 
+// ─── Re-lock après inactivité ─────────────────────────────────────────────
+// Le code PIN est demandé au chargement et au rechargement, mais une session
+// laissée ouverte restait ouverte indéfiniment — précisément le cas (ordinateur
+// sans surveillance) que le PIN est censé couvrir. Horloge murale plutôt qu'un
+// setTimeout qui compte les secondes : les timers sont ralentis en arrière-plan,
+// un setTimeout seul laisserait passer largement plus de 30 min sur un onglet
+// resté caché.
+const INACTIVITY_LOCK_MS = 30 * 60 * 1000;
+let _lastActivityAt = Date.now();
+let _inactivityWatchStarted = false;
+
+function _markActivity() { _lastActivityAt = Date.now(); }
+
+async function _checkInactivityLock() {
+  const appEl = document.getElementById('app');
+  if (!appEl || appEl.style.display === 'none') return; // app pas affichée : déjà verrouillé, ou pas encore chargée
+  if (Date.now() - _lastActivityAt < INACTIVITY_LOCK_MS) return;
+  const user = fbAuth.currentUser;
+  if (!user) return;
+  try {
+    // Mêmes dérogations qu'au chargement : kill-switch admin, opt-out, PIN désactivé.
+    if (await _isPinGloballyDisabled() || await _isPinOptedOut(user.uid)) return;
+    if (!(await _isPinEnabled(user.uid))) return;
+  } catch (_) { return; } // fail-open, cohérent avec le reste du gate PIN
+  _markActivity(); // évite de reverrouiller en boucle si la vérification traîne
+  showPinLockView(user);
+}
+
+function _startInactivityWatch() {
+  _markActivity();
+  if (_inactivityWatchStarted) return;
+  _inactivityWatchStarted = true;
+  ['mousedown', 'keydown', 'touchstart', 'scroll'].forEach(evt =>
+    document.addEventListener(evt, _markActivity, { passive: true }));
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') _checkInactivityLock();
+  });
+  setInterval(_checkInactivityLock, 60 * 1000);
+}
+
 window.pinLockLogout = async function() {
   _pinLockUser = null;
   try { await signOut(fbAuth); } catch(_) {}
@@ -2412,6 +2452,7 @@ async function startApp(user) {
     appEl.style.display = 'block';
     appEl.classList.add('app-enter');
     setTimeout(() => appEl.classList.remove('app-enter'), 600);
+    _startInactivityWatch();
     _restoreHideBalances();
     _startVersionCheck();
     // Journal des connexions : en arriere-plan, jamais bloquant. Le mode demo
@@ -4922,9 +4963,6 @@ async function selectPortfolioSuggestion(symbol, name) {
 }
 
 // ─── YAHOO FINANCE ───────────────────────────────────
-function proxyUrl(url) {
-  return 'https://api.allorigins.win/get?url=' + encodeURIComponent(url);
-}
 
 const ETF_DB = [
   { ticker:'PANX.PA', isin:'FR0013412285', name:'Amundi PEA Nasdaq 100', aliases:['amundi nasdaq','pea nasdaq','nasdaq 100 pea','panx'] },
@@ -4972,30 +5010,11 @@ function searchETFLocal(query) {
   return byName || null;
 }
 
+// Passe par le Worker Cloudflare (fetch Yahoo direct serveur, pas de CORS) :
+// seule voie fiable qui ne fait pas transiter les cours par un relais tiers
+// inconnu, capable d'altérer les valeurs renvoyées sur une app de suivi de
+// patrimoine. Échec propre plutôt qu'une valeur venue d'ailleurs.
 async function fetchWithFallback(url) {
-  function tryAllorigins(u) {
-    return fetch('https://api.allorigins.win/get?url=' + encodeURIComponent(u), {signal: AbortSignal.timeout(4000)})
-      .then(r => r.json()).then(j => { if (!j.contents || j.contents === 'null') throw new Error('empty'); return j.contents; });
-  }
-  function tryCorsproxy(u) {
-    return fetch('https://corsproxy.io/?' + encodeURIComponent(u), {signal: AbortSignal.timeout(4000)})
-      .then(r => { if (!r.ok) throw new Error('not ok'); return r.text(); });
-  }
-  function tryCorsEu(u) {
-    return fetch('https://cors.eu.org/' + u, {signal: AbortSignal.timeout(5000)})
-      .then(r => { if (!r.ok) throw new Error('not ok'); return r.text(); });
-  }
-  function tryCodetabs(u) {
-    return fetch('https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(u), {signal: AbortSignal.timeout(5000)})
-      .then(r => { if (!r.ok) throw new Error('not ok'); return r.text(); });
-  }
-  // Proxy primaire : Worker Cloudflare (fetch Yahoo direct serveur, pas de CORS).
-  // Fiable + rapide partout, y compris iOS où le cache localStorage est évincé.
-  function tryWorker(u) {
-    return fetch(WORKER_URL + '/yahoo?url=' + encodeURIComponent(u), {signal: AbortSignal.timeout(8000)})
-      .then(r => { if (!r.ok) throw new Error('not ok'); return r.text(); });
-  }
-
   function isValidRaw(raw) {
     try {
       const p = JSON.parse(raw);
@@ -5005,34 +5024,12 @@ async function fetchWithFallback(url) {
     } catch { return false; }
   }
 
-  // Round 0 : Worker Cloudflare en primaire (rapide + fiable, pas de CORS).
-  try {
-    const raw = await tryWorker(url);
-    if (isValidRaw(raw)) return raw;
-  } catch {}
-
-  // Round 1 : course des 2 proxies CORS gratuits en parallèle (le 1er valide gagne).
-  // Filet de sécurité si le Worker est down. corsproxy.io / cors.eu.org → Round 2.
-  const race = [
-    tryCodetabs(url).then(r => { if (!isValidRaw(r)) throw new Error('invalide'); return r; }),
-    tryAllorigins(url.replace('query1.', 'query2.')).then(r => { if (!isValidRaw(r)) throw new Error('invalide'); return r; }),
-  ];
-  try {
-    return await Promise.any(race);
-  } catch {}
-
-  // Round 2 : longshots (souvent morts, mais on tente avant d'abandonner).
-  const fallbacks = [
-    () => tryCorsproxy(url),
-    () => tryCorsEu(url),
-  ];
-  for (const fn of fallbacks) {
-    try {
-      const raw = await fn();
-      if (isValidRaw(raw)) return raw;
-    } catch {}
-  }
-  throw new Error('Service temporairement indisponible. Réessayez dans quelques secondes.');
+  const res = await fetch(WORKER_URL + '/yahoo?url=' + encodeURIComponent(url), { signal: AbortSignal.timeout(8000) })
+    .catch(() => { throw new Error('Service temporairement indisponible. Réessayez dans quelques secondes.'); });
+  if (!res.ok) throw new Error('Service temporairement indisponible. Réessayez dans quelques secondes.');
+  const raw = await res.text();
+  if (!isValidRaw(raw)) throw new Error('Service temporairement indisponible. Réessayez dans quelques secondes.');
+  return raw;
 }
 
 const ISIN_MAP = {

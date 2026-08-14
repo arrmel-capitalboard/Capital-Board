@@ -23,11 +23,14 @@ function getDb() {
   }
 
   // require() lazy pour ne pas charger firebase-admin si Firestore n'est pas utilisé.
-  const admin = require('firebase-admin');
+  // API modulaire : depuis firebase-admin v14, `admin.credential` et
+  // `admin.firestore()` n'existent plus sur le namespace racine.
+  const { initializeApp, cert } = require('firebase-admin/app');
+  const { getFirestore } = require('firebase-admin/firestore');
   const serviceAccount = require(resolved);
 
-  admin.initializeApp({ credential: admin.credential.cert(serviceAccount) });
-  db = admin.firestore();
+  const app = initializeApp({ credential: cert(serviceAccount) });
+  db = getFirestore(app);
   return db;
 }
 

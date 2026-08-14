@@ -1,0 +1,39 @@
+name: Backup Firestore
+
+on:
+  schedule:
+    # Lundi 04h00 UTC — hors heures d'usage, avant les crons de la journée.
+    - cron: '0 4 * * 1'
+  workflow_dispatch:
+
+# Jeton au strict minimum : lecture seule. L'export ne touche pas le dépôt.
+permissions:
+  contents: read
+
+jobs:
+  backup:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Install dependencies
+        run: |
+          cd scripts
+          npm install
+
+      - name: Export Firestore vers R2
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+        run: |
+          cd scripts
+          node backup-firestore.mjs
