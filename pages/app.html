@@ -46,7 +46,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260816i">
+<link rel="stylesheet" href="css/style.css?v=20260816j">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -1243,20 +1243,6 @@
       </div>
 
       <div class="section-card" style="max-width:560px;margin-top:16px">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:6px">
-          <div>
-            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Organisation du menu</div>
-            <div style="font-size:12px;color:var(--text3);line-height:1.6;max-width:360px">Déplacez les sections, activez/masquez, renommez / supprimez / créez des catégories. S'applique à <strong>tous les utilisateurs</strong>.</div>
-          </div>
-        </div>
-        <div id="admin-nav-editor"></div>
-        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-          <button class="pf-btn ghost" onclick="adminNavAddCategory()" style="font-size:11.5px">＋ Nouvelle catégorie</button>
-          <button class="pf-btn ghost" onclick="adminNavReset()" style="font-size:11.5px">Réinitialiser</button>
-        </div>
-      </div>
-
-      <div class="section-card" style="max-width:560px;margin-top:16px">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
           <div>
             <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Top utilisateurs actifs</div>
@@ -1306,7 +1292,9 @@
             <div style="font-size:12px;color:var(--text3);line-height:1.6;max-width:420px">Réponses au questionnaire de bienvenue. Passable : tous les comptes n'y figurent pas.</div>
           </div>
         </div>
-        <div id="admin-profiles">Chargement…</div>
+        <!-- Le détail tient sur plusieurs écrans et se lit rarement : il vit
+             dans une fenêtre, et n'est chargé qu'à l'ouverture. -->
+        <button class="pf-btn ghost" onclick="adminOpenProfils()" style="font-size:11.5px">Voir les profils</button>
       </div>
 
       <div class="section-card" style="max-width:680px;margin-top:16px">
@@ -2586,8 +2574,17 @@
         </div>
       </div>
     </div>
-    <div class="liv-import-ou"><span>ou remplissez les champs à la main</span></div>
+    <!-- La saisie à la main est le chemin long : une cinquantaine de lignes
+         pour qu'un seul livret tombe juste. Elle reste possible, mais elle ne
+         s'étale plus sous le bouton d'import — la déplier est un choix, pas le
+         défaut. Rouverte d'office dès qu'un champ est rempli, par l'import ou
+         à la modification d'un livret existant. -->
+    <button type="button" class="liv-manuel-cta" id="liv-f-manuel-cta" onclick="livSaisieManuelle()">
+      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4z"/></svg>
+      Saisir manuellement
+    </button>
 
+    <div id="liv-f-manuel" hidden>
     <div class="dep-row2">
       <div class="form-group">
         <label class="form-label" for="liv-f-ouverture">Ouvert le</label>
@@ -2663,6 +2660,7 @@
       <div class="dep-help">Recopiez les deux montants affichés par votre banque, et la date à laquelle vous les avez lus. Ils remplacent l'estimation : aucun modèle ne reproduit au centime les conventions de chaque établissement. L'acquis continue de courir depuis cette date, et vos mouvements suivants s'y ajoutent — il n'y a donc pas à les recopier à chaque versement. Recopiez les montants bruts, la fiscalité est appliquée ensuite si le livret y est soumis.</div>
     </div>
     </details>
+    </div><!-- /#liv-f-manuel -->
 
     <div class="liv-ecart" id="liv-f-ecart" hidden></div>
     <div class="dep-recap" id="liv-f-recap" hidden></div>
@@ -2706,38 +2704,11 @@
 
       <div class="imp-erreur" id="imp-erreur" hidden></div>
 
-      <!-- Les garanties sont écrites ici, pas seulement dans les CGU : c'est ce
-           qui fait accepter le dépôt d'un relevé bancaire.
-           Elles ne sont PAS les mêmes selon le format, et le dire est le
-           minimum : un CSV ou un PDF est lu sur l'appareil, une image part au
-           serveur pour y être déchiffrée par un modèle de vision. -->
-      <div class="imp-garanties">
-        <div class="imp-gar-t">CSV et PDF : rien ne quitte votre navigateur</div>
-        <ul>
-          <li>Le fichier est lu sur votre appareil. Rien n’est envoyé, ni à nous, ni à un tiers.</li>
-          <li>Seules les lignes que vous cochez sont enregistrées.</li>
-          <li>Le fichier d’origine n’est jamais conservé, ni copié, ni mis en cache.</li>
-        </ul>
-      </div>
-
-      <div class="imp-garanties image">
-        <div class="imp-gar-t">Captures d’écran : l’image est envoyée pour être lue</div>
-        <ul>
-          <li>Votre appareil ne sait pas déchiffrer une image seul. Elle part à
-              Capital Board, qui la confie à un modèle de reconnaissance de texte
-              hébergé par Cloudflare — déjà l’hébergeur de l’application.</li>
-          <li>L’image n’est enregistrée nulle part et ne sert à entraîner aucun modèle.</li>
-          <li>Votre accord vous est demandé avant le premier envoi.</li>
-        </ul>
-      </div>
-
-      <div class="imp-aide">
-        <b>Où trouver le fichier ?</b> Sur le site de votre banque, depuis un ordinateur :
-        ouvrez le compte, puis « Télécharger les opérations » ou « Exporter ».
-        Choisissez le CSV si le format vous est demandé. L’application mobile ne
-        propose en général que l’affichage — d’où la lecture des captures, à
-        n’utiliser que si votre banque ne donne aucun fichier.
-      </div>
+      <!-- Les garanties par format ont été retirées de cet écran le 16/08 :
+           elles y tenaient plus de place que le dépôt lui-même. Ce qui compte
+           est dit là où il compte — deux pastilles sous le bouton d'import de
+           la fiche, et la modale de consentement avant le premier envoi
+           d'image, qui elle reste obligatoire. -->
     </div>
 
     <!-- ── Étape 2 : lecture ── -->
@@ -2746,6 +2717,9 @@
         <div class="imp-spin" aria-hidden="true"></div>
         <div class="imp-lecture-nom" id="imp-lecture-nom">fichier</div>
         <div class="imp-lecture-etat" id="imp-lecture-etat">Lecture en cours…</div>
+        <!-- L'image en cours de lecture. Deux captures de banque se
+             ressemblent : sans la voir, on ne sait pas laquelle part. -->
+        <div class="imp-lecture-img" id="imp-lecture-img" hidden></div>
       </div>
     </div>
 
@@ -2793,6 +2767,9 @@
       <!-- Fichiers d'un lot qui n'ont pas pu être lus. Les taire laisserait
            croire que tout a été importé. -->
       <div class="imp-echecs" id="imp-echecs" hidden></div>
+      <!-- Les images déposées, à portée de clic pendant qu'on coche : c'est en
+           relisant la capture qu'on repère une ligne mal lue. -->
+      <div class="imp-apercus" id="imp-apercus" hidden></div>
       <div class="imp-help">
         Un montant négatif est un retrait. Corrigez ce qui doit l’être : rien n’est
         enregistré tant que vous n’avez pas validé la fiche du livret.
@@ -2804,6 +2781,9 @@
       <span class="imp-count" id="imp-count" hidden></span>
       <button class="btn-primary" id="imp-ok" onclick="CBImport.valider()" hidden>Ajouter</button>
     </div>
+
+    <!-- Agrandissement d'une vignette, par-dessus l'écran de validation. -->
+    <div class="imp-zoom" id="imp-zoom" hidden onclick="CBImport.fermerApercu()"></div>
   </div>
 </div>
 
@@ -3002,6 +2982,21 @@
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeAlertModal()">Annuler</button>
       <button class="btn-primary" onclick="confirmAddAlert()">Créer l'alerte</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ PROFILS DES INSCRITS (admin) ═════════════════
+     Ouverte à la demande depuis la page Admin. Les réponses ne sont lues
+     qu'à ce moment-là : elles ne servent à rien tant qu'on ne les regarde
+     pas, et deux collections entières se chargeaient à chaque visite. -->
+<div class="modal-overlay" id="admin-profils-modal" onclick="if(event.target===this)adminCloseProfils()" role="dialog" aria-modal="true" aria-labelledby="admin-profils-title">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-title" id="admin-profils-title">Profils des inscrits</div>
+    <div class="modal-sub">Réponses au questionnaire de bienvenue. Passable : tous les comptes n'y figurent pas.</div>
+    <div id="admin-profiles" style="max-height:60vh;overflow:auto">Chargement…</div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="adminCloseProfils()">Fermer</button>
     </div>
   </div>
 </div>
@@ -3535,11 +3530,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260816i"></script>
+<script src="js/app.js?v=20260816j"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260816i"></script>
+<script src="js/onboarding.js?v=20260816j"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260816i"></script>
+<script src="js/import.js?v=20260816j"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

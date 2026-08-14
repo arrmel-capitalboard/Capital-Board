@@ -4959,18 +4959,17 @@ body.has-demo-banner { padding-top: 40px; }
 .liv-fact-local svg, .liv-fact-local b { color: var(--positive); }
 .liv-fact-ia    svg, .liv-fact-ia    b { color: var(--accent2); }
 
-/* Séparateur : l'import est le chemin court, la saisie reste ouverte. */
-.liv-import-ou {
-  display: flex; align-items: center; gap: 12px;
-  margin: 0 0 18px;
-  font-size: 10.5px; font-weight: 600; letter-spacing: .3px;
-  color: var(--text3);
+/* Le chemin long, replié. Discret sans être caché : c'est une porte, pas une
+   action que l'on pousse. Pleine largeur pour rester trouvable. */
+.liv-manuel-cta {
+  display: flex; align-items: center; justify-content: center; gap: 8px;
+  width: 100%; margin: 0 0 18px; padding: 11px 14px;
+  border-radius: 11px; background: transparent;
+  border: 1px dashed var(--border3);
+  color: var(--text3); font-family: var(--sans); font-size: 12.5px; font-weight: 600;
+  cursor: pointer; transition: all .15s;
 }
-.liv-import-ou::before,
-.liv-import-ou::after {
-  content: ''; flex: 1; height: 1px;
-  background: linear-gradient(90deg, transparent, var(--border2), transparent);
-}
+.liv-manuel-cta:hover { color: var(--text); border-color: var(--accent); background: var(--accent-d); }
 
 /* Ce que l'import remplit seul : replié tant qu'il n'y a rien à y voir. */
 .liv-avance { margin-bottom: 18px; border-top: 1px solid var(--border); padding-top: 14px; }
@@ -4999,7 +4998,7 @@ body.has-demo-banner { padding-top: 40px; }
      un fond de bordure). */
   .liv-import-facts { grid-template-columns: 1fr; }
   .liv-fact { padding: 11px 13px; }
-  .liv-import-ou { margin-bottom: 15px; gap: 10px; }
+  .liv-manuel-cta { margin-bottom: 15px; padding: 10px 12px; }
   .liv-avance > summary span { display: none; }
 }
 
@@ -5081,27 +5080,6 @@ body.has-demo-banner { padding-top: 40px; }
 }
 .imp-erreur-main:hover { background: rgba(255,255,255,.09); border-color: var(--border3); }
 
-/* Les trois garanties. Écrites à l'écran, pas seulement dans les CGU. */
-.imp-garanties {
-  padding: 12px 14px; border-radius: 11px;
-  background: var(--positive-d); border: 1px solid rgba(0,224,158,.2);
-}
-.imp-gar-t { font-size: 12px; font-weight: 700; color: var(--positive); margin-bottom: 6px; }
-.imp-garanties ul { margin: 0; padding-left: 16px; }
-.imp-garanties li { font-size: 11.5px; color: var(--text2); line-height: 1.6; }
-/* Une image ne suit pas le même chemin qu'un CSV : elle sort de l'appareil.
-   Le pavé change de couleur pour que la différence se voie avant d'être lue. */
-.imp-garanties.image {
-  margin-top: 10px;
-  background: rgba(245,183,49,.07); border-color: rgba(245,183,49,.22);
-}
-.imp-garanties.image .imp-gar-t { color: var(--gold); }
-
-.imp-aide {
-  margin-top: 12px; font-size: 11.5px; color: var(--text3); line-height: 1.6;
-}
-.imp-aide b { color: var(--text2); }
-
 /* ─── Lecture en cours ─── */
 .imp-lecture {
   display: flex; flex-direction: column; align-items: center; gap: 10px;
@@ -5115,6 +5093,40 @@ body.has-demo-banner { padding-top: 40px; }
 @keyframes imp-spin { to { transform: rotate(360deg); } }
 .imp-lecture-nom  { font-size: 13px; font-weight: 600; color: var(--text); word-break: break-all; }
 .imp-lecture-etat { font-size: 11.5px; color: var(--text3); }
+/* L'image en cours de lecture. Bornée en hauteur : une capture de téléphone
+   est haute et étroite, et pousserait le reste hors de l'écran. */
+.imp-lecture-img { margin-top: 6px; max-width: 100%; }
+.imp-lecture-img img {
+  display: block; max-width: 260px; max-height: 220px; width: auto; height: auto;
+  margin: 0 auto; border-radius: 10px; border: 1px solid var(--border);
+  opacity: .85;
+}
+
+/* ─── Aperçus des images déposées ─── */
+.imp-apercus { margin-top: 14px; }
+.imp-apercus-t {
+  font-size: 11px; font-weight: 700; letter-spacing: .3px;
+  color: var(--text3); text-transform: uppercase; margin-bottom: 8px;
+}
+.imp-apercus-l { display: flex; gap: 8px; flex-wrap: wrap; }
+.imp-vignette {
+  width: 62px; height: 62px; padding: 0; overflow: hidden;
+  border-radius: 9px; border: 1px solid var(--border);
+  background: var(--s2); cursor: zoom-in; transition: all .15s;
+}
+.imp-vignette img { width: 100%; height: 100%; object-fit: cover; display: block; }
+.imp-vignette:hover { border-color: var(--accent); transform: translateY(-1px); }
+
+/* Agrandissement : posé par-dessus la modale, refermé au clic n'importe où. */
+.imp-zoom {
+  position: fixed; inset: 0; z-index: 2000; cursor: zoom-out;
+  display: flex; align-items: center; justify-content: center;
+  padding: 24px; background: rgba(4,6,11,.88);
+}
+.imp-zoom img {
+  max-width: 100%; max-height: 100%;
+  border-radius: 12px; border: 1px solid var(--border2);
+}
 
 /* ─── Validation ligne à ligne ─── */
 .imp-bar { display: flex; gap: 7px; flex-wrap: wrap; margin: 16px 0 10px; }

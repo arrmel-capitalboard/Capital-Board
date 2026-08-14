@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816i';
+const APP_VERSION = '20260816j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -14494,7 +14494,8 @@ async function renderAdminPage() {
   renderAdminStats();
   renderAdminUsers();
   renderAdminActive();
-  renderAdminProfiles();
+  // Les profils ne sont plus lus au rendu de la page : ils vivent dans une
+  // fenêtre, et leurs deux collections ne se chargent qu'à son ouverture.
 
   // Accueil des nouveaux
   const surveyT = document.getElementById('admin-survey-toggle');
@@ -14906,6 +14907,8 @@ async function _doAdminDeleteUser(uid) {
   await del(firestoreDoc(db, 'profiles', uid));
   _audit('rgpd_delete', 'uid=' + uid);
   renderAdminUsers();
+  // La fenêtre des profils n'est peut-être pas ouverte : renderAdminProfiles
+  // sort de lui-même si sa boîte n'est pas là.
   renderAdminProfiles();
 }
 
@@ -15143,8 +15146,24 @@ const _PROFIL_LIBELLES = {
 };
 const _profLib = (champ, v) => (_PROFIL_LIBELLES[champ] || {})[v] || v;
 
+// La fenêtre charge à l'ouverture, pas au rendu de la page Admin : deux
+// collections entières pour un écran qu'on ouvre une fois par mois.
+window.adminOpenProfils = function() {
+  const m = document.getElementById('admin-profils-modal');
+  if (m) m.classList.add('open');
+  renderAdminProfiles();
+};
+window.adminCloseProfils = function() {
+  const m = document.getElementById('admin-profils-modal');
+  if (m) m.classList.remove('open');
+};
+
 async function renderAdminProfiles() {
   if (!isAdmin()) return;
+  const modal = document.getElementById('admin-profils-modal');
+  // Rien à rafraîchir tant que personne ne regarde — l'appel après une
+  // suppression RGPD, notamment, ne doit pas relire deux collections.
+  if (!modal || !modal.classList.contains('open')) return;
   const box = document.getElementById('admin-profiles');
   if (!box) return;
   box.innerHTML = 'Chargement…';
@@ -19251,9 +19270,37 @@ window.livOpenModal = function(id) {
   // reste fermé, et le formulaire tient en trois blocs.
   _livSetAvance(!!(l && (l.taux || (l.tauxHist && l.tauxHist.length) ||
                          l.surTaux || (l.releve && l.releve.le))));
+  // Un livret existant s'ouvre sur ses champs : on vient les corriger, pas
+  // réimporter un relevé.
+  _livManuel(!!l);
   livRecalc();
   document.getElementById('liv-modal').classList.add('open');
   setTimeout(() => { const s = document.getElementById('liv-f-taux'); if (s) s.focus(); }, 60);
+};
+
+/**
+ * Déplie la saisie à la main.
+ *
+ * Le formulaire s'ouvre sur l'import seul. Tout ce qui suit — dates,
+ * mouvements, taux, relevé — ne s'affiche qu'à la demande : c'est le chemin
+ * long, une cinquantaine de lignes pour qu'un livret tombe juste, et l'étaler
+ * d'emblée faisait passer l'import pour une option parmi d'autres.
+ *
+ * Rouvert de force dès qu'il y a quelque chose à voir : un import qui vient de
+ * remplir les champs, ou la modification d'un livret déjà enregistré.
+ */
+function _livManuel(ouvert) {
+  const box = document.getElementById('liv-f-manuel');
+  const cta = document.getElementById('liv-f-manuel-cta');
+  if (box) box.hidden = !ouvert;
+  if (cta) cta.hidden = !!ouvert;
+}
+window.livSaisieManuelle = function() {
+  _livManuel(true);
+  // Une ligne vide d'emblée : le bouton dit « saisir », il doit y avoir où.
+  if (!_livMvts.length) livAddMvt(1);
+  const d = document.getElementById('liv-f-ouverture');
+  if (d) d.focus();
 };
 
 // Les livrets réglementés sont uniques par personne : on présélectionne le
@@ -19418,6 +19465,9 @@ window.livImporterReleve = function() {
     existant: _livMvtsPropres(),
     classerFiche: _livClasserFiche,
     onValider: function(lignes, taux, fiche) {
+      // Ce que l'import vient de remplir doit être visible : sans ça, le
+      // formulaire se refermait sur un bouton « Enregistrer » et rien d'autre.
+      _livManuel(true);
       lignes.forEach(l => _livMvts.push({
         d: l.d,
         m: String(Math.abs(l.m)).replace('.', ','),
@@ -19857,6 +19907,9 @@ function _livPct(t) { return Number(t).toFixed(2).replace('.', ',').replace(/,00
 function _livErr(msg) {
   const el = document.getElementById('liv-f-error');
   if (!el) return;
+  // Presque tous ces messages désignent un champ de la saisie à la main. Le
+  // laisser replié reviendrait à reprocher un oubli sur un écran invisible.
+  _livManuel(true);
   el.textContent = msg;
   el.hidden = false;
 }

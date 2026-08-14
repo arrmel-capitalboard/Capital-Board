@@ -68,6 +68,8 @@ window.CBImport = (function () {
     _cols   = null;
     _echecs = [];
     _source = '';
+    fermerApercu();
+    _libererApercus();
     _text('imp-title', _dest.titre || 'Importer un relevé');
     _text('imp-sub',   _dest.sous  || '');
     _etape('depot');
@@ -89,6 +91,8 @@ window.CBImport = (function () {
     _cols   = null;
     _echecs = [];
     _source = '';
+    fermerApercu();
+    _libererApercus();
     const input = document.getElementById('imp-file');
     if (input) input.value = '';
   }
@@ -177,6 +181,68 @@ window.CBImport = (function () {
     return out;
   }
 
+  /**
+   * Aperçus des images déposées.
+   *
+   * Une capture d'écran de banque se ressemble d'un mois à l'autre : sans la
+   * voir, on ne sait pas laquelle est en train d'être lue, ni laquelle a donné
+   * telle ligne à l'écran de validation. Les vignettes vivent le temps de la
+   * modale — ce sont des URL d'objet, pas des copies, et elles sont relâchées
+   * à la fermeture.
+   */
+  let _apercus = [];
+
+  function _libererApercus() {
+    _apercus.forEach(a => { try { URL.revokeObjectURL(a.url); } catch (_) {} });
+    _apercus = [];
+  }
+
+  function _apercuLecture(file) {
+    const box = document.getElementById('imp-lecture-img');
+    if (!box) return;
+    const image = file && String(file.type || '').startsWith('image/');
+    box.hidden = !image;
+    box.innerHTML = '';
+    if (!image) return;
+    const url = URL.createObjectURL(file);
+    _apercus.push({ nom: file.name || 'capture', url });
+    const img = document.createElement('img');
+    img.src = url;
+    img.alt = '';
+    box.appendChild(img);
+  }
+
+  // Bande de vignettes sous l'écran de validation : de quoi revenir sur ce
+  // qu'on a déposé pendant qu'on coche les lignes.
+  function _rendreApercus() {
+    const box = document.getElementById('imp-apercus');
+    if (!box) return;
+    box.hidden = !_apercus.length;
+    if (!_apercus.length) { box.innerHTML = ''; return; }
+    box.innerHTML =
+      '<div class="imp-apercus-t">' + _apercus.length +
+        (_apercus.length > 1 ? ' images déposées' : ' image déposée') + '</div>' +
+      '<div class="imp-apercus-l">' + _apercus.map((a, i) =>
+        '<button type="button" class="imp-vignette" onclick="CBImport.voirApercu(' + i + ')" ' +
+          'title="' + _attr(a.nom) + '"><img src="' + _attr(a.url) + '" alt=""></button>'
+      ).join('') + '</div>';
+  }
+
+  // Agrandissement : la vignette ne suffit pas à relire un montant.
+  function voirApercu(i) {
+    const a = _apercus[i];
+    const box = document.getElementById('imp-zoom');
+    if (!a || !box) return;
+    box.innerHTML = '<img src="' + _attr(a.url) + '" alt="' + _attr(a.nom) + '">';
+    box.hidden = false;
+  }
+  function fermerApercu() {
+    const box = document.getElementById('imp-zoom');
+    if (!box) return;
+    box.hidden = true;
+    box.innerHTML = '';
+  }
+
   async function lireLot(files) {
     _etape('lecture');
     const tout = [];
@@ -189,6 +255,7 @@ window.CBImport = (function () {
       const rang = files.length > 1 ? ' (' + (i + 1) + ' sur ' + files.length + ')' : '';
       _text('imp-lecture-nom', (file.name || 'fichier') + rang);
       _text('imp-lecture-etat', 'Lecture en cours…');
+      _apercuLecture(file);
 
       let res;
       try {
@@ -446,6 +513,7 @@ window.CBImport = (function () {
     ).join('');
     _rendreTaux();
     _rendreFiche();
+    _rendreApercus();
     _rendreEchecs();
     _majPied();
   }
@@ -659,6 +727,7 @@ window.CBImport = (function () {
     open, close, onFile, onDrop, onDragOver, dragOff: _dragOff,
     setOk, set, toutCocher, valider, retour, revisionTaux,
     setColonne, setDepuis, relire,
+    voirApercu, fermerApercu,
     // Exposée pour la suite de tests : c'est la règle la plus délicate du
     // module, et elle se vérifie sans DOM.
     _fusionner,
