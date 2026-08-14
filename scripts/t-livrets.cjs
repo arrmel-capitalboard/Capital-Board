@@ -6,6 +6,8 @@ const g = (re) => { const m = src.match(re); if (!m) throw new Error('introuvabl
 const bundle = [
   g(/const LIV_BAREME = \{[\s\S]*?\n\};/),
   g(/const LIV_PFU = [^\n]*\n/),
+  g(/const LIV_PS  = [^\n]*\n/),
+  g(/const LIV_EL_REFORME = [^\n]*\n/),
   'let _livBareme = null, _livCfg = null;',
   g(/function _livB\(\) \{[\s\S]*?\n\}/),
   g(/function _livType_\(t\)[^\n]*\n/),
@@ -15,8 +17,11 @@ const bundle = [
   g(/function _livSur\(l\) \{[\s\S]*?\n\}/),
   g(/function _livPlafondTotal\(l\) \{[\s\S]*?\n\}/),
   g(/function _livTranches\(l, capital\) \{[\s\S]*?\n\}/),
+  g(/function _livRegime\(l, annee, q\) \{[\s\S]*?\n\}/),
+  g(/function _livAtteint\(ouvIso, ans, annee, q\) \{[\s\S]*?\n\}/),
+  g(/function _livImpot\(regime\) \{[\s\S]*?\n\}/),
   g(/function _livNet\(l, d\) \{[\s\S]*?\n\}/),
-  g(/function _livPartImposee\(l, d\) \{[\s\S]*?\n\}/),
+  g(/function _livTauxImpot\(l, d\) \{[\s\S]*?\n\}/),
   g(/function _livInterets\(l\) \{[\s\S]*?\n\}/),
   g(/function _livQuinzaines\(d\) \{[\s\S]*?\n\}/),
   g(/function _livQIndex\(d\)[^\n]*\n/),
@@ -39,7 +44,7 @@ const bundle = [
   g(/function _livClasserFiche\(f\) \{[\s\S]*?\n\}/),
   'module.exports = { _livSolde, _livTaux, _livTauxA, _livInterets, _livInteretsQ,' +
   ' _livAcquis, _livProjete, _livDebutQuinzaine, _livQuinzaines, _livReste, _livPlafond,' +
-  ' _livSur, _livPlafondTotal, _livTauxMarge, _livFicheEstSur, _livClasserFiche, _livType_, _livB };',
+  ' _livSur, _livPlafondTotal, _livRegime, _livImpot, _livTauxMarge, _livFicheEstSur, _livClasserFiche, _livType_, _livB };',
 ].join('\n');
 
 const mod = new module.constructor();
@@ -219,7 +224,10 @@ chk('deux tranches : acquis brut',  X._livAcquis(gros).brut, (reglB + surB) * 14
 chk('deux tranches : seul le dépassement est imposé',
     X._livAcquis(gros).net, (reglB + surB * 0.7) * 14 / 24);
 chk('deux tranches : projeté au 31 décembre', X._livProjete(gros).brut, reglB + surB);
-chk('deux tranches : part imposée', X._livInteretsQ(gros, 24, true).part, partA);
+// `impot` est le taux d'imposition MOYEN des intérêts, pas la part imposée :
+// c'est lui qu'on applique à un chiffre de banque, qui ne se décompose pas.
+chk('deux tranches : taux d’imposition moyen',
+    X._livInteretsQ(gros, 24, true).impot, 0.30 * partA);
 chk('deux tranches : taux du prochain euro versé', X._livTauxMarge(gros), 0.3);
 chk('sous le plafond : taux réglementé',
     X._livTauxMarge({ type: 'livretA', surTaux: 0.3, mouvements: [{ d: '2025-01-01', m: 100 }] }), 1.7);
@@ -311,16 +319,17 @@ chk('classement : dépassement seul, rangé au bon endroit', seule.sur.taux, 0.3
 const B = X._livB();
 const ouverts = Object.keys(B.types).filter(k => !B.types[k].bientot);
 
-chk('types ouverts : Livret A, Livret Jeune, LDDS, LEP',
-    ouverts.slice().sort().join(','), 'jeune,ldds,lep,livretA');
+chk('tous les types sont ouverts', ouverts.length, Object.keys(B.types).length);
 
-// Un type ne s'ouvre qu'avec un barème complet. Sans cette garde, retirer un
-// `bientot` sur le livret bancaire — dont le taux est au contrat — offrirait un
-// livret rémunéré à 0 % sans que rien ne le dise.
+// Un type ne s'ouvre qu'avec un barème décrit. `null` est une réponse : le
+// livret bancaire n'a pas de plafond réglementé, le PEL fixe son taux au
+// contrat. `undefined` n'en est pas une, et c'est ce que cette garde attrape.
 ouverts.forEach(k => {
   const t = B.types[k];
-  chk('barème ' + k + ' : plafond connu', Number.isFinite(t.plafond) && t.plafond > 0 ? 1 : 0, 1);
-  chk('barème ' + k + ' : taux connu',    Number.isFinite(t.taux)    && t.taux    > 0 ? 1 : 0, 1);
+  const plafondOk = t.plafond === null || (Number.isFinite(t.plafond) && t.plafond > 0);
+  const tauxOk    = t.taux    === null || (Number.isFinite(t.taux)    && t.taux    > 0);
+  chk('barème ' + k + ' : plafond décrit', plafondOk ? 1 : 0, 1);
+  chk('barème ' + k + ' : taux décrit',    tauxOk ? 1 : 0, 1);
   chk('barème ' + k + ' : fiscalité posée', typeof t.fisc === 'boolean' ? 1 : 0, 1);
 });
 
@@ -366,6 +375,99 @@ chk('LDDS au-delà du plafond : rémunéré au taux du livret',
 chk('LDDS au-delà du plafond : reste à verser nul', X._livReste(lddsPlein), 0);
 chk('LDDS au-delà du plafond : rien d’imposé',
     X._livProjete(lddsPlein).net, X._livProjete(lddsPlein).brut);
+
+// ── Épargne logement : la fiscalité dépend de la date d'ouverture ───────────
+//
+// Règles vérifiées le 16/08 sur les sources publiques. Deux PEL identiques,
+// l'un de 2015, l'autre de 2019, ne rendent pas le même net : le premier est
+// exonéré d'impôt sur le revenu et ne supporte que les prélèvements sociaux ;
+// le second subit le prélèvement forfaitaire dès le premier euro. Le PEL perd
+// son exonération à douze ans, le CEL la garde.
+const PS = 0.172, PFU = 0.30;
+
+chk('régime : PEL de 2015 → prélèvements sociaux seuls',
+    X._livRegime({ type: 'pel', ouverture: '2015-06-01' }, 2026, 14), 'ps');
+chk('régime : PEL de 2019 → prélèvement forfaitaire',
+    X._livRegime({ type: 'pel', ouverture: '2019-06-01' }, 2026, 14), 'pfu');
+// La réforme vise les plans ouverts À COMPTER du 1er janvier 2018.
+chk('régime : PEL du 31 décembre 2017 → encore l’ancien',
+    X._livRegime({ type: 'pel', ouverture: '2017-12-31' }, 2026, 14), 'ps');
+chk('régime : PEL du 1er janvier 2018 → le nouveau',
+    X._livRegime({ type: 'pel', ouverture: '2018-01-01' }, 2026, 14), 'pfu');
+chk('régime : CEL de 2015 → prélèvements sociaux seuls',
+    X._livRegime({ type: 'cel', ouverture: '2015-06-01' }, 2026, 14), 'ps');
+chk('régime : CEL de 2019 → prélèvement forfaitaire',
+    X._livRegime({ type: 'cel', ouverture: '2019-06-01' }, 2026, 14), 'pfu');
+chk('régime : Livret A → rien',
+    X._livRegime({ type: 'livretA', ouverture: '2015-06-01' }, 2026, 14), 'exo');
+chk('régime : livret bancaire → prélèvement forfaitaire, quelle que soit la date',
+    X._livRegime({ type: 'bancaire', ouverture: '2010-06-01' }, 2026, 14), 'pfu');
+// Sans date, on ne peut pas trancher : on retient le régime le moins flatteur,
+// que le membre corrigera en datant son contrat.
+chk('régime : PEL sans date d’ouverture → prélèvement forfaitaire',
+    X._livRegime({ type: 'pel' }, 2026, 14), 'pfu');
+
+// Le douzième anniversaire tombe en cours d'année : les intérêts d'avant
+// restent exonérés d'impôt sur le revenu, ceux d'après ne le sont plus. Un PEL
+// ouvert le 1er juillet 2014 a douze ans le 1er juillet 2026 — quinzaine 12.
+const pel2014 = { type: 'pel', taux: 2, ouverture: '2014-07-01' };
+chk('douze ans : quinzaine de juin encore exonérée', X._livRegime(pel2014, 2026, 10), 'ps');
+chk('douze ans : quinzaine du 1er juillet imposée',  X._livRegime(pel2014, 2026, 12), 'pfu');
+chk('douze ans : quinzaine du 16 juin encore exonérée', X._livRegime(pel2014, 2026, 11), 'ps');
+
+chk('impôt : exonéré', X._livImpot('exo'), 0);
+chk('impôt : prélèvements sociaux seuls', X._livImpot('ps'), PS);
+chk('impôt : prélèvement forfaitaire', X._livImpot('pfu'), PFU);
+
+// Chiffre en main. PEL de 2015, 20 000 € en place depuis l'an dernier, 2 % :
+// tout l'acquis de l'année relève des prélèvements sociaux seuls.
+const pelVieux = { type: 'pel', taux: 2, ouverture: '2015-06-01',
+                   mouvements: [{ d: '2015-06-01', m: 20000 }] };
+chk('PEL de 2015 : brut',  X._livAcquis(pelVieux).brut, 20000 * 0.02 * 14 / 24);
+chk('PEL de 2015 : net à 17,2 %', X._livAcquis(pelVieux).net, 20000 * 0.02 * 14 / 24 * (1 - PS));
+
+// Le même, ouvert en 2019 : le prélèvement forfaitaire s'applique, et le net
+// perd 12,8 points de plus.
+const pelNeuf = { type: 'pel', taux: 2, ouverture: '2019-06-01',
+                  mouvements: [{ d: '2019-06-01', m: 20000 }] };
+chk('PEL de 2019 : net à 30 %', X._livAcquis(pelNeuf).net, 20000 * 0.02 * 14 / 24 * (1 - PFU));
+chk('PEL de 2019 : moins net que celui de 2015',
+    X._livAcquis(pelNeuf).net < X._livAcquis(pelVieux).net ? 1 : 0, 1);
+
+// Année à cheval sur le douzième anniversaire : douze quinzaines aux
+// prélèvements sociaux, deux au prélèvement forfaitaire.
+const aCheval = Object.assign({}, pel2014, { mouvements: [{ d: '2014-07-01', m: 20000 }] });
+chk('douze ans : acquis partagé entre les deux régimes',
+    X._livAcquis(aCheval).net,
+    20000 * 0.02 * 12 / 24 * (1 - PS) + 20000 * 0.02 * 2 / 24 * (1 - PFU));
+
+// Un relevé de banque est un brut global : on lui applique le taux moyen que
+// le calcul établit, pas un régime choisi au hasard.
+const pelReleve = Object.assign({}, pelVieux, { releve: { le: '2026-08-12', acquis: 100, projete: 200 } });
+chk('PEL de 2015 : relevé net des seuls prélèvements sociaux',
+    X._livAcquis(pelReleve).net, 100 * (1 - PS));
+
+// CEL au taux réglementé — il ne se saisit plus, il vient du barème.
+chk('barème : CEL à 1,25 %', B.types.cel.taux, 1.25);
+chk('barème : CEL à 15 300 €', B.types.cel.plafond, 15300);
+const cel2010 = { type: 'cel', ouverture: '2010-03-01', mouvements: [{ d: '2010-03-01', m: 10000 }] };
+chk('CEL de 2010 : net des prélèvements sociaux',
+    X._livProjete(cel2010).net, 10000 * 0.0125 * (1 - PS));
+const cel2020 = { type: 'cel', ouverture: '2020-03-01', mouvements: [{ d: '2020-03-01', m: 10000 }] };
+chk('CEL de 2020 : net du prélèvement forfaitaire',
+    X._livProjete(cel2020).net, 10000 * 0.0125 * (1 - PFU));
+// Le CEL garde son exonération sans limite de durée : à seize ans, il est
+// toujours au régime des prélèvements sociaux.
+chk('CEL de 2010 : toujours exonéré d’impôt à seize ans',
+    X._livRegime(cel2010, 2026, 23), 'ps');
+
+// Un compartiment de dépassement reste au prélèvement forfaitaire même sur un
+// contrat ancien : il n'est pas réglementé, c'est un produit de la banque.
+const pelSur = { type: 'pel', taux: 2, ouverture: '2015-06-01', surTaux: 0.5, surPlafond: 20000,
+                 mouvements: [{ d: '2015-06-01', m: 70000 }] };
+chk('PEL ancien avec dépassement : deux régimes',
+    X._livProjete(pelSur).net,
+    61200 * 0.02 * (1 - PS) + 8800 * 0.005 * (1 - PFU));
 
 console.log(t.join('\n'));
 const ko = t.filter(x => x.startsWith('FAIL')).length;

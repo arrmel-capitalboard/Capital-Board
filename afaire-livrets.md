@@ -2,15 +2,14 @@
 
 Dernière mise à jour : 16 août 2026.
 
-> **Le module est public, quatre types de livrets sont ouverts** : Livret A,
-> LDDS, LEP, Livret Jeune. Le modèle à deux compartiments est en place — le
-> plafond est devenu une frontière de taux, et la fiscalité suit la tranche et
-> non plus le type de livret. Détail en section 6.1.
+> **Le module est public et les sept types de livrets sont ouverts.** Deux
+> modèles ont été posés : le plafond est une frontière de taux et non un mur, et
+> la fiscalité dépend de la tranche **et de la date d'ouverture du contrat**, non
+> du type de livret. Détail en section 1 et en 6.1.
 >
 > Ce qui manque, et que le code ne peut pas se donner tout seul : **un vrai
 > export d'une autre banque que le CIC**, et le parcours exercé dans un
-> navigateur (section 3). Le CEL et le PEL attendent, eux, une fiscalité liée à
-> la date d'ouverture du contrat.
+> navigateur (section 3).
 
 ---
 
@@ -21,52 +20,66 @@ cran *Bêta* a disparu de l'éditeur de menu, il ne reste que l'interrupteur
 masqué / visible. `config/app.features` et `config/app.beta` sont vides en
 base : rien à changer côté Firestore, l'ouverture a pris effet au déploiement.
 
-Ce n'est plus la section qui est retenue mais **les types de livrets**. Quatre
-sont ouverts — **Livret A, LDDS, LEP, Livret Jeune** — les trois autres restent
-affichés avec une pastille « Bientôt », inertes (`bientot: true` dans
-`LIV_BAREME`, `_livTypeOuvert`). Ouvrir un type = retirer son drapeau, dans le
-code ou depuis `config/app.bareme`. Un livret déjà enregistré d'un type fermé
-reste modifiable, sinon il deviendrait intouchable.
+Ce n'est plus la section qui est retenue mais **les types de livrets**. Depuis
+le 16/08, **les sept sont ouverts** : Livret A, LDDS, LEP, Livret Jeune, PEL,
+CEL et livret bancaire. Le drapeau `bientot` reste dans `LIV_BAREME`, inutilisé
+— il servira au prochain type à faire attendre.
 
-### Pourquoi ces quatre, et pas les autres
+### La fiscalité dépend de la date d'ouverture, pas du type
 
-La ligne de partage n'est pas le calcul — il est commun — mais les **règles
-propres** au produit. Les quatre ouverts sont des livrets réglementés à taux
-unique : leur barème suffit à les décrire, et il est vérifié en test. Les trois
-fermés demandent chacun un modèle que le code n'a pas.
+C'est ce qui bloquait le PEL et le CEL, et c'est réglé. `fisc` ne suffisait
+pas : deux PEL identiques, l'un de 2015, l'autre de 2019, ne rendent pas le
+même net. Trois régimes désormais, rendus par `_livRegime` :
 
-| Fermé | Ce qui manque |
-|---|---|
-| CEL | fiscalité liée à la **date d'ouverture** : un CEL antérieur à 2018 échappe à l'IR et ne subit que les prélèvements sociaux, 17,2 % et non 30 % |
-| PEL | la même fiscalité datée, plus un versement minimum annuel, un terme, la fermeture au premier retrait, et la prime d'État des anciens plans |
-| Livret bancaire | ni plafond ni taux réglementés ; les taux promotionnels (« boosté trois mois ») sont à moitié couverts par `tauxHist` |
+| Régime | Ce qui est pris | Qui |
+|---|---|---|
+| `exo` | rien | livrets réglementés exonérés |
+| `ps` | 17,2 % de prélèvements sociaux | PEL et CEL ouverts **avant** le 1er janvier 2018 |
+| `pfu` | 30 % — 12,8 d'impôt sur le revenu, 17,2 de prélèvements sociaux | tout le reste |
 
-`fisc` est aujourd'hui un booléen par type, corrigé par la tranche. Le CEL et le
-PEL demandent un **troisième axe** : la date d'ouverture. C'est le vrai travail
-qui reste, et il ne se vérifie pas sans un contrat réel sous les yeux.
+Le régime se demande **à la quinzaine**, pas à l'exercice : un PEL perd son
+exonération d'impôt sur le revenu le jour de ses douze ans, en cours d'année
+s'il le faut, et les intérêts d'avant restent exonérés. Le CEL, lui, la garde
+sans limite de durée.
+
+`_livTauxImpot` remplace `_livPartImposee` : il rend le taux d'imposition moyen
+des intérêts, ventilation des tranches et des régimes comprise. C'est lui qu'on
+applique à un chiffre venu de la banque, qui ne se décompose pas.
+
+**Sans date d'ouverture, le régime retenu est le prélèvement forfaitaire.**
+C'est le moins flatteur : mieux vaut annoncer un net trop bas, que le membre
+corrigera en datant son contrat, qu'un net trop haut qu'il croira acquis.
+
+Corrigé au passage : **le taux du CEL est réglementé**, pas contractuel — 1,25 %
+depuis le 1er août 2026. Le barème le portait à `null`, ce qui faisait saisir au
+membre un taux qu'il n'a pas choisi.
+
+Ce qui n'est **pas** modélisé, et qui est dit au membre plutôt qu'imposé : le
+versement minimum de 540 € par an sur un PEL, et la clôture du plan au premier
+retrait. Refuser une saisie qui décrit sa situation réelle serait pire que de
+l'accepter.
 
 ### Ce qui remplace le relevé réel
 
-Personne dans l'équipe ne détient de LDDS ni de LEP : aucun export ne viendra
-les éprouver, et attendre reviendrait à ne jamais les ouvrir. Ce qui est
-vérifiable l'a donc été autrement, le 16/08 :
+Personne dans l'équipe ne détient de LDDS, de LEP, de PEL ni de CEL : aucun
+export ne viendra les éprouver, et attendre reviendrait à ne jamais les ouvrir.
+Ce qui est vérifiable l'a donc été autrement :
 
-- **le barème**, contre les sources publiques — LDDS 12 000 € à 1,70 %, aligné
-  sur le Livret A ; LEP 10 000 € à 2,50 %. Les deux figés en test, avec leur
-  exonération et leur unicité ;
-- **une garde sur l'ouverture** : un type ne peut pas être ouvert sans plafond
-  ni taux connus. Retirer `bientot` du livret bancaire ferait échouer la suite
-  au lieu d'offrir un livret rémunéré à 0 % ;
+- **le barème et les règles fiscales**, confrontés aux sources publiques puis
+  figés en test — LDDS 12 000 € à 1,70 %, LEP 10 000 € à 2,50 %, CEL 15 300 € à
+  1,25 %, bascule fiscale de l'épargne logement au 1<sup>er</sup> janvier 2018,
+  exonération du PEL éteinte à douze ans ;
+- **une garde sur l'ouverture** : tout type ouvert doit avoir un plafond et un
+  taux *décrits*. `null` est une réponse — le livret bancaire n'a pas de
+  plafond, le PEL fixe son taux au contrat — mais `undefined` n'en est pas une ;
 - **le calcul, chiffre en main** : LDDS plein sur l'année, LEP alimenté en mai,
-  dépassement par capitalisation. Rien de propre au type n'y intervient.
+  PEL de 2015 contre PEL de 2019, année à cheval sur le douzième anniversaire,
+  CEL ancien et récent, dépassement par capitalisation.
 
-Reste non couvert : **la lecture d'un vrai écran de banque pour ces deux
-produits**. Elle ne dépend pas du type — le parseur cherche des libellés, pas un
-livret — mais elle n'a été éprouvée que sur des fiches de Livret A et de Livret
-Jeune au CIC. Le classement des compartiments, lui, a été durci : un bloc dont
-le taux atteint ou dépasse le taux réglementé n'est plus pris pour un
-dépassement, ce qui évitait qu'une fiche de Livret A déposée par erreur sur un
-LDDS devienne un compartiment à 1,70 %.
+Reste non couvert : **la lecture d'un vrai écran de banque pour ces produits**.
+Elle ne dépend pas du type — le parseur cherche des libellés, pas un livret —
+mais elle n'a été éprouvée que sur des fiches CIC de Livret A et de Livret
+Jeune.
 
 L'entrée de menu porte une pastille **« New »** jusqu'à la première ouverture
 de la page (`NEW_SECTIONS`, `cb_sections_vues` en localStorage). C'est la
@@ -162,8 +175,8 @@ facultative.
 
 ### Les tests
 
-- `scripts/t-livrets.cjs` — 71 cas sur le calcul (quinzaines, taux, relevé,
-  deux compartiments)
+- `scripts/t-livrets.cjs` — 153 cas sur le calcul (quinzaines, taux, relevé,
+  deux compartiments, régimes fiscaux datés)
 - `scripts/t-import.cjs` — 176 cas sur les trois voies d'import, dont la fiche
   réelle du Livret A, ses deux compartiments, et le rejet des valeurs inventées
   par le modèle
@@ -210,9 +223,9 @@ des tests sur les fonctions de calcul et de lecture, mais l'enchaînement des
 | LDDS ✅ | 12 000 € | 1,70 % | exonéré | oui |
 | LEP ✅ \*\* | 10 000 € | 2,50 % | exonéré | oui |
 | Livret Jeune ✅ | 1 600 € | 3,75 %\* | exonéré | oui |
-| PEL ⏳ | 61 200 € | au contrat | imposé | non |
-| CEL ⏳ | 15 300 € | au contrat | imposé | non |
-| Livret bancaire ⏳ | aucun | au contrat | imposé | non |
+| PEL ✅ | 61 200 € | au contrat | selon la date d'ouverture \*\*\* | non |
+| CEL ✅ | 15 300 € | 1,25 % | selon la date d'ouverture \*\*\* | non |
+| Livret bancaire ✅ | aucun | au contrat | imposé | non |
 
 \* Le taux du Livret Jeune est fixé librement par chaque banque, avec pour seul
 plancher légal celui du Livret A — `min: 'livretA'` refuse une saisie en
@@ -222,6 +235,11 @@ dessous. Les livrets à taux `null` exigent que le membre saisisse le sien.
 banque : 23 028 € de revenu fiscal de référence pour une personne seule,
 35 328 € pour un couple. Elle ne change rien au calcul, et se lit sous le champ
 (`condition` dans le barème). Taux et plafond vérifiés le 14/08/2026.
+
+\*\*\* Épargne logement : exonéré d'impôt sur le revenu et soumis aux seuls
+prélèvements sociaux (17,2 %) si le contrat a été ouvert avant le 1er janvier
+2018 ; prélèvement forfaitaire de 30 % sinon. Un PEL perd cette exonération à
+son douzième anniversaire, un CEL la garde. Voir section 1.
 
 Le plafond du barème est celui des **versements**. Le solde peut le dépasser,
 par capitalisation ou par le compartiment de dépassement de la banque — voir
@@ -384,8 +402,11 @@ Points à reprendre :
 - ✅ **Ouvrir le module aux membres** — fait le 16/08. Le parcours navigateur
   (section 3) n'a toujours pas été exercé : c'est désormais un risque en
   production, et le bouton « Rapporter une erreur » est là pour ça.
-- **Ouvrir les autres types** au fur et à mesure qu'un vrai relevé les éprouve :
-  retirer leur `bientot`, un par un.
+- ✅ **Ouvrir les autres types** — fait le 16/08, les sept y sont. Le PEL et le
+  CEL ont demandé la fiscalité datée (section 1).
+- **Le versement minimum du PEL** (540 € par an) et sa clôture au premier
+  retrait sont dits au membre, pas modélisés. À reprendre si un plan réel
+  montre que le silence induit en erreur.
 - **Brancher l'import sur les Dépenses** — le socle est prêt, le module n'a qu'à
   fournir un `onValider`. Voir `afaire-import.md`, point 2.
 - **`worker-src 'self'`** quand le CSP sera complété (`afaire.md`, point B) :

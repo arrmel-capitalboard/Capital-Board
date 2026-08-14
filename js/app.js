@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816k';
+const APP_VERSION = '20260816l';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18335,16 +18335,13 @@ const LIV_BAREME = {
   effet: '1er août 2026',
   jusqu: '31 janvier 2027',
   types: {
-    // `bientot` : le type est affiché mais pas ouvert. Les masquer serait pire,
-    // on ne saurait pas qu'ils arrivent.
+    // `bientot` : le type serait affiché mais pas ouvert. Plus aucun ne l'est
+    // depuis le 16/08 — le drapeau reste, il servira au suivant.
     //
-    // Ce qui reste fermé ne l'est pas faute de calcul — il est commun — mais
-    // faute de RÈGLES vérifiées. Le PEL impose un versement minimum annuel et
-    // se ferme au premier retrait ; le CEL et le PEL portent une fiscalité qui
-    // dépend de la date d'ouverture, pas du type, ce que le modèle ne sait pas
-    // encore exprimer ; un livret bancaire n'a ni plafond ni taux réglementé.
-    // Les quatre ouverts, eux, sont des livrets réglementés à taux unique :
-    // leur barème suffit à les décrire, et il est vérifié en test.
+    // `regime: 'epargneLogement'` : la fiscalité ne se lit pas dans `fisc` mais
+    // dans la date d'ouverture du contrat. Voir `_livRegime`.
+    // `exoIrAns` : durée de l'exonération d'impôt sur le revenu, quand elle
+    // s'éteint — le PEL la perd à douze ans, le CEL la garde.
     livretA:  { label: 'Livret A',        court: 'A',    plafond: 22950, taux: 1.7,  unique: true,  fisc: false, color: '#00e09e' },
     ldds:     { label: 'LDDS',            court: 'LDDS', plafond: 12000, taux: 1.7,  unique: true,  fisc: false, color: '#4ade80' },
     // Le LEP est soumis à une condition de revenu, vérifiée chaque année par
@@ -18359,9 +18356,16 @@ const LIV_BAREME = {
     jeune:    { label: 'Livret Jeune',    court: 'LJ',   plafond: 1600,  taux: 3.75, unique: true,  fisc: false, color: '#38bdf8', min: 'livretA', finRequise: true },
     // `duree` : terme légal en années, quand il existe. Il permet de déduire
     // la fin de validité de l'ouverture, et réciproquement.
-    pel:      { label: 'PEL',             court: 'PEL',  plafond: 61200, taux: null, unique: false, fisc: true,  color: '#a78bfa', duree: 15, finRequise: true, bientot: true },
-    cel:      { label: 'CEL',             court: 'CEL',  plafond: 15300, taux: null, unique: false, fisc: true,  color: '#c084fc', bientot: true },
-    bancaire: { label: 'Livret bancaire', court: 'LB',   plafond: null,  taux: null, unique: false, fisc: true,  color: '#f5b731', bientot: true },
+    pel:      { label: 'PEL',             court: 'PEL',  plafond: 61200, taux: null, unique: false, fisc: true,  color: '#a78bfa', duree: 15, finRequise: true,
+                regime: 'epargneLogement', exoIrAns: 12,
+                condition: 'Le taux d’un PEL est figé à son ouverture pour toute la vie du plan : indiquez celui de votre contrat. Un versement de 540 € par an au moins est exigé, et tout retrait entraîne la clôture.' },
+    // Le taux du CEL est réglementé, pas contractuel : il suit celui du Livret
+    // A. 1,25 % depuis le 1er août 2026, vérifié le 16/08 — le barème le
+    // portait à `null`, ce qui faisait saisir au membre un taux qu'il n'a pas
+    // choisi.
+    cel:      { label: 'CEL',             court: 'CEL',  plafond: 15300, taux: 1.25, unique: false, fisc: true,  color: '#c084fc',
+                regime: 'epargneLogement' },
+    bancaire: { label: 'Livret bancaire', court: 'LB',   plafond: null,  taux: null, unique: false, fisc: true,  color: '#f5b731' },
   },
 };
 // Banques et plateformes d'épargne. Même mécanique que le catalogue de
@@ -18429,9 +18433,18 @@ function _livBanqueSuggest(q) {
   return debut.concat(milieu).slice(0, 6);
 }
 
-// Les livrets réglementés sont exonérés ; le reste subit le prélèvement
-// forfaitaire unique. C'est la seule fiscalité qui joue ici.
+// Trois régimes, et pas deux.
+//
+// Les livrets réglementés sont exonérés, le reste subit le prélèvement
+// forfaitaire unique — 12,8 % d'impôt sur le revenu et 17,2 % de prélèvements
+// sociaux. Mais l'épargne logement connaît un troisième cas : un PEL ou un CEL
+// ouvert avant 2018 échappe à l'impôt sur le revenu et ne supporte que les
+// prélèvements sociaux. La fiscalité n'est donc pas un attribut du type de
+// livret : elle dépend de la DATE D'OUVERTURE du contrat.
 const LIV_PFU = 0.30;
+const LIV_PS  = 0.172;
+// La réforme s'applique aux plans et comptes ouverts à compter de cette date.
+const LIV_EL_REFORME = '2018-01-01';
 // Une réserve se mesure en mois de dépenses. En dessous, elle est mince ; très
 // au-dessus, l'argent dort. Ces bornes sont un repère, pas un conseil.
 const LIV_RESERVE_MIN = 3;
@@ -18541,34 +18554,76 @@ function _livTranches(l, capital) {
   return { bas: Math.min(capital, seuil), haut: Math.max(0, capital - seuil), sur };
 }
 
-// Net des deux tranches : la première suit la fiscalité de son type, la
-// seconde est imposée dans tous les cas.
+/**
+ * Régime fiscal des intérêts produits à la quinzaine `q` de l'année `annee`.
+ *
+ * Rend 'exo' (rien), 'ps' (prélèvements sociaux seuls) ou 'pfu' (les deux).
+ *
+ * Pour presque tous les livrets, `fisc` suffit : la loi tranche par type. Le
+ * PEL et le CEL font exception, et c'est la date d'ouverture du contrat qui
+ * décide — deux PEL identiques, l'un de 2015, l'autre de 2019, ne rendent pas
+ * le même net. Le premier est exonéré d'impôt sur le revenu ; le second subit
+ * le prélèvement forfaitaire dès le premier euro.
+ *
+ * Le PEL perd cette exonération à son douzième anniversaire, en cours d'année
+ * s'il le faut : le régime se demande donc par quinzaine, pas par exercice.
+ * Le CEL, lui, la garde tant qu'il vit.
+ */
+function _livRegime(l, annee, q) {
+  const t = _livType_(l && l.type);
+  if (t.regime !== 'epargneLogement') return t.fisc ? 'pfu' : 'exo';
+  const ouv = String((l && l.ouverture) || '');
+  // Sans date d'ouverture, rien ne permet de trancher. On applique le régime
+  // le moins flatteur : mieux vaut annoncer un net trop bas, que le membre
+  // corrigera en datant son contrat, qu'un net trop haut qu'il croira acquis.
+  if (ouv.length < 10 || ouv >= LIV_EL_REFORME) return 'pfu';
+  if (!t.exoIrAns) return 'ps';
+  return _livAtteint(ouv, t.exoIrAns, annee, q) ? 'pfu' : 'ps';
+}
+
+// La quinzaine `q` de `annee` tombe-t-elle après le nième anniversaire de
+// `ouvIso` ? Une quinzaine commence le 1er ou le 16 de son mois.
+function _livAtteint(ouvIso, ans, annee, q) {
+  const p = String(ouvIso).split('-');
+  if (p.length < 3) return false;
+  const anniv = new Date(Number(p[0]) + ans, Number(p[1]) - 1, Number(p[2]));
+  const debut = new Date(annee, Math.floor(q / 2), (q % 2) ? 16 : 1);
+  return debut >= anniv;
+}
+
+// Ce que le fisc prend, par régime.
+function _livImpot(regime) {
+  return regime === 'pfu' ? LIV_PFU : regime === 'ps' ? LIV_PS : 0;
+}
+
+// Net des intérêts déjà ventilés par régime.
 function _livNet(l, d) {
-  const regl = _livType_(l && l.type).fisc ? d.regl * (1 - LIV_PFU) : d.regl;
-  return regl + d.sur * (1 - LIV_PFU);
+  return d.exo + d.ps * (1 - LIV_PS) + d.pfu * (1 - LIV_PFU);
 }
 
 /**
- * Part imposée des intérêts, entre 0 et 1.
+ * Taux d'imposition moyen des intérêts, entre 0 et 1.
  *
  * Un chiffre venu de la banque est un montant brut global : rien ne dit quelle
- * fraction vient de quel compartiment. On lui applique donc la répartition que
- * le calcul, lui, sait faire. Sans compartiment de dépassement, cette part vaut
- * 0 ou 1 et l'on retombe exactement sur le comportement d'avant.
+ * fraction relève de quel régime ni de quelle tranche. On lui applique donc la
+ * ventilation que le calcul, lui, sait établir. Sur un livret exonéré sans
+ * compartiment de dépassement, ce taux vaut 0 ; sur un livret bancaire, 0,30 —
+ * exactement le comportement d'avant.
  */
-function _livPartImposee(l, d) {
-  const fisc = _livType_(l && l.type).fisc;
-  const tot = d.regl + d.sur;
-  if (!(tot > 0)) return fisc ? 1 : 0;
-  return ((fisc ? d.regl : 0) + d.sur) / tot;
+function _livTauxImpot(l, d) {
+  const brut = d.exo + d.ps + d.pfu;
+  if (!(brut > 0)) return _livImpot(_livRegime(l, new Date().getFullYear(), _livQuinzaines()));
+  return (brut - _livNet(l, d)) / brut;
 }
 
-// Projection sur douze mois au taux du moment. Brut, puis net du PFU quand le
-// livret y est soumis — tranche par tranche.
+// Projection sur douze mois au taux du moment. Brut, puis net — chaque tranche
+// à son régime, le dépassement étant toujours au prélèvement forfaitaire.
 function _livInterets(l) {
   const { bas, haut, sur } = _livTranches(l, _livSolde(l));
-  const d = { regl: bas * _livTaux(l) / 100, sur: sur ? haut * sur.taux / 100 : 0 };
-  return { brut: d.regl + d.sur, net: _livNet(l, d) };
+  const reg = _livRegime(l, new Date().getFullYear(), _livQuinzaines());
+  const d = { exo: 0, ps: 0, pfu: sur ? haut * sur.taux / 100 : 0 };
+  d[reg] += bas * _livTaux(l) / 100;
+  return { brut: d.exo + d.ps + d.pfu, net: _livNet(l, d) };
 }
 
 /**
@@ -18693,19 +18748,22 @@ function _livInteretsQ2(l, jusqu, courant) {
     parts = [{ montant: _livSolde(l), debut: _livDebutQuinzaine(l && l.ouverture, annee) }];
   }
 
-  let regl = 0, dep = 0;
+  const d = { exo: 0, ps: 0, pfu: 0 };
   for (let q = 0; q < jusqu; q++) {
     let capital = 0;
     parts.forEach(x => { if (x.debut <= q) capital += x.montant; });
     if (capital <= 0) continue;   // un livret ne produit jamais d'intérêts négatifs
     const taux = courant ? tCourant : _livTauxA(l, q, annee);
     const tr = _livTranches(l, capital);
-    regl += tr.bas * taux / 100 / 24;
-    // Le taux du compartiment de dépassement est celui du contrat : il ne suit
-    // pas les révisions réglementaires, donc pas d'historique à consulter.
-    if (tr.sur) dep += tr.haut * tr.sur.taux / 100 / 24;
+    // Le régime se demande à la quinzaine, pas à l'année : un PEL de 2014
+    // passe au prélèvement forfaitaire le jour de ses douze ans, et les
+    // intérêts d'avant restent exonérés d'impôt sur le revenu.
+    d[_livRegime(l, annee, q)] += tr.bas * taux / 100 / 24;
+    // Le compartiment de dépassement est au contrat, jamais réglementé : son
+    // taux ne suit pas les révisions, et sa part est toujours imposée.
+    if (tr.sur) d.pfu += tr.haut * tr.sur.taux / 100 / 24;
   }
-  return { regl, sur: dep, exact };
+  return Object.assign(d, { exact });
 }
 
 // Vue agrégée du calcul par quinzaines : le brut des deux tranches, le net une
@@ -18714,10 +18772,10 @@ function _livInteretsQ2(l, jusqu, courant) {
 function _livInteretsQ(l, jusqu, courant) {
   const d = _livInteretsQ2(l, jusqu, courant);
   return {
-    brut: d.regl + d.sur,
+    brut: d.exo + d.ps + d.pfu,
     net:  _livNet(l, d),
     exact: d.exact,
-    part: _livPartImposee(l, d),
+    impot: _livTauxImpot(l, d),
   };
 }
 
@@ -18771,7 +18829,7 @@ function _livAcquis(l) {
     // et un Livret A cesseraient d'être comparables. Sur un livret à deux
     // tranches, seule une part est imposée : c'est le calcul qui la connaît, le
     // chiffre de la banque étant global.
-    const net = brut * (1 - LIV_PFU * jusquIci.part);
+    const net = brut * (1 - jusquIci.impot);
     return { brut, net, exact: true, releve: true, quinzaines: q };
   }
   return Object.assign(_livInteretsQ(l, q), { quinzaines: q });
@@ -18839,7 +18897,7 @@ function _livProjete(l) {
   // quel, augmenté des mouvements survenus depuis la lecture.
   if (r && r.projete !== null) {
     const brut = r.projete + _livProjeteApres(l, r.le);
-    const net = brut * (1 - LIV_PFU * _livInteretsQ(l, 24, true).part);
+    const net = brut * (1 - _livInteretsQ(l, 24, true).impot);
     return { brut, net, exact: true, releve: true };
   }
   return _livInteretsQ(l, 24, true);
@@ -19042,11 +19100,11 @@ function _livRenderListe(livrets, total, nets) {
     const jours = _livJoursRestants(l);
     const meta = [_livTauxTxt(l) + ' par an'];
     if (l.banque) meta.push(_escapeHtmlChat(l.banque));
-    // La fiscalité est celle de la tranche, pas celle du livret : au-delà du
-    // plafond réglementé, le surplus est imposé même sur un Livret A.
-    meta.push(t.fisc ? 'imposé à 30 %'
-      : (sur && surplus > 0) ? 'exonéré jusqu’au plafond, imposé au-delà'
-      : 'exonéré d\'impôt');
+    // La fiscalité est celle de la tranche et de la date d'ouverture, pas
+    // celle du type : au-delà du plafond réglementé le surplus est imposé même
+    // sur un Livret A, et un PEL de 2015 échappe encore à l'impôt sur le
+    // revenu.
+    meta.push(_livFiscTxt(l, sur && surplus > 0));
     if (jours !== null) {
       meta.push(jours < 0
         ? '<span class="liv-fin echu">clos depuis le ' + _escapeHtmlChat(_depDateCourt(l.fin)) + '</span>'
@@ -19200,6 +19258,17 @@ window.livChipFailed = function(img) {
   p.textContent = img.dataset.c || '';
   p.classList.remove('liv-chip-logo');
 };
+
+// Ce que le fisc prend, dit en clair. `dépasse` signale un surplus au-delà du
+// plafond réglementé, toujours imposé quoi qu'il arrive au reste.
+function _livFiscTxt(l, depasse) {
+  const reg = _livRegime(l, new Date().getFullYear(), _livQuinzaines());
+  if (reg === 'pfu') return 'imposé à 30 %';
+  if (reg === 'ps')  return depasse
+    ? 'prélèvements sociaux de 17,2 %, 30 % au-delà du plafond'
+    : 'exonéré d’impôt, prélèvements sociaux de 17,2 %';
+  return depasse ? 'exonéré jusqu’au plafond, imposé au-delà' : 'exonéré d’impôt';
+}
 
 function _livTauxTxt(l, taux) {
   const t = Number.isFinite(taux) ? taux : _livTaux(l);
@@ -19828,11 +19897,21 @@ window.livRecalc = function() {
   const inp = document.getElementById('liv-f-taux');
   if (inp) inp.placeholder = t.taux === null ? '2,00' : String(t.taux).replace('.', ',');
 
+  // La fiscalité annoncée suit la date d'ouverture saisie, pas seulement le
+  // type : sur un PEL, elle change sous les yeux du membre quand il la
+  // renseigne, et c'est précisément ce qu'il faut qu'il voie.
+  const regSaisi = _livRegime({ type: _livType, ouverture: _depVal('liv-f-ouverture') },
+                              new Date().getFullYear(), _livQuinzaines());
+  const fiscHelp = regSaisi === 'pfu'
+    ? ' Intérêts soumis au prélèvement forfaitaire de 30 %.'
+    : regSaisi === 'ps'
+      ? ' Contrat ouvert avant 2018 : intérêts exonérés d’impôt sur le revenu, mais soumis aux ' +
+        'prélèvements sociaux de 17,2 %' +
+        (t.exoIrAns ? ', et imposés à 30 % passé le ' + t.exoIrAns + 'e anniversaire du plan.' : '.')
+      : ' Intérêts exonérés d\'impôt et de prélèvements sociaux dans cette limite.';
   _depText('liv-f-help', (t.plafond === null
-    ? 'Un livret bancaire n\'a pas de plafond réglementé. Ses intérêts sont soumis au prélèvement forfaitaire de 30 %.'
-    : 'Plafond de ' + fmt(t.plafond) + '.' + (t.fisc
-        ? ' Intérêts soumis au prélèvement forfaitaire de 30 %.'
-        : ' Intérêts exonérés d\'impôt et de prélèvements sociaux dans cette limite.')) +
+    ? 'Un livret bancaire n\'a pas de plafond réglementé.' + fiscHelp
+    : 'Plafond de ' + fmt(t.plafond) + '.' + fiscHelp) +
     (t.condition ? ' ' + t.condition : ''));
 
   // Le compartiment de dépassement ne concerne que les livrets à plafond : sur

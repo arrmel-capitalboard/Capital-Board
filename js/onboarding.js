@@ -189,7 +189,7 @@
     {
       target: () => q('#livrets-app .dep-addbtn'),
       title: 'Ajouter un livret',
-      text: 'Livret A, LDDS, LEP et Livret Jeune sont ouverts ; les autres types sont affichés et marqués « Bientôt », le temps que leurs règles propres soient vérifiées. Le plafond et le taux viennent du barème en vigueur, vous n’avez rien à chercher, et les livrets réglementés sont uniques par personne.',
+      text: 'Livret A, LDDS, LEP, Livret Jeune, PEL, CEL ou livret bancaire. Le plafond et le taux viennent du barème en vigueur, vous n’avez rien à chercher — sauf sur un PEL, dont le taux est figé à l’ouverture du plan. Les livrets réglementés sont uniques par personne, et pour un PEL ou un CEL la date d’ouverture décide de l’impôt : renseignez-la avec soin.',
       page: 'livrets',
       // En revenant de l'étape suivante, la fiche est ouverte et masquerait
       // le bouton qu'on désigne.
