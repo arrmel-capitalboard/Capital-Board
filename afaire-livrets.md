@@ -245,9 +245,35 @@ Le plafond du barème est celui des **versements**. Le solde peut le dépasser,
 par capitalisation ou par le compartiment de dépassement de la banque — voir
 6.1.
 
-**Le barème est surchargeable depuis Firestore** (`config/app.bareme`), sans
-redéploiement — utile au 1<sup>er</sup> février et au 1<sup>er</sup> août, quand
-les taux changent.
+**Les taux se mettent à jour tout seuls** depuis le 16/08.
+
+`discord-bot/src/lib/bareme.js` relit toutes les six heures les fiches
+service-public.fr du Livret A, du LDDS, du LEP et du CEL, puis écrit
+`config/app.bareme` dans Firestore — que le client fusionne par-dessus son
+barème par défaut au démarrage. Aucun déploiement, et personne à qui penser
+deux fois par an. La période de validité affichée sous la liste se déduit de la
+date, sans rien avoir à lire.
+
+L'extraction tient sur **deux ancres** : la question qui nomme le produit
+(« Quelle est la rémunération du LEP ? »), puis « est de » dans les 400
+caractères qui suivent. Les deux sont nécessaires — sans la première on lirait
+le taux d'un autre produit, sans la seconde le prélèvement forfaitaire de
+12,8 % qui traîne sur la page du CEL, ou un taux d'archive du LEP.
+
+**Rien n'est appliqué en silence.** Une lecture doit passer quatre contrôles :
+bornes de plausibilité (0,1 à 8 %), saut maximal de deux points par rapport au
+taux en vigueur, LDDS aligné sur le Livret A et LEP supérieur au Livret A — ces
+deux derniers sont des règles de droit, donc un contrôle croisé gratuit. Un
+refus **ne touche pas au barème** et poste une alerte dans le salon de suivi :
+une page qui change de formulation doit se voir, pas se traduire par un chiffre
+faux sur le patrimoine de quelqu'un. Un changement accepté y est annoncé aussi.
+
+Ne sont **pas** relus : les plafonds, qui ne bougent qu'à quelques années
+d'intervalle et dont l'extraction serait plus fragile que ce qu'elle
+rapporterait, et le PEL, dont le taux est figé au contrat de chaque plan.
+
+Le barème reste modifiable à la main dans `config/app.bareme` — le bot ne fait
+qu'y écrire les taux qu'il relit, et la fusion Firestore préserve le reste.
 
 ---
 

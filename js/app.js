@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816l';
+const APP_VERSION = '20260816m';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18328,9 +18328,18 @@ window.renderDepenses = renderDepenses;
 //  clairement qu'il s'agit d'une projection.
 // ═══════════════════════════════════════════════════════════════════
 
-// Barème par défaut. Surchargeable par `config/app.bareme`, qui vaut pour tous
-// les membres : deux fois par an, l'admin met à jour les taux sans livraison.
-// `taux: null` = propre à chaque contrat, c'est au membre de le saisir.
+// Barème par défaut, et rien de plus : ce qui fait foi vit dans
+// `config/app.bareme`, fusionné par-dessus au démarrage.
+//
+// Ces valeurs-là ne sont donc qu'un point de départ, celui du jour de la
+// livraison. Les taux réglementés sont révisés au 1er février et au 1er août,
+// et c'est le bot Discord qui les relit sur service-public.fr puis écrit la
+// surcharge — voir `discord-bot/src/lib/bareme.js`. Aucun déploiement n'est
+// nécessaire pour qu'un nouveau taux atteigne les membres, et personne n'a à
+// y penser deux fois par an.
+//
+// `taux: null` = propre à chaque contrat, c'est au membre de le saisir. Ceux-là
+// ne sont jamais relus : il n'y a rien à lire.
 const LIV_BAREME = {
   effet: '1er août 2026',
   jusqu: '31 janvier 2027',
