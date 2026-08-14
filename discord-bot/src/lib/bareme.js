@@ -28,8 +28,12 @@
 // page qui change de formulation doit se voir, pas se traduire par un chiffre
 // faux sur le patrimoine de quelqu'un.
 
-const { EmbedBuilder } = require('discord.js');
-const { getDb, isConfigured } = require('../firebase');
+// `discord.js` et Firestore ne sont chargés qu'au moment de s'en servir : la
+// lecture d'un taux et ses contrôles sont du texte et de l'arithmétique, et ils
+// doivent pouvoir se tester sans installer les dépendances du bot — c'est ce
+// que fait la CI du dépôt, qui lance `npm test` sans `npm ci`.
+const discord = () => require('discord.js');
+const firebase = () => require('../firebase');
 
 const CHANNEL = '1537760259203014766';
 const CHECK_INTERVAL = 6 * 3600 * 1000;   // les révisions sont semestrielles
@@ -152,7 +156,7 @@ function fenetre(maintenant) {
 }
 
 async function lireConfig() {
-  const snap = await getDb().collection('config').doc('app').get();
+  const snap = await firebase().getDb().collection('config').doc('app').get();
   return (snap.exists ? snap.data() : {}) || {};
 }
 
@@ -195,7 +199,7 @@ async function verifierUneFois(client) {
   // l'organisation du menu, qu'on ne doit pas effacer en passant.
   const patch = { effet: fen.effet, jusqu: fen.jusqu, types: {}, majLe: Date.now() };
   Object.keys(lus).forEach(k => { patch.types[k] = { taux: lus[k] }; });
-  await getDb().collection('config').doc('app').set({ bareme: patch }, { merge: true });
+  await firebase().getDb().collection('config').doc('app').set({ bareme: patch }, { merge: true });
 
   if (changes.length || echecs.length) await annoncer(client, lus, courants, changes, echecs);
   console.log('[bareme] barème à jour', JSON.stringify(lus));
@@ -213,7 +217,7 @@ async function envoyer(client, payload) {
 }
 
 async function annoncer(client, lus, courants, changes, echecs) {
-  const embed = new EmbedBuilder()
+  const embed = new (discord().EmbedBuilder)()
     .setColor(0x00e09e)
     .setTitle('Taux de l’épargne réglementée mis à jour')
     .setDescription(changes.length
@@ -226,7 +230,7 @@ async function annoncer(client, lus, courants, changes, echecs) {
 }
 
 async function alerter(client, refus, echecs) {
-  const embed = new EmbedBuilder()
+  const embed = new (discord().EmbedBuilder)()
     .setColor(0xf5b731)
     .setTitle('Taux lus mais NON appliqués')
     .setDescription('Une lecture a échoué aux contrôles de vraisemblance. Le barème en place n’a pas été touché — ' +
@@ -238,7 +242,7 @@ async function alerter(client, refus, echecs) {
 }
 
 function start(client) {
-  if (!isConfigured()) {
+  if (!firebase().isConfigured()) {
     console.warn('[bareme] Firestore non configuré : mise à jour des taux désactivée.');
     return;
   }
