@@ -51,6 +51,13 @@ window.CBImport = (function () {
   //   onValider: (lignes, taux) => void
   //              lignes = [{ d, m, label }] cochées
   //              taux   = [{ depuis, taux }] lus dans les libellés du relevé
+  //   classerFiche: (fiche) => fiche
+  //              Remet les compartiments dans l'ordre avant l'affichage. Le
+  //              socle lit les blocs dans l'ordre du texte, qui n'est pas
+  //              toujours celui du produit : seul le module appelant a le
+  //              barème pour dire lequel est le livret et lequel son
+  //              dépassement. Sans cette passe, l'écran de validation
+  //              annonçait « fiche du livret » sur le compartiment à 0,30 %.
   // }
   function open(dest) {
     _dest   = dest || {};
@@ -219,6 +226,13 @@ window.CBImport = (function () {
     }
 
     _taux  = _dedoublonnerTaux(taux);
+    // Classement avant affichage : ce que l'écran annonce doit être ce qui sera
+    // enregistré. Une erreur du module appelant ne doit pas faire perdre la
+    // lecture, d'où le repli sur la fiche brute.
+    if (fiche && typeof _dest.classerFiche === 'function') {
+      try { fiche = _dest.classerFiche(fiche) || fiche; }
+      catch (e) { console.warn('[import] classement de la fiche:', e && e.message); }
+    }
     _fiche = fiche;
 
     const lignes = _fusionner(tout);

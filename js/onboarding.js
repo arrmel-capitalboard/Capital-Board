@@ -24,6 +24,10 @@
   const COL = 'profiles';
   const RELANCE_MS = 7 * 24 * 3600 * 1000; // délai avant de reproposer un questionnaire passé
   const LS_TOUR = 'cb_tour_done';          // repli local : évite un flash de visite si Firestore tarde
+  // Visite du module Livrets, jouée d'office au premier passage sur sa page.
+  // Purement locale : elle ne conditionne rien, et attendre Firestore pour la
+  // lancer ferait apparaître le viseur sur une page déjà parcourue.
+  const LS_TOUR_LIVRETS = 'cb_tour_livrets_done';
 
   // ── Questionnaire ─────────────────────────────────────────────────────────
   const QUESTIONS = [
@@ -452,6 +456,7 @@
 
   // ── Visite guidée : rendu ─────────────────────────────────────────────────
   let tourEtat = null;
+  let livretsAuto = false;   // minuterie de lancement automatique déjà armée
   const replace = () => place(false);
 
   function markTour(uid, champ) {
@@ -615,11 +620,44 @@
     // drapeau global n'a pas besoin d'être activé.
     testSurvey() { openQuestionnaire(currentUser, {}, { test: true, tourEnsuite: true }); },
     testTour()   { startTour(currentUser, { test: true }); },
-    // Visite du module Livrets, lancée depuis sa page. Elle ne marque rien :
-    // elle se rejoue autant de fois qu'on la demande.
+    // Visite du module Livrets, lancée depuis sa page. Demandée à la main, elle
+    // ne marque rien et se rejoue autant de fois qu'on veut.
     tourLivrets() {
+      try { localStorage.setItem(LS_TOUR_LIVRETS, '1'); } catch (_) {}
       startTour(typeof currentUser !== 'undefined' ? currentUser : null,
                 { steps: STEPS_LIVRETS });
+    },
+
+    /**
+     * Premier passage sur la page Livrets : la visite part toute seule.
+     *
+     * Le module ne se lit pas d'un coup d'œil — quinzaines, relevé de la
+     * banque, deux compartiments — et personne ne clique sur « Comment ça
+     * marche » avant d'avoir été perdu. Une fois jouée ou passée, elle ne
+     * revient plus ; le bouton reste pour la revoir.
+     *
+     * Le délai laisse la page finir son rendu : le viseur se pose sur des
+     * éléments dont il faut connaître la position.
+     */
+    tourLivretsAuto() {
+      try { if (localStorage.getItem(LS_TOUR_LIVRETS) === '1') return; } catch (_) { return; }
+      // Le rendu du module a lieu aussi à l'ouverture de l'app, page masquée.
+      // Le drapeau n'est donc posé qu'au lancement réel, sinon la visite serait
+      // consommée sans avoir été vue. Le verrou, lui, évite d'empiler les
+      // minuteries à chaque rendu.
+      if (livretsAuto) return;
+      livretsAuto = true;
+      setTimeout(() => {
+        livretsAuto = false;
+        // Une visite déjà en cours — celle d'accueil — a la priorité, et
+        // startTour refuserait de toute façon : ne pas brûler le drapeau.
+        if (tourEtat) return;
+        const app = document.getElementById('livrets-app');
+        if (!app || app.hidden || app.offsetParent === null) return;
+        try { localStorage.setItem(LS_TOUR_LIVRETS, '1'); } catch (_) {}
+        startTour(typeof currentUser !== 'undefined' ? currentUser : null,
+                  { steps: STEPS_LIVRETS });
+      }, 600);
     },
   };
   window.replayGuidedTour = () => window.CBOnboarding.replayTour();

@@ -33,9 +33,13 @@ const bundle = [
   g(/function _livReste\(l\) \{[\s\S]*?\n\}/),
   g(/function _livTauxMarge\(l\) \{[\s\S]*?\n\}/),
   g(/function _livFicheEstSur\(f, t\) \{[\s\S]*?\n\}/),
+  // `_livClasserFiche` lit le type en cours de saisie, porté par une variable
+  // de module dans l'application. Le test le pose lui-même.
+  'let _livType = "livretA";',
+  g(/function _livClasserFiche\(f\) \{[\s\S]*?\n\}/),
   'module.exports = { _livSolde, _livTaux, _livTauxA, _livInterets, _livInteretsQ,' +
   ' _livAcquis, _livProjete, _livDebutQuinzaine, _livQuinzaines, _livReste, _livPlafond,' +
-  ' _livSur, _livPlafondTotal, _livTauxMarge, _livFicheEstSur, _livType_ };',
+  ' _livSur, _livPlafondTotal, _livTauxMarge, _livFicheEstSur, _livClasserFiche, _livType_ };',
 ].join('\n');
 
 const mod = new module.constructor();
@@ -259,6 +263,30 @@ chk('fiche : barème en retard n’est pas un compartiment',
     X._livFicheEstSur({ taux: 1.5 }, tA) ? 1 : 0, 0);
 // Le taux d'un Livret Jeune est libre : il ne peut rien trancher.
 chk('fiche : Livret Jeune à taux libre', X._livFicheEstSur({ taux: 1.5 }, tJ) ? 1 : 0, 0);
+
+// L'ordre des blocs est celui de la capture, pas celui du produit : sur la
+// fiche du 14/08, le compartiment de dépassement venait en premier et l'écran
+// annonçait « fiche du livret » au-dessus d'un taux à 0,30 %.
+const inverse = { taux: 0.3, solde: 0, plafond: 77050,
+                  sur: { taux: 1.7, solde: 11.54, plafond: 22950, ouverture: '2023-05-17' } };
+const remis = X._livClasserFiche(inverse);
+chk('classement : le livret repasse devant', remis.taux, 1.7);
+chk('classement : son plafond suit',         remis.plafond, 22950);
+chk('classement : le dépassement passe dans sur', remis.sur.taux, 0.3);
+chk('classement : plafond du dépassement',   remis.sur.plafond, 77050);
+chk('classement : pas de troisième étage',   remis.sur.sur, undefined);
+
+// Déjà dans l'ordre : rien ne bouge.
+const droit = { taux: 1.7, plafond: 22950, sur: { taux: 0.3, plafond: 77050 } };
+chk('classement : ordre correct laissé tel quel', X._livClasserFiche(droit).taux, 1.7);
+chk('classement : fiche ordinaire intacte',
+    X._livClasserFiche({ taux: 1.7, plafond: 22950 }).plafond, 22950);
+
+// Seule la capture du dépassement a été envoyée : elle ne doit pas passer pour
+// le livret. Il reste à saisir, le compartiment est déjà rempli.
+const seule = X._livClasserFiche({ taux: 0.3, plafond: 77050, solde: 0 });
+chk('classement : dépassement seul, livret vide', seule.taux, undefined);
+chk('classement : dépassement seul, rangé au bon endroit', seule.sur.taux, 0.3);
 
 console.log(t.join('\n'));
 const ko = t.filter(x => x.startsWith('FAIL')).length;

@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816c';
+const APP_VERSION = '20260816d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18383,6 +18383,24 @@ function _livB() {
 function applyLivretsBareme(cfg) { _livCfg = cfg || null; _livBareme = null; }
 
 function _livType_(t)  { return _livB().types[t] || _livB().types.bancaire; }
+
+/**
+ * Types ouverts pendant la bêta.
+ *
+ * Le calcul est le même pour tous, mais il n'a été éprouvé que sur ces deux-là,
+ * et seul le Livret A l'a été sur une vraie fiche. Un PEL a un taux au contrat
+ * et des règles de prime, un LEP une condition de revenu : les proposer
+ * maintenant, c'est promettre un chiffre qu'on n'a jamais vérifié.
+ */
+const LIV_BETA_TYPES = ['livretA', 'jeune'];
+
+// `garde` : le type d'un livret déjà enregistré reste proposé même s'il est
+// fermé, sinon un livret créé avant la restriction ne serait plus modifiable.
+function _livTypesDispo(garde) {
+  const tous = Object.keys(_livB().types);
+  if (!_isFeatureBeta('livrets')) return tous;
+  return tous.filter(k => LIV_BETA_TYPES.includes(k) || k === garde);
+}
 // Le solde n'est plus saisi : il découle des mouvements. Un livret ne bouge que
 // par versement ou retrait, et le déclarer séparément ouvrait la porte à deux
 // vérités contradictoires. `l.solde` reste lu en repli pour les lignes créées
@@ -18825,6 +18843,11 @@ function renderLivrets() {
   const note = document.getElementById('liv-beta-note');
   if (note) note.hidden = !_isFeatureBeta('livrets');
   _livRender();
+  // Premier passage : la visite guidée part d'elle-même. Elle se garde d'un
+  // drapeau local, donc l'appel répété à chaque rendu ne la rejoue pas.
+  if (window.CBOnboarding && window.CBOnboarding.tourLivretsAuto) {
+    window.CBOnboarding.tourLivretsAuto();
+  }
 }
 
 function _livRender() {
@@ -18915,7 +18938,8 @@ function _livRenderListe(livrets, total, nets) {
   if (!box) return;
   if (!livrets.length) {
     box.innerHTML = _livEmpty('Vos livrets apparaîtront ici',
-      'Livret A, LDDS, LEP, PEL : indiquez le solde, le plafond et le taux viennent du barème.',
+      _livTypesDispo().map(k => _livType_(k).label).slice(0, 4).join(', ') +
+        ' : indiquez vos mouvements, le plafond et le taux viennent du barème.',
       'Ajouter un livret');
     return;
   }
@@ -19174,8 +19198,9 @@ function _livSetAvance(ouvert) {
 
 function _livPremierLibre() {
   const pris = getLivrets().map(l => l.type);
-  const libre = Object.keys(_livB().types).find(k => _livB().types[k].unique && !pris.includes(k));
-  return libre || 'bancaire';
+  const dispo = _livTypesDispo();
+  const libre = dispo.find(k => _livB().types[k].unique && !pris.includes(k));
+  return libre || dispo[dispo.length - 1] || 'bancaire';
 }
 
 window.livCloseModal = function() {
@@ -19324,6 +19349,7 @@ window.livImporterReleve = function() {
     sous: 'CSV, PDF ou capture d’écran de votre ' + t.label + '. ' +
           'Les montants restent modifiables avant d’être ajoutés.',
     existant: _livMvtsPropres(),
+    classerFiche: _livClasserFiche,
     onValider: function(lignes, taux, fiche) {
       lignes.forEach(l => _livMvts.push({
         d: l.d,
@@ -19363,18 +19389,10 @@ window.livImporterReleve = function() {
       // banque : ni le CSV ni le PDF ne la contiennent.
       if (fiche) {
         const nb = (v) => String(v).replace('.', ',');
-        const _t0 = _livType_(_livType);
-        // Une capture peut décrire le livret, son compartiment de dépassement,
-        // ou les deux. L'import rend les blocs dans l'ordre où il les a lus —
-        // c'est le barème qui dit lequel est le réglementé, sans quoi un membre
-        // n'envoyant que la seconde capture verrait tout son Livret A rémunéré
-        // à 0,30 %.
-        let principal = fiche, second = fiche.sur || null;
-        if (_livFicheEstSur(principal, _t0) && !_livFicheEstSur(second, _t0)) {
-          const tmp = principal;
-          principal = second || {};
-          second = tmp;
-        }
+        // Les deux compartiments ont déjà été remis dans l'ordre par
+        // `classerFiche`, avant l'écran de validation : ce qui arrive ici est
+        // ce que le membre a vu et validé.
+        const second = fiche.sur || null;
         if (second) {
           if (second.taux !== undefined && !_depVal('liv-f-sur-taux')) {
             _depSet('liv-f-sur-taux', nb(second.taux));
@@ -19384,7 +19402,6 @@ window.livImporterReleve = function() {
           }
           _livSetAvance(true);
         }
-        fiche = principal;
         if (fiche.acquis  !== undefined) _depSet('liv-f-r-acquis',  nb(fiche.acquis));
         if (fiche.projete !== undefined) _depSet('liv-f-r-projete', nb(fiche.projete));
         // La date du relevé n'est pas écrite sur la fiche : c'est celle du jour
@@ -19457,6 +19474,29 @@ function _livFicheEstSur(f, t) {
   if (Number.isFinite(p) && p > 0) return Math.abs(p - t.plafond) > 1;
   const tx = Number(f.taux);
   return !t.min && Number.isFinite(t.taux) && Number.isFinite(tx) && tx > 0 && tx < t.taux / 2;
+}
+
+/**
+ * Remet les deux compartiments dans l'ordre du produit.
+ *
+ * L'import les rend dans l'ordre du texte, qui dépend de la capture : sur la
+ * fiche du 14/08, le compartiment de dépassement passait en premier, et l'écran
+ * de validation annonçait « fiche du livret reconnue » au-dessus d'un taux à
+ * 0,30 %. Le classement se fait donc AVANT l'affichage, et non plus au moment
+ * d'enregistrer : ce que l'écran montre doit être ce qui sera écrit.
+ */
+function _livClasserFiche(f) {
+  if (!f) return f;
+  const t = _livType_(_livType);
+  const second = f.sur || null;
+  if (!_livFicheEstSur(f, t) || _livFicheEstSur(second, t)) return f;
+  // La première lue décrit le dépassement : les deux s'échangent. Sans second
+  // bloc, le livret reste à saisir — on ne garde que le compartiment.
+  const principal = Object.assign({}, second || {});
+  const sur = Object.assign({}, f);
+  delete sur.sur;
+  principal.sur = sur;
+  return principal;
 }
 
 window.livToggleSens = function(i) {
@@ -19619,7 +19659,14 @@ function _livRenderTypes() {
   const box = document.getElementById('liv-f-types');
   if (!box) return;
   const pris = getLivrets().filter(l => l.id !== _livEditId).map(l => l.type);
-  box.innerHTML = Object.keys(_livB().types).map(k => {
+  const dispo = _livTypesDispo(_livEditId ? _livType : null);
+  const note = document.getElementById('liv-f-types-note');
+  if (note) {
+    note.hidden = dispo.length === Object.keys(_livB().types).length;
+    note.textContent = 'Pendant la bêta, seuls le Livret A et le Livret Jeune sont ouverts : ' +
+      'ce sont les deux sur lesquels le calcul a été vérifié. Les autres suivront.';
+  }
+  box.innerHTML = dispo.map(k => {
     const t = _livB().types[k];
     const doublon = t.unique && pris.includes(k);
     const on = k === _livType;
@@ -19791,6 +19838,11 @@ window.livSave = function() {
   }
   const doublon = getLivrets().some(l => l.id !== _livEditId && l.type === _livType && t.unique);
   if (doublon) return _livErr('Vous avez déjà un ' + t.label + ', et il n\'en est autorisé qu\'un par personne.');
+  // Garde de bêta. L'écran ne propose déjà que les types ouverts ; celle-ci
+  // couvre le cas d'une modale restée ouverte pendant que le drapeau change.
+  if (!_livTypesDispo(_livEditId ? (getLivrets().find(l => l.id === _livEditId) || {}).type : null).includes(_livType)) {
+    return _livErr('Le ' + t.label + ' n\'est pas encore ouvert : pendant la bêta, seuls le Livret A et le Livret Jeune le sont.');
+  }
 
   const entree = {
     id: _livEditId || ('l' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
@@ -19818,6 +19870,125 @@ window.livSave = function() {
 
   livCloseModal();
   _livRender();
+};
+
+// ─── Rapporter une erreur ───
+//
+// Le module calcule des montants que le membre peut comparer, à l'euro près, à
+// ce qu'affiche sa banque. Il est donc le seul à pouvoir dire qu'ils divergent
+// — et un écart de calcul ne se voit dans aucun journal. D'où un chemin direct
+// vers le salon de suivi, sans ticket ni allers-retours.
+//
+// Rien n'est stocké : le Worker relaie le texte et l'image à Discord, et ne
+// garde ni l'un ni l'autre.
+const LIV_BUG_MAX = 5 * 1024 * 1024;
+const LIV_BUG_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
+let _livBugFile = null;
+
+window.livBugOpen = function() {
+  _livBugFile = null;
+  _depSet('liv-bug-texte', '');
+  const inp = document.getElementById('liv-bug-img');
+  if (inp) inp.value = '';
+  const err = document.getElementById('liv-bug-error');
+  if (err) err.hidden = true;
+  _livBugApercu();
+  livBugRecalc();
+  const m = document.getElementById('liv-bug');
+  if (m) m.classList.add('open');
+  setTimeout(() => { const t = document.getElementById('liv-bug-texte'); if (t) t.focus(); }, 60);
+};
+
+window.livBugClose = function() {
+  const m = document.getElementById('liv-bug');
+  if (m) m.classList.remove('open');
+  _livBugFile = null;
+};
+
+// Le bouton n'est actif qu'avec un texte : une capture seule ne dit pas ce
+// qu'on est censé y voir.
+window.livBugRecalc = function() {
+  const btn = document.getElementById('liv-bug-send');
+  if (btn) btn.disabled = _depVal('liv-bug-texte').trim().length < 10;
+};
+
+window.livBugImage = function(input) {
+  const f = input && input.files && input.files[0];
+  if (!f) return;
+  if (!LIV_BUG_TYPES.includes((f.type || '').split(';')[0])) {
+    input.value = '';
+    return _livBugErr('Images PNG, JPEG ou WebP uniquement.');
+  }
+  if (f.size > LIV_BUG_MAX) {
+    input.value = '';
+    return _livBugErr('Image trop lourde : ' + _fmtFileSize(f.size) + ' pour 5 Mo au plus.');
+  }
+  const err = document.getElementById('liv-bug-error');
+  if (err) err.hidden = true;
+  _livBugFile = f;
+  _livBugApercu();
+};
+
+window.livBugRetirer = function() {
+  _livBugFile = null;
+  const inp = document.getElementById('liv-bug-img');
+  if (inp) inp.value = '';
+  _livBugApercu();
+};
+
+function _livBugApercu() {
+  const box = document.getElementById('liv-bug-apercu');
+  if (!box) return;
+  box.hidden = !_livBugFile;
+  if (!_livBugFile) { box.innerHTML = ''; return; }
+  box.innerHTML =
+    '<span class="liv-bug-nom">' + _escapeHtmlChat(_livBugFile.name) + '</span>' +
+    '<span class="liv-bug-taille">' + _escapeHtmlChat(_fmtFileSize(_livBugFile.size)) + '</span>' +
+    '<button type="button" class="liv-mvt-del" onclick="livBugRetirer()" aria-label="Retirer l’image">' +
+      '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M18 6 6 18M6 6l12 12"/></svg>' +
+    '</button>';
+}
+
+function _livBugErr(msg) {
+  const el = document.getElementById('liv-bug-error');
+  if (!el) return;
+  el.textContent = msg;
+  el.hidden = false;
+}
+
+window.livBugSend = async function() {
+  const texte = _depVal('liv-bug-texte').trim();
+  if (texte.length < 10) return _livBugErr('Décrivez le problème en une phrase au moins.');
+  const btn = document.getElementById('liv-bug-send');
+  if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; }
+  try {
+    const idToken = await fbAuth.currentUser.getIdToken();
+    const form = new FormData();
+    form.append('module', 'Livrets & épargne');
+    form.append('texte', texte);
+    // Le contexte évite un aller-retour : version du client et navigateur
+    // disent souvent à eux seuls pourquoi un écran diffère.
+    form.append('contexte', APP_VERSION + ' · ' + (navigator.userAgent || '').slice(0, 180));
+    if (_livBugFile) form.append('capture', _livBugFile, _livBugFile.name);
+
+    const res = await fetch(WORKER_URL + '/signaler', {
+      method: 'POST',
+      headers: { Authorization: 'Bearer ' + idToken },
+      body: form,
+    });
+    const out = await res.json().catch(() => ({}));
+    if (!res.ok) throw new Error(out.error || ('HTTP ' + res.status));
+
+    livBugClose();
+    _showChatToast({ icon: IC.checkCirc, title: 'Signalement envoyé',
+      msg: 'Merci — l’équipe le voit tout de suite.' });
+  } catch (e) {
+    console.warn('[livrets] signalement:', e && e.message);
+    _livBugErr('Envoi impossible : ' + ((e && e.message) || 'réessayez dans un instant.'));
+  } finally {
+    if (btn) { btn.textContent = 'Envoyer'; }
+    livBugRecalc();
+  }
 };
 
 let _livDelId = null;   // livret visé par la confirmation en cours

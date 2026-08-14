@@ -4757,6 +4757,23 @@ body.has-demo-banner { padding-top: 40px; }
 .liv-releve-group { margin-top: 18px; }
 .liv-sur-group { margin-top: 18px; }
 
+/* Rapporter une erreur */
+.liv-bug:hover { color: var(--gold); border-color: rgba(245,183,49,.4); background: rgba(245,183,49,.08); }
+.liv-bug-texte {
+  min-height: 96px; resize: vertical; line-height: 1.55;
+  font-family: var(--sans); padding: 11px 13px;
+}
+.liv-bug-apercu {
+  display: flex; align-items: center; gap: 10px; margin-top: 9px;
+  padding: 8px 8px 8px 12px; border-radius: 9px;
+  background: var(--s2); border: 1px solid var(--border);
+}
+.liv-bug-nom {
+  flex: 1; min-width: 0; font-size: 12.5px; color: var(--text);
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.liv-bug-taille { font-family: var(--mono); font-size: 11px; color: var(--text3); white-space: nowrap; }
+
 /* Marqueur discret : ce chiffre est estimé faute de dates de versement. */
 .liv-approx {
   font-style: normal; font-size: 11px; color: var(--text3);
