@@ -59,6 +59,9 @@ const TAUX_MAX = 8;
 // deux points est une erreur de lecture, pas une décision de l'État.
 const SAUT_MAX = 2;
 
+// Dernière alerte d'illisibilité, pour ne pas la répéter toutes les six heures.
+let _dernierCri = 0;
+
 /**
  * Extrait un taux de la fiche, par la phrase qui l'annonce.
  *
@@ -178,9 +181,16 @@ async function verifierUneFois(client) {
     catch (e) { echecs.push(f.label + ' — ' + e.message); }
   }
   if (!Object.keys(lus).length) {
-    // Aucune fiche lue : une panne de réseau ne mérite pas d'alerte. Le
-    // prochain passage réessaiera.
+    // Aucune fiche lue. Une coupure passagère ne mérite pas d'alerte, mais un
+    // silence prolongé si : les taux se figeraient sans que personne ne le
+    // sache, ce qui est exactement ce que ce module devait éviter. On le dit
+    // une fois par jour, pas plus.
     console.warn('[bareme] aucune fiche lue :', echecs.join(' ; '));
+    if (Date.now() - _dernierCri > 24 * 3600 * 1000) {
+      _dernierCri = Date.now();
+      await alerter(client, ['Aucune fiche n’a pu être lue — les taux restent ceux en place.'], echecs)
+        .catch(() => {});
+    }
     return;
   }
 
@@ -246,8 +256,16 @@ function start(client) {
     console.warn('[bareme] Firestore non configuré : mise à jour des taux désactivée.');
     return;
   }
-  const run = () => verifierUneFois(client)
-    .catch((e) => console.error('[bareme] vérification :', e.message));
+  // Une exception ici — droits Firestore, page injoignable, `fetch` absent
+  // d'un Node trop ancien — laisserait les taux se figer sans un mot. Elle
+  // part donc aussi dans le salon, une fois par jour au plus.
+  const run = () => verifierUneFois(client).catch((e) => {
+    console.error('[bareme] vérification :', e && e.message);
+    if (Date.now() - _dernierCri < 24 * 3600 * 1000) return;
+    _dernierCri = Date.now();
+    return alerter(client, ['Vérification interrompue : ' + ((e && e.message) || 'erreur inconnue')], [])
+      .catch(() => {});
+  });
   // Au démarrage, puis toutes les six heures. Une révision semestrielle n'a
   // pas besoin de plus, et la fenêtre de validité se corrige du même coup.
   run();
