@@ -12,6 +12,7 @@ const newsweekly = require('./lib/newsweekly');
 const leaderboard = require('./lib/leaderboard');
 const suggestions = require('./lib/suggestions');
 const restartmonitor = require('./lib/restartmonitor');
+const signalements = require('./lib/signalements');
 const tickets = require('./lib/tickets');
 const ticketstats = require('./lib/ticketstats');
 const { checkPub } = require('./lib/automod-pub');
@@ -46,6 +47,7 @@ client.once(Events.ClientReady, (c) => {
   newsweekly.start(c);
   leaderboard.start(c);
   ticketstats.start(c);
+  signalements.start(c);
   restartmonitor.handleOnReady(c).catch(() => {});
 });
 

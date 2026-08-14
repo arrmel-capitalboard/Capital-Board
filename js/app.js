@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816d';
+const APP_VERSION = '20260816e';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3307,7 +3307,33 @@ const FLAGGABLE = ['watchlist','dividendes','avantages','benchmark','projections
 // Sections qui portent DEUX vues dans la même page : le teaser « Bientôt » et
 // le module réel. Elles seules acceptent l'état bêta — ailleurs il ne voudrait
 // rien dire, la page EST le teaser et il n'y a rien d'autre à montrer.
-const BETA_CAPABLE = ['depenses', 'livrets'];
+//
+// Livrets & épargne en est sorti le 16/08 : le module est public. Les types de
+// livrets non encore éprouvés restent marqués « Bientôt » dans le formulaire
+// (`bientot` dans LIV_BAREME), ce qui est plus juste qu'une section entière
+// fermée — le Livret A et le Livret Jeune, eux, sont prêts.
+const BETA_CAPABLE = ['depenses'];
+
+// Sections ouvertes récemment. Leur entrée de menu porte une pastille « New »
+// jusqu'à la première visite : une section qui apparaît sans rien dire passe
+// inaperçue, et un badge qui disparaît au bout de quelques jours ne serait pas
+// vu par qui revient moins souvent. C'est donc l'ouverture qui l'éteint, pas le
+// temps qui passe.
+const NEW_SECTIONS = ['livrets'];
+const LS_NEW_SEEN = 'cb_sections_vues';
+
+function _navSectionsVues() {
+  try { const v = JSON.parse(localStorage.getItem(LS_NEW_SEEN) || '[]'); return Array.isArray(v) ? v : []; }
+  catch (_) { return []; }
+}
+function _navMarquerVue(key) {
+  if (!NEW_SECTIONS.includes(key)) return;
+  const vues = _navSectionsVues();
+  if (vues.includes(key)) return;
+  vues.push(key);
+  try { localStorage.setItem(LS_NEW_SEEN, JSON.stringify(vues)); } catch (_) {}
+  _applyBetaBadges();
+}
 
 let _featureFlags = {};
 // config/app.beta = { depenses: true }. Séparé de `features` pour que couper
@@ -3360,9 +3386,14 @@ function applyFeatureFlags(features, beta, bareme) {
 // le tiroir mobile. Pour une section à double vue il ment dès qu'elle s'ouvre :
 // on le réécrit selon l'état réel, et on le retire une fois la section publiée.
 function _applyBetaBadges() {
-  BETA_CAPABLE.forEach(key => {
+  const vues = _navSectionsVues();
+  BETA_CAPABLE.concat(NEW_SECTIONS).forEach(key => {
     const live = _isModuleLive(key);
     const beta = _isFeatureBeta(key);
+    // Une section récemment ouverte garde sa pastille jusqu'à la première
+    // visite. Elle ne s'affiche que sur un module réellement accessible :
+    // annoncer une nouveauté qu'on ne peut pas ouvrir n'a pas de sens.
+    const neuf = live && NEW_SECTIONS.includes(key) && !vues.includes(key);
     document.querySelectorAll('[onclick]').forEach(el => {
       const oc = el.getAttribute('onclick') || '';
       if (!oc.includes("showPage('" + key + "')") && !oc.includes("showPageMobile('" + key + "')")) return;
@@ -3371,6 +3402,10 @@ function _applyBetaBadges() {
       if (beta && isAdmin()) {
         badge.textContent = 'Bêta';
         badge.style.color = '#f5b731';
+        badge.hidden = false;
+      } else if (neuf) {
+        badge.textContent = 'New';
+        badge.style.color = 'var(--positive)';
         badge.hidden = false;
       } else if (live) {
         badge.hidden = true;
@@ -3626,6 +3661,9 @@ function _runPageHook(id) {
   if (id === 'patrimoine')    renderPatrimoine();
   if (id === 'depenses')      renderDepenses();
   if (id === 'livrets')       renderLivrets();
+  // La pastille « New » s'éteint à la première ouverture, pas au bout d'un
+  // délai : elle a rempli son office dès que la page a été vue.
+  _navMarquerVue(id);
 }
 
 // Changer de page sans remonter laissait l'utilisateur au milieu de la
@@ -18269,13 +18307,19 @@ const LIV_BAREME = {
   effet: '1er août 2026',
   jusqu: '31 janvier 2027',
   types: {
+    // `bientot` : le type est affiché mais pas ouvert. Le calcul est le même
+    // pour tous, mais il n'a été éprouvé que sur le Livret A et le Livret
+    // Jeune — le premier sur une vraie fiche de banque. Un PEL a un taux au
+    // contrat et des règles de prime, un LEP une condition de revenu : les
+    // proposer maintenant, c'est promettre un chiffre jamais vérifié. Les
+    // masquer serait pire : on ne saurait pas qu'ils arrivent.
     livretA:  { label: 'Livret A',        court: 'A',    plafond: 22950, taux: 1.7,  unique: true,  fisc: false, color: '#00e09e' },
-    ldds:     { label: 'LDDS',            court: 'LDDS', plafond: 12000, taux: 1.7,  unique: true,  fisc: false, color: '#4ade80' },
+    ldds:     { label: 'LDDS',            court: 'LDDS', plafond: 12000, taux: 1.7,  unique: true,  fisc: false, color: '#4ade80', bientot: true },
     // Le LEP est soumis à une condition de revenu, vérifiée chaque année par
     // la banque. Elle ne change rien au calcul, mais elle explique pourquoi ce
     // livret n'est pas ouvert à tout le monde : autant le dire dans le
     // formulaire plutôt que de laisser croire à un oubli.
-    lep:      { label: 'LEP',             court: 'LEP',  plafond: 10000, taux: 2.5,  unique: true,  fisc: false, color: '#22d3ee',
+    lep:      { label: 'LEP',             court: 'LEP',  plafond: 10000, taux: 2.5,  unique: true,  fisc: false, color: '#22d3ee', bientot: true,
                 condition: 'Sous condition de revenu : 23 028 € de revenu fiscal de référence pour une personne seule, 35 328 € pour un couple.' },
     // Le taux du Livret Jeune est fixé librement par chaque banque, avec pour
     // seul plancher légal celui du Livret A. 3,75 % est une valeur courante,
@@ -18283,9 +18327,9 @@ const LIV_BAREME = {
     jeune:    { label: 'Livret Jeune',    court: 'LJ',   plafond: 1600,  taux: 3.75, unique: true,  fisc: false, color: '#38bdf8', min: 'livretA', finRequise: true },
     // `duree` : terme légal en années, quand il existe. Il permet de déduire
     // la fin de validité de l'ouverture, et réciproquement.
-    pel:      { label: 'PEL',             court: 'PEL',  plafond: 61200, taux: null, unique: false, fisc: true,  color: '#a78bfa', duree: 15, finRequise: true },
-    cel:      { label: 'CEL',             court: 'CEL',  plafond: 15300, taux: null, unique: false, fisc: true,  color: '#c084fc' },
-    bancaire: { label: 'Livret bancaire', court: 'LB',   plafond: null,  taux: null, unique: false, fisc: true,  color: '#f5b731' },
+    pel:      { label: 'PEL',             court: 'PEL',  plafond: 61200, taux: null, unique: false, fisc: true,  color: '#a78bfa', duree: 15, finRequise: true, bientot: true },
+    cel:      { label: 'CEL',             court: 'CEL',  plafond: 15300, taux: null, unique: false, fisc: true,  color: '#c084fc', bientot: true },
+    bancaire: { label: 'Livret bancaire', court: 'LB',   plafond: null,  taux: null, unique: false, fisc: true,  color: '#f5b731', bientot: true },
   },
 };
 // Banques et plateformes d'épargne. Même mécanique que le catalogue de
@@ -18384,22 +18428,16 @@ function applyLivretsBareme(cfg) { _livCfg = cfg || null; _livBareme = null; }
 
 function _livType_(t)  { return _livB().types[t] || _livB().types.bancaire; }
 
-/**
- * Types ouverts pendant la bêta.
- *
- * Le calcul est le même pour tous, mais il n'a été éprouvé que sur ces deux-là,
- * et seul le Livret A l'a été sur une vraie fiche. Un PEL a un taux au contrat
- * et des règles de prime, un LEP une condition de revenu : les proposer
- * maintenant, c'est promettre un chiffre qu'on n'a jamais vérifié.
- */
-const LIV_BETA_TYPES = ['livretA', 'jeune'];
-
-// `garde` : le type d'un livret déjà enregistré reste proposé même s'il est
-// fermé, sinon un livret créé avant la restriction ne serait plus modifiable.
+// Types réellement ouverts. Les autres restent affichés, marqués « Bientôt ».
+//
+// `garde` : le type d'un livret déjà enregistré reste ouvert même s'il ne l'est
+// plus pour les autres, sinon un livret créé avant la restriction ne serait
+// plus modifiable — ni corrigible, ni supprimable depuis sa fiche.
+function _livTypeOuvert(k, garde) {
+  return k === garde || !_livB().types[k].bientot;
+}
 function _livTypesDispo(garde) {
-  const tous = Object.keys(_livB().types);
-  if (!_isFeatureBeta('livrets')) return tous;
-  return tous.filter(k => LIV_BETA_TYPES.includes(k) || k === garde);
+  return Object.keys(_livB().types).filter(k => _livTypeOuvert(k, garde));
 }
 // Le solde n'est plus saisi : il découle des mouvements. Un livret ne bouge que
 // par versement ou retrait, et le déclarer séparément ouvrait la porte à deux
@@ -19659,22 +19697,32 @@ function _livRenderTypes() {
   const box = document.getElementById('liv-f-types');
   if (!box) return;
   const pris = getLivrets().filter(l => l.id !== _livEditId).map(l => l.type);
-  const dispo = _livTypesDispo(_livEditId ? _livType : null);
+  const garde = _livEditId ? _livType : null;
+  const fermes = Object.keys(_livB().types).filter(k => !_livTypeOuvert(k, garde));
   const note = document.getElementById('liv-f-types-note');
   if (note) {
-    note.hidden = dispo.length === Object.keys(_livB().types).length;
-    note.textContent = 'Pendant la bêta, seuls le Livret A et le Livret Jeune sont ouverts : ' +
-      'ce sont les deux sur lesquels le calcul a été vérifié. Les autres suivront.';
+    note.hidden = !fermes.length;
+    note.textContent = 'Les types marqués « Bientôt » ne sont pas encore ouverts : le calcul n’a ' +
+      'été vérifié que sur le Livret A et le Livret Jeune, et annoncer un chiffre qu’on n’a pas ' +
+      'contrôlé serait pire que de le faire attendre.';
   }
-  box.innerHTML = dispo.map(k => {
+  // Tous les types restent affichés, ouverts ou non : la liste dit ce que le
+  // module couvrira, et une entrée qui disparaît laisse croire à un oubli.
+  box.innerHTML = Object.keys(_livB().types).map(k => {
     const t = _livB().types[k];
-    const doublon = t.unique && pris.includes(k);
+    const ouvert = _livTypeOuvert(k, garde);
+    const doublon = ouvert && t.unique && pris.includes(k);
     const on = k === _livType;
-    return '<button type="button" class="dep-cat' + (on ? ' active' : '') + (doublon ? ' liv-pris' : '') + '"' +
+    const titre = !ouvert ? 'Pas encore ouvert — le calcul n’a pas été vérifié sur ce type'
+      : doublon ? 'Vous en avez déjà un — un seul est autorisé par personne' : '';
+    return '<button type="button" class="dep-cat' + (on ? ' active' : '') +
+      (doublon ? ' liv-pris' : '') + (ouvert ? '' : ' liv-bientot') + '"' +
       (on ? ' style="border-color:' + t.color + '66"' : '') +
-      (doublon ? ' title="Vous en avez déjà un — un seul est autorisé par personne"' : '') +
+      (titre ? ' title="' + _attr(titre) + '"' : '') +
+      (ouvert ? '' : ' disabled aria-disabled="true"') +
       ' onclick="livSetType(\'' + k + '\')">' +
-      '<i style="background:' + t.color + '"></i>' + _escapeHtmlChat(t.label) + '</button>';
+      '<i style="background:' + t.color + '"></i>' + _escapeHtmlChat(t.label) +
+      (ouvert ? '' : '<span class="liv-bientot-tag">Bientôt</span>') + '</button>';
   }).join('');
 }
 
@@ -19838,10 +19886,11 @@ window.livSave = function() {
   }
   const doublon = getLivrets().some(l => l.id !== _livEditId && l.type === _livType && t.unique);
   if (doublon) return _livErr('Vous avez déjà un ' + t.label + ', et il n\'en est autorisé qu\'un par personne.');
-  // Garde de bêta. L'écran ne propose déjà que les types ouverts ; celle-ci
-  // couvre le cas d'une modale restée ouverte pendant que le drapeau change.
-  if (!_livTypesDispo(_livEditId ? (getLivrets().find(l => l.id === _livEditId) || {}).type : null).includes(_livType)) {
-    return _livErr('Le ' + t.label + ' n\'est pas encore ouvert : pendant la bêta, seuls le Livret A et le Livret Jeune le sont.');
+  // Les types fermés sont déjà inertes à l'écran ; cette garde couvre une
+  // modale restée ouverte pendant que le barème change sous elle.
+  const _garde = _livEditId ? (getLivrets().find(l => l.id === _livEditId) || {}).type : null;
+  if (!_livTypeOuvert(_livType, _garde)) {
+    return _livErr('Le ' + t.label + ' n\'est pas encore ouvert. Le calcul n\'a été vérifié que sur le Livret A et le Livret Jeune.');
   }
 
   const entree = {
@@ -19879,8 +19928,11 @@ window.livSave = function() {
 // — et un écart de calcul ne se voit dans aucun journal. D'où un chemin direct
 // vers le salon de suivi, sans ticket ni allers-retours.
 //
-// Rien n'est stocké : le Worker relaie le texte et l'image à Discord, et ne
-// garde ni l'un ni l'autre.
+// Le trajet : un doc dans `signalements`, que le bot Discord écoute et poste
+// dans son salon. Même mécanique que la file des nouveautés, et rien de neuf à
+// déployer côté Worker. La capture, elle, passe par /support-upload, qui la
+// range dans R2 et rend une URL signée : Firestore ne stocke pas d'octets, et
+// Discord sait afficher une image par son adresse.
 const LIV_BUG_MAX = 5 * 1024 * 1024;
 const LIV_BUG_TYPES = ['image/png', 'image/jpeg', 'image/webp'];
 let _livBugFile = null;
@@ -19962,22 +20014,36 @@ window.livBugSend = async function() {
   const btn = document.getElementById('liv-bug-send');
   if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; }
   try {
-    const idToken = await fbAuth.currentUser.getIdToken();
-    const form = new FormData();
-    form.append('module', 'Livrets & épargne');
-    form.append('texte', texte);
-    // Le contexte évite un aller-retour : version du client et navigateur
-    // disent souvent à eux seuls pourquoi un écran diffère.
-    form.append('contexte', APP_VERSION + ' · ' + (navigator.userAgent || '').slice(0, 180));
-    if (_livBugFile) form.append('capture', _livBugFile, _livBugFile.name);
+    // La capture d'abord : sans elle, le doc partirait avec une image
+    // manquante et le salon recevrait un signalement muet.
+    let imageUrl = null;
+    if (_livBugFile) {
+      const idToken = await fbAuth.currentUser.getIdToken();
+      const res = await fetch(WORKER_URL + '/support-upload', {
+        method: 'POST',
+        headers: {
+          Authorization: 'Bearer ' + idToken,
+          'X-File-Name': encodeURIComponent(_livBugFile.name),
+          'X-File-Type': (_livBugFile.type || '').split(';')[0],
+        },
+        body: _livBugFile,
+      });
+      const out = await res.json().catch(() => ({}));
+      if (!res.ok) throw new Error(out.error || ('dépôt de l’image : HTTP ' + res.status));
+      imageUrl = out.url;
+    }
 
-    const res = await fetch(WORKER_URL + '/signaler', {
-      method: 'POST',
-      headers: { Authorization: 'Bearer ' + idToken },
-      body: form,
+    await addFirestoreDoc(firestoreCollection(db, 'signalements'), {
+      uid: currentUser,
+      email: (fbAuth.currentUser && fbAuth.currentUser.email) || null,
+      module: 'Livrets & épargne',
+      texte,
+      // Le contexte évite un aller-retour : version du client et navigateur
+      // disent souvent à eux seuls pourquoi un écran diffère.
+      contexte: APP_VERSION + ' · ' + (navigator.userAgent || '').slice(0, 180),
+      imageUrl,
+      createdAt: Date.now(),
     });
-    const out = await res.json().catch(() => ({}));
-    if (!res.ok) throw new Error(out.error || ('HTTP ' + res.status));
 
     livBugClose();
     _showChatToast({ icon: IC.checkCirc, title: 'Signalement envoyé',

@@ -189,7 +189,7 @@
     {
       target: () => q('#livrets-app .dep-addbtn'),
       title: 'Ajouter un livret',
-      text: 'Choisissez son type : Livret A, LDDS, LEP, Livret Jeune, PEL ou livret bancaire. Le plafond et le taux viennent du barème en vigueur, vous n’avez rien à chercher. Les livrets réglementés sont uniques par personne.',
+      text: 'Le Livret A et le Livret Jeune sont ouverts ; les autres types sont affichés et marqués « Bientôt ». Le plafond et le taux viennent du barème en vigueur, vous n’avez rien à chercher, et les livrets réglementés sont uniques par personne.',
       page: 'livrets',
       // En revenant de l'étape suivante, la fiche est ouverte et masquerait
       // le bouton qu'on désigne.
@@ -202,6 +202,18 @@
       avant: ouvrirFiche,
     },
     {
+      target: () => q('#liv-modal .liv-import-facts') || q('#liv-modal .liv-import-cta'),
+      title: 'Ce qui sort de votre navigateur, et ce qui n’en sort pas',
+      text: 'Un CSV et un PDF sont lus sur votre appareil : le fichier ne part nulle part. Une capture d’écran, elle, ne peut pas l’être — il faut une IA pour lire des pixels. Elle est donc envoyée à notre serveur, qui la transcrit sans la conserver, et votre accord est demandé avant chaque envoi. L’IA ne fait que désigner les valeurs dans sa transcription : les montants et les dates sont reconstruits par du code, et tout ce qui ne figure pas dans l’image est jeté.',
+      avant: ouvrirFiche,
+    },
+    {
+      target: () => q('#liv-modal .liv-import-cta'),
+      title: 'Vous validez ligne par ligne',
+      text: 'Aucune lecture n’est prise pour argent comptant. L’import ouvre un écran où chaque opération se coche, se corrige ou se retire, avec les doublons déjà signalés. Si la lecture échoue, vous revenez à la saisie à la main plutôt qu’à un mur.',
+      avant: ouvrirFiche,
+    },
+    {
       target: () => q('#liv-modal .liv-mvt-actions'),
       title: 'Un versement, un retrait',
       text: 'Ensuite, tout se résume à ces deux boutons. Indiquez la date de l’opération — pas celle de la saisie, c’est elle qui fixe la quinzaine — et son montant. Le solde en découle : il ne se saisit jamais directement.',
@@ -210,7 +222,7 @@
     {
       target: () => q('#liv-f-avance'),
       title: 'Les chiffres exacts de votre banque',
-      text: 'Chaque établissement a ses conventions d’arrondi, qu’aucun calcul ne reproduit au centime. Recopiez ici les intérêts acquis et prévisionnels affichés par votre banque — ou déposez une capture de son écran « Caractéristiques », qui remplit tout ce bloc d’un coup.',
+      text: 'Chaque établissement a ses conventions d’arrondi, qu’aucun calcul ne reproduit au centime. Recopiez ici les intérêts acquis et prévisionnels affichés par votre banque — ou déposez une capture de son écran « Caractéristiques », qui remplit tout ce bloc d’un coup. C’est aussi ici que se déclare le compartiment de dépassement, quand votre banque en a ouvert un au-delà du plafond.',
       // Le bloc est replié par défaut : le déplier, sinon on ne désignerait
       // qu'un titre de section.
       avant: () => {

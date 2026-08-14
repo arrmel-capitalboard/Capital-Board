@@ -144,16 +144,6 @@ const SUPPORT_MIME = {
 };
 const SUPPORT_MAX_BYTES = 10 * 1024 * 1024;
 
-// ── Signalement d'erreur (POST /signaler) ──────────────────────────────────
-// Relaye vers un salon Discord, sans rien conserver. Plus etroit que le
-// support : une capture d'ecran, et rien d'autre. Discord accepte 8 Mo sur un
-// serveur sans niveau de boost ; on s'arrete avant.
-const SIGNAL_IMG = { 'image/png': 1, 'image/jpeg': 1, 'image/webp': 1 };
-const SIGNAL_MAX_BYTES = 5 * 1024 * 1024;
-// Un embed Discord plafonne a 4096 caracteres de description ; le client, lui,
-// limite deja le champ a 2000.
-const SIGNAL_MAX_TEXTE = 2000;
-
 // Signature d'une cle R2. Les images doivent s'afficher dans une balise <img>,
 // qui ne peut porter aucun en-tete d'autorisation : l'URL se suffit donc a
 // elle-meme, mais reste inforgeable sans le secret. Le lien n'est ecrit que
@@ -1450,71 +1440,6 @@ export default {
       new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
     try {
-      // ── POST /signaler ──────────────────────────────────────────────────
-      //
-      // Signalement d'une erreur depuis un module de l'app, relayé dans le
-      // salon de suivi Discord. Le module Livrets compare ses chiffres à ceux
-      // d'une banque : le membre est le seul à pouvoir dire qu'ils divergent,
-      // et un écart de calcul n'apparaît dans aucun journal.
-      //
-      // Relais, pas stockage : ni le texte ni la capture ne sont écrits nulle
-      // part ici. Un webhook plutôt que le jeton du bot — sa portée s'arrête à
-      // un salon, et il vit sur Cloudflare, pas sur la VM.
-      if (url.pathname === '/signaler' && request.method === 'POST') {
-        if (!env.DISCORD_BUG_WEBHOOK) return json({ error: 'signalement indisponible' }, 503);
-        const auth = (request.headers.get('Authorization') || '').replace(/^Bearer\s+/i, '');
-        let user;
-        try { user = await verifyIdToken(auth, env); }
-        catch { return json({ error: 'non authentifié' }, 401); }
-        if (!user.emailVerified) return json({ error: 'email non vérifié' }, 403);
-
-        let form;
-        try { form = await request.formData(); }
-        catch { return json({ error: 'formulaire illisible' }, 400); }
-
-        const texte = String(form.get('texte') || '').trim().slice(0, SIGNAL_MAX_TEXTE);
-        if (texte.length < 10) return json({ error: 'description trop courte' }, 400);
-        const module   = String(form.get('module')   || 'Application').slice(0, 60);
-        const contexte = String(form.get('contexte') || '').slice(0, 200);
-
-        const capture = form.get('capture');
-        let fichier = null;
-        if (capture && typeof capture === 'object' && capture.size) {
-          const type = String(capture.type || '').split(';')[0].toLowerCase();
-          if (!SIGNAL_IMG[type]) return json({ error: 'image refusée' }, 415);
-          if (capture.size > SIGNAL_MAX_BYTES) return json({ error: 'image trop lourde' }, 413);
-          fichier = capture;
-        }
-
-        // Discord n'affiche pas les mentions d'un webhook sans autorisation,
-        // mais un signalement ne doit de toute façon pas pouvoir en émettre.
-        const propre = (s) => s.replace(/@(everyone|here)/gi, '@​$1');
-        const embed = {
-          title: `Erreur signalée — ${module}`,
-          description: propre(texte),
-          color: 0xf5b731,
-          timestamp: new Date().toISOString(),
-          fields: [
-            { name: 'Membre', value: propre(user.email || user.localId), inline: true },
-            ...(contexte ? [{ name: 'Contexte', value: propre(contexte), inline: false }] : []),
-          ],
-          ...(fichier ? { image: { url: 'attachment://capture.png' } } : {}),
-        };
-
-        const sortie = new FormData();
-        sortie.append('payload_json', JSON.stringify({ embeds: [embed], allowed_mentions: { parse: [] } }));
-        // Le nom du fichier doit correspondre à l'URL `attachment://` de
-        // l'embed ; l'extension d'origine n'a pas à voyager.
-        if (fichier) sortie.append('files[0]', fichier, 'capture.png');
-
-        const res = await fetch(env.DISCORD_BUG_WEBHOOK, { method: 'POST', body: sortie });
-        if (!res.ok) {
-          console.error('[signaler] Discord', res.status, (await res.text()).slice(0, 200));
-          return json({ error: 'envoi impossible' }, 502);
-        }
-        return json({ ok: true });
-      }
-
       // ── POST /support-upload ────────────────────────────────────────────
       // Depot d'une piece jointe de ticket. Corps = octets bruts du fichier.
       // Firebase Storage aurait fait l'affaire, mais il exige le plan Blaze :

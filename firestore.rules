@@ -56,6 +56,26 @@ service cloud.firestore {
         && !(docId in ['trustedDevices','loginLog']);
     }
 
+    // Signalements d'erreur envoyés depuis un module de l'app. Le bot Discord
+    // les écoute et les poste dans son salon de suivi ; il passe par le SDK
+    // admin, qui ignore ces règles — d'où un client qui ne fait qu'écrire.
+    //
+    // Aucune lecture, pas même par son auteur : le contenu est déjà chez lui
+    // quand il l'envoie, et une collection lisible deviendrait un annuaire des
+    // emails de tous ceux qui ont signalé quelque chose. La modification et la
+    // suppression sont fermées pour la même raison — un signalement posté dans
+    // Discord ne peut plus être rappelé.
+    match /signalements/{id} {
+      allow read, update, delete: if false;
+      allow create: if _isVerified()
+        && request.resource.data.uid == request.auth.uid
+        && request.resource.data.texte is string
+        && request.resource.data.texte.size() >= 10
+        && request.resource.data.texte.size() <= 2000
+        && request.resource.data.module is string
+        && request.resource.data.module.size() <= 60;
+    }
+
     match /users/{uid}/ideaVotes/{ideaId} {
       allow read: if _isSelf(uid);
       allow write: if _isVerified() && _isSelf(uid);

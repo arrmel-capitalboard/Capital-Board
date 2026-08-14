@@ -5292,6 +5292,20 @@ body.has-demo-banner { padding-top: 40px; }
    refusera avec un message clair plutôt que de le cacher sans explication. */
 .liv-types .liv-pris { opacity: .4; }
 
+/* Type pas encore ouvert : montré, pour dire ce qui vient, mais inerte. Le
+   griser sans l'étiqueter aurait laissé croire à une panne. */
+.liv-types .liv-bientot {
+  opacity: .55; cursor: not-allowed;
+  border-style: dashed;
+}
+.liv-types .liv-bientot:hover { border-color: var(--border); color: var(--text3); }
+.liv-bientot-tag {
+  font-family: var(--mono); font-size: 8.5px; font-weight: 700;
+  letter-spacing: .5px; text-transform: uppercase;
+  margin-left: 6px; padding: 1px 5px; border-radius: 4px;
+  background: rgba(245,183,49,.14); color: var(--gold); white-space: nowrap;
+}
+
 @media (max-width: 640px) {
   .liv-row { padding: 13px 8px; margin: 0 -8px; gap: 11px; }
   .liv-chip { width: 34px; height: 34px; }
@@ -5305,6 +5319,11 @@ body.has-demo-banner { padding-top: 40px; }
      reprend un peu de largeur, et l'écart entre les deux se resserre. */
   .liv-jauge.duo { gap: 2px; }
   .liv-jauge-part.sur { flex: 0 0 40%; }
+  /* Les pastilles « Bientôt » doublent la largeur des pavés de type : sur deux
+     colonnes de téléphone, elles passent sous le libellé plutôt que de le
+     tronquer. */
+  .liv-types .liv-bientot { flex-wrap: wrap; }
+  .liv-bientot-tag { margin-left: 0; }
   /* La ligne sous la jauge porte maintenant trois informations : sur deux
      colonnes de téléphone, elle doit pouvoir passer à la ligne. */
   .liv-reste { line-height: 1.5; }

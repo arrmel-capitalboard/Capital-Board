@@ -15,41 +15,59 @@ Dernière mise à jour : 14 août 2026.
 
 ## 1. Ce qui est livré
 
-Le module est **en bêta** : visible par l'admin seul, les membres voient encore
-la page « Bientôt ». Pour l'ouvrir : Admin → éditeur de menu → *Livrets &
-épargne* → cran **Ouvert**.
+Le module est **public** depuis le 16/08 : il est sorti de `BETA_CAPABLE`, le
+cran *Bêta* a disparu de l'éditeur de menu, il ne reste que l'interrupteur
+masqué / visible. `config/app.features` et `config/app.beta` sont vides en
+base : rien à changer côté Firestore, l'ouverture a pris effet au déploiement.
 
-Pendant la bêta, **seuls le Livret A et le Livret Jeune sont proposés**
-(`LIV_BETA_TYPES`) : ce sont les deux sur lesquels le calcul a été vérifié. Un
-livret déjà enregistré d'un autre type reste modifiable, sinon il deviendrait
-intouchable. La restriction tombe d'elle-même au cran *Ouvert*.
+Ce n'est plus la section qui est retenue mais **les types de livrets** : seuls
+le **Livret A** et le **Livret Jeune** sont ouverts, les autres restent
+affichés dans le formulaire avec une pastille « Bientôt », inertes
+(`bientot: true` dans `LIV_BAREME`, `_livTypeOuvert`). Ouvrir un type = retirer
+son drapeau, dans le code ou depuis `config/app.bareme`. Un livret déjà
+enregistré d'un type fermé reste modifiable, sinon il deviendrait intouchable.
+
+L'entrée de menu porte une pastille **« New »** jusqu'à la première ouverture
+de la page (`NEW_SECTIONS`, `cb_sections_vues` en localStorage). C'est la
+visite qui l'éteint, pas un délai : un badge qui expire au bout de quelques
+jours n'est jamais vu par qui revient moins souvent.
 
 La **visite guidée part toute seule au premier passage** sur la page
-(`CBOnboarding.tourLivretsAuto`, drapeau `cb_tour_livrets_done` en
-localStorage). Le drapeau n'est posé qu'au lancement réel : le module est aussi
-rendu page masquée, et la visite aurait été consommée sans être vue.
+(`CBOnboarding.tourLivretsAuto`, drapeau `cb_tour_livrets_done`). Le drapeau
+n'est posé qu'au lancement réel : le module est aussi rendu page masquée, et la
+visite aurait été consommée sans être vue. Elle dit maintenant ce que devient
+un fichier déposé — CSV et PDF lus sur l'appareil, capture d'écran envoyée à
+une IA sur notre serveur, accord demandé avant, validation ligne à ligne.
 
 ### Rapporter une erreur
 
 Un bouton dans l'en-tête ouvre une modale — texte obligatoire, capture
-facultative — qui poste sur `POST /signaler` du Worker. Celui-ci relaie vers le
-**webhook du salon Discord `1537760259203014766`**, en embed, avec l'image en
-pièce jointe. Rien n'est stocké : ni le texte, ni l'image.
+facultative. Le chemin :
 
-> ⚠️ **Le secret manque encore.** Sans `DISCORD_BUG_WEBHOOK`, `/signaler`
-> répond 503. À poser une fois, sur le compte Cloudflare
-> **admin.capitalboard@gmail.com** :
->
-> ```bash
-> cd capital-board-worker
-> npx wrangler login          # admin.capitalboard@gmail.com, PAS armelpltr14
-> npx wrangler secret put DISCORD_BUG_WEBHOOK
-> npx wrangler deploy
-> ```
->
-> Le webhook se crée dans Discord : paramètres du salon → Intégrations →
-> Webhooks. C'est lui, et pas le jeton du bot, parce que sa portée s'arrête à
-> un salon et qu'il vit sur Cloudflare plutôt que sur la VM.
+```
+client → doc dans `signalements` (Firestore)
+       → capture déposée dans R2 via POST /support-upload (URL signée)
+bot    → écoute la collection, poste l'embed dans le salon 1537760259203014766
+       → marque le doc `posteLe` pour ne pas le reposter au redémarrage
+```
+
+Le Worker n'est pas sur le chemin : rien à déployer de ce côté, il ne fait que
+ranger l'image, ce qu'il savait déjà faire pour le support. Firestore ne stocke
+pas d'octets, d'où le détour par R2 — et Discord sait afficher une image par son
+adresse.
+
+Règles Firestore : `create` seul, par un membre vérifié, sous son propre uid.
+Aucune lecture, pas même par l'auteur — une collection lisible deviendrait
+l'annuaire des emails de tous ceux qui ont signalé quelque chose. Le bot passe
+par le SDK admin, qui ignore ces règles.
+
+> ⚠️ **Deux déploiements en attente** :
+> - `firebase deploy --only firestore:rules` — sans ça, l'écriture est refusée
+>   et le bouton affiche « Envoi impossible ».
+> - le **bot** (`src/lib/signalements.js` + son démarrage dans `src/index.js`)
+>   doit repartir sur la VM, sinon les signalements s'empilent sans être postés.
+>   Rien n'est perdu : au redémarrage, le listener rattrape tous les docs sans
+>   `posteLe`.
 
 ### Le calcul
 
@@ -323,8 +341,11 @@ Points à reprendre :
 
 ### 6.2 Ensuite
 
-- **Ouvrir le module aux membres**, une fois le parcours exercé dans un
-  navigateur (section 3) — c'est le dernier verrou, 6.1 étant posé.
+- ✅ **Ouvrir le module aux membres** — fait le 16/08. Le parcours navigateur
+  (section 3) n'a toujours pas été exercé : c'est désormais un risque en
+  production, et le bouton « Rapporter une erreur » est là pour ça.
+- **Ouvrir les autres types** au fur et à mesure qu'un vrai relevé les éprouve :
+  retirer leur `bientot`, un par un.
 - **Brancher l'import sur les Dépenses** — le socle est prêt, le module n'a qu'à
   fournir un `onValider`. Voir `afaire-import.md`, point 2.
 - **`worker-src 'self'`** quand le CSP sera complété (`afaire.md`, point B) :
@@ -337,8 +358,9 @@ Points à reprendre :
 | | |
 |---|---|
 | Calcul et affichage | `js/app.js`, section « LIVRETS & ÉPARGNE » |
-| Signalement d'erreur | `livBug*` dans `js/app.js`, `POST /signaler` dans le Worker |
-| Types ouverts en bêta | `LIV_BETA_TYPES` + `_livTypesDispo` dans `js/app.js` |
+| Signalement d'erreur | `livBug*` dans `js/app.js`, `discord-bot/src/lib/signalements.js` |
+| Types ouverts | `bientot` dans `LIV_BAREME` + `_livTypeOuvert` (`js/app.js`) |
+| Pastille « New » | `NEW_SECTIONS` + `_applyBetaBadges` (`js/app.js`) |
 | Barème | `LIV_BAREME` dans `js/app.js`, surchargeable par `config/app.bareme` |
 | Import (socle et trois voies) | `js/import.js` |
 | Lecture des images | `POST /lire-releve` dans `capital-board-worker/src/index.js` |

@@ -55,10 +55,5 @@ crons = ["*/5 * * * *"]
 #   RESEND_API_KEY             → clé API Resend
 #   IG_USER_ID                 → id du compte Instagram pro lié à notre Page Facebook
 #   SUPPORT_FILES_SECRET       → chaine aleatoire, signe les URL des pieces jointes
-#   DISCORD_BUG_WEBHOOK        → URL du webhook du salon de suivi des signalements
-#                                (salon 1537760259203014766). Discord :
-#                                Parametres du salon → Integrations → Webhooks.
-#                                Sans lui, POST /signaler repond 503 et le
-#                                bouton « Rapporter une erreur » le dit.
 #   IG_GRAPH_TOKEN             → jeton de Page Facebook (n'expire pas), scopes
 #                                instagram_basic + pages_show_list + pages_read_engagement
