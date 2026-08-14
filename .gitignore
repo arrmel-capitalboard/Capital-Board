@@ -34,3 +34,6 @@ Thumbs.db
 # Rapports d'audit de securite : le depot est public, ils decrivent des
 # failles non corrigees et leur chemin d'exploitation. A garder en local.
 SECURITE-AUDIT-*.md
+
+# Guide de setup machine : nomme les comptes et emails de service. Local only.
+SETUP-MACHINE.md
