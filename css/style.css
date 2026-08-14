@@ -1,3 +1,14 @@
+/* ─── L'attribut `hidden` doit gagner, toujours ───
+   La règle du navigateur, `[hidden] { display: none }`, ne pèse rien face à
+   une classe : le moindre `display: flex` la fait sauter, et l'élément reste
+   affiché — vide, sans qu'aucun code ne le montre. Deux cas visibles le
+   16/08 : le récapitulatif de la fiche livret, une barre dorée vide sous le
+   formulaire, et l'agrandissement d'une image d'import, dont le voile noir
+   couvrait la modale en permanence.
+   Le dépôt corrigeait le cas par cas (.ec-prev-panel, .drawer-sub,
+   .pea-tabs). Une seule règle vaut mieux, et elle vaut pour ce qui viendra. */
+[hidden] { display: none !important; }
+
 /* ─── SPLASH ─── */
 #splash-screen {
   position: fixed; inset: 0; z-index: 5000;
