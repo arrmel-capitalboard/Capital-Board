@@ -55,7 +55,7 @@ const IC = {
 // ─── FIREBASE AUTH ────────────────────────────────────
 // ─── FIREBASE (chargement dynamique, compatible sans bundler) ─────
 let fbApp, fbAuth, db,
-    createUserWithEmailAndPassword, signInWithEmailAndPassword, sendEmailVerification,
+    createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithCustomToken, sendEmailVerification,
     signOut, onAuthStateChanged, GoogleAuthProvider, signInWithPopup,
     signInWithRedirect, getRedirectResult,
     updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser,
@@ -109,10 +109,6 @@ function _resetTurnstile(containerId) {
   if (el && window.turnstile) window.turnstile.reset(el);
 }
 
-// 2FA device-based — durée trust appareil
-const DEVICE_TRUST_DAYS = 30;
-const DEVICE_TRUST_MS   = DEVICE_TRUST_DAYS * 24 * 60 * 60 * 1000;
-
 let _splashWatchdog = null;
 function _hideSplash() {
   if (_splashWatchdog) { clearTimeout(_splashWatchdog); _splashWatchdog = null; }
@@ -157,6 +153,7 @@ _splashWatchdog = setTimeout(() => {
 
   createUserWithEmailAndPassword = auth.createUserWithEmailAndPassword;
   signInWithEmailAndPassword     = auth.signInWithEmailAndPassword;
+  signInWithCustomToken          = auth.signInWithCustomToken;
   sendEmailVerification          = auth.sendEmailVerification;
   signOut                        = auth.signOut;
   onAuthStateChanged             = auth.onAuthStateChanged;
@@ -999,6 +996,10 @@ function showDeviceVerifyView(email) {
   // Reset étapes
   document.getElementById('dv-step-send').style.display = 'block';
   document.getElementById('dv-step-verify').style.display = 'none';
+  // _showLoginOtpVerify (flux /login) le masque ; s'assurer qu'il revient
+  // si ce parcours historique (Google) est déclenché après, même onglet.
+  const resendBtn = document.getElementById('dv-resend-btn');
+  if (resendBtn) resendBtn.style.display = '';
   const se = document.getElementById('dv-send-error'); if (se) se.style.display = 'none';
   const ve = document.getElementById('dv-verify-error'); if (ve) ve.style.display = 'none';
   const oi = document.getElementById('dv-otp-input'); if (oi) oi.value = '';
@@ -1092,6 +1093,37 @@ window.dvVerifyOtp = async function() {
     if (ve) { ve.textContent = 'Code invalide (6 chiffres attendus).'; ve.style.display = 'block'; }
     return;
   }
+
+  // Chemin /login (email+mdp) : pas encore de session Firebase, la 2FA est
+  // rattachée à un pendingToken côté Worker plutôt qu'à fbAuth.currentUser.
+  if (_loginPending) {
+    setLoading('dv-verify-btn', true);
+    try {
+      const res = await fetch(`${WORKER_URL}/login-verify`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pendingToken: _loginPending.pendingToken, code: input }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!data.ok || !data.customToken) {
+        if (ve) { ve.textContent = data.error || 'Code incorrect.'; ve.style.display = 'block'; }
+        return;
+      }
+      _loginPending = null;
+      document.getElementById('device-verify-view').style.display = 'none';
+      await signInWithCustomToken(fbAuth, data.customToken);
+      // onAuthStateChanged prend le relai (PIN gate inclus).
+    } catch(e) {
+      console.error('[2fa] verify (login) échoué:', e);
+      if (ve) { ve.textContent = 'Erreur : ' + (e.message || 'inconnue'); ve.style.display = 'block'; }
+    } finally {
+      setLoading('dv-verify-btn', false);
+    }
+    return;
+  }
+
+  // Chemin historique (Google Sign-In) : session déjà ouverte, 2FA vérifiée
+  // après coup — inchangé.
   const user = fbAuth.currentUser;
   if (!user || !user.email) return;
   setLoading('dv-verify-btn', true);
@@ -1121,6 +1153,7 @@ window.dvVerifyOtp = async function() {
 };
 
 window.dvLogout = async function() {
+  _loginPending = null;
   try { await signOut(fbAuth); } catch(_) {}
   showLoginView();
 };
@@ -2158,6 +2191,14 @@ window.revokeAllOtherDevices = function() {
 };
 
 // ─── LOGIN ────────────────────────────────────────────
+// Le mot de passe passe désormais par le Worker (POST /login), pas par
+// signInWithEmailAndPassword directement : le Worker vérifie le mot de passe
+// (REST Identity Toolkit), l'appareil de confiance et la 2FA AVANT d'émettre
+// le moindre jeton. Avant, Firebase délivrait le jeton dès le mot de passe
+// bon — un jeton volé (XSS, extension malveillante) contournait tout le 2FA.
+// Voir capital-board-worker/src/index.js, POST /login.
+let _loginPending = null; // { pendingToken } — 2FA email en attente pour un /login en cours
+
 window.doLogin = async function() {
   const email = document.getElementById('input-email').value.trim();
   const pass  = document.getElementById('input-pass').value;
@@ -2171,14 +2212,77 @@ window.doLogin = async function() {
   }
   setLoading('btn-login-submit', true);
   try {
-    await signInWithEmailAndPassword(fbAuth, email, pass);
-    // onAuthStateChanged prend le relai
-  } catch(e) {
-    err.textContent = firebaseErrorMsg(e.code);
+    const ipInfo = await _fetchIpInfo();
+    const res = await fetch(`${WORKER_URL}/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email, password: pass,
+        deviceId: _getDeviceId(),
+        deviceLabel: _getDeviceLabel(),
+        location: _fmtLocation(ipInfo) || 'Lieu inconnu',
+        ipInfo: ipInfo || null,
+        turnstileToken: _getTurnstileToken('turnstile-login'),
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (data.ok && data.customToken) {
+      await signInWithCustomToken(fbAuth, data.customToken);
+      // onAuthStateChanged prend le relai (device déjà trusté côté Worker :
+      // le gate 2FA qu'il refait y retrouve un appareil connu, sans effet).
+      return;
+    }
+    if (data.need2fa === 'email') {
+      _loginPending = { pendingToken: data.pendingToken };
+      _showLoginOtpVerify(email);
+      return;
+    }
+    if (data.need2fa === 'totp') {
+      // Pas encore livré côté client : ne peut pas survenir tant qu'aucun
+      // compte n'a de TOTP enrôlé côté serveur.
+      err.textContent = 'Vérification indisponible pour le moment. Réessayez.';
+      err.style.display = 'block';
+      _resetTurnstile('turnstile-login');
+      return;
+    }
+    err.textContent = data.error || 'Une erreur est survenue. Réessayez.';
     err.style.display = 'block';
+    _resetTurnstile('turnstile-login'); // jeton Turnstile à usage unique, déjà consommé par la tentative
+  } catch(e) {
+    err.textContent = 'Erreur de connexion : ' + (e.message || 'réessayez.');
+    err.style.display = 'block';
+    _resetTurnstile('turnstile-login');
+  } finally {
     setLoading('btn-login-submit', false);
   }
 };
+
+// Écran de saisie du code, pour la 2FA email déclenchée par /login — le code
+// est déjà envoyé à ce stade (par /login lui-même), pas d'étape "envoyer" à
+// afficher, contrairement au parcours device-verify historique (Google
+// Sign-In, encore sur l'ancien flux) qui réutilise le même écran HTML.
+function _showLoginOtpVerify(email) {
+  document.getElementById('login-screen').style.display = 'flex';
+  document.getElementById('app').style.display = 'none';
+  document.getElementById('login-view').style.display = 'none';
+  document.getElementById('register-view').style.display = 'none';
+  const vv = document.getElementById('verify-view'); if (vv) vv.style.display = 'none';
+  const view = document.getElementById('device-verify-view');
+  if (view) view.style.display = 'block';
+  const eDisp = document.getElementById('dv-email-display');
+  if (eDisp) eDisp.textContent = email || '';
+  const dLabel = document.getElementById('dv-device-label');
+  if (dLabel) dLabel.textContent = _getDeviceLabel();
+  document.getElementById('dv-step-send').style.display = 'none';
+  document.getElementById('dv-step-verify').style.display = 'block';
+  const resendBtn = document.getElementById('dv-resend-btn');
+  if (resendBtn) resendBtn.style.display = 'none'; // pas câblé sur ce chemin : relancer un /login au lieu de renvoyer
+  const ve = document.getElementById('dv-verify-error'); if (ve) ve.style.display = 'none';
+  const oi = document.getElementById('dv-otp-input');
+  if (oi) { oi.value = ''; setTimeout(() => oi.focus(), 50); }
+  _hideSplash();
+}
 
 // ─── REGISTER ─────────────────────────────────────────
 // ── Robustesse du mot de passe ───────────────────────────────────────────────

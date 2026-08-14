@@ -90,6 +90,13 @@ const REVOKE_RL_WINDOW = 300;
 
 const LOG_SESSION_RL_MAX    = 20;   // écritures max par compte et par fenêtre
 const LOG_SESSION_RL_WINDOW = 300;  // le dédoublonnage par IP+appareil ne suffit pas : un appareil variable le contourne
+
+const LOGIN_RL_MAX    = 8;    // tentatives de mot de passe max par compte et par fenêtre
+const LOGIN_RL_WINDOW = 300;  // le Worker vérifie désormais le mot de passe lui-même : devient un oracle à protéger
+
+const LOGIN_VERIFY_RL_MAX    = 8;   // tentatives de code (TOTP ou email) max par compte et par fenêtre
+const LOGIN_VERIFY_RL_WINDOW = 300;
+
 const VISION_MIME = new Set(['image/png', 'image/jpeg', 'image/webp']);
 
 const VISION_PROMPT =
@@ -620,6 +627,32 @@ async function makeServiceJWT(sa) {
   return `${sigInput}.${sigB64}`;
 }
 
+// Jeton Firebase "custom token" — le client l'échange via signInWithCustomToken().
+// Même mécanique de signature que makeServiceJWT (RS256, clé de service), charge
+// utile différente : c'est le format que l'API Identity Toolkit reconnaît comme
+// une déclaration "ce uid est authentifié" venant d'un serveur de confiance.
+// Expiration courte (5 min, pas les 60 min max autorisées) : le jeton n'a
+// vocation qu'à être échangé immédiatement après émission, jamais stocké.
+async function makeCustomToken(sa, uid) {
+  const now = Math.floor(Date.now() / 1000);
+  const header  = b64url(JSON.stringify({ alg: 'RS256', typ: 'JWT' }));
+  const payload = b64url(JSON.stringify({
+    iss: sa.client_email, sub: sa.client_email,
+    aud: 'https://identitytoolkit.googleapis.com/google.identity.identitytoolkit.v1.IdentityToolkit',
+    iat: now, exp: now + 300,
+    uid: String(uid),
+  }));
+  const sigInput = `${header}.${payload}`;
+  const key = await crypto.subtle.importKey(
+    'pkcs8', pemToBytes(sa.private_key).buffer,
+    { name: 'RSASSA-PKCS1-v1_5', hash: 'SHA-256' }, false, ['sign']
+  );
+  const sig = await crypto.subtle.sign('RSASSA-PKCS1-v1_5', key, new TextEncoder().encode(sigInput));
+  const sigB64 = btoa(String.fromCharCode(...new Uint8Array(sig)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+  return `${sigInput}.${sigB64}`;
+}
+
 let _accessToken = null, _accessTokenExpiry = 0;
 
 async function getAccessToken(env) {
@@ -865,6 +898,57 @@ async function trustDevice(uid, deviceId, label, ipInfo, env) {
   const fields = {};
   for (const [id, f] of Object.entries(devices)) fields[id] = { mapValue: { fields: f } };
   await firestoreUpdate(path, { devices: { mapValue: { fields } } }, ['devices'], env);
+}
+
+// Lecture seule de trustDevice, côté serveur — pour /login, qui doit savoir
+// si l'appareil est déjà de confiance AVANT d'émettre le moindre jeton.
+async function isDeviceTrustedServer(uid, deviceId, env) {
+  if (!deviceId) return false;
+  try {
+    const doc = await firestoreGet(`users/${uid}/data/trustedDevices`, env);
+    const f = doc.fields?.devices?.mapValue?.fields?.[deviceId]?.mapValue?.fields;
+    const expiresAt = Number(f?.expiresAt?.integerValue ?? 0);
+    return expiresAt > Date.now();
+  } catch (_) { return false; }
+}
+
+// Suite commune à /login et (plus tard) /login-google : device trusté → mint
+// direct ; sinon 2FA (TOTP si enrôlé, sinon email) avant tout jeton. Ne
+// renvoie jamais rien à écrire directement en HTTP — l'appelant fait `json()`.
+async function finishLogin(uid, email, emailVerified, deviceId, deviceLabel, location, ipInfo, env) {
+  if (await isDeviceTrustedServer(uid, deviceId, env)) {
+    const customToken = await makeCustomToken(JSON.parse(env.FIREBASE_SERVICE_ACCOUNT), uid);
+    return { body: { ok: true, customToken }, status: 200 };
+  }
+
+  let hasTotp = false;
+  try { await firestoreGet(`totpSecrets/${uid}`, env); hasTotp = true; } catch (_) {}
+
+  if (hasTotp) {
+    const pendingToken = crypto.randomUUID();
+    await env.EARNINGS.put(`pending2fa:${pendingToken}`,
+      JSON.stringify({ uid, deviceId, deviceLabel, ipInfo, method: 'totp' }),
+      { expirationTtl: 300 });
+    return { body: { ok: false, need2fa: 'totp', pendingToken }, status: 200 };
+  }
+
+  if (!emailVerified || !email) {
+    // Pas d'email vérifié : pas de canal pour un OTP. On mint quand même —
+    // c'est déjà le comportement actuel (le gate email-vérifié est un écran
+    // client APRÈS connexion, pas une barrière au jeton), et cet écran a
+    // besoin d'une session pour proposer de renvoyer le mail de vérification.
+    const customToken = await makeCustomToken(JSON.parse(env.FIREBASE_SERVICE_ACCOUNT), uid);
+    return { body: { ok: true, customToken }, status: 200 };
+  }
+
+  const sent = await sendOtpChallenge(uid, email, '2fa', deviceId, deviceLabel, location, ipInfo, env);
+  if (!sent.ok) return { body: { ok: false, error: sent.error }, status: sent.status || 429 };
+
+  const pendingToken = crypto.randomUUID();
+  await env.EARNINGS.put(`pending2fa:${pendingToken}`,
+    JSON.stringify({ uid, deviceId, deviceLabel, ipInfo, method: 'email' }),
+    { expirationTtl: 300 });
+  return { body: { ok: false, need2fa: 'email', pendingToken }, status: 200 };
 }
 
 // Liste tous les documents d'une collection (paginé).
@@ -1260,7 +1344,7 @@ const OTP_MAX_TRIES    = 5;              // essais avant invalidation
 const OTP_MAX_SENDS    = 5;              // envois par fenêtre
 const OTP_SEND_WINDOW  = 30 * 60 * 1000; // fenêtre de comptage des envois
 const OTP_RESEND_MS    = 45 * 1000;      // délai minimum entre deux envois
-const DEVICE_TRUST_MS  = 90 * 24 * 60 * 60 * 1000;
+const DEVICE_TRUST_MS  = 30 * 24 * 60 * 60 * 1000;
 
 function otpGenerate() {
   const a = new Uint32Array(1);
@@ -1275,6 +1359,107 @@ function otpEqual(a, b) {
   let diff = 0;
   for (let i = 0; i < a.length; i++) diff |= a.charCodeAt(i) ^ b.charCodeAt(i);
   return diff === 0;
+}
+
+// Génère et envoie un code OTP, écrit dans otpChallenges/{uid}. Extrait de
+// l'ancien corps de /request-otp pour être appelable directement par uid —
+// /login en a besoin avant qu'un idToken existe (voir plus bas).
+async function sendOtpChallenge(uid, email, type, deviceId, deviceLabel, location, ipInfo, env) {
+  const path = `otpChallenges/${uid}`;
+  const now = Date.now();
+
+  let windowStart = now;
+  try {
+    const prev = await firestoreGet(path, env);
+    const lastSentAt = fsNum(prev, 'lastSentAt') || 0;
+    const prevWindow = fsNum(prev, 'windowStart') || 0;
+    if (now - lastSentAt < OTP_RESEND_MS) {
+      return { ok: false, error: 'Patientez avant de demander un nouveau code', status: 429 };
+    }
+    if (now - prevWindow < OTP_SEND_WINDOW) windowStart = prevWindow;
+  } catch (_) { /* aucune demande précédente */ }
+
+  let sends;
+  if (windowStart === now) {
+    sends = 1;
+    await firestoreUpdate(path, { sends: { integerValue: '1' } }, ['sends'], env);
+  } else {
+    sends = await firestoreIncrement(path, 'sends', env);
+    if (sends > OTP_MAX_SENDS) {
+      return { ok: false, error: 'Trop de codes demandés, réessayez plus tard', status: 429 };
+    }
+  }
+
+  const code = otpGenerate();
+  const salt = crypto.randomUUID();
+  await firestoreSet(path, {
+    type:        { stringValue: type },
+    codeHash:    { stringValue: await sha256(salt + code) },
+    salt:        { stringValue: salt },
+    expiresAt:   { integerValue: String(now + OTP_TTL_MS) },
+    attempts:    { integerValue: '0' },
+    sends:       { integerValue: String(sends) },
+    windowStart: { integerValue: String(windowStart) },
+    lastSentAt:  { integerValue: String(now) },
+    deviceId:    { stringValue: String(deviceId || '') },
+    deviceLabel: { stringValue: String(deviceLabel || '').slice(0, 80) },
+    ip:          { stringValue: String(ipInfo?.ip || '') },
+    city:        { stringValue: String(ipInfo?.city || '') },
+    region:      { stringValue: String(ipInfo?.region || '') },
+    country:     { stringValue: String(ipInfo?.country || '') },
+    countryCode: { stringValue: String(ipInfo?.countryCode || '') },
+  }, env);
+
+  const [subject, html] = type === 'delete'
+    ? ['Confirmation suppression de compte — Capital Board', emailDelete(code)]
+    : ['Code de vérification — nouvel appareil Capital Board',
+       email2fa(code, deviceLabel, location)];
+  await sendEmail(email, subject, html, env);
+  return { ok: true, expiresAt: now + OTP_TTL_MS };
+}
+
+// Vérifie un code OTP contre otpChallenges/{uid}. Extrait de l'ancien corps
+// de /verify-otp, appelable par uid direct (même raison que ci-dessus). Ne
+// déclare pas l'appareil de confiance elle-même : l'appelant décide (les
+// deux appelants aujourd'hui — /verify-otp et /login-verify — le font).
+async function checkOtpChallenge(uid, code, expectedType, env) {
+  const path = `otpChallenges/${uid}`;
+
+  let doc;
+  try { doc = await firestoreGet(path, env); }
+  catch (_) { return { valid: false, error: 'expired' }; }
+
+  const now = Date.now();
+  if (fsStr(doc, 'type') !== expectedType) return { valid: false, error: 'expired' };
+  if ((fsNum(doc, 'expiresAt') || 0) < now) {
+    await firestoreDelete(path, env);
+    return { valid: false, error: 'expired' };
+  }
+  // L'essai est decompte AVANT la comparaison, et de facon atomique : sinon
+  // des requetes parallele lisent toutes le meme compteur et la limite de
+  // 5 essais ne borne plus rien face a une force brute concurrente.
+  const attempts = await firestoreIncrement(path, 'attempts', env);
+  if (attempts > OTP_MAX_TRIES) {
+    await firestoreDelete(path, env);
+    return { valid: false, error: 'locked' };
+  }
+
+  const computed = await sha256(fsStr(doc, 'salt') + code);
+  if (!otpEqual(computed, fsStr(doc, 'codeHash') || '')) {
+    return { valid: false, error: 'wrong', left: Math.max(0, OTP_MAX_TRIES - attempts) };
+  }
+
+  // Code correct : usage unique, on efface avant toute suite.
+  await firestoreDelete(path, env);
+  return {
+    valid: true,
+    deviceId: fsStr(doc, 'deviceId'),
+    deviceLabel: fsStr(doc, 'deviceLabel'),
+    ipInfo: {
+      ip: fsStr(doc, 'ip'), city: fsStr(doc, 'city'), region: fsStr(doc, 'region'),
+      country: fsStr(doc, 'country'), countryCode: fsStr(doc, 'countryCode'),
+    },
+  };
 }
 
 function emailIdeaPublished(title) {
@@ -2028,6 +2213,96 @@ export default {
         return json({ ok: true });
       }
 
+      // ── POST /login ──────────────────────────────────────────────────────
+      // Vérifie le mot de passe côté serveur (REST Identity Toolkit) et ne
+      // délivre un jeton qu'après le device-trust/2FA. Avant, le client
+      // appelait signInWithEmailAndPassword directement : le jeton existait
+      // dès le mot de passe bon, avant toute vérification — un jeton volé
+      // (XSS, extension malveillante) contournait le 2FA entier.
+      if (url.pathname === '/login' && request.method === 'POST') {
+        const { email, password, deviceId, deviceLabel, location, ipInfo, turnstileToken } = await request.json();
+        if (!email || !password || !deviceId) {
+          return json({ ok: false, error: 'Paramètres invalides' }, 400);
+        }
+
+        // Le Worker devient un oracle de mot de passe : à protéger comme tel.
+        if (!(await rateLimit(env, `login:${String(email).toLowerCase()}`, LOGIN_RL_MAX, LOGIN_RL_WINDOW))) {
+          return json({ ok: false, error: 'Trop de tentatives, réessayez plus tard.' }, 429);
+        }
+
+        const humanVerified = await verifyTurnstile(turnstileToken, env);
+        if (!humanVerified) return json({ ok: false, error: 'Vérification de sécurité échouée.' }, 403);
+
+        const authRes = await fetch(
+          `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${env.FIREBASE_WEB_API_KEY}`,
+          {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ email, password, returnSecureToken: true }),
+          }
+        );
+        const authData = await authRes.json();
+        if (!authRes.ok || !authData.idToken) {
+          // Anti-énumération : même message que compte absent ou mot de passe
+          // faux — sauf le vrai cas de throttling Google.
+          const msg = authData.error?.message === 'TOO_MANY_ATTEMPTS_TRY_LATER'
+            ? 'Trop de tentatives. Réessayez plus tard.'
+            : 'Email ou mot de passe incorrect.';
+          return json({ ok: false, error: msg }, 401);
+        }
+
+        // Le jeton reçu ici sert uniquement à lire uid/email_verified — jamais
+        // transmis au client. Décodé sans re-vérifier la signature : reçu en
+        // direct depuis Google sur un canal HTTPS de confiance, contrairement
+        // à un jeton apporté par un client (verifyIdToken, lui, vérifie tout).
+        const payload = JSON.parse(new TextDecoder().decode(b64urlDecode(authData.idToken.split('.')[1])));
+        const uid = payload.sub;
+        const emailVerified = payload.email_verified === true;
+
+        const { body, status } = await finishLogin(uid, email, emailVerified, deviceId, deviceLabel, location, ipInfo, env);
+        return json(body, status);
+      }
+
+      // ── POST /login-verify ───────────────────────────────────────────────
+      // Second temps du login : code TOTP ou email-OTP, rattaché à la tentative
+      // en attente par `pendingToken` (KV, 5 min). Ne délivre le jeton qu'ici.
+      if (url.pathname === '/login-verify' && request.method === 'POST') {
+        const { pendingToken, code } = await request.json();
+        if (!pendingToken || !/^\d{6}$/.test(code ?? '')) {
+          return json({ ok: false, error: 'Paramètres invalides' }, 400);
+        }
+        const raw = await env.EARNINGS.get(`pending2fa:${pendingToken}`);
+        if (!raw) return json({ ok: false, error: 'Session expirée, reconnectez-vous.' }, 410);
+        const pending = JSON.parse(raw);
+
+        if (!(await rateLimit(env, `login-verify:${pending.uid}`, LOGIN_VERIFY_RL_MAX, LOGIN_VERIFY_RL_WINDOW))) {
+          await env.EARNINGS.delete(`pending2fa:${pendingToken}`);
+          return json({ ok: false, error: 'Trop de tentatives, reconnectez-vous.' }, 429);
+        }
+
+        let ok = false;
+        if (pending.method === 'totp') {
+          // Phase TOTP pas encore livrée : personne n'a de totpSecrets, donc
+          // finishLogin ne produit jamais 'totp' aujourd'hui — branche morte
+          // en attendant, plutôt qu'une référence à une fonction absente.
+          return json({ ok: false, error: 'TOTP non disponible.' }, 501);
+        } else {
+          const r = await checkOtpChallenge(pending.uid, code, '2fa', env);
+          ok = r.valid;
+          if (!ok) {
+            const msg = r.error === 'wrong'
+              ? `Code incorrect. ${r.left} tentative(s) restante(s).`
+              : 'Code expiré. Reconnectez-vous.';
+            return json({ ok: false, error: msg });
+          }
+        }
+
+        await env.EARNINGS.delete(`pending2fa:${pendingToken}`);
+        await trustDevice(pending.uid, pending.deviceId, pending.deviceLabel, pending.ipInfo, env);
+        const customToken = await makeCustomToken(JSON.parse(env.FIREBASE_SERVICE_ACCOUNT), pending.uid);
+        return json({ ok: true, customToken });
+      }
+
       // ── POST /request-otp ───────────────────────────────────────────────
       // Génère le code, le garde côté serveur, l'envoie par email. Le client ne
       // le voit jamais. Remplace l'ancien /send-otp, où le code était fabriqué
@@ -2052,62 +2327,8 @@ export default {
           return json({ ok: false, error: 'Adresse email non vérifiée' }, 403);
         }
 
-        const path = `otpChallenges/${user.localId}`;
-        const now = Date.now();
-
-        // Anti-abus : délai entre deux envois, et plafond par fenêtre glissante.
-        // Le compteur d'envois est incrémenté atomiquement AVANT l'envoi : sinon
-        // des demandes parallèles lisent toutes la même valeur et le plafond ne
-        // borne plus le nombre d'emails expédiés.
-        let windowStart = now;
-        try {
-          const prev = await firestoreGet(path, env);
-          const lastSentAt = fsNum(prev, 'lastSentAt') || 0;
-          const prevWindow = fsNum(prev, 'windowStart') || 0;
-          if (now - lastSentAt < OTP_RESEND_MS) {
-            return json({ ok: false, error: 'Patientez avant de demander un nouveau code' }, 429);
-          }
-          if (now - prevWindow < OTP_SEND_WINDOW) windowStart = prevWindow;
-        } catch (_) { /* aucune demande précédente */ }
-
-        // Fenêtre expirée : on repart de zéro, sinon on consomme un envoi.
-        let sends;
-        if (windowStart === now) {
-          sends = 1;
-          await firestoreUpdate(path, { sends: { integerValue: '1' } }, ['sends'], env);
-        } else {
-          sends = await firestoreIncrement(path, 'sends', env);
-          if (sends > OTP_MAX_SENDS) {
-            return json({ ok: false, error: 'Trop de codes demandés, réessayez plus tard' }, 429);
-          }
-        }
-
-        const code = otpGenerate();
-        const salt = crypto.randomUUID();
-        await firestoreSet(path, {
-          type:        { stringValue: type },
-          codeHash:    { stringValue: await sha256(salt + code) },
-          salt:        { stringValue: salt },
-          expiresAt:   { integerValue: String(now + OTP_TTL_MS) },
-          attempts:    { integerValue: '0' },
-          sends:       { integerValue: String(sends) },
-          windowStart: { integerValue: String(windowStart) },
-          lastSentAt:  { integerValue: String(now) },
-          deviceId:    { stringValue: String(deviceId || '') },
-          deviceLabel: { stringValue: String(deviceLabel || '').slice(0, 80) },
-          ip:          { stringValue: String(ipInfo?.ip || '') },
-          city:        { stringValue: String(ipInfo?.city || '') },
-          region:      { stringValue: String(ipInfo?.region || '') },
-          country:     { stringValue: String(ipInfo?.country || '') },
-          countryCode: { stringValue: String(ipInfo?.countryCode || '') },
-        }, env);
-
-        const [subject, html] = type === 'delete'
-          ? ['Confirmation suppression de compte — Capital Board', emailDelete(code)]
-          : ['Code de vérification — nouvel appareil Capital Board',
-             email2fa(code, deviceLabel, location)];
-        await sendEmail(user.email, subject, html, env);
-        return json({ ok: true, expiresAt: now + OTP_TTL_MS });
+        const { status, ...r } = await sendOtpChallenge(user.localId, user.email, type, deviceId, deviceLabel, location, ipInfo, env);
+        return json(r, status || 200);
       }
 
       // ── GET /username-available?u=nom ───────────────────────────────────
@@ -2363,42 +2584,12 @@ async function audit(action, details, uid, request, env) {
           return json({ valid: false, error: 'Paramètres invalides' }, 400);
         }
         const user = await verifyIdToken(idToken, env);
-        const path = `otpChallenges/${user.localId}`;
-
-        let doc;
-        try { doc = await firestoreGet(path, env); }
-        catch (_) { return json({ valid: false, error: 'expired' }); }
-
-        const now = Date.now();
-        if (fsStr(doc, 'type') !== type)        return json({ valid: false, error: 'expired' });
-        if ((fsNum(doc, 'expiresAt') || 0) < now) {
-          await firestoreDelete(path, env);
-          return json({ valid: false, error: 'expired' });
-        }
-        // L'essai est decompte AVANT la comparaison, et de facon atomique : sinon
-        // des requetes parallele lisent toutes le meme compteur et la limite de
-        // 5 essais ne borne plus rien face a une force brute concurrente.
-        const attempts = await firestoreIncrement(path, 'attempts', env);
-        if (attempts > OTP_MAX_TRIES) {
-          await firestoreDelete(path, env);
-          return json({ valid: false, error: 'locked' });
-        }
-
-        const computed = await sha256(fsStr(doc, 'salt') + code);
-        if (!otpEqual(computed, fsStr(doc, 'codeHash') || '')) {
-          return json({ valid: false, error: 'wrong', left: Math.max(0, OTP_MAX_TRIES - attempts) });
-        }
-
-        // Code correct : usage unique, on efface avant toute suite.
-        await firestoreDelete(path, env);
+        const r = await checkOtpChallenge(user.localId, code, type, env);
+        if (!r.valid) return json(r);
 
         if (type === '2fa') {
-          const deviceId = fsStr(doc, 'deviceId');
-          if (!deviceId) return json({ valid: false, error: 'device manquant' }, 400);
-          await trustDevice(user.localId, deviceId, fsStr(doc, 'deviceLabel'), {
-            ip: fsStr(doc, 'ip'), city: fsStr(doc, 'city'), region: fsStr(doc, 'region'),
-            country: fsStr(doc, 'country'), countryCode: fsStr(doc, 'countryCode'),
-          }, env);
+          if (!r.deviceId) return json({ valid: false, error: 'device manquant' }, 400);
+          await trustDevice(user.localId, r.deviceId, r.deviceLabel, r.ipInfo, env);
         }
         return json({ valid: true });
       }
