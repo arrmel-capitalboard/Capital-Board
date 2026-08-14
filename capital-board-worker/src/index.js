@@ -2220,7 +2220,7 @@ export default {
       // dès le mot de passe bon, avant toute vérification — un jeton volé
       // (XSS, extension malveillante) contournait le 2FA entier.
       if (url.pathname === '/login' && request.method === 'POST') {
-        const { email, password, deviceId, deviceLabel, location, ipInfo, turnstileToken } = await request.json();
+        const { email, password, deviceId, deviceLabel, location, ipInfo, turnstileToken, appCheckToken } = await request.json();
         if (!email || !password || !deviceId) {
           return json({ ok: false, error: 'Paramètres invalides' }, 400);
         }
@@ -2233,21 +2233,35 @@ export default {
         const humanVerified = await verifyTurnstile(turnstileToken, env);
         if (!humanVerified) return json({ ok: false, error: 'Vérification de sécurité échouée.' }, 403);
 
+        // App Check est appliqué par Firebase sur l'API d'authentification :
+        // sans ce jeton, signInWithPassword est rejeté même avec le bon mot de
+        // passe. Le SDK client l'attache tout seul d'habitude ; ici c'est le
+        // Worker qui appelle l'API à la place du client, donc à transmettre.
+        const authHeaders = { 'Content-Type': 'application/json' };
+        if (appCheckToken) authHeaders['X-Firebase-AppCheck'] = appCheckToken;
+
         const authRes = await fetch(
           `https://identitytoolkit.googleapis.com/v1/accounts:signInWithPassword?key=${env.FIREBASE_WEB_API_KEY}`,
           {
             method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
+            headers: authHeaders,
             body: JSON.stringify({ email, password, returnSecureToken: true }),
           }
         );
         const authData = await authRes.json();
         if (!authRes.ok || !authData.idToken) {
-          // Anti-énumération : même message que compte absent ou mot de passe
-          // faux — sauf le vrai cas de throttling Google.
-          const msg = authData.error?.message === 'TOO_MANY_ATTEMPTS_TRY_LATER'
-            ? 'Trop de tentatives. Réessayez plus tard.'
-            : 'Email ou mot de passe incorrect.';
+          const code = authData.error?.message || '';
+          // Anti-énumération seulement pour les vrais cas identifiant/mot de
+          // passe — une erreur d'infra (App Check, clé, quota) ne doit pas se
+          // déguiser en « mot de passe incorrect », ça masque un vrai bug.
+          let msg;
+          if (code === 'TOO_MANY_ATTEMPTS_TRY_LATER') msg = 'Trop de tentatives. Réessayez plus tard.';
+          else if (code === 'EMAIL_NOT_FOUND' || code === 'INVALID_PASSWORD' || code === 'INVALID_LOGIN_CREDENTIALS') {
+            msg = 'Email ou mot de passe incorrect.';
+          } else {
+            console.error('login: signInWithPassword ' + authRes.status + ': ' + code);
+            msg = 'Service de connexion temporairement indisponible. Réessayez.';
+          }
           return json({ ok: false, error: msg }, 401);
         }
 

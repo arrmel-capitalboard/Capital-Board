@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816n';
+const APP_VERSION = '20260816o';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2213,6 +2213,16 @@ window.doLogin = async function() {
   setLoading('btn-login-submit', true);
   try {
     const ipInfo = await _fetchIpInfo();
+    // App Check est appliqué par Firebase sur l'API d'authentification : un
+    // appel REST signInWithPassword sans jeton App Check est rejeté (401).
+    // Le SDK client l'attache tout seul d'habitude ; ici c'est le Worker qui
+    // appelle l'API à notre place, il faut donc le lui transmettre.
+    let appCheckToken = null;
+    try {
+      if (window._appCheckMod && window._appCheck) {
+        appCheckToken = (await window._appCheckMod.getToken(window._appCheck, false)).token;
+      }
+    } catch (_) { /* best-effort : le Worker renverra une erreur claire si absent */ }
     const res = await fetch(`${WORKER_URL}/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
@@ -2223,6 +2233,7 @@ window.doLogin = async function() {
         location: _fmtLocation(ipInfo) || 'Lieu inconnu',
         ipInfo: ipInfo || null,
         turnstileToken: _getTurnstileToken('turnstile-login'),
+        appCheckToken,
       }),
     });
     const data = await res.json().catch(() => ({}));
