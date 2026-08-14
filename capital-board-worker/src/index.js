@@ -929,7 +929,7 @@ async function finishLogin(uid, email, emailVerified, deviceId, deviceLabel, loc
     await env.EARNINGS.put(`pending2fa:${pendingToken}`,
       JSON.stringify({ uid, deviceId, deviceLabel, ipInfo, method: 'totp' }),
       { expirationTtl: 300 });
-    return { body: { ok: false, need2fa: 'totp', pendingToken }, status: 200 };
+    return { body: { ok: false, need2fa: 'totp', pendingToken, email }, status: 200 };
   }
 
   if (!emailVerified || !email) {
@@ -948,7 +948,7 @@ async function finishLogin(uid, email, emailVerified, deviceId, deviceLabel, loc
   await env.EARNINGS.put(`pending2fa:${pendingToken}`,
     JSON.stringify({ uid, deviceId, deviceLabel, ipInfo, method: 'email' }),
     { expirationTtl: 300 });
-  return { body: { ok: false, need2fa: 'email', pendingToken }, status: 200 };
+  return { body: { ok: false, need2fa: 'email', pendingToken, email }, status: 200 };
 }
 
 // Liste tous les documents d'une collection (paginé).
@@ -2378,6 +2378,81 @@ export default {
         const payload = JSON.parse(new TextDecoder().decode(b64urlDecode(authData.idToken.split('.')[1])));
         const uid = payload.sub;
         const emailVerified = payload.email_verified === true;
+
+        const { body, status } = await finishLogin(uid, email, emailVerified, deviceId, deviceLabel, location, ipInfo, env);
+        return json(body, status);
+      }
+
+      // ── POST /login-google ──────────────────────────────────────────────
+      // Même principe que /login, mécanisme différent : le client obtient un
+      // jeton d'accès Google via Google Identity Services (initTokenClient,
+      // popup déclenché par clic — pas le SDK Firebase), et c'est le Worker
+      // qui l'échange contre l'identité — même pipeline ensuite (device
+      // trust, 2FA, mint) que le mot de passe.
+      if (url.pathname === '/login-google' && request.method === 'POST') {
+        const { googleAccessToken, deviceId, deviceLabel, location, ipInfo, appCheckToken } = await request.json();
+        if (!googleAccessToken || !deviceId) {
+          return json({ ok: false, error: 'Paramètres invalides' }, 400);
+        }
+
+        if (!(await rateLimit(env, `login-google:${deviceId}`, LOGIN_RL_MAX, LOGIN_RL_WINDOW))) {
+          return json({ ok: false, error: 'Trop de tentatives, réessayez plus tard.' }, 429);
+        }
+
+        // Même exigence App Check que /login (voir ce commentaire là-bas) —
+        // découverte le jour du déploiement précédent, appliquée ici dès le début.
+        const authHeaders = { 'Content-Type': 'application/json' };
+        if (appCheckToken) authHeaders['X-Firebase-AppCheck'] = appCheckToken;
+
+        const authRes = await fetch(
+          `https://identitytoolkit.googleapis.com/v1/accounts:signInWithIdp?key=${env.FIREBASE_WEB_API_KEY}`,
+          {
+            method: 'POST',
+            headers: authHeaders,
+            body: JSON.stringify({
+              postBody: `access_token=${encodeURIComponent(googleAccessToken)}&providerId=google.com`,
+              requestUri: 'https://capitalboard.fr',
+              returnIdpCredential: true,
+              returnSecureToken: true,
+            }),
+          }
+        );
+        const authData = await authRes.json();
+
+        // Email déjà lié à un compte mot de passe : Firebase ne fusionne pas
+        // silencieusement, il répond needConfirmation (200, pas une erreur).
+        if (authData.needConfirmation) {
+          return json({ ok: false, error: 'Un compte existe déjà avec cet email. Connectez-vous avec votre mot de passe.' }, 409);
+        }
+        if (!authRes.ok || !authData.idToken) {
+          console.error('login-google: signInWithIdp ' + authRes.status + ': ' + (authData.error?.message || ''));
+          return json({ ok: false, error: 'Connexion Google impossible. Réessayez.' }, 401);
+        }
+
+        const payload = JSON.parse(new TextDecoder().decode(b64urlDecode(authData.idToken.split('.')[1])));
+        const uid = payload.sub;
+        const email = payload.email;
+        const emailVerified = payload.email_verified === true;
+
+        if (authData.isNewUser) {
+          // accounts:signInWithIdp crée le compte en effet de bord : si les
+          // inscriptions sont fermées, on le supprime — même politique que le
+          // gate client _isSignupOpen() pour l'email.
+          let signupOpen = true;
+          try {
+            const cfg = await firestoreGet('config/app', env);
+            signupOpen = cfg.fields?.signupOpen?.booleanValue !== false;
+          } catch (_) {}
+          if (!signupOpen) {
+            try { await deleteAuthUser(uid, env); } catch (_) {}
+            return json({ ok: false, error: 'Les inscriptions sont temporairement fermées.' }, 403);
+          }
+          // Premier appareil : auto-trust, comme /trust-device pour l'email —
+          // un compte qui vient de naître n'a pas de 2FA à passer.
+          await trustDevice(uid, deviceId, deviceLabel, ipInfo, env);
+          const customToken = await makeCustomToken(JSON.parse(env.FIREBASE_SERVICE_ACCOUNT), uid);
+          return json({ ok: true, customToken });
+        }
 
         const { body, status } = await finishLogin(uid, email, emailVerified, deviceId, deviceLabel, location, ipInfo, env);
         return json(body, status);

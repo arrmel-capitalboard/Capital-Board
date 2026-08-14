@@ -56,7 +56,7 @@ const IC = {
 // ─── FIREBASE (chargement dynamique, compatible sans bundler) ─────
 let fbApp, fbAuth, db,
     createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithCustomToken, sendEmailVerification,
-    signOut, onAuthStateChanged, GoogleAuthProvider, signInWithPopup,
+    signOut, onAuthStateChanged, GoogleAuthProvider,
     signInWithRedirect, getRedirectResult,
     updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser,
     getFirestoreDoc, getDocFromServer, setFirestoreDoc, firestoreDoc, firestoreCollection, deleteFirestoreDoc, getDocs,
@@ -72,10 +72,14 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816p';
+const APP_VERSION = '20260816q';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
+// Web Client ID Google (Firebase Console -> Authentication -> Sign-in method
+// -> Google -> Web SDK configuration). Public, pas un secret — visible dans
+// le trafic réseau de tout navigateur qui fait le login Google.
+const GOOGLE_CLIENT_ID = '719745213666-t6mh98ubdb8lin37o7ajq0aim4igs0ds.apps.googleusercontent.com';
 
 // Liaison Discord : capture le token avant l'authentification (il survit au login).
 try {
@@ -158,7 +162,6 @@ _splashWatchdog = setTimeout(() => {
   signOut                        = auth.signOut;
   onAuthStateChanged             = auth.onAuthStateChanged;
   GoogleAuthProvider             = auth.GoogleAuthProvider;
-  signInWithPopup                = auth.signInWithPopup;
   signInWithRedirect             = auth.signInWithRedirect;
   getRedirectResult              = auth.getRedirectResult;
   updateProfile                  = auth.updateProfile;
@@ -2559,31 +2562,92 @@ window.doLoginGoogle = async function() {
     }
   }
 
-  try {
-    const provider = new GoogleAuthProvider();
-    provider.setCustomParameters({ prompt: 'select_account' });
-
-    // iOS / PWA standalone : les popups échouent → navigation par redirect.
-    if (_shouldUseRedirectAuth()) {
-      await signInWithRedirect(fbAuth, provider);
-      return; // la page navigue, le résultat est récupéré au retour (getRedirectResult)
-    }
-
-    const result = await signInWithPopup(fbAuth, provider);
-    // Nouveau compte Google → auto-trust du 1er appareil (skip 2FA), comme au signup email.
+  // iOS / PWA standalone : les popups échouent → navigation par redirect.
+  // Reste sur l'ancien flux Firebase (signInWithPopup/Redirect direct) : GIS
+  // n'a pas d'équivalent fiable à une vraie navigation complète pour ce cas,
+  // et c'est justement le seul endroit où les popups posent problème. Gate
+  // 2FA/device encore côté client ici (onAuthStateChanged, gap connu et documenté).
+  if (_shouldUseRedirectAuth()) {
     try {
-      const isNew = result && result._tokenResponse && result._tokenResponse.isNewUser;
-      if (isNew) localStorage.setItem('signup_auto_trust', '1');
-    } catch(_) {}
-    // onAuthStateChanged prend le relais (gate email/2FA/PIN).
-  } catch(e) {
-    const code = e && e.code;
-    if (code === 'auth/popup-closed-by-user' || code === 'auth/cancelled-popup-request') return;
-    if (code === 'auth/account-exists-with-different-credential') {
-      showErr('Un compte existe déjà avec cet email. Connectez-vous avec votre mot de passe.');
+      const provider = new GoogleAuthProvider();
+      provider.setCustomParameters({ prompt: 'select_account' });
+      await signInWithRedirect(fbAuth, provider);
+      // la page navigue, le résultat est récupéré au retour (getRedirectResult)
+    } catch(e) {
+      showErr('Connexion Google impossible : ' + (e && (e.message || e.code) || 'erreur inconnue'));
+    }
+    return;
+  }
+
+  // Contexte popup normal : Google Identity Services (initTokenClient), pas
+  // le SDK Firebase — le jeton part au Worker (POST /login-google), qui
+  // vérifie l'identité et gère device-trust/2FA AVANT d'émettre le moindre
+  // jeton Firebase, même principe que /login pour le mot de passe.
+  try {
+    if (!window.google || !window.google.accounts || !window.google.accounts.oauth2) {
+      showErr('Connexion Google indisponible (script bloqué par le réseau ou une extension ?).');
       return;
     }
-    showErr('Connexion Google impossible : ' + (e && (e.message || e.code) || 'erreur inconnue'));
+    const googleAccessToken = await new Promise((resolve, reject) => {
+      let settled = false;
+      const client = google.accounts.oauth2.initTokenClient({
+        client_id: GOOGLE_CLIENT_ID,
+        scope: 'openid email profile',
+        callback: (resp) => {
+          settled = true;
+          if (resp && resp.access_token) resolve(resp.access_token);
+          else reject(new Error(resp && resp.error || 'connexion Google refusée'));
+        },
+        error_callback: (err) => {
+          settled = true;
+          // Fermeture volontaire de la popup : pas une erreur à afficher, même
+          // logique que auth/popup-closed-by-user avec l'ancien flux Firebase.
+          if (err && (err.type === 'popup_closed' || err.type === 'popup_failed_to_open')) { resolve(null); return; }
+          reject(new Error(err && err.type || 'connexion Google refusée'));
+        },
+      });
+      client.requestAccessToken();
+      // Filet : si aucun callback ne répond (script chargé mais cassé), ne pas
+      // bloquer le bouton indéfiniment.
+      setTimeout(() => { if (!settled) reject(new Error('délai dépassé')); }, 60000);
+    });
+    if (!googleAccessToken) return; // popup fermée volontairement
+
+    const ipInfo = await _fetchIpInfo();
+    let appCheckToken = null;
+    try {
+      if (window._appCheckMod && window._appCheck) {
+        appCheckToken = (await window._appCheckMod.getToken(window._appCheck, false)).token;
+      }
+    } catch (_) {}
+
+    const res = await fetch(`${WORKER_URL}/login-google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        googleAccessToken,
+        deviceId: _getDeviceId(),
+        deviceLabel: _getDeviceLabel(),
+        location: _fmtLocation(ipInfo) || 'Lieu inconnu',
+        ipInfo: ipInfo || null,
+        appCheckToken,
+      }),
+    });
+    const data = await res.json().catch(() => ({}));
+
+    if (data.ok && data.customToken) {
+      await signInWithCustomToken(fbAuth, data.customToken);
+      // onAuthStateChanged prend le relai.
+      return;
+    }
+    if (data.need2fa === 'email' || data.need2fa === 'totp') {
+      _loginPending = { pendingToken: data.pendingToken };
+      _showLoginOtpVerify(data.email || '', data.need2fa);
+      return;
+    }
+    showErr(data.error || 'Connexion Google impossible.');
+  } catch(e) {
+    showErr('Connexion Google impossible : ' + (e && e.message || 'erreur inconnue'));
   }
 };
 

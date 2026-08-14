@@ -17,8 +17,8 @@
                      que vers les hotes ci-dessous, pas vers un domaine inconnu -->
 <meta http-equiv="Content-Security-Policy"
       content="object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self';
-      script-src 'self' 'unsafe-inline' https://www.gstatic.com https://www.google.com https://challenges.cloudflare.com;
-      connect-src 'self' https://api.capitalboard.fr https://api.ipify.org https://ipapi.co https://api.openfigi.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://content-firebaseappcheck.googleapis.com https://www.google.com https://challenges.cloudflare.com">
+      script-src 'self' 'unsafe-inline' https://www.gstatic.com https://www.google.com https://accounts.google.com https://challenges.cloudflare.com;
+      connect-src 'self' https://api.capitalboard.fr https://api.ipify.org https://ipapi.co https://api.openfigi.com https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebaseinstallations.googleapis.com https://fcmregistrations.googleapis.com https://content-firebaseappcheck.googleapis.com https://www.google.com https://accounts.google.com https://challenges.cloudflare.com">
 <script>
   // Anti-cadrage. `frame-ancestors` et `X-Frame-Options` demandent un en-tete
   // HTTP, impossible sur GitHub Pages : on sort du cadre par le script. Evite
@@ -52,8 +52,9 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260816p">
+<link rel="stylesheet" href="css/style.css?v=20260816q">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
+<script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
 <body>
 
@@ -3548,11 +3549,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260816p"></script>
+<script src="js/app.js?v=20260816q"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260816p"></script>
+<script src="js/onboarding.js?v=20260816q"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260816p"></script>
+<script src="js/import.js?v=20260816q"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
