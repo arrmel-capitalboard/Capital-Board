@@ -19,6 +19,38 @@ Le module est **en bêta** : visible par l'admin seul, les membres voient encore
 la page « Bientôt ». Pour l'ouvrir : Admin → éditeur de menu → *Livrets &
 épargne* → cran **Ouvert**.
 
+Pendant la bêta, **seuls le Livret A et le Livret Jeune sont proposés**
+(`LIV_BETA_TYPES`) : ce sont les deux sur lesquels le calcul a été vérifié. Un
+livret déjà enregistré d'un autre type reste modifiable, sinon il deviendrait
+intouchable. La restriction tombe d'elle-même au cran *Ouvert*.
+
+La **visite guidée part toute seule au premier passage** sur la page
+(`CBOnboarding.tourLivretsAuto`, drapeau `cb_tour_livrets_done` en
+localStorage). Le drapeau n'est posé qu'au lancement réel : le module est aussi
+rendu page masquée, et la visite aurait été consommée sans être vue.
+
+### Rapporter une erreur
+
+Un bouton dans l'en-tête ouvre une modale — texte obligatoire, capture
+facultative — qui poste sur `POST /signaler` du Worker. Celui-ci relaie vers le
+**webhook du salon Discord `1537760259203014766`**, en embed, avec l'image en
+pièce jointe. Rien n'est stocké : ni le texte, ni l'image.
+
+> ⚠️ **Le secret manque encore.** Sans `DISCORD_BUG_WEBHOOK`, `/signaler`
+> répond 503. À poser une fois, sur le compte Cloudflare
+> **admin.capitalboard@gmail.com** :
+>
+> ```bash
+> cd capital-board-worker
+> npx wrangler login          # admin.capitalboard@gmail.com, PAS armelpltr14
+> npx wrangler secret put DISCORD_BUG_WEBHOOK
+> npx wrangler deploy
+> ```
+>
+> Le webhook se crée dans Discord : paramètres du salon → Intégrations →
+> Webhooks. C'est lui, et pas le jeton du bot, parce que sa portée s'arrête à
+> un salon et qu'il vit sur Cloudflare plutôt que sur la VM.
+
 ### Le calcul
 
 Les intérêts d'un livret réglementé se comptent **par quinzaines**, pas au jour
@@ -236,6 +268,15 @@ Trois conséquences, et aucune n'est cosmétique :
   22 950 € et cesse au-delà. Elle n'est plus un booléen par type mais une
   proportion, `_livPartImposee`.
 
+**Tout le monde n'a pas ce second étage.** Ce n'est pas la loi, c'est un produit
+maison : le CIC et le Crédit Mutuel logent le dépassement dans un « LIVRET SUP »
+adossé au Livret A, d'autres banques refusent simplement le versement une fois
+le plafond atteint. Ce qui est universel, en revanche, c'est le **dépassement
+par capitalisation** : les intérêts crédités le 31 décembre passent au-dessus du
+plafond chez tout le monde, sans qu'aucun compartiment n'existe. D'où deux
+comportements distincts — sans `surTaux`, le surplus reste rémunéré au taux du
+livret.
+
 Le second étage est **propre à chaque banque** — son taux, son plafond, son
 existence même. Il n'a donc pas sa place dans `LIV_BAREME`, qui porte la loi :
 c'est un couple `surTaux` / `surPlafond` saisi sur le livret, sous « Au-delà du
@@ -296,6 +337,8 @@ Points à reprendre :
 | | |
 |---|---|
 | Calcul et affichage | `js/app.js`, section « LIVRETS & ÉPARGNE » |
+| Signalement d'erreur | `livBug*` dans `js/app.js`, `POST /signaler` dans le Worker |
+| Types ouverts en bêta | `LIV_BETA_TYPES` + `_livTypesDispo` dans `js/app.js` |
 | Barème | `LIV_BAREME` dans `js/app.js`, surchargeable par `config/app.bareme` |
 | Import (socle et trois voies) | `js/import.js` |
 | Lecture des images | `POST /lire-releve` dans `capital-board-worker/src/index.js` |
