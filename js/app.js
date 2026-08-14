@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816b';
+const APP_VERSION = '20260816c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18247,6 +18247,14 @@ window.renderDepenses = renderDepenses;
 //  donc dans un barème unique, surchargeable par l'admin sans déploiement,
 //  et le membre ne saisit que son solde.
 //
+//  Le plafond n'est pas un mur, c'est une frontière de taux. Un solde le
+//  dépasse légitimement — par la seule capitalisation du 31 décembre, et
+//  plus encore quand la banque a ouvert un compartiment de dépassement
+//  au-delà : un Livret A au CIC porte 1,70 % exonéré jusqu'à 22 950 €, puis
+//  0,30 % imposé jusqu'à 77 050 €. Ce second étage est propre à chaque
+//  établissement, il n'a donc pas sa place dans le barème, qui porte la loi :
+//  il se saisit sur le livret, en `surTaux` et `surPlafond`.
+//
 //  Les intérêts affichés sont une projection sur douze mois au taux du
 //  moment, pas un acquis. Le calcul réel suit la règle des quinzaines — un
 //  versement ne produit qu'à partir du 1er ou du 16 suivant — et demanderait
@@ -18263,7 +18271,12 @@ const LIV_BAREME = {
   types: {
     livretA:  { label: 'Livret A',        court: 'A',    plafond: 22950, taux: 1.7,  unique: true,  fisc: false, color: '#00e09e' },
     ldds:     { label: 'LDDS',            court: 'LDDS', plafond: 12000, taux: 1.7,  unique: true,  fisc: false, color: '#4ade80' },
-    lep:      { label: 'LEP',             court: 'LEP',  plafond: 10000, taux: 2.5,  unique: true,  fisc: false, color: '#22d3ee' },
+    // Le LEP est soumis à une condition de revenu, vérifiée chaque année par
+    // la banque. Elle ne change rien au calcul, mais elle explique pourquoi ce
+    // livret n'est pas ouvert à tout le monde : autant le dire dans le
+    // formulaire plutôt que de laisser croire à un oubli.
+    lep:      { label: 'LEP',             court: 'LEP',  plafond: 10000, taux: 2.5,  unique: true,  fisc: false, color: '#22d3ee',
+                condition: 'Sous condition de revenu : 23 028 € de revenu fiscal de référence pour une personne seule, 35 328 € pour un couple.' },
     // Le taux du Livret Jeune est fixé librement par chaque banque, avec pour
     // seul plancher légal celui du Livret A. 3,75 % est une valeur courante,
     // pas une règle : `min` sert à refuser une saisie sous le plancher.
@@ -18393,12 +18406,81 @@ function _livTaux(l) {
   return Number.isFinite(t) ? t : 0;
 }
 function _livPlafond(l) { return _livType_(l && l.type).plafond; }
+
+/**
+ * Compartiment de dépassement, quand la banque en a ouvert un.
+ *
+ * Au-delà du plafond réglementé, l'argent ne disparaît pas : certaines banques
+ * le logent dans un second compartiment, à leur propre taux et toujours
+ * imposé. La note de la fiche du CIC le dit dans ces termes — « livret
+ * réglementé, non fiscalisé dans la limite du plafond réglementaire ; au-delà,
+ * intérêts soumis à fiscalité ». La fiscalité n'est donc pas un attribut du
+ * livret, mais de la tranche.
+ *
+ * `surPlafond` absent : la tranche existe sans qu'on sache jusqu'où elle va.
+ * On la traite comme illimitée plutôt que comme inexistante — un taux connu
+ * vaut mieux qu'une borne inventée.
+ */
+function _livSur(l) {
+  const t = _livType_(l && l.type);
+  // Un livret sans plafond réglementé n'a rien à dépasser : son taux unique
+  // couvre déjà tout le capital.
+  if (t.plafond === null) return null;
+  const taux = Number(l && l.surTaux);
+  if (!Number.isFinite(taux) || taux <= 0) return null;
+  const p = Number(l && l.surPlafond);
+  return { taux, plafond: (Number.isFinite(p) && p > 0) ? p : Infinity };
+}
+
+// Plafond du produit entier : le réglementé, plus le compartiment de
+// dépassement quand il y en a un. null = aucune borne connue.
+function _livPlafondTotal(l) {
+  const p = _livPlafond(l);
+  if (p === null) return null;
+  const s = _livSur(l);
+  if (!s) return p;
+  return s.plafond === Infinity ? null : p + s.plafond;
+}
+
+// Répartition du capital entre les deux tranches. Sans compartiment de
+// dépassement, tout est réglementé — y compris ce qui excède le plafond, que
+// la banque continue de rémunérer au taux du livret après la capitalisation
+// du 31 décembre.
+function _livTranches(l, capital) {
+  const sur = _livSur(l);
+  if (!sur) return { bas: capital, haut: 0, sur: null };
+  const seuil = _livPlafond(l);
+  return { bas: Math.min(capital, seuil), haut: Math.max(0, capital - seuil), sur };
+}
+
+// Net des deux tranches : la première suit la fiscalité de son type, la
+// seconde est imposée dans tous les cas.
+function _livNet(l, d) {
+  const regl = _livType_(l && l.type).fisc ? d.regl * (1 - LIV_PFU) : d.regl;
+  return regl + d.sur * (1 - LIV_PFU);
+}
+
+/**
+ * Part imposée des intérêts, entre 0 et 1.
+ *
+ * Un chiffre venu de la banque est un montant brut global : rien ne dit quelle
+ * fraction vient de quel compartiment. On lui applique donc la répartition que
+ * le calcul, lui, sait faire. Sans compartiment de dépassement, cette part vaut
+ * 0 ou 1 et l'on retombe exactement sur le comportement d'avant.
+ */
+function _livPartImposee(l, d) {
+  const fisc = _livType_(l && l.type).fisc;
+  const tot = d.regl + d.sur;
+  if (!(tot > 0)) return fisc ? 1 : 0;
+  return ((fisc ? d.regl : 0) + d.sur) / tot;
+}
+
 // Projection sur douze mois au taux du moment. Brut, puis net du PFU quand le
-// livret y est soumis.
+// livret y est soumis — tranche par tranche.
 function _livInterets(l) {
-  const brut = _livSolde(l) * _livTaux(l) / 100;
-  const net  = _livType_(l && l.type).fisc ? brut * (1 - LIV_PFU) : brut;
-  return { brut, net };
+  const { bas, haut, sur } = _livTranches(l, _livSolde(l));
+  const d = { regl: bas * _livTaux(l) / 100, sur: sur ? haut * sur.taux / 100 : 0 };
+  return { brut: d.regl + d.sur, net: _livNet(l, d) };
 }
 
 /**
@@ -18495,10 +18577,17 @@ function _livTauxA(l, q, annee) {
  * `courant` force le taux d'aujourd'hui sur toute la période. C'est ce que fait
  * la banque pour son prévisionnel — sa note dit « selon les caractéristiques
  * actuelles » — alors que l'acquis, lui, suit les taux réellement appliqués.
+ *
+ * Le capital d'une quinzaine se répartit entre les deux tranches : ce qui tient
+ * sous le plafond réglementé à son taux, le surplus au taux du contrat. Rendu
+ * séparément, parce que les deux ne subissent pas la même fiscalité.
+ *
+ * Le surplus qui excéderait `surPlafond` reste rémunéré au taux du contrat, et
+ * n'est pas écrêté : une saisie trop haute donnera un chiffre trop haut, qui se
+ * voit, plutôt que des euros qui ne rapportent rien en silence.
  */
-function _livInteretsQ(l, jusqu, courant) {
+function _livInteretsQ2(l, jusqu, courant) {
   const annee   = new Date().getFullYear();
-  const imposee = _livType_(l && l.type).fisc;
   const mvts    = Array.isArray(l && l.mouvements) ? l.mouvements : [];
   const tCourant = _livTaux(l);
 
@@ -18516,16 +18605,32 @@ function _livInteretsQ(l, jusqu, courant) {
     parts = [{ montant: _livSolde(l), debut: _livDebutQuinzaine(l && l.ouverture, annee) }];
   }
 
-  let brut = 0;
+  let regl = 0, dep = 0;
   for (let q = 0; q < jusqu; q++) {
     let capital = 0;
     parts.forEach(x => { if (x.debut <= q) capital += x.montant; });
     if (capital <= 0) continue;   // un livret ne produit jamais d'intérêts négatifs
     const taux = courant ? tCourant : _livTauxA(l, q, annee);
-    brut += capital * taux / 100 / 24;
+    const tr = _livTranches(l, capital);
+    regl += tr.bas * taux / 100 / 24;
+    // Le taux du compartiment de dépassement est celui du contrat : il ne suit
+    // pas les révisions réglementaires, donc pas d'historique à consulter.
+    if (tr.sur) dep += tr.haut * tr.sur.taux / 100 / 24;
   }
-  const net = imposee ? brut * (1 - LIV_PFU) : brut;
-  return { brut, net, exact };
+  return { regl, sur: dep, exact };
+}
+
+// Vue agrégée du calcul par quinzaines : le brut des deux tranches, le net une
+// fois chacune passée par sa propre fiscalité, et la part imposée de l'ensemble
+// — celle qu'on appliquera à un chiffre venu de la banque.
+function _livInteretsQ(l, jusqu, courant) {
+  const d = _livInteretsQ2(l, jusqu, courant);
+  return {
+    brut: d.regl + d.sur,
+    net:  _livNet(l, d),
+    exact: d.exact,
+    part: _livPartImposee(l, d),
+  };
 }
 
 /**
@@ -18571,11 +18676,14 @@ function _livAcquis(l) {
     //
     // La différence de deux cumuls donne exactement l'intervalle, chaque
     // quinzaine y étant comptée avec son propre taux.
-    const courus = Math.max(0, _livInteretsQ(l, q).brut - _livInteretsQ(l, depuis).brut);
+    const jusquIci = _livInteretsQ(l, q);
+    const courus = Math.max(0, jusquIci.brut - _livInteretsQ(l, depuis).brut);
     const brut = r.acquis + courus;
     // Une banque affiche le brut. Toute la page raisonne en net, sinon un PEL
-    // et un Livret A cesseraient d'être comparables.
-    const net = _livType_(l && l.type).fisc ? brut * (1 - LIV_PFU) : brut;
+    // et un Livret A cesseraient d'être comparables. Sur un livret à deux
+    // tranches, seule une part est imposée : c'est le calcul qui la connaît, le
+    // chiffre de la banque étant global.
+    const net = brut * (1 - LIV_PFU * jusquIci.part);
     return { brut, net, exact: true, releve: true, quinzaines: q };
   }
   return Object.assign(_livInteretsQ(l, q), { quinzaines: q });
@@ -18616,28 +18724,25 @@ function _livQuinzainesDe(iso) {
  * arrondis, sa base de calcul, qu'aucun modèle ne reproduit — et on n'y ajoute
  * que ce qu'elle ne pouvait pas connaître : ce qui s'est passé après.
  *
- * Un retrait compte négativement, d'où le calcul mouvement par mouvement
- * plutôt qu'un appel à _livInteretsQ, dont la garde « un livret ne produit
- * jamais d'intérêts négatifs » vaut pour un capital, pas pour un écart.
+ * Un retrait compte négativement : la contribution se prend donc comme une
+ * DIFFÉRENCE de deux projections complètes, celle qui connaît les mouvements
+ * postérieurs et celle qui les ignore. Les deux portent sur des capitaux réels,
+ * jamais négatifs, et leur écart, lui, a le droit de l'être — ce qu'un calcul
+ * mouvement par mouvement ne savait plus faire depuis que la rémunération
+ * dépend de la tranche où l'euro se trouve.
  */
 function _livProjeteApres(l, apres) {
-  const annee = new Date().getFullYear();
-  const taux  = _livTaux(l) / 100;
-  return (l && Array.isArray(l.mouvements) ? l.mouvements : []).reduce((s, m) => {
-    // Comparaison large : un mouvement daté du JOUR MÊME du relevé compte.
-    //
-    // Le cas est ambigu — la banque l'avait peut-être déjà intégré — mais les
-    // deux erreurs possibles n'ont pas le même poids. Ignorer un versement du
-    // jour laisse un prévisionnel figé, qui ne signale rien et qu'on prend
-    // pour un bug. Le compter deux fois donne un chiffre trop haut, visible
-    // et corrigeable en rafraîchissant le relevé. On préfère l'erreur qui se
-    // voit à celle qui se tait.
-    if (!m || !(m.d >= apres)) return s;
-    const montant = Number(m.m);
-    if (!Number.isFinite(montant) || montant === 0) return s;
-    const debut = _livDebutQuinzaine(m.d, annee, montant < 0);
-    return s + montant * taux * Math.max(0, 24 - debut) / 24;
-  }, 0);
+  const mvts = (l && Array.isArray(l.mouvements)) ? l.mouvements : [];
+  // Comparaison large : un mouvement daté du JOUR MÊME du relevé compte.
+  //
+  // Le cas est ambigu — la banque l'avait peut-être déjà intégré — mais les
+  // deux erreurs possibles n'ont pas le même poids. Ignorer un versement du
+  // jour laisse un prévisionnel figé, qui ne signale rien et qu'on prend pour
+  // un bug. Le compter deux fois donne un chiffre trop haut, visible et
+  // corrigeable en rafraîchissant le relevé. On préfère l'erreur qui se voit à
+  // celle qui se tait.
+  const avant = Object.assign({}, l, { mouvements: mvts.filter(m => m && !(m.d >= apres)) });
+  return _livInteretsQ(l, 24, true).brut - _livInteretsQ(avant, 24, true).brut;
 }
 
 function _livProjete(l) {
@@ -18646,7 +18751,7 @@ function _livProjete(l) {
   // quel, augmenté des mouvements survenus depuis la lecture.
   if (r && r.projete !== null) {
     const brut = r.projete + _livProjeteApres(l, r.le);
-    const net = _livType_(l && l.type).fisc ? brut * (1 - LIV_PFU) : brut;
+    const net = brut * (1 - LIV_PFU * _livInteretsQ(l, 24, true).part);
     return { brut, net, exact: true, releve: true };
   }
   return _livInteretsQ(l, 24, true);
@@ -18672,9 +18777,17 @@ function _livEchu(l) { const j = _livJoursRestants(l); return j !== null && j < 
 // Trois mois : de quoi préparer un transfert sans se presser.
 const LIV_PREAVIS = 90;
 
-// Reste à verser, plafonds réglementés seulement — un livret bancaire n'en a pas.
+/**
+ * Reste à verser. null quand aucune borne n'est connue — un livret bancaire
+ * n'en a pas, un compartiment de dépassement sans plafond saisi non plus.
+ *
+ * La borne est celle du produit entier : une fois le plafond réglementé
+ * atteint, il reste de la place dans le second compartiment, et annoncer zéro
+ * serait faux. Jamais négatif : le solde dépasse légitimement le plafond
+ * réglementé, ce n'est pas une place en moins.
+ */
 function _livReste(l) {
-  const p = _livPlafond(l);
+  const p = _livPlafondTotal(l);
   return p === null ? null : Math.max(0, p - _livSolde(l));
 }
 
@@ -18812,12 +18925,18 @@ function _livRenderListe(livrets, total, nets) {
     const p    = _livPlafond(l);
     const pct  = p ? Math.min(100, (s / p) * 100) : null;
     const plein = p !== null && s >= p;
+    const sur  = _livSur(l);
+    const surplus = plein ? s - p : 0;
     const int  = _livProjete(l);
     const acq  = _livAcquis(l);
     const jours = _livJoursRestants(l);
     const meta = [_livTauxTxt(l) + ' par an'];
     if (l.banque) meta.push(_escapeHtmlChat(l.banque));
-    meta.push(t.fisc ? 'imposé à 30 %' : 'exonéré d\'impôt');
+    // La fiscalité est celle de la tranche, pas celle du livret : au-delà du
+    // plafond réglementé, le surplus est imposé même sur un Livret A.
+    meta.push(t.fisc ? 'imposé à 30 %'
+      : (sur && surplus > 0) ? 'exonéré jusqu’au plafond, imposé au-delà'
+      : 'exonéré d\'impôt');
     if (jours !== null) {
       meta.push(jours < 0
         ? '<span class="liv-fin echu">clos depuis le ' + _escapeHtmlChat(_depDateCourt(l.fin)) + '</span>'
@@ -18838,7 +18957,9 @@ function _livRenderListe(livrets, total, nets) {
         '</div>' +
         (pct === null
           ? '<div class="liv-libre">Sans plafond réglementé</div>'
-          : '<div class="liv-jauge"><div class="liv-jauge-fill' + (plein ? ' plein' : '') +
+          : surplus > 0
+            ? _livJaugeDuo(l, p, surplus, sur, t)
+            : '<div class="liv-jauge"><div class="liv-jauge-fill' + (plein ? ' plein' : '') +
               '" style="width:' + pct.toFixed(1) + '%;background:' + (plein ? 'var(--gold)' : t.color) + '"></div></div>') +
         '<div class="liv-meta">' +
           '<span>' + meta.join('<span class="sep">·</span>') + '</span>' +
@@ -18853,9 +18974,7 @@ function _livRenderListe(livrets, total, nets) {
           '</span>' +
         '</div>' +
         (pct === null ? '' :
-          '<div class="liv-reste">' + (plein
-            ? 'Plafond de ' + fmt(p) + ' atteint'
-            : fmt(p - s) + ' encore possibles sur ' + fmt(p)) + '</div>') +
+          '<div class="liv-reste">' + _escapeHtmlChat(_livResteTxt(l, p, s, plein, surplus, sur)) + '</div>') +
       '</div>' +
       // stopPropagation : sans lui, le clic remonterait à la ligne et
       // ouvrirait la modale de modification par-dessus la confirmation.
@@ -18870,12 +18989,50 @@ function _livRenderListe(livrets, total, nets) {
   }).join('');
 }
 
+/**
+ * Jauge à deux tranches, quand le solde passe le plafond réglementé.
+ *
+ * Une barre unique n'a plus rien à dire dans ce cas : elle reste bloquée à
+ * 100 % et cache ce qui se joue au-dessus. On montre donc les deux étages —
+ * le réglementé plein, puis le surplus sur sa propre échelle, celle du
+ * compartiment de dépassement quand son plafond est connu, celle du plafond
+ * réglementé sinon, faute de mieux.
+ */
+function _livJaugeDuo(l, plafond, surplus, sur, t) {
+  const echelle = (sur && sur.plafond !== Infinity) ? sur.plafond : plafond;
+  const pct = Math.min(100, (surplus / echelle) * 100);
+  const titre = sur
+    ? fmt(surplus) + ' au-delà du plafond réglementé' +
+      (sur.plafond !== Infinity ? ', sur ' + fmt(sur.plafond) + ' possibles' : '') +
+      ', à ' + _livPct(sur.taux) + ' et imposés'
+    : fmt(surplus) + ' au-delà du plafond réglementé, rémunérés au taux du livret';
+  return '<div class="liv-jauge duo" title="' + _attr(titre) + '">' +
+    '<div class="liv-jauge-part">' +
+      '<div class="liv-jauge-fill plein" style="width:100%;background:var(--gold)"></div></div>' +
+    '<div class="liv-jauge-part sur">' +
+      '<div class="liv-jauge-fill" style="width:' + pct.toFixed(1) + '%;background:' +
+      (sur ? t.color : 'var(--gold)') + '"></div></div>' +
+  '</div>';
+}
+
+// Ligne sous la jauge. Au-delà du plafond, elle dit où va le surplus : dans le
+// compartiment de dépassement quand il est déclaré, au taux du livret sinon —
+// ce qui est le cas d'un livret plein le lendemain de la capitalisation.
+function _livResteTxt(l, p, s, plein, surplus, sur) {
+  if (!plein) return fmt(p - s) + ' encore possibles sur ' + fmt(p);
+  if (!surplus) return 'Plafond de ' + fmt(p) + ' atteint';
+  if (!sur) return 'Plafond de ' + fmt(p) + ' atteint · ' + fmt(surplus) + ' au-delà, au taux du livret';
+  const reste = _livReste(l);
+  return 'Plafond réglementé atteint · ' + fmt(surplus) + ' au-delà à ' + _livPct(sur.taux) +
+    ', imposés' + (reste === null ? '' : ' · ' + fmt(reste) + ' encore possibles');
+}
+
 function _livRenderMarge(livrets) {
   const box = document.getElementById('liv-marge');
   if (!box) return;
   const ouverts = livrets
     .filter(l => (_livReste(l) || 0) > 0)
-    .sort((a, b) => _livTaux(b) - _livTaux(a));
+    .sort((a, b) => _livTauxMarge(b) - _livTauxMarge(a));
 
   if (!livrets.length) {
     box.innerHTML = _livEmpty('Rien à calculer pour l\'instant',
@@ -18895,7 +19052,7 @@ function _livRenderMarge(livrets) {
         return '<div class="liv-marge-row">' +
           '<span class="liv-marge-dot" style="background:' + t.color + '"></span>' +
           '<span class="liv-marge-n">' + _escapeHtmlChat(t.label) + '</span>' +
-          '<span class="liv-marge-t">' + _livTauxTxt(l) + '</span>' +
+          '<span class="liv-marge-t">' + _livTauxTxt(l, _livTauxMarge(l)) + '</span>' +
           '<span class="liv-marge-v">' + fmt(_livReste(l)) + '</span>' +
         '</div>';
       }).join('')
@@ -18934,9 +19091,17 @@ window.livChipFailed = function(img) {
   p.classList.remove('liv-chip-logo');
 };
 
-function _livTauxTxt(l) {
-  const t = _livTaux(l);
+function _livTauxTxt(l, taux) {
+  const t = Number.isFinite(taux) ? taux : _livTaux(l);
   return t > 0 ? t.toFixed(2).replace('.', ',').replace(/,00$/, '') + ' %' : 'taux non renseigné';
+}
+
+// Taux auquel s'investira le prochain euro versé. Sur un livret déjà plein
+// dont la banque a ouvert un compartiment de dépassement, c'est celui du
+// contrat, pas celui du barème : c'est là que la place restante se trouve.
+function _livTauxMarge(l) {
+  const sur = _livSur(l);
+  return (sur && _livSolde(l) >= _livPlafond(l)) ? sur.taux : _livTaux(l);
 }
 
 function _livEmpty(titre, sous, cta) {
@@ -18961,6 +19126,8 @@ window.livOpenModal = function(id) {
   _depSet('liv-f-fin', l ? (l.fin || '') : '');
   _depSet('liv-f-ouverture', l ? (l.ouverture || '') : '');
   const rel = (l && l.releve) || {};
+  _depSet('liv-f-sur-taux',    l && l.surTaux    != null ? String(l.surTaux).replace('.', ',')    : '');
+  _depSet('liv-f-sur-plafond', l && l.surPlafond != null ? String(l.surPlafond).replace('.', ',') : '');
   _depSet('liv-f-r-acquis',  rel.acquis  != null ? String(rel.acquis).replace('.', ',')  : '');
   _depSet('liv-f-r-projete', rel.projete != null ? String(rel.projete).replace('.', ',') : '');
   _depSet('liv-f-r-le',      rel.le || '');
@@ -18992,7 +19159,7 @@ window.livOpenModal = function(id) {
   // dérogatoire, des révisions, ou un relevé déjà saisi. Sur un livret neuf il
   // reste fermé, et le formulaire tient en trois blocs.
   _livSetAvance(!!(l && (l.taux || (l.tauxHist && l.tauxHist.length) ||
-                         (l.releve && l.releve.le))));
+                         l.surTaux || (l.releve && l.releve.le))));
   livRecalc();
   document.getElementById('liv-modal').classList.add('open');
   setTimeout(() => { const s = document.getElementById('liv-f-taux'); if (s) s.focus(); }, 60);
@@ -19196,6 +19363,28 @@ window.livImporterReleve = function() {
       // banque : ni le CSV ni le PDF ne la contiennent.
       if (fiche) {
         const nb = (v) => String(v).replace('.', ',');
+        const _t0 = _livType_(_livType);
+        // Une capture peut décrire le livret, son compartiment de dépassement,
+        // ou les deux. L'import rend les blocs dans l'ordre où il les a lus —
+        // c'est le barème qui dit lequel est le réglementé, sans quoi un membre
+        // n'envoyant que la seconde capture verrait tout son Livret A rémunéré
+        // à 0,30 %.
+        let principal = fiche, second = fiche.sur || null;
+        if (_livFicheEstSur(principal, _t0) && !_livFicheEstSur(second, _t0)) {
+          const tmp = principal;
+          principal = second || {};
+          second = tmp;
+        }
+        if (second) {
+          if (second.taux !== undefined && !_depVal('liv-f-sur-taux')) {
+            _depSet('liv-f-sur-taux', nb(second.taux));
+          }
+          if (second.plafond !== undefined && !_depVal('liv-f-sur-plafond')) {
+            _depSet('liv-f-sur-plafond', nb(second.plafond));
+          }
+          _livSetAvance(true);
+        }
+        fiche = principal;
         if (fiche.acquis  !== undefined) _depSet('liv-f-r-acquis',  nb(fiche.acquis));
         if (fiche.projete !== undefined) _depSet('liv-f-r-projete', nb(fiche.projete));
         // La date du relevé n'est pas écrite sur la fiche : c'est celle du jour
@@ -19248,6 +19437,27 @@ window.livImporterReleve = function() {
     },
   });
 };
+
+/**
+ * Cette fiche décrit-elle le compartiment de dépassement plutôt que le livret ?
+ *
+ * Le plafond tranche presque toujours : la loi n'en connaît qu'un par type, et
+ * c'est celui du barème. Un autre chiffre décrit forcément un autre étage — la
+ * fiche du 13/08 affichait 77 050 € là où le Livret A s'arrête à 22 950 €.
+ *
+ * Sans plafond lu, le taux sert de repli, mais seulement de loin : un barème en
+ * retard d'une révision donne un petit écart, alors qu'un compartiment de
+ * dépassement rémunère 0,30 % quand la loi en donne 1,70. Et jamais sur un
+ * livret dont chaque banque fixe le taux — un Livret Jeune à 2,29 % ne dit rien
+ * d'autre que le contrat de sa banque.
+ */
+function _livFicheEstSur(f, t) {
+  if (!f || !t || t.plafond === null) return false;
+  const p = Number(f.plafond);
+  if (Number.isFinite(p) && p > 0) return Math.abs(p - t.plafond) > 1;
+  const tx = Number(f.taux);
+  return !t.min && Number.isFinite(t.taux) && Number.isFinite(tx) && tx > 0 && tx < t.taux / 2;
+}
 
 window.livToggleSens = function(i) {
   if (!_livMvts[i]) return;
@@ -19433,20 +19643,51 @@ window.livRecalc = function() {
   const inp = document.getElementById('liv-f-taux');
   if (inp) inp.placeholder = t.taux === null ? '2,00' : String(t.taux).replace('.', ',');
 
-  _depText('liv-f-help', t.plafond === null
+  _depText('liv-f-help', (t.plafond === null
     ? 'Un livret bancaire n\'a pas de plafond réglementé. Ses intérêts sont soumis au prélèvement forfaitaire de 30 %.'
     : 'Plafond de ' + fmt(t.plafond) + '.' + (t.fisc
         ? ' Intérêts soumis au prélèvement forfaitaire de 30 %.'
-        : ' Intérêts exonérés d\'impôt et de prélèvements sociaux.'));
+        : ' Intérêts exonérés d\'impôt et de prélèvements sociaux dans cette limite.')) +
+    (t.condition ? ' ' + t.condition : ''));
+
+  // Le compartiment de dépassement ne concerne que les livrets à plafond : sur
+  // un livret bancaire, il n'y a rien au-dessus de quoi passer.
+  const surBox = document.getElementById('liv-f-sur');
+  if (surBox) surBox.hidden = t.plafond === null;
+  const brouillon = {
+    type: _livType, taux: perso,
+    ouverture: _depVal('liv-f-ouverture'),
+    mouvements: mvts,
+    releve: _livReleveSaisi(),
+    tauxHist: _livTauxPropres(),
+    surTaux: _depParse(_depVal('liv-f-sur-taux')),
+    surPlafond: _depParse(_depVal('liv-f-sur-plafond')),
+  };
+  const sur = _livSur(brouillon);
+  _depText('liv-f-sur-help', sur
+    ? 'Au-delà de ' + fmt(t.plafond) + ', votre solde est rémunéré à ' + _livPct(sur.taux) +
+      ', et cette part est imposée au prélèvement forfaitaire de 30 %' +
+      (sur.plafond === Infinity ? '.' : ', jusqu’à ' + fmt(sur.plafond) + '.')
+    : 'Certaines banques logent ce qui dépasse le plafond dans un second compartiment, ' +
+      'à leur propre taux et toujours imposé — un Livret A au CIC affiche ainsi 0,30 % ' +
+      'au-delà de ' + fmt(t.plafond) + '. Laissez vide si votre banque n’en a pas ouvert.');
 
   // Le solde n'est plus saisi : on le rend visible ici, puisqu'il n'apparaît
-  // nulle part ailleurs pendant la saisie.
+  // nulle part ailleurs pendant la saisie. Un dépassement n'est plus une
+  // erreur : la capitalisation du 31 décembre le produit toute seule.
   const ec = document.getElementById('liv-f-ecart');
   if (ec) {
+    const total = _livPlafondTotal(brouillon);
     const trop = t.plafond !== null && solde > t.plafond;
     ec.hidden = !trop;
-    if (trop) ec.textContent = 'Le total dépasse le plafond du ' + t.label +
-      ' de ' + fmt(solde - t.plafond) + '. Vérifiez vos mouvements.';
+    if (trop) ec.textContent = total !== null && solde > total
+      ? 'Le total dépasse ' + fmt(total) + ', plafond du ' + t.label +
+        ' et de son compartiment de dépassement réunis. Vérifiez vos mouvements.'
+      : fmt(solde - t.plafond) + ' passent au-delà du plafond du ' + t.label + '. ' + (sur
+        ? 'Cette part est rémunérée à ' + _livPct(sur.taux) + ' et imposée.'
+        : 'C’est normal après le versement des intérêts du 31 décembre. Si votre banque a ouvert ' +
+          'un compartiment de dépassement, indiquez son taux ci-dessus ; sinon cette part reste ' +
+          'rémunérée au taux du livret.');
   }
 
   const box = document.getElementById('liv-f-recap');
@@ -19454,14 +19695,7 @@ window.livRecalc = function() {
   const taux = Number.isFinite(perso) && perso > 0 ? perso : t.taux;
   if (solde <= 0 || !taux) { box.hidden = true; return; }
 
-  const reste  = t.plafond === null ? null : Math.max(0, t.plafond - solde);
-  const brouillon = {
-    type: _livType, taux: perso,
-    ouverture: _depVal('liv-f-ouverture'),
-    mouvements: mvts,
-    releve: _livReleveSaisi(),
-    tauxHist: _livTauxPropres(),
-  };
+  const reste = _livReste(brouillon);
   const acquis  = _livAcquis(brouillon).net;
   const projete = _livProjete(brouillon).net;
 
@@ -19524,11 +19758,28 @@ window.livSave = function() {
     }
   }
   if (t.taux === null && !brut) return _livErr('Ce livret n\'a pas de taux réglementé : indiquez celui de votre contrat.');
-  // Le plafond est une règle, pas une préférence : on refuse un solde qui le
-  // dépasse plutôt que d'afficher une jauge à 130 %.
-  if (t.plafond !== null && solde > t.plafond) {
-    return _livErr('Vos mouvements donnent ' + fmt(solde) + ', au-delà du plafond du ' +
-      t.label + ' fixé à ' + fmt(t.plafond) + '.');
+
+  // Le compartiment de dépassement, quand la banque en a ouvert un.
+  //
+  // Le plafond, lui, n'est plus un motif de refus : c'est une frontière de
+  // taux, pas un mur. Un Livret A plein le franchit dès le versement des
+  // intérêts du 31 décembre, et le refuser rendait un tel livret impossible à
+  // saisir. Le dépassement est désormais affiché et expliqué, pas rejeté.
+  const surBrut  = _depVal('liv-f-sur-taux');
+  const surTaux  = surBrut ? _depParse(surBrut) : null;
+  const surPBrut = _depVal('liv-f-sur-plafond');
+  const surPlaf  = surPBrut ? _depParse(surPBrut) : null;
+  if (surBrut && (!Number.isFinite(surTaux) || surTaux <= 0 || surTaux > 20)) {
+    return _livErr('Le taux du compartiment de dépassement doit être un pourcentage plausible, entre 0 et 20.');
+  }
+  if (surPBrut && (!Number.isFinite(surPlaf) || surPlaf <= 0)) {
+    return _livErr('Le plafond du compartiment de dépassement doit être un montant positif.');
+  }
+  if (surPBrut && !surBrut) {
+    return _livErr('Indiquez le taux du compartiment de dépassement : sans lui, son plafond ne dit rien de ce que cette part rapporte.');
+  }
+  if (surBrut && t.plafond === null) {
+    return _livErr('Un ' + t.label + ' n\'a pas de plafond réglementé : il n\'y a rien au-delà de quoi passer.');
   }
   // Un mouvement antérieur à l'ouverture du livret n'a pas de sens.
   const avant = mvts.find(m => m.d < ouverture);
@@ -19555,6 +19806,9 @@ window.livSave = function() {
     mouvements: mvts,
     releve: _livReleveSaisi(),
     tauxHist: _livTauxPropres(),
+    // Propres au contrat, donc au livret — le barème ne porte que la loi.
+    surTaux:    surBrut  ? surTaux : null,
+    surPlafond: surPBrut ? surPlaf : null,
   };
 
   const all = getLivrets().slice();

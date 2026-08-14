@@ -11,12 +11,19 @@ const bundle = [
   g(/function _livType_\(t\)[^\n]*\n/),
   g(/function _livSolde\(l\) \{[\s\S]*?\n\}/),
   g(/function _livTaux\(l\) \{[\s\S]*?\n\}/),
+  g(/function _livPlafond\(l\)[^\n]*\n/),
+  g(/function _livSur\(l\) \{[\s\S]*?\n\}/),
+  g(/function _livPlafondTotal\(l\) \{[\s\S]*?\n\}/),
+  g(/function _livTranches\(l, capital\) \{[\s\S]*?\n\}/),
+  g(/function _livNet\(l, d\) \{[\s\S]*?\n\}/),
+  g(/function _livPartImposee\(l, d\) \{[\s\S]*?\n\}/),
   g(/function _livInterets\(l\) \{[\s\S]*?\n\}/),
   g(/function _livQuinzaines\(d\) \{[\s\S]*?\n\}/),
   g(/function _livQIndex\(d\)[^\n]*\n/),
   g(/function _livDebutQuinzaine\(dateIso, annee, retrait\) \{[\s\S]*?\n\}/),
   g(/function _livTauxHist\(l\) \{[\s\S]*?\n\}/),
   g(/function _livTauxA\(l, q, annee\) \{[\s\S]*?\n\}/),
+  g(/function _livInteretsQ2\(l, jusqu, courant\) \{[\s\S]*?\n\}/),
   g(/function _livInteretsQ\(l, jusqu, courant\) \{[\s\S]*?\n\}/),
   g(/function _livReleve\(l\) \{[\s\S]*?\n\}/),
   g(/function _livAcquis\(l\) \{[\s\S]*?\n\}/),
@@ -24,9 +31,11 @@ const bundle = [
   g(/function _livProjeteApres\(l, apres\) \{[\s\S]*?\n\}/),
   g(/function _livProjete\(l\) \{[\s\S]*?\n\}/),
   g(/function _livReste\(l\) \{[\s\S]*?\n\}/),
-  g(/function _livPlafond\(l\)[^\n]*\n/),
+  g(/function _livTauxMarge\(l\) \{[\s\S]*?\n\}/),
+  g(/function _livFicheEstSur\(f, t\) \{[\s\S]*?\n\}/),
   'module.exports = { _livSolde, _livTaux, _livTauxA, _livInterets, _livInteretsQ,' +
-  ' _livAcquis, _livProjete, _livDebutQuinzaine, _livQuinzaines, _livReste, _livPlafond };',
+  ' _livAcquis, _livProjete, _livDebutQuinzaine, _livQuinzaines, _livReste, _livPlafond,' +
+  ' _livSur, _livPlafondTotal, _livTauxMarge, _livFicheEstSur, _livType_ };',
 ].join('\n');
 
 const mod = new module.constructor();
@@ -189,6 +198,67 @@ chk('relevé brut, affichage net', X._livAcquis(pel).net, 250 * 0.7);
 // ── Plafonds ────────────────────────────────────────────────────────────────
 chk('Livret A : reste à verser', X._livReste({ type: 'livretA', mouvements: [{ d: '2025-01-01', m: 10000 }] }), 12950);
 chk('bancaire : sans plafond',   X._livPlafond({ type: 'bancaire' }), null);
+
+// ── Deux compartiments ──────────────────────────────────────────────────────
+// Le plafond n'est pas un mur mais une frontière de taux : au-delà de 22 950 €,
+// un Livret A du CIC rémunère 0,30 % au lieu de 1,70 %, et cette part est
+// imposée. Fiche réelle du 13/08.
+const gros = { type: 'livretA', surTaux: 0.3, surPlafond: 77050,
+               mouvements: [{ d: '2025-01-01', m: 30000 }] };
+const reglB = 22950 * 0.017, surB = 7050 * 0.003;
+const partA = surB / (reglB + surB);
+
+chk('deux tranches : solde au-dessus du plafond', X._livSolde(gros), 30000);
+chk('deux tranches : plafond du produit entier', X._livPlafondTotal(gros), 100000);
+chk('deux tranches : reste à verser sur le second', X._livReste(gros), 70000);
+chk('deux tranches : acquis brut',  X._livAcquis(gros).brut, (reglB + surB) * 14 / 24);
+chk('deux tranches : seul le dépassement est imposé',
+    X._livAcquis(gros).net, (reglB + surB * 0.7) * 14 / 24);
+chk('deux tranches : projeté au 31 décembre', X._livProjete(gros).brut, reglB + surB);
+chk('deux tranches : part imposée', X._livInteretsQ(gros, 24, true).part, partA);
+chk('deux tranches : taux du prochain euro versé', X._livTauxMarge(gros), 0.3);
+chk('sous le plafond : taux réglementé',
+    X._livTauxMarge({ type: 'livretA', surTaux: 0.3, mouvements: [{ d: '2025-01-01', m: 100 }] }), 1.7);
+
+// Un chiffre venu de la banque est global : la fiscalité s'y applique dans la
+// proportion que le calcul, lui, sait établir.
+const relGros = Object.assign({}, gros, { releve: { le: '2026-08-12', acquis: 100, projete: 200 } });
+chk('relevé : imposé au prorata de la tranche', X._livAcquis(relGros).net, 100 * (1 - 0.30 * partA));
+chk('relevé : prévisionnel au prorata',          X._livProjete(relGros).net, 200 * (1 - 0.30 * partA));
+
+// Un versement postérieur au relevé se loge dans la tranche où il tombe : au
+// taux du dépassement, puisque le livret est déjà plein.
+const verseGros = Object.assign({}, relGros, {
+  mouvements: [{ d: '2025-01-01', m: 30000 }, { d: '2026-08-13', m: 1000 }] });
+chk('versement au-delà du plafond : rémunéré au taux du contrat',
+    X._livProjete(verseGros).brut, 200 + 1000 * 0.003 * 9 / 24);
+
+// Sans compartiment déclaré, le surplus reste au taux du livret : c'est ce qui
+// se passe le lendemain de la capitalisation du 31 décembre, et le refuser
+// rendait un Livret A plein impossible à saisir.
+const capitalise = { type: 'livretA', mouvements: [{ d: '2025-01-01', m: 23000 }] };
+chk('sans compartiment : tout au taux réglementé', X._livProjete(capitalise).brut, 23000 * 0.017);
+chk('sans compartiment : rien d’imposé',           X._livProjete(capitalise).net,  23000 * 0.017);
+chk('sans compartiment : reste à verser nul, pas négatif', X._livReste(capitalise), 0);
+
+// Un taux de dépassement sans son plafond vaut mieux qu'un plafond inventé.
+const sansBorne = { type: 'livretA', surTaux: 0.3, mouvements: [{ d: '2025-01-01', m: 30000 }] };
+chk('sans plafond de dépassement : aucune borne connue', X._livPlafondTotal(sansBorne), null);
+chk('sans plafond de dépassement : pas de reste à verser', X._livReste(sansBorne), null);
+chk('sans plafond de dépassement : le taux s’applique', X._livInterets(sansBorne).brut, reglB + surB);
+chk('livret sans plafond réglementé : pas de dépassement',
+    X._livSur({ type: 'bancaire', taux: 2, surTaux: 0.3 }), null);
+chk('sans surTaux : pas de compartiment', X._livSur({ type: 'livretA', surPlafond: 77050 }), null);
+
+// ── Une fiche décrit-elle le livret ou son dépassement ? ────────────────────
+const tA = X._livType_('livretA'), tJ = X._livType_('jeune');
+chk('fiche : plafond 77 050 = compartiment', X._livFicheEstSur({ plafond: 77050, taux: 0.3 }, tA) ? 1 : 0, 1);
+chk('fiche : plafond 22 950 = le livret',    X._livFicheEstSur({ plafond: 22950, taux: 1.7 }, tA) ? 1 : 0, 0);
+chk('fiche : sans plafond, taux très bas',   X._livFicheEstSur({ taux: 0.3 }, tA) ? 1 : 0, 1);
+chk('fiche : barème en retard n’est pas un compartiment',
+    X._livFicheEstSur({ taux: 1.5 }, tA) ? 1 : 0, 0);
+// Le taux d'un Livret Jeune est libre : il ne peut rien trancher.
+chk('fiche : Livret Jeune à taux libre', X._livFicheEstSur({ taux: 1.5 }, tJ) ? 1 : 0, 0);
 
 console.log(t.join('\n'));
 const ko = t.filter(x => x.startsWith('FAIL')).length;

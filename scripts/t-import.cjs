@@ -628,6 +628,54 @@ chk('fiche réelle : date d’ouverture',       F1.ouverture, '2023-05-17');
 chk('renvoi de note : valeur entière préservée',
   CB.ocr.analyserFiche('Plafond2 22 950,00 EUR\nIntérêts acquis 19,94 EUR').plafond, 22950);
 
+// Le solde figure deux fois sur cette fiche — résumé puis détail — avec la même
+// valeur. Une répétition n'est pas un second compartiment.
+chk('fiche réelle : un seul compartiment', F1.sur, undefined);
+
+// ── Deux compartiments sur la même capture ──────────────────────────────────
+// Un Livret A du CIC porte deux étages : le réglementé jusqu'à 22 950 € à
+// 1,70 %, puis le dépassement à 0,30 % jusqu'à 77 050 €. Ne retenir que le
+// premier bloc était juste tant que les captures arrivaient dans l'ordre.
+const FICHE_DUO = FICHE_LIVRET_A.split('\n').concat([
+  'LIVRET SUP',
+  'Solde +0,00 EUR',
+  'Taux2 0,30 %',
+  'Plafond +77 050,00 EUR',
+  'Intérêts à ce jour 0,00 EUR',
+  'Intérêts prévisionnels3 0,00 EUR',
+]).join('\n');
+
+const FD = CB.ocr.analyserFiche(FICHE_DUO);
+chk('duo : le livret garde son taux',      FD.taux, 1.7);
+chk('duo : le livret garde son plafond',   FD.plafond, 22950);
+chk('duo : le livret garde son solde',     FD.solde, 11.54);
+chk('duo : le dépassement est rendu à part', FD.sur.taux, 0.3);
+chk('duo : plafond du dépassement',        FD.sur.plafond, 77050);
+chk('duo : solde du dépassement',          FD.sur.solde, 0);
+
+// Le membre n'envoie que la seconde capture : elle passe pour la fiche
+// principale, et c'est au module livrets de la reconnaître sur son barème.
+// Ici, on vérifie seulement qu'elle n'est pas perdue.
+const FSUP = CB.ocr.analyserFiche([
+  'LIVRET SUP', 'Solde +0,00 EUR', 'Taux 0,30 %',
+  'Plafond +77 050,00 EUR', 'Intérêts à ce jour 0,00 EUR',
+].join('\n'));
+chk('dépassement seul : lu quand même', FSUP.plafond, 77050);
+chk('dépassement seul : son taux',      FSUP.taux, 0.3);
+chk('dépassement seul : pas de troisième étage', FSUP.sur, undefined);
+
+// Un en-tête sans taux ni plafond n'est pas un compartiment : il complète le
+// bloc voisin au lieu d'en ouvrir un, même quand son solde diffère.
+const ENTETE = CB.ocr.analyserFiche([
+  'Solde +1 200,00 EUR', "Date d'ouverture 18/09/2018",
+  'Caractéristiques détaillées',
+  'Solde +1 150,00 EUR', 'Taux 3,75 %', 'Plafond +1 600,00 EUR',
+  'Intérêts à ce jour +6,58 EUR',
+].join('\n'));
+chk('en-tête recollé : un seul compartiment', ENTETE.sur, undefined);
+chk('en-tête recollé : la date suit',         ENTETE.ouverture, '2018-09-18');
+chk('en-tête recollé : le premier solde prime', ENTETE.solde, 1200);
+
 // ── Deuxième passe : le modèle désigne, le code vérifie ─────────────────────
 // La voie par libellés ne connaît que les banques dont on a recopié les mots.
 // Quand elle échoue, le modèle pointe les valeurs dans sa propre transcription,

@@ -145,6 +145,31 @@ window.CBImport = (function () {
    * d'une image passe par le serveur, et dix appels simultanés se feraient
    * refuser par le limiteur de débit.
    */
+  /**
+   * Deux fiches lues dans un même lot.
+   *
+   * Le plus souvent, deux captures du même écran, dont l'une a été lue de
+   * travers : la première prime, la seconde comble ses trous. Mais un livret
+   * peut aussi avoir deux compartiments, photographiés séparément — et là, un
+   * plafond ou un taux qui diffère n'est pas une correction à ignorer, c'est un
+   * autre étage à conserver. Lequel est le réglementé n'est pas tranché ici :
+   * seul le module qui connaît le type de livret a le barème pour le dire.
+   */
+  function _fusionnerFiches(a, b) {
+    if (!a) return Object.assign({}, b);
+    const conflit = ['plafond', 'taux'].some(k =>
+      a[k] !== undefined && b[k] !== undefined && a[k] !== b[k]);
+    if (conflit) {
+      const sur = Object.assign({}, a.sur || b.sur || b);
+      delete sur.sur;
+      return Object.assign({}, a, { sur });
+    }
+    const out = Object.assign({}, b, a);
+    const sur = a.sur || b.sur;
+    if (sur) out.sur = sur;
+    return out;
+  }
+
   async function lireLot(files) {
     _etape('lecture');
     const tout = [];
@@ -184,7 +209,7 @@ window.CBImport = (function () {
       (res.lignes || []).forEach(l => tout.push(Object.assign({ _f: i }, l)));
       (res.taux  || []).forEach(t => taux.push(t));
       // Une seule fiche : la première rencontrée, complétée par les suivantes.
-      if (res.fiche) fiche = Object.assign({}, res.fiche, fiche || {});
+      if (res.fiche) fiche = _fusionnerFiches(fiche, res.fiche);
       // Un seul report, le plus ancien. Celui d'un fichier plus récent
       // recouvrirait des opérations déjà apportées par un autre.
       if (res.report && isFinite(res.report.m) && res.report.m !== 0 &&
@@ -460,9 +485,25 @@ window.CBImport = (function () {
       .filter(([cle]) => _fiche[cle] === undefined || _fiche[cle] === null)
       .map(([, lib]) => lib);
 
+    // Le second compartiment est montré à part, et non fondu dans le premier :
+    // ses chiffres ne décrivent pas le même étage du livret, et les confondre
+    // rémunérerait tout le solde au taux du dépassement.
+    const sur = _fiche.sur
+      ? '<div class="imp-fiche-t sur">Second compartiment, au-delà du plafond</div>' +
+        '<div class="imp-fiche-l">' + FICHE_LIB
+          .filter(([cle]) => _fiche.sur[cle] !== undefined && _fiche.sur[cle] !== null)
+          .map(([cle, lib, unite]) => {
+            const v = _fiche.sur[cle];
+            const txt = unite === 'date' ? String(v).split('-').reverse().join('/')
+                      : unite === '%'    ? String(v).replace('.', ',') + ' %'
+                      : _fmtMontant(v) + ' €';
+            return '<span><i>' + _esc(lib) + '</i><b>' + _esc(txt) + '</b></span>';
+          }).join('') + '</div>'
+      : '';
+
     box.innerHTML =
       '<div class="imp-fiche-t">Fiche du livret reconnue</div>' +
-      '<div class="imp-fiche-l">' + cases + '</div>' +
+      '<div class="imp-fiche-l">' + cases + '</div>' + sur +
       '<div class="imp-fiche-s">Ces valeurs viennent de votre banque et ' +
       'remplaceront le calcul : c’est ce qui rend l’affichage exact. ' +
       'Vous pourrez les corriger avant d’enregistrer.' +
@@ -1475,9 +1516,12 @@ window.CBImport.ocr = (function () {
   const RE_VAL_TAUX    = /(\d{1,2}(?:[,.]\d{1,3})?)\s*%/;
   const RE_VAL_DATE    = /(\d{1,2}[\/.\-]\d{1,2}[\/.\-]\d{2,4})/;
 
-  function analyserFiche(texte) {
+  // Toutes les valeurs trouvées, dans l'ordre du texte. Une clé peut revenir :
+  // une fiche répète son solde entre le résumé et le détail, et une capture
+  // peut porter DEUX compartiments d'un même livret.
+  function _valeursFiche(texte) {
     const lignes = String(texte || '').split(/\r?\n/).map(l => _redresser(l.trim())).filter(Boolean);
-    const out = {};
+    const trouves = [];
 
     CHAMPS.forEach(champ => {
       for (let i = 0; i < lignes.length; i++) {
@@ -1498,18 +1542,97 @@ window.CBImport.ocr = (function () {
         const candidats = [apres, lignes[i + 1] || ''];
         for (const c of candidats) {
           const v = _valeur(c, champ.type);
-          if (v !== null) { out[champ.cle] = v; break; }
+          if (v !== null) { trouves.push({ i, cle: champ.cle, v }); break; }
         }
-        if (out[champ.cle] !== undefined) break;
       }
     });
+
+    return trouves.sort((a, b) => a.i - b.i);
+  }
+
+  /**
+   * Découpe les valeurs en blocs, un par compartiment.
+   *
+   * Un Livret A du CIC porte deux étages sur le même écran : le réglementé
+   * jusqu'à 22 950 € à 1,70 %, puis le compartiment de dépassement à 0,30 %,
+   * avec son propre plafond. Ne retenir que le premier était juste tant que les
+   * captures arrivaient dans l'ordre, et faux dès que le membre n'envoyait que
+   * la seconde.
+   *
+   * La coupure se fait sur une clé qui revient AVEC UNE AUTRE VALEUR : la même
+   * répétée est la même fiche vue deux fois, un solde ou un taux différent est
+   * un autre compartiment.
+   */
+  function _blocsFiche(texte) {
+    const blocs = [];
+    let cur = null;
+    _valeursFiche(texte).forEach(x => {
+      if (!cur) { cur = {}; blocs.push(cur); }
+      if (cur[x.cle] !== undefined) {
+        if (cur[x.cle] === x.v) return;          // répétition inoffensive
+        cur = {}; blocs.push(cur);               // autre compartiment
+      }
+      cur[x.cle] = x.v;
+    });
+    return _recoller(blocs).map(_ordonner);
+  }
+
+  // Un bloc sans taux ni plafond ne décrit pas un compartiment : c'est l'en-tête
+  // général de la fiche, ou sa fin. Il ne fait donc pas nombre — il complète le
+  // compartiment voisin au lieu d'en devenir un.
+  function _recoller(blocs) {
+    const compart = (b) => b.taux !== undefined || b.plafond !== undefined;
+    const out = [];
+    let entete = null;   // en-tête lu avant tout compartiment
+    blocs.forEach(b => {
+      if (!compart(b)) {
+        // Après un compartiment, un bloc sans taux ni plafond n'est qu'une fin
+        // de fiche : il comble les trous du dernier, sans rien écraser.
+        if (out.length && !entete) _completer(out[out.length - 1], b);
+        else entete = entete ? _completer(entete, b) : Object.assign({}, b);
+        return;
+      }
+      const n = Object.assign({}, b);
+      // L'en-tête, lui, a été lu EN PREMIER : ses valeurs priment, comme du
+      // temps où la première rencontrée gagnait.
+      if (entete) { Object.assign(n, entete); entete = null; }
+      out.push(n);
+    });
+    if (entete) out.push(entete);
+    return out;
+  }
+
+  function _completer(cible, source) {
+    Object.keys(source).forEach(k => { if (cible[k] === undefined) cible[k] = source[k]; });
+    return cible;
+  }
+
+  // Clés dans l'ordre du catalogue plutôt que dans celui du texte : deux
+  // captures de la même fiche doivent rendre le même objet.
+  function _ordonner(b) {
+    const o = {};
+    CHAMPS.forEach(c => { if (b[c.cle] !== undefined) o[c.cle] = b[c.cle]; });
+    return o;
+  }
+
+  function analyserFiche(texte) {
+    const blocs = _blocsFiche(texte);
+    if (!blocs.length) return null;
+    const out = Object.assign({}, blocs[0]);
 
     // Deux repères au minimum, sinon c'est une capture d'autre chose : un
     // écran d'opérations contient « Solde », et cela ne suffit pas à en faire
     // une fiche.
     const forts = ['acquis', 'projete', 'plafond', 'ouverture', 'fin']
       .filter(k => out[k] !== undefined).length;
-    return forts >= 2 ? out : null;
+    if (forts < 2) return null;
+
+    // Le second compartiment est rendu à part, sans être interprété : c'est au
+    // module qui connaît le type de livret de dire lequel des deux est le
+    // réglementé, en les comparant à son barème.
+    const sur = blocs.slice(1).find(b => b.taux !== undefined || b.plafond !== undefined);
+    if (sur) out.sur = sur;
+    return out;
   }
 
   const CHAMPS_TYPE = CHAMPS.reduce((a, c) => { a[c.cle] = c.type; return a; }, {});

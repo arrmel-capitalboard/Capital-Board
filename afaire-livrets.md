@@ -1,15 +1,15 @@
 # Livrets & épargne — état des lieux et reprise
 
-Dernière mise à jour : 13 août 2026.
+Dernière mise à jour : 14 août 2026.
 
-> **Prochaine séance : le Livret A.** Tout ce qui suit a été construit et
-> vérifié sur un **Livret Jeune au CIC**. Le Livret A est le cas le plus
-> répandu, et celui par lequel la plupart des membres entreront.
+> **Le Livret A est traité.** Le modèle à deux compartiments est en place :
+> le plafond est devenu une frontière de taux, le calcul par quinzaines répartit
+> chaque euro entre les deux tranches, et la fiscalité suit la tranche et non
+> plus le type de livret. Détail et reste à faire en section 6.1.
 >
-> Une vraie fiche a montré le 13/08 que le sujet est plus large qu'un plafond à
-> desserrer : un Livret A au CIC porte **deux compartiments**, 1,70 % exonéré
-> jusqu'à 22 950 € puis 0,30 % imposé jusqu'à 77 050 €. Le calcul ne connaît
-> qu'un taux à la fois, et la fiscalité qu'un booléen par type. Section 6.1.
+> Ce qui manque désormais, et que le code ne peut pas se donner tout seul :
+> **un vrai export de Livret A d'une autre banque que le CIC**, et le parcours
+> exercé dans un navigateur (section 3).
 
 ---
 
@@ -72,9 +72,11 @@ facultative.
 
 ### Les tests
 
-- `scripts/t-livrets.cjs` — 46 cas sur le calcul (quinzaines, taux, relevé)
-- `scripts/t-import.cjs` — 163 cas sur les trois voies d'import, dont la fiche
-  réelle du Livret A et le rejet des valeurs inventées par le modèle
+- `scripts/t-livrets.cjs` — 71 cas sur le calcul (quinzaines, taux, relevé,
+  deux compartiments)
+- `scripts/t-import.cjs` — 176 cas sur les trois voies d'import, dont la fiche
+  réelle du Livret A, ses deux compartiments, et le rejet des valeurs inventées
+  par le modèle
 
 Les deux tournent en CI (`.github/workflows/checks.yml`).
 
@@ -116,7 +118,7 @@ des tests sur les fonctions de calcul et de lecture, mais l'enchaînement des
 |---|---|---|---|---|
 | Livret A | 22 950 € | 1,70 % | exonéré | oui |
 | LDDS | 12 000 € | 1,70 % | exonéré | oui |
-| LEP | 10 000 € | 2,50 % | exonéré | oui |
+| LEP\*\* | 10 000 € | 2,50 % | exonéré | oui |
 | Livret Jeune | 1 600 € | 3,75 %\* | exonéré | oui |
 | PEL | 61 200 € | au contrat | imposé | non |
 | CEL | 15 300 € | au contrat | imposé | non |
@@ -125,6 +127,15 @@ des tests sur les fonctions de calcul et de lecture, mais l'enchaînement des
 \* Le taux du Livret Jeune est fixé librement par chaque banque, avec pour seul
 plancher légal celui du Livret A — `min: 'livretA'` refuse une saisie en
 dessous. Les livrets à taux `null` exigent que le membre saisisse le sien.
+
+\*\* Le LEP est soumis à une condition de revenu, vérifiée chaque année par la
+banque : 23 028 € de revenu fiscal de référence pour une personne seule,
+35 328 € pour un couple. Elle ne change rien au calcul, et se lit sous le champ
+(`condition` dans le barème). Taux et plafond vérifiés le 14/08/2026.
+
+Le plafond du barème est celui des **versements**. Le solde peut le dépasser,
+par capitalisation ou par le compartiment de dépassement de la banque — voir
+6.1.
 
 **Le barème est surchargeable depuis Firestore** (`config/app.bareme`), sans
 redéploiement — utile au 1<sup>er</sup> février et au 1<sup>er</sup> août, quand
@@ -141,6 +152,10 @@ les taux changent.
 - **Un mouvement daté du jour du relevé compte** dans le prévisionnel. Le cas
   est ambigu — la banque l'avait peut-être déjà — mais un chiffre figé ne
   signale rien, alors qu'un chiffre trop haut se voit et se corrige.
+- **La fiscalité appartient à la tranche, pas au livret.** Un chiffre venu de
+  la banque étant global, on lui applique la proportion imposée que le calcul
+  sait établir : sans compartiment de dépassement, elle vaut 0 ou 1 et l'on
+  retombe exactement sur le comportement d'avant.
 - **L'IA lit les pixels, le code fait les chiffres.** Un modèle ne rend que du
   texte ; dates, signes et montants sont reconstruits par du code testé. Mesuré
   le 13/08 : `llava-1.5` a inventé « +225,65 € » sur une image qui n'en
@@ -150,15 +165,31 @@ les taux changent.
 
 ## 6. Ce qu'il reste à faire
 
-### 6.1 Le Livret A — prochaine séance
+### 6.1 Le Livret A — traité le 14/08
 
-Le module n'a jamais tourné que sur un Livret Jeune.
+Le module n'avait jamais tourné que sur un Livret Jeune.
 
-**Déjà traité le 13/08**, sur une vraie fiche de Livret A au CIC : le renvoi de
+**Traité le 13/08**, sur une vraie fiche de Livret A au CIC : le renvoi de
 note en exposant qui se collait au montant (« Intérêts prévisionnels³ 0,00 EUR »
 se lisait 30,00 €), et le taux lu qui écrasait le barème — une capture du
 compartiment de dépassement affiche 0,30 % et aurait rémunéré le livret à ce
 taux. Détail dans [`afaire-import.md`](afaire-import.md).
+
+**Traité le 14/08** — les sept points ci-dessous, sauf le n° 5 qui demande une
+donnée qu'on n'a pas. Ce qui a changé :
+
+| | |
+|---|---|
+| `surTaux` / `surPlafond` | saisis sur le livret, pas dans `LIV_BAREME` — le second étage est propre à chaque banque |
+| `_livSur`, `_livTranches` | répartissent le capital entre les deux tranches |
+| `_livInteretsQ2` | somme quinzaine par quinzaine, chaque tranche à son taux |
+| `_livPartImposee` | fraction imposée des intérêts, appliquée aux chiffres de la banque, qu'on ne peut pas décomposer |
+| `_livProjeteApres` | devenu une **différence de deux projections** : la rémunération dépend désormais de la tranche, un calcul mouvement par mouvement ne pouvait plus la donner |
+| `livSave` | ne refuse plus un solde au-delà du plafond ; il valide le compartiment quand il est déclaré |
+| `_livJaugeDuo` | jauge à deux tranches, le surplus sur sa propre échelle |
+| `analyserFiche` | rend des **blocs**, un par compartiment, et `_livFicheEstSur` dit lequel est le réglementé |
+
+Tests : 71 cas sur le calcul, 176 sur l'import.
 
 #### Le point qui change le modèle : un Livret A a deux étages
 
@@ -199,16 +230,20 @@ Trois conséquences, et aucune n'est cosmétique :
 
 - **Le plafond n'est pas un mur, c'est une frontière de taux.** Le solde le
   dépasse légitimement, et le surplus rapporte — moins, et imposé.
-- **Un livret peut porter deux taux en même temps**, sur deux tranches de
-  capital. Le calcul par quinzaines ne connaît aujourd'hui qu'un taux à la
-  fois : c'est lui qu'il faut ouvrir, pas seulement l'écran.
-- **La fiscalité devient partielle.** `fisc: false` sur le Livret A est vrai
-  jusqu'à 22 950 € et faux au-delà. Aujourd'hui c'est un booléen par type.
+- **Un livret porte deux taux en même temps**, sur deux tranches de capital.
+  C'est le calcul par quinzaines qu'il fallait ouvrir, pas seulement l'écran.
+- **La fiscalité est partielle.** `fisc: false` sur le Livret A vaut jusqu'à
+  22 950 € et cesse au-delà. Elle n'est plus un booléen par type mais une
+  proportion, `_livPartImposee`.
 
 Le second étage est **propre à chaque banque** — son taux, son plafond, son
 existence même. Il n'a donc pas sa place dans `LIV_BAREME`, qui porte la loi :
-plutôt un couple `surTaux` / `surPlafond` saisi sur le livret, et lu sur la
-fiche quand l'import la trouve.
+c'est un couple `surTaux` / `surPlafond` saisi sur le livret, sous « Au-delà du
+plafond », et lu sur la fiche quand l'import la trouve.
+
+Un surplus qui excéderait `surPlafond` reste rémunéré au taux du contrat, sans
+écrêtage : une saisie trop haute donne un chiffre trop haut, qui se voit,
+plutôt que des euros qui ne rapportent rien en silence.
 
 Ce que la capitalisation impose par ailleurs reste vrai : un Livret A au
 plafond continue de produire des intérêts, et leur versement au 31 décembre
@@ -216,34 +251,39 @@ porte le solde au-dessus de 22 950 € même sans compartiment de dépassement.
 
 Points à reprendre :
 
-1. **`livSave()` refuse un solde supérieur au plafond.** Sur un livret rempli,
-   l'écriture du 1<sup>er</sup> janvier est **rejetée** — et un Livret A du CIC
-   au-delà de 22 950 € ne peut tout simplement pas être saisi. C'est le premier
-   correctif, et il conditionne les suivants.
-2. **La jauge de remplissage** dépassera 100 %. Elle devrait montrer les deux
-   tranches plutôt qu'un débordement : le réglementé plein, puis le surplus sur
-   sa propre échelle.
-3. **Le « reste à verser »** doit devenir zéro, pas un nombre négatif — ou
-   basculer sur le second plafond quand il y en a un.
-4. **Le calcul à deux taux**, une fois 1 à 3 posés : à chaque quinzaine, la
-   part du capital sous 22 950 € au taux réglementé, le reste au taux du
-   contrat, et la fiscalité appliquée à la seule seconde part.
-5. **Un vrai export de Livret A** — idéalement d'une autre banque que le CIC,
+1. ✅ **`livSave()` refusait un solde supérieur au plafond.** Le contrôle est
+   supprimé : le plafond est une frontière de taux, pas un mur, et un Livret A
+   plein le franchit dès le versement des intérêts du 31 décembre. Le
+   dépassement est désormais affiché et expliqué, pas rejeté. Seul reste refusé
+   ce qui dépasse le **plafond total** quand les deux sont connus.
+2. ✅ **La jauge** montre les deux tranches : le réglementé plein en doré, puis
+   le surplus sur l'échelle du compartiment quand son plafond est connu, sur
+   celle du plafond réglementé sinon.
+3. ✅ **Le « reste à verser »** porte sur le plafond du produit entier, et ne
+   descend jamais sous zéro.
+4. ✅ **Le calcul à deux taux** : à chaque quinzaine, la part sous 22 950 € au
+   taux réglementé, le reste au taux du contrat, et le prélèvement forfaitaire
+   sur la seule seconde part. Un chiffre venu de la banque, lui, est global : on
+   lui applique la part imposée que le calcul établit.
+5. ❌ **Un vrai export de Livret A** — idéalement d'une autre banque que le CIC,
    pour éprouver le parseur sur un second format. **C'est ce qui manque le
-   plus** : les deux bugs du 13/08 étaient invisibles avant qu'une vraie fiche
-   n'arrive.
-6. **Le LEP** a une condition de revenu et un taux distinct ; vérifier que son
-   barème est juste avant de le proposer.
-7. **Deux compartiments sur une même capture.** L'import ne retient
-   aujourd'hui que le premier bloc rencontré : juste quand les captures
-   arrivent dans l'ordre, faux si le membre n'envoie que la seconde, et de
-   toute façon incomplet une fois le point 4 posé — il faudra lire les deux
-   blocs et les distinguer, pas en choisir un.
+   plus, et rien dans le code ne peut y suppléer** : les deux bugs du 13/08
+   étaient invisibles avant qu'une vraie fiche n'arrive.
+6. ✅ **Le LEP** : barème vérifié le 14/08 — 2,50 % net du 1<sup>er</sup> août
+   2026 au 31 janvier 2027, plafond de versement 10 000 €. La condition de
+   revenu (23 028 € de RFR pour une personne seule, 35 328 € pour un couple)
+   est désormais dite dans le formulaire, sous le champ.
+7. ✅ **Deux compartiments sur une même capture.** `analyserFiche` découpe le
+   texte en blocs — la coupure se fait sur une clé qui revient *avec une autre
+   valeur* — et rend le second dans `fiche.sur`. Deux captures séparées sont
+   recollées de même. Lequel est le réglementé se décide sur le barème
+   (`_livFicheEstSur`) : d'abord le plafond, qui ne trompe pas, le taux
+   seulement en repli et seulement de loin, jamais sur un livret à taux libre.
 
 ### 6.2 Ensuite
 
-- **Ouvrir le module aux membres**, une fois 6.1 traité et le parcours exercé
-  dans un navigateur.
+- **Ouvrir le module aux membres**, une fois le parcours exercé dans un
+  navigateur (section 3) — c'est le dernier verrou, 6.1 étant posé.
 - **Brancher l'import sur les Dépenses** — le socle est prêt, le module n'a qu'à
   fournir un `onValider`. Voir `afaire-import.md`, point 2.
 - **`worker-src 'self'`** quand le CSP sera complété (`afaire.md`, point B) :

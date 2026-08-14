@@ -4715,6 +4715,17 @@ body.has-demo-banner { padding-top: 40px; }
 /* Un plafond atteint n'est pas une réussite : au-delà, l'argent ne rapporte
    pas davantage sur ce livret. D'où le doré, pas le vert. */
 .liv-jauge-fill.plein { box-shadow: 0 0 12px rgba(245,183,49,.35); }
+
+/* Deux tranches : le plafond réglementé plein, puis le surplus sur sa propre
+   échelle. La coupure entre les deux se voit — c'est une frontière de taux,
+   pas une continuité — et la seconde part est plus étroite, parce qu'elle
+   rapporte moins et qu'elle n'a pas à voler la vedette. */
+.liv-jauge.duo { display: flex; gap: 3px; background: none; overflow: visible; }
+.liv-jauge-part {
+  height: 7px; border-radius: 4px; background: var(--s3);
+  overflow: hidden; flex: 1 1 auto; min-width: 0;
+}
+.liv-jauge-part.sur { flex: 0 0 34%; }
 .liv-libre {
   height: 7px; border-radius: 4px;
   background: repeating-linear-gradient(90deg, var(--s3) 0 6px, transparent 6px 12px);
@@ -4744,6 +4755,7 @@ body.has-demo-banner { padding-top: 40px; }
   padding: 1px 5px; border-radius: 4px; margin-left: 5px; vertical-align: 1px;
 }
 .liv-releve-group { margin-top: 18px; }
+.liv-sur-group { margin-top: 18px; }
 
 /* Marqueur discret : ce chiffre est estimé faute de dates de versement. */
 .liv-approx {
@@ -5193,6 +5205,12 @@ body.has-demo-banner { padding-top: 40px; }
   background: var(--positive-d); border: 1px solid rgba(0,224,158,.22);
 }
 .imp-fiche-t { font-size: 12px; font-weight: 700; color: var(--positive); margin-bottom: 8px; }
+/* Le second étage n'est pas une bonne nouvelle de plus : il rapporte moins et
+   il est imposé. D'où le doré, et un trait qui le sépare du premier. */
+.imp-fiche-t.sur {
+  color: var(--gold); margin-top: 12px; padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
 .imp-fiche-l { display: flex; flex-wrap: wrap; gap: 7px; }
 .imp-fiche-l span {
   display: flex; flex-direction: column; gap: 2px;
@@ -5266,6 +5284,13 @@ body.has-demo-banner { padding-top: 40px; }
   .liv-meta { flex-direction: column; align-items: flex-start; gap: 4px; }
   .liv-marge-row { grid-template-columns: 9px 1fr 84px; }
   .liv-marge-t { display: none; }
+  /* Sur une barre étroite, une tranche à 34 % n'est plus lisible : le surplus
+     reprend un peu de largeur, et l'écart entre les deux se resserre. */
+  .liv-jauge.duo { gap: 2px; }
+  .liv-jauge-part.sur { flex: 0 0 40%; }
+  /* La ligne sous la jauge porte maintenant trois informations : sur deux
+     colonnes de téléphone, elle doit pouvoir passer à la ligne. */
+  .liv-reste { line-height: 1.5; }
 }
 
 /* ─── Répartition : anneau + légende ─── */
