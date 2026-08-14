@@ -64,10 +64,9 @@ par le SDK admin, qui ignore ces règles.
 Règles Firestore déployées le 16/08 (`npx firebase-tools@13 deploy --only
 firestore:rules --project capitalboard`).
 
-> ⚠️ **Le bot reste à redéployer** sur sa VM : `src/lib/signalements.js` et son
-> démarrage dans `src/index.js` n'y sont pas encore. D'ici là les signalements
-> s'écrivent sans être postés — rien n'est perdu, le listener rattrape au
-> démarrage tous les docs sans `posteLe`.
+Le bot se déploie tout seul : `.github/workflows` a un job « Déploiement bot
+Discord » déclenché par tout push touchant `discord-bot/**`, qui teste puis
+relance sur la VM par SSH. Rien à faire à la main.
 
 ### Le calcul
 
