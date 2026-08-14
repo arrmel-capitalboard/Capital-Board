@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816o';
+const APP_VERSION = '20260816p';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -273,7 +273,7 @@ _splashWatchdog = setTimeout(() => {
           return;
         }
       } catch(_) { /* fail-open : pas de blocage si lecture KO */ }
-      // Gate 2FA device — vérif appareil de confiance (90j)
+      // Gate 2FA device — vérif appareil de confiance (30j, DEVICE_TRUST_MS côté Worker)
       try {
         const deviceId = _getDeviceId();
         // Signup : auto-trust 1er device après vérif email
@@ -989,8 +989,13 @@ function showDeviceVerifyView(email) {
   const vv = document.getElementById('verify-view'); if (vv) vv.style.display = 'none';
   const view = document.getElementById('device-verify-view');
   if (view) view.style.display = 'block';
-  const eDisp = document.getElementById('dv-email-display');
-  if (eDisp) eDisp.textContent = email || '';
+  // _showLoginOtpVerify (flux /login, cas TOTP) remplace ce bloc par un texte
+  // sans #dv-email-display : le restaurer pour ce parcours historique (Google).
+  const intro = document.getElementById('dv-intro-text');
+  if (intro) {
+    intro.innerHTML = 'Pour votre sécurité, un code de vérification doit être envoyé à<br>' +
+      '<strong id="dv-email-display" style="color:var(--text)">' + (email || '') + '</strong>';
+  }
   const dLabel = document.getElementById('dv-device-label');
   if (dLabel) dLabel.textContent = _getDeviceLabel();
   // Reset étapes
@@ -1597,6 +1602,142 @@ window.adminReenablePin = async function() {
     console.error('[pin] réactivation échouée:', e);
     if (box) box.textContent = 'Échec de la réactivation : ' + (e.message || e.code || 'erreur inconnue');
   }
+};
+
+// ─── TOTP — 2e facteur optionnel (facultatif, en plus de l'OTP email) ──
+// État lu dans users/{uid}/data/security.totpEnabled, posé par le Worker
+// (POST /totp-enroll-confirm / /totp-disable) — même doc que le PIN.
+async function _isTotpEnabled(uid) {
+  const sec = await _loadSecurity(uid);
+  return !!(sec && sec.totpEnabled);
+}
+
+window.refreshTotpStatus = async function() {
+  const box = document.getElementById('totp-status-box');
+  const actions = document.getElementById('totp-actions');
+  if (!box || !actions) return;
+  const user = fbAuth.currentUser;
+  if (!user) { box.textContent = 'Non connecté'; actions.innerHTML = ''; return; }
+  const _btnWarn = 'flex:1;padding:9px;background:rgba(255,77,106,0.08);border:1px solid rgba(255,77,106,0.28);color:#ff4d6a;border-radius:8px;font-size:12px;font-weight:600;cursor:pointer;font-family:var(--sans)';
+  try {
+    const enabled = await _isTotpEnabled(user.uid);
+    if (enabled) {
+      box.innerHTML = '<span style="display:inline-flex;align-items:center;gap:6px;color:#22d98a;font-weight:600"><svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>Code d\'authentification activé</span><div style="font-size:11px;color:var(--text3);margin-top:4px">Demandé à la place du code par email depuis un appareil non reconnu.</div>';
+      actions.innerHTML = '<button onclick="totpDisable()" style="' + _btnWarn + '">Désactiver</button>';
+    } else {
+      box.innerHTML = '<span style="color:var(--text3)">Non activé — le code par email reste utilisé pour tout nouvel appareil.</span>';
+      actions.innerHTML = '<button onclick="openTotpEnrollModal()" style="flex:1;padding:9px;background:#7c6df5;border:none;color:#fff;border-radius:8px;font-size:12px;font-weight:700;cursor:pointer;font-family:var(--sans)">Activer (facultatif)</button>';
+    }
+  } catch(e) {
+    box.textContent = 'Erreur de chargement.';
+    actions.innerHTML = '';
+  }
+};
+
+window.openTotpEnrollModal = async function() {
+  const m = document.getElementById('totp-enroll-modal');
+  if (!m) return;
+  const err = document.getElementById('totp-enroll-error'); if (err) err.style.display = 'none';
+  document.getElementById('totp-enroll-step1').style.display = 'block';
+  document.getElementById('totp-enroll-step2').style.display = 'none';
+  const codeInp = document.getElementById('totp-enroll-code'); if (codeInp) codeInp.value = '';
+  m.style.display = 'flex';
+  const secretEl = document.getElementById('totp-enroll-secret');
+  const qrEl = document.getElementById('totp-enroll-qr');
+  const openBtn = document.getElementById('totp-enroll-open-app');
+  if (secretEl) secretEl.textContent = 'Génération…';
+  if (qrEl) qrEl.innerHTML = '';
+  try {
+    const user = fbAuth.currentUser;
+    if (!user) return;
+    const idToken = await user.getIdToken();
+    const res = await fetch(`${WORKER_URL}/totp-enroll-start`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) throw new Error(data.error || 'Erreur serveur');
+    if (secretEl) secretEl.textContent = data.secret;
+    if (openBtn) openBtn.href = data.otpauthUrl;
+    // otpauth:// ouvre directement l'app d'authentification sur mobile si le
+    // système en a une associée à ce schéma ; sans effet sinon (dégradation
+    // silencieuse, pas un échec — le secret/QR restent la voie universelle).
+    if (qrEl && window.qrcode) {
+      const qr = window.qrcode(0, 'M');
+      qr.addData(data.otpauthUrl);
+      qr.make();
+      qrEl.innerHTML = qr.createSvgTag({ scalable: true });
+    }
+  } catch(e) {
+    console.error('[totp] enroll-start échoué:', e);
+    if (secretEl) secretEl.textContent = '';
+    if (err) { err.textContent = 'Erreur : ' + (e.message || 'réessayez.'); err.style.display = 'block'; }
+  }
+};
+
+window.closeTotpEnrollModal = function() {
+  const m = document.getElementById('totp-enroll-modal');
+  if (m) m.style.display = 'none';
+};
+
+window.totpEnrollConfirmSubmit = async function() {
+  const err = document.getElementById('totp-enroll-error'); if (err) err.style.display = 'none';
+  const inp = document.getElementById('totp-enroll-code');
+  const code = (inp?.value || '').trim();
+  if (!/^\d{6}$/.test(code)) {
+    if (err) { err.textContent = 'Code invalide (6 chiffres attendus).'; err.style.display = 'block'; }
+    return;
+  }
+  const user = fbAuth.currentUser;
+  if (!user) return;
+  setLoading('totp-enroll-confirm-btn', true);
+  try {
+    const idToken = await user.getIdToken();
+    const res = await fetch(`${WORKER_URL}/totp-enroll-confirm`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, code }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      if (err) { err.textContent = data.error || 'Code incorrect.'; err.style.display = 'block'; }
+      return;
+    }
+    document.getElementById('totp-enroll-step1').style.display = 'none';
+    document.getElementById('totp-enroll-step2').style.display = 'block';
+    const list = document.getElementById('totp-backup-codes');
+    if (list) {
+      list.innerHTML = (data.backupCodes || [])
+        .map(c => `<div style="font-family:var(--mono);font-size:13px;padding:4px 0">${c}</div>`).join('');
+    }
+    await window.refreshTotpStatus();
+  } catch(e) {
+    console.error('[totp] enroll-confirm échoué:', e);
+    if (err) { err.textContent = 'Erreur : ' + (e.message || 'réessayez.'); err.style.display = 'block'; }
+  } finally {
+    setLoading('totp-enroll-confirm-btn', false);
+  }
+};
+
+window.totpDisable = function() {
+  const user = fbAuth.currentUser;
+  if (!user) return;
+  showConfirmModal({
+    icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
+    title: "Désactiver le code d'authentification ?",
+    body: 'Les nouveaux appareils redemanderont un code par email à la place, comme avant.',
+    okLabel: 'Désactiver',
+    danger: true,
+    onConfirm: async () => {
+      try {
+        const idToken = await user.getIdToken();
+        await fetch(`${WORKER_URL}/totp-disable`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken }),
+        });
+        await window.refreshTotpStatus();
+      } catch(e) { console.error('[totp] désactivation échouée:', e); }
+    },
+  });
 };
 
 // ─── CODE PIN 6 CHIFFRES — App lock au démarrage ───────
@@ -2244,17 +2385,9 @@ window.doLogin = async function() {
       // le gate 2FA qu'il refait y retrouve un appareil connu, sans effet).
       return;
     }
-    if (data.need2fa === 'email') {
+    if (data.need2fa === 'email' || data.need2fa === 'totp') {
       _loginPending = { pendingToken: data.pendingToken };
-      _showLoginOtpVerify(email);
-      return;
-    }
-    if (data.need2fa === 'totp') {
-      // Pas encore livré côté client : ne peut pas survenir tant qu'aucun
-      // compte n'a de TOTP enrôlé côté serveur.
-      err.textContent = 'Vérification indisponible pour le moment. Réessayez.';
-      err.style.display = 'block';
-      _resetTurnstile('turnstile-login');
+      _showLoginOtpVerify(email, data.need2fa);
       return;
     }
     err.textContent = data.error || 'Une erreur est survenue. Réessayez.';
@@ -2269,11 +2402,11 @@ window.doLogin = async function() {
   }
 };
 
-// Écran de saisie du code, pour la 2FA email déclenchée par /login — le code
-// est déjà envoyé à ce stade (par /login lui-même), pas d'étape "envoyer" à
-// afficher, contrairement au parcours device-verify historique (Google
-// Sign-In, encore sur l'ancien flux) qui réutilise le même écran HTML.
-function _showLoginOtpVerify(email) {
+// Écran de saisie du code, pour la 2FA (email ou TOTP) déclenchée par /login
+// — réutilise le même écran HTML que le parcours device-verify historique
+// (Google Sign-In, encore sur l'ancien flux), avec un texte d'intro adapté :
+// rien n'est "envoyé" en TOTP, le code vient de l'app du membre.
+function _showLoginOtpVerify(email, method) {
   document.getElementById('login-screen').style.display = 'flex';
   document.getElementById('app').style.display = 'none';
   document.getElementById('login-view').style.display = 'none';
@@ -2281,8 +2414,12 @@ function _showLoginOtpVerify(email) {
   const vv = document.getElementById('verify-view'); if (vv) vv.style.display = 'none';
   const view = document.getElementById('device-verify-view');
   if (view) view.style.display = 'block';
-  const eDisp = document.getElementById('dv-email-display');
-  if (eDisp) eDisp.textContent = email || '';
+  const intro = document.getElementById('dv-intro-text');
+  if (intro) {
+    intro.innerHTML = method === 'totp'
+      ? 'Nouvel appareil : saisissez le code affiché par votre app d\'authentification.'
+      : 'Pour votre sécurité, un code de vérification doit être envoyé à<br><strong id="dv-email-display" style="color:var(--text)">' + (email || '') + '</strong>';
+  }
   const dLabel = document.getElementById('dv-device-label');
   if (dLabel) dLabel.textContent = _getDeviceLabel();
   document.getElementById('dv-step-send').style.display = 'none';
@@ -2663,6 +2800,7 @@ window.openProfilModal = function() {
   // Charge liste appareils confiance à l'ouverture
   try { window.refreshTrustedDevices && window.refreshTrustedDevices(); } catch(_) {}
   try { window.refreshPinStatus && window.refreshPinStatus(); } catch(_) {}
+  try { window.refreshTotpStatus && window.refreshTotpStatus(); } catch(_) {}
   document.getElementById('profil-modal-overlay').classList.add('open');
   loadProfilePage(fbAuth.currentUser);
   renderPushSettings();

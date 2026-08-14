@@ -47,11 +47,12 @@
      de tous les utilisateurs. Fichier pris dans le paquet npm officiel
      (chart.js@4.4.0, dist/chart.umd.js), version figée dans le nom du fichier. -->
 <script src="assets/vendor/chart.umd.4.4.0.js"></script>
+<script src="assets/vendor/qrcode.2.0.4.js"></script>
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260816o">
+<link rel="stylesheet" href="css/style.css?v=20260816p">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 </head>
 <body>
@@ -302,13 +303,13 @@
       <div class="login-title">Nouvel appareil détecté</div>
       <div class="login-subtitle">Capital Board</div>
     </div>
-    <div style="text-align:center;font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:14px">
+    <div id="dv-intro-text" style="text-align:center;font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:14px">
       Pour votre sécurité, un code de vérification doit être envoyé à<br>
       <strong id="dv-email-display" style="color:var(--text)">—</strong>
     </div>
     <div style="font-size:12px;color:var(--text3);line-height:1.55;margin-bottom:16px;padding:10px 14px;background:var(--s2);border:1px solid var(--border2);border-radius:10px">
       Appareil : <strong id="dv-device-label" style="color:var(--text)">—</strong><br>
-      Cet appareil sera mémorisé pendant 90 jours.
+      Cet appareil sera mémorisé pendant 30 jours.
     </div>
 
     <!-- Étape A : envoi du code -->
@@ -3186,6 +3187,18 @@
     <div id="pin-status-box" style="padding:10px 12px;background:var(--s2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;font-size:12px;color:var(--text3)">Chargement…</div>
     <div id="pin-actions" style="display:flex;gap:8px"></div>
 
+    <!-- Sécurité — Code d'authentification (TOTP, facultatif) -->
+    <div style="height:1px;background:var(--border);margin:18px 0"></div>
+    <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:6px">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      Code d'authentification
+    </div>
+    <div style="font-size:11px;color:var(--text3);line-height:1.55;margin-bottom:10px">
+      Facultatif. Une fois activé, une app comme Google Authenticator ou Authy remplace le code par email pour valider un nouvel appareil — plus rapide, sans dépendre de la boîte mail.
+    </div>
+    <div id="totp-status-box" style="padding:10px 12px;background:var(--s2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;font-size:12px;color:var(--text3)">Chargement…</div>
+    <div id="totp-actions" style="display:flex;gap:8px"></div>
+
     <!-- Sécurité — Appareils de confiance -->
     <div style="height:1px;background:var(--border);margin:18px 0"></div>
     <div style="font-size:12px;font-weight:600;color:var(--text2);margin-bottom:10px;font-family:var(--mono);text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;gap:6px">
@@ -3193,7 +3206,7 @@
       Appareils de confiance
     </div>
     <div style="font-size:11px;color:var(--text3);line-height:1.55;margin-bottom:10px">
-      Les appareils ci-dessous peuvent se connecter sans code de vérification pendant 90 jours après leur dernière connexion. Révoquez ceux que vous ne reconnaissez pas.
+      Les appareils ci-dessous peuvent se connecter sans code de vérification pendant 30 jours après leur dernière connexion. Révoquez ceux que vous ne reconnaissez pas.
     </div>
     <div id="trusted-devices-list" style="display:flex;flex-direction:column;gap:8px;margin-bottom:10px;font-size:12px">
       <div style="color:var(--text3);font-style:italic;padding:8px 0">Chargement…</div>
@@ -3535,11 +3548,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260816o"></script>
+<script src="js/app.js?v=20260816p"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260816o"></script>
+<script src="js/onboarding.js?v=20260816p"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260816o"></script>
+<script src="js/import.js?v=20260816p"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
@@ -3653,6 +3666,50 @@
       <button onclick="closePinSetupModal()" style="flex:1;padding:11px;border-radius:10px;border:1px solid #2a2b3d;background:#13141c;color:#cbd1de;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)">Annuler</button>
       <button id="pin-setup-btn" onclick="pinSetupSubmit()" style="flex:1;padding:11px;border-radius:10px;border:none;background:#7c6df5;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans)">Continuer</button>
     </div>
+  </div>
+</div>
+
+<!-- Modal enrôlement TOTP (2 étapes : scan/saisie + codes de secours) -->
+<div id="totp-enroll-modal" style="display:none;position:fixed;inset:0;z-index:10000;background:rgba(0,0,0,0.65);backdrop-filter:blur(6px);align-items:center;justify-content:center;padding:20px">
+  <div style="background:linear-gradient(180deg,#1a1b26 0%,#141520 100%);border:1px solid rgba(124,109,245,0.25);border-radius:18px;padding:28px 28px 22px;max-width:400px;width:100%;box-shadow:0 30px 70px rgba(0,0,0,0.7);max-height:88vh;overflow-y:auto">
+
+    <!-- Étape 1 : secret + QR + confirmation -->
+    <div id="totp-enroll-step1">
+      <div style="width:52px;height:52px;margin:0 auto 14px;border-radius:50%;background:rgba(124,109,245,0.12);display:flex;align-items:center;justify-content:center">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+      </div>
+      <div style="font-size:17px;font-weight:700;color:#fff;margin-bottom:8px;text-align:center">Activer le code d'authentification</div>
+      <div style="font-size:12px;color:#8892a8;text-align:center;line-height:1.55;margin-bottom:16px">Scannez le QR code avec Google Authenticator, Authy ou une app équivalente — ou recopiez le code manuellement.</div>
+
+      <div id="totp-enroll-qr" style="width:180px;height:180px;margin:0 auto 14px;background:#fff;border-radius:12px;padding:10px;display:flex;align-items:center;justify-content:center"></div>
+
+      <div style="font-size:10px;color:#8892a8;text-transform:uppercase;letter-spacing:1px;text-align:center;margin-bottom:4px">Ou saisissez ce code</div>
+      <div id="totp-enroll-secret" style="font-family:var(--mono);font-size:14px;font-weight:700;color:#fff;text-align:center;word-break:break-all;letter-spacing:1px;padding:10px 12px;background:#13141c;border:1px solid #2a2b3d;border-radius:10px;margin-bottom:12px">Génération…</div>
+
+      <a id="totp-enroll-open-app" href="#" style="display:block;text-align:center;font-size:12px;color:#7c6df5;font-weight:600;text-decoration:none;margin-bottom:16px">Ouvrir dans mon app d'authentification (mobile)</a>
+
+      <div style="font-size:11px;color:#8892a8;text-align:center;margin-bottom:8px">Confirmez avec le code affiché par l'app :</div>
+      <input id="totp-enroll-code" type="text" inputmode="numeric" autocomplete="off" maxlength="6" placeholder="000000" style="width:100%;padding:14px;border-radius:10px;border:1px solid #2a2b3d;background:#13141c;color:#fff;font-size:22px;font-family:var(--mono);font-weight:700;text-align:center;letter-spacing:8px;margin-bottom:14px;outline:none">
+      <div id="totp-enroll-error" style="display:none;font-size:12px;color:#ff4d6a;margin-bottom:10px;text-align:center;padding:8px 12px;background:rgba(255,77,106,0.08);border-radius:8px"></div>
+      <div style="display:flex;gap:10px">
+        <button onclick="closeTotpEnrollModal()" style="flex:1;padding:11px;border-radius:10px;border:1px solid #2a2b3d;background:#13141c;color:#cbd1de;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)">Annuler</button>
+        <button id="totp-enroll-confirm-btn" onclick="totpEnrollConfirmSubmit()" style="flex:1;padding:11px;border-radius:10px;border:none;background:#7c6df5;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans)">Confirmer</button>
+      </div>
+    </div>
+
+    <!-- Étape 2 : codes de secours -->
+    <div id="totp-enroll-step2" style="display:none">
+      <div style="width:52px;height:52px;margin:0 auto 14px;border-radius:50%;background:rgba(34,217,138,0.12);display:flex;align-items:center;justify-content:center">
+        <svg width="26" height="26" viewBox="0 0 24 24" fill="none" stroke="#22d98a" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"/></svg>
+      </div>
+      <div style="font-size:17px;font-weight:700;color:#fff;margin-bottom:8px;text-align:center">Activé — notez vos codes de secours</div>
+      <div style="font-size:12px;color:#8892a8;text-align:center;line-height:1.55;margin-bottom:14px">
+        Si vous perdez votre téléphone, chacun de ces 8 codes remplace une fois le code de l'app. Ils ne seront <strong style="color:#ff4d6a">plus jamais affichés</strong> après fermeture de cette fenêtre.
+      </div>
+      <div id="totp-backup-codes" style="display:grid;grid-template-columns:1fr 1fr;gap:2px 16px;padding:14px;background:#13141c;border:1px solid #2a2b3d;border-radius:10px;margin-bottom:16px;text-align:center;color:#fff"></div>
+      <button onclick="closeTotpEnrollModal()" style="width:100%;padding:11px;border-radius:10px;border:none;background:#7c6df5;color:#fff;font-size:13px;font-weight:700;cursor:pointer;font-family:var(--sans)">J'ai noté mes codes</button>
+    </div>
+
   </div>
 </div>
 

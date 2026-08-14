@@ -1462,6 +1462,112 @@ async function checkOtpChallenge(uid, code, expectedType, env) {
   };
 }
 
+// ── TOTP (RFC 6238) — second facteur optionnel, en plus de l'OTP email ─────
+// Rien de propriétaire : Firebase MFA natif demande le palier payant Identity
+// Platform, écarté. Compatible avec n'importe quelle app d'authentification
+// (Google Authenticator, Authy...) — c'est le même algorithme partout.
+
+const BASE32_ALPHABET = 'ABCDEFGHIJKLMNOPQRSTUVWXYZ234567';
+
+function base32Encode(bytes) {
+  let bits = 0, value = 0, out = '';
+  for (const byte of bytes) {
+    value = (value << 8) | byte;
+    bits += 8;
+    while (bits >= 5) {
+      out += BASE32_ALPHABET[(value >>> (bits - 5)) & 31];
+      bits -= 5;
+    }
+  }
+  if (bits > 0) out += BASE32_ALPHABET[(value << (5 - bits)) & 31];
+  return out;
+}
+
+function base32Decode(str) {
+  str = String(str).toUpperCase().replace(/=+$/, '');
+  let bits = 0, value = 0;
+  const bytes = [];
+  for (const ch of str) {
+    const idx = BASE32_ALPHABET.indexOf(ch);
+    if (idx === -1) continue;
+    value = (value << 5) | idx;
+    bits += 5;
+    if (bits >= 8) {
+      bytes.push((value >>> (bits - 8)) & 0xff);
+      bits -= 8;
+    }
+  }
+  return new Uint8Array(bytes);
+}
+
+// Code à un instant donné (± counterOffset pas de 30s), RFC 4226/6238.
+async function totpCodeAt(secretBytes, counterOffset) {
+  const counter = Math.floor(Date.now() / 1000 / 30) + counterOffset;
+  const counterBytes = new ArrayBuffer(8);
+  new DataView(counterBytes).setUint32(4, counter); // 32 bits hauts à 0 : suffisant jusqu'en 2106
+  const key = await crypto.subtle.importKey('raw', secretBytes, { name: 'HMAC', hash: 'SHA-1' }, false, ['sign']);
+  const hmac = new Uint8Array(await crypto.subtle.sign('HMAC', key, counterBytes));
+  const offset = hmac[hmac.length - 1] & 0x0f;
+  const bin = ((hmac[offset] & 0x7f) << 24) | ((hmac[offset + 1] & 0xff) << 16)
+            | ((hmac[offset + 2] & 0xff) << 8) | (hmac[offset + 3] & 0xff);
+  return String(bin % 1000000).padStart(6, '0');
+}
+
+// Fenêtre ±1 pas (30s) : tolère le décalage d'horloge normal d'un téléphone.
+async function verifyTotp(secretBytes, code) {
+  for (let off = -1; off <= 1; off++) {
+    if (await totpCodeAt(secretBytes, off) === code) return true;
+  }
+  return false;
+}
+
+// Le secret doit être relisible (recalcul du code à chaque vérification),
+// contrairement au PIN/OTP qui ne comparent qu'une empreinte — chiffré au
+// repos avec une clé propre au Worker, jamais dérivable depuis Firestore seul.
+async function totpEncryptSecret(secretBase32, env) {
+  const keyBytes = Uint8Array.from(atob(env.TOTP_ENCRYPTION_KEY), c => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['encrypt']);
+  const iv = crypto.getRandomValues(new Uint8Array(12));
+  const cipher = new Uint8Array(await crypto.subtle.encrypt({ name: 'AES-GCM', iv }, key, new TextEncoder().encode(secretBase32)));
+  const packed = new Uint8Array(iv.length + cipher.length);
+  packed.set(iv); packed.set(cipher, iv.length);
+  return btoa(String.fromCharCode(...packed));
+}
+
+async function totpDecryptSecret(packedB64, env) {
+  const keyBytes = Uint8Array.from(atob(env.TOTP_ENCRYPTION_KEY), c => c.charCodeAt(0));
+  const key = await crypto.subtle.importKey('raw', keyBytes, 'AES-GCM', false, ['decrypt']);
+  const packed = Uint8Array.from(atob(packedB64), c => c.charCodeAt(0));
+  const plain = await crypto.subtle.decrypt(
+    { name: 'AES-GCM', iv: packed.slice(0, 12) }, key, packed.slice(12)
+  );
+  return new TextDecoder().decode(plain);
+}
+
+// Vérifie un code contre totpSecrets/{uid} : TOTP d'abord, code de secours
+// ensuite (usage unique — retiré de la liste s'il matche).
+async function checkTotpOrBackup(uid, code, env) {
+  let doc;
+  try { doc = await firestoreGet(`totpSecrets/${uid}`, env); } catch (_) { return false; }
+  const encrypted = fsStr(doc, 'secret');
+  if (!encrypted) return false;
+
+  const secret = await totpDecryptSecret(encrypted, env);
+  if (await verifyTotp(base32Decode(secret), code)) return true;
+
+  const backups = doc.fields?.backupCodes?.arrayValue?.values || [];
+  for (let i = 0; i < backups.length; i++) {
+    const f = backups[i].mapValue?.fields || {};
+    if (await otpEqual(await sha256((f.salt?.stringValue || '') + code), f.hash?.stringValue || '')) {
+      const remaining = backups.slice(0, i).concat(backups.slice(i + 1));
+      await firestoreUpdate(`totpSecrets/${uid}`,
+        { backupCodes: { arrayValue: { values: remaining } } }, ['backupCodes'], env);
+      return true;
+    }
+  }
+  return false;
+}
+
 function emailIdeaPublished(title) {
   const base = 'https://capitalboard.fr';
   return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${CSS_BASE}
@@ -2296,10 +2402,8 @@ export default {
 
         let ok = false;
         if (pending.method === 'totp') {
-          // Phase TOTP pas encore livrée : personne n'a de totpSecrets, donc
-          // finishLogin ne produit jamais 'totp' aujourd'hui — branche morte
-          // en attendant, plutôt qu'une référence à une fonction absente.
-          return json({ ok: false, error: 'TOTP non disponible.' }, 501);
+          ok = await checkTotpOrBackup(pending.uid, code, env);
+          if (!ok) return json({ ok: false, error: 'Code incorrect.' });
         } else {
           const r = await checkOtpChallenge(pending.uid, code, '2fa', env);
           ok = r.valid;
@@ -2315,6 +2419,86 @@ export default {
         await trustDevice(pending.uid, pending.deviceId, pending.deviceLabel, pending.ipInfo, env);
         const customToken = await makeCustomToken(JSON.parse(env.FIREBASE_SERVICE_ACCOUNT), pending.uid);
         return json({ ok: true, customToken });
+      }
+
+      // ── POST /totp-enroll-start ─────────────────────────────────────────
+      // Génère un secret, le garde en attente (KV, 10 min) — pas encore en
+      // Firestore tant que le membre n'a pas prouvé qu'il l'a bien enrôlé.
+      if (url.pathname === '/totp-enroll-start' && request.method === 'POST') {
+        const { idToken } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        if (!user.emailVerified) return json({ ok: false, error: 'Adresse email non vérifiée' }, 403);
+
+        if (!(await rateLimit(env, `totp-enroll-start:${user.localId}`, 8, 300))) {
+          return json({ ok: false, error: 'Trop de tentatives, réessayez plus tard.' }, 429);
+        }
+
+        const secret = base32Encode(crypto.getRandomValues(new Uint8Array(20)));
+        await env.EARNINGS.put(`totp-pending:${user.localId}`, secret, { expirationTtl: 600 });
+
+        const label = encodeURIComponent(`Capital Board:${user.email}`);
+        const otpauthUrl = `otpauth://totp/${label}?secret=${secret}&issuer=${encodeURIComponent('Capital Board')}&digits=6&period=30`;
+        return json({ ok: true, secret, otpauthUrl });
+      }
+
+      // ── POST /totp-enroll-confirm ───────────────────────────────────────
+      // Le code confirme que le secret a bien été enrôlé (pas juste généré) :
+      // à partir d'ici seulement, il passe en Firestore et devient un facteur
+      // valide au login.
+      if (url.pathname === '/totp-enroll-confirm' && request.method === 'POST') {
+        // Sans cette clé, le secret ne peut pas être chiffré avant Firestore —
+        // autant le dire clairement que laisser remonter une erreur opaque.
+        if (!env.TOTP_ENCRYPTION_KEY) return json({ ok: false, error: 'Fonctionnalité non configurée côté serveur.' }, 503);
+        const { idToken, code } = await request.json();
+        if (!/^\d{6}$/.test(code ?? '')) return json({ ok: false, error: 'Code invalide' }, 400);
+        const user = await verifyIdToken(idToken, env);
+
+        if (!(await rateLimit(env, `totp-enroll-confirm:${user.localId}`, 8, 300))) {
+          return json({ ok: false, error: 'Trop de tentatives, recommencez l\'enrôlement.' }, 429);
+        }
+
+        const secret = await env.EARNINGS.get(`totp-pending:${user.localId}`);
+        if (!secret) return json({ ok: false, error: 'Session d\'enrôlement expirée, recommencez.' }, 410);
+
+        if (!(await verifyTotp(base32Decode(secret), code))) {
+          return json({ ok: false, error: 'Code incorrect.' }, 401);
+        }
+        await env.EARNINGS.delete(`totp-pending:${user.localId}`);
+
+        // Codes de secours : même format que l'OTP email (6 chiffres), pour
+        // rester compatible avec la validation déjà en place sur /login-verify.
+        // Usage unique chacun, empreinte seule stockée — jamais le code en clair.
+        const backupCodes = [];
+        const backupFields = [];
+        for (let i = 0; i < 8; i++) {
+          const raw = otpGenerate();
+          const salt = crypto.randomUUID();
+          backupCodes.push(raw);
+          backupFields.push({ mapValue: { fields: {
+            salt: { stringValue: salt }, hash: { stringValue: await sha256(salt + raw) },
+          } } });
+        }
+
+        const encrypted = await totpEncryptSecret(secret, env);
+        await firestoreSet(`totpSecrets/${user.localId}`, {
+          secret:      { stringValue: encrypted },
+          createdAt:   { integerValue: String(Date.now()) },
+          backupCodes: { arrayValue: { values: backupFields } },
+        }, env);
+        await firestoreUpdate(`users/${user.localId}/data/security`,
+          { totpEnabled: { booleanValue: true } }, ['totpEnabled'], env);
+
+        return json({ ok: true, backupCodes });
+      }
+
+      // ── POST /totp-disable ──────────────────────────────────────────────
+      if (url.pathname === '/totp-disable' && request.method === 'POST') {
+        const { idToken } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        await firestoreDelete(`totpSecrets/${user.localId}`, env);
+        await firestoreUpdate(`users/${user.localId}/data/security`,
+          { totpEnabled: { booleanValue: false } }, ['totpEnabled'], env);
+        return json({ ok: true });
       }
 
       // ── POST /request-otp ───────────────────────────────────────────────
