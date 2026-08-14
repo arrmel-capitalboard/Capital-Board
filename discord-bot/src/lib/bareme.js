@@ -102,11 +102,43 @@ function extraireTaux(html, sigle) {
   return Number.isFinite(v) ? v : null;
 }
 
+/**
+ * Récupère une page, `fetch` s'il existe, `https` sinon.
+ *
+ * `fetch` n'est global qu'à partir de Node 18. Le bot l'exige, mais une VM
+ * qu'on ne remet pas à jour vit plus longtemps qu'un fichier `engines`, et la
+ * panne prendrait alors la forme la plus désagréable : des taux qui se figent
+ * sans que rien ne soit cassé nulle part. Le repli tient en dix lignes.
+ */
+function recuperer(url, restants) {
+  const entetes = { 'User-Agent': UA, 'Accept-Language': 'fr' };
+  if (typeof fetch === 'function') {
+    return fetch(url, { headers: entetes }).then(res => {
+      if (!res.ok) throw new Error('HTTP ' + res.status);
+      return res.text();
+    });
+  }
+  return new Promise((resolve, reject) => {
+    require('node:https').get(url, { headers: entetes }, (res) => {
+      // service-public.fr redirige — la fiche demandée en http ou sans slash
+      // final renvoie un 301 que `https.get` ne suit pas tout seul.
+      if (res.statusCode >= 300 && res.statusCode < 400 && res.headers.location) {
+        res.resume();
+        if (!(restants > 0)) return reject(new Error('trop de redirections'));
+        return resolve(recuperer(new URL(res.headers.location, url).href, restants - 1));
+      }
+      if (res.statusCode !== 200) { res.resume(); return reject(new Error('HTTP ' + res.statusCode)); }
+      let corps = '';
+      res.setEncoding('utf8');
+      res.on('data', (c) => { corps += c; });
+      res.on('end', () => resolve(corps));
+    }).on('error', reject);
+  });
+}
+
 async function lireFiche(f) {
   const url = 'https://www.service-public.fr/particuliers/vosdroits/' + f.page;
-  const res = await fetch(url, { headers: { 'User-Agent': UA, 'Accept-Language': 'fr' } });
-  if (!res.ok) throw new Error('HTTP ' + res.status);
-  const taux = extraireTaux(await res.text(), f.sigle);
+  const taux = extraireTaux(await recuperer(url, 5), f.sigle);
   if (taux === null) throw new Error('taux introuvable sur la fiche');
   return taux;
 }
