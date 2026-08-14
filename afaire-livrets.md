@@ -61,13 +61,13 @@ Aucune lecture, pas même par l'auteur — une collection lisible deviendrait
 l'annuaire des emails de tous ceux qui ont signalé quelque chose. Le bot passe
 par le SDK admin, qui ignore ces règles.
 
-> ⚠️ **Deux déploiements en attente** :
-> - `firebase deploy --only firestore:rules` — sans ça, l'écriture est refusée
->   et le bouton affiche « Envoi impossible ».
-> - le **bot** (`src/lib/signalements.js` + son démarrage dans `src/index.js`)
->   doit repartir sur la VM, sinon les signalements s'empilent sans être postés.
->   Rien n'est perdu : au redémarrage, le listener rattrape tous les docs sans
->   `posteLe`.
+Règles Firestore déployées le 16/08 (`npx firebase-tools@13 deploy --only
+firestore:rules --project capitalboard`).
+
+> ⚠️ **Le bot reste à redéployer** sur sa VM : `src/lib/signalements.js` et son
+> démarrage dans `src/index.js` n'y sont pas encore. D'ici là les signalements
+> s'écrivent sans être postés — rien n'est perdu, le listener rattrape au
+> démarrage tous les docs sans `posteLe`.
 
 ### Le calcul
 
