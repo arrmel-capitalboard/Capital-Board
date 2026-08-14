@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816h';
+const APP_VERSION = '20260816i';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -18316,19 +18316,23 @@ const LIV_BAREME = {
   effet: '1er août 2026',
   jusqu: '31 janvier 2027',
   types: {
-    // `bientot` : le type est affiché mais pas ouvert. Le calcul est le même
-    // pour tous, mais il n'a été éprouvé que sur le Livret A et le Livret
-    // Jeune — le premier sur une vraie fiche de banque. Un PEL a un taux au
-    // contrat et des règles de prime, un LEP une condition de revenu : les
-    // proposer maintenant, c'est promettre un chiffre jamais vérifié. Les
-    // masquer serait pire : on ne saurait pas qu'ils arrivent.
+    // `bientot` : le type est affiché mais pas ouvert. Les masquer serait pire,
+    // on ne saurait pas qu'ils arrivent.
+    //
+    // Ce qui reste fermé ne l'est pas faute de calcul — il est commun — mais
+    // faute de RÈGLES vérifiées. Le PEL impose un versement minimum annuel et
+    // se ferme au premier retrait ; le CEL et le PEL portent une fiscalité qui
+    // dépend de la date d'ouverture, pas du type, ce que le modèle ne sait pas
+    // encore exprimer ; un livret bancaire n'a ni plafond ni taux réglementé.
+    // Les quatre ouverts, eux, sont des livrets réglementés à taux unique :
+    // leur barème suffit à les décrire, et il est vérifié en test.
     livretA:  { label: 'Livret A',        court: 'A',    plafond: 22950, taux: 1.7,  unique: true,  fisc: false, color: '#00e09e' },
-    ldds:     { label: 'LDDS',            court: 'LDDS', plafond: 12000, taux: 1.7,  unique: true,  fisc: false, color: '#4ade80', bientot: true },
+    ldds:     { label: 'LDDS',            court: 'LDDS', plafond: 12000, taux: 1.7,  unique: true,  fisc: false, color: '#4ade80' },
     // Le LEP est soumis à une condition de revenu, vérifiée chaque année par
     // la banque. Elle ne change rien au calcul, mais elle explique pourquoi ce
     // livret n'est pas ouvert à tout le monde : autant le dire dans le
     // formulaire plutôt que de laisser croire à un oubli.
-    lep:      { label: 'LEP',             court: 'LEP',  plafond: 10000, taux: 2.5,  unique: true,  fisc: false, color: '#22d3ee', bientot: true,
+    lep:      { label: 'LEP',             court: 'LEP',  plafond: 10000, taux: 2.5,  unique: true,  fisc: false, color: '#22d3ee',
                 condition: 'Sous condition de revenu : 23 028 € de revenu fiscal de référence pour une personne seule, 35 328 € pour un couple.' },
     // Le taux du Livret Jeune est fixé librement par chaque banque, avec pour
     // seul plancher légal celui du Livret A. 3,75 % est une valeur courante,
@@ -19533,10 +19537,20 @@ window.livImporterReleve = function() {
  */
 function _livFicheEstSur(f, t) {
   if (!f || !t || t.plafond === null) return false;
-  const p = Number(f.plafond);
-  if (Number.isFinite(p) && p > 0) return Math.abs(p - t.plafond) > 1;
+  // Taux de référence : celui du barème, ou le plancher légal quand la banque
+  // fixe librement le sien. Un Livret Jeune ne peut pas rémunérer moins que le
+  // Livret A, ce qui suffit à trancher sans connaître son contrat.
+  const ref = t.min ? _livType_(t.min).taux : t.taux;
   const tx = Number(f.taux);
-  return !t.min && Number.isFinite(t.taux) && Number.isFinite(tx) && tx > 0 && tx < t.taux / 2;
+  const p  = Number(f.plafond);
+  // Un compartiment de dépassement rémunère toujours MOINS que la tranche
+  // réglementée — c'est ce qui le définit. Un bloc qui paie autant ou plus
+  // n'est pas le second étage du livret mais un autre produit : la fiche d'un
+  // Livret A déposée par erreur sur un LDDS a bien un plafond différent, et
+  // elle serait devenue un compartiment à 1,70 % sans rien signaler.
+  if (Number.isFinite(tx) && Number.isFinite(ref) && tx >= ref) return false;
+  if (Number.isFinite(p) && p > 0) return Math.abs(p - t.plafond) > 1;
+  return Number.isFinite(ref) && Number.isFinite(tx) && tx > 0 && tx < ref / 2;
 }
 
 /**
@@ -19727,9 +19741,10 @@ function _livRenderTypes() {
   const note = document.getElementById('liv-f-types-note');
   if (note) {
     note.hidden = !fermes.length;
-    note.textContent = 'Les types marqués « Bientôt » ne sont pas encore ouverts : le calcul n’a ' +
-      'été vérifié que sur le Livret A et le Livret Jeune, et annoncer un chiffre qu’on n’a pas ' +
-      'contrôlé serait pire que de le faire attendre.';
+    note.textContent = 'Les types marqués « Bientôt » ne sont pas encore ouverts : leurs règles ' +
+      'propres — taux au contrat, fiscalité liée à la date d’ouverture, versement minimum — ' +
+      'n’ont pas encore été vérifiées, et annoncer un chiffre qu’on n’a pas contrôlé serait pire ' +
+      'que de le faire attendre.';
   }
   // Tous les types restent affichés, ouverts ou non : la liste dit ce que le
   // module couvrira, et une entrée qui disparaît laisse croire à un oubli.
@@ -19915,7 +19930,9 @@ window.livSave = function() {
   // modale restée ouverte pendant que le barème change sous elle.
   const _garde = _livEditId ? (getLivrets().find(l => l.id === _livEditId) || {}).type : null;
   if (!_livTypeOuvert(_livType, _garde)) {
-    return _livErr('Le ' + t.label + ' n\'est pas encore ouvert. Le calcul n\'a été vérifié que sur le Livret A et le Livret Jeune.');
+    return _livErr('Le ' + t.label + ' n\'est pas encore ouvert : ses règles propres n\'ont pas ' +
+      'encore été vérifiées. Types disponibles : ' +
+      _livTypesDispo(_garde).map(k => _livType_(k).label).join(', ') + '.');
   }
 
   const entree = {

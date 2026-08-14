@@ -39,7 +39,7 @@ const bundle = [
   g(/function _livClasserFiche\(f\) \{[\s\S]*?\n\}/),
   'module.exports = { _livSolde, _livTaux, _livTauxA, _livInterets, _livInteretsQ,' +
   ' _livAcquis, _livProjete, _livDebutQuinzaine, _livQuinzaines, _livReste, _livPlafond,' +
-  ' _livSur, _livPlafondTotal, _livTauxMarge, _livFicheEstSur, _livClasserFiche, _livType_ };',
+  ' _livSur, _livPlafondTotal, _livTauxMarge, _livFicheEstSur, _livClasserFiche, _livType_, _livB };',
 ].join('\n');
 
 const mod = new module.constructor();
@@ -276,6 +276,20 @@ chk('classement : le dépassement passe dans sur', remis.sur.taux, 0.3);
 chk('classement : plafond du dépassement',   remis.sur.plafond, 77050);
 chk('classement : pas de troisième étage',   remis.sur.sur, undefined);
 
+// La fiche d'un autre livret déposée sur le mauvais type : le plafond diffère,
+// mais le taux est celui d'un produit réglementé, pas d'un dépassement. Sans
+// cette garde, un Livret A importé sur un LDDS devenait un compartiment à
+// 1,70 % — et tout le solde au-delà de 12 000 € aurait été imposé.
+const tL = X._livType_('ldds');
+chk('fiche : Livret A déposé sur un LDDS n’est pas un compartiment',
+    X._livFicheEstSur({ plafond: 22950, taux: 1.7 }, tL) ? 1 : 0, 0);
+chk('fiche : vrai dépassement sur un LDDS',
+    X._livFicheEstSur({ plafond: 65000, taux: 0.3 }, tL) ? 1 : 0, 1);
+// Le plancher légal du Livret Jeune suffit à trancher sans connaître son
+// contrat : aucune banque ne peut le rémunérer sous le taux du Livret A.
+chk('fiche : dépassement sous le plancher du Livret Jeune',
+    X._livFicheEstSur({ plafond: 50000, taux: 0.3 }, tJ) ? 1 : 0, 1);
+
 // Déjà dans l'ordre : rien ne bouge.
 const droit = { taux: 1.7, plafond: 22950, sur: { taux: 0.3, plafond: 77050 } };
 chk('classement : ordre correct laissé tel quel', X._livClasserFiche(droit).taux, 1.7);
@@ -287,6 +301,71 @@ chk('classement : fiche ordinaire intacte',
 const seule = X._livClasserFiche({ taux: 0.3, plafond: 77050, solde: 0 });
 chk('classement : dépassement seul, livret vide', seule.taux, undefined);
 chk('classement : dépassement seul, rangé au bon endroit', seule.sur.taux, 0.3);
+
+// ── Barème des types ouverts ────────────────────────────────────────────────
+//
+// Ces livrets-là, personne dans l'équipe n'en détient : aucun relevé réel ne
+// viendra les éprouver. Ce qui est vérifiable l'est donc ici — le barème est
+// complet, et le calcul rend ce que la loi annonce. Le reste, la lecture d'un
+// écran de banque, ne dépend pas du type.
+const B = X._livB();
+const ouverts = Object.keys(B.types).filter(k => !B.types[k].bientot);
+
+chk('types ouverts : Livret A, Livret Jeune, LDDS, LEP',
+    ouverts.slice().sort().join(','), 'jeune,ldds,lep,livretA');
+
+// Un type ne s'ouvre qu'avec un barème complet. Sans cette garde, retirer un
+// `bientot` sur le livret bancaire — dont le taux est au contrat — offrirait un
+// livret rémunéré à 0 % sans que rien ne le dise.
+ouverts.forEach(k => {
+  const t = B.types[k];
+  chk('barème ' + k + ' : plafond connu', Number.isFinite(t.plafond) && t.plafond > 0 ? 1 : 0, 1);
+  chk('barème ' + k + ' : taux connu',    Number.isFinite(t.taux)    && t.taux    > 0 ? 1 : 0, 1);
+  chk('barème ' + k + ' : fiscalité posée', typeof t.fisc === 'boolean' ? 1 : 0, 1);
+});
+
+// Valeurs en vigueur du 1er août 2026 au 31 janvier 2027, vérifiées le 16/08
+// sur les sources publiques. Elles ne se devinent pas : un chiffre faux ici se
+// propage à tout ce que le membre lit.
+chk('barème : Livret A à 1,70 %',   B.types.livretA.taux, 1.7);
+chk('barème : Livret A à 22 950 €', B.types.livretA.plafond, 22950);
+chk('barème : LDDS aligné sur le Livret A', B.types.ldds.taux, B.types.livretA.taux);
+chk('barème : LDDS à 12 000 €',     B.types.ldds.plafond, 12000);
+chk('barème : LEP à 2,50 %',        B.types.lep.taux, 2.5);
+chk('barème : LEP à 10 000 €',      B.types.lep.plafond, 10000);
+chk('barème : LEP exonéré',         B.types.lep.fisc ? 1 : 0, 0);
+chk('barème : LDDS exonéré',        B.types.ldds.fisc ? 1 : 0, 0);
+chk('barème : LDDS et LEP uniques par personne',
+    (B.types.ldds.unique && B.types.lep.unique) ? 1 : 0, 1);
+// Le plancher du Livret Jeune est le taux du Livret A, pas une valeur figée :
+// il doit suivre les révisions du barème.
+chk('barème : plancher du Livret Jeune', B.types.jeune.min, 'livretA');
+
+// Un LDDS plein depuis l'an dernier, sur l'année entière. Rien de propre au
+// type dans le calcul : c'est le même moteur que le Livret A, ce que ce cas
+// vérifie chiffre en main.
+const ldds = { type: 'ldds', mouvements: [{ d: '2025-01-01', m: 12000 }] };
+chk('LDDS : acquis à 14 quinzaines', X._livAcquis(ldds).net, 12000 * 0.017 * 14 / 24);
+chk('LDDS : projeté au 31 décembre', X._livProjete(ldds).net, 12000 * 0.017);
+chk('LDDS : exonéré, net = brut',    X._livProjete(ldds).net, X._livProjete(ldds).brut);
+chk('LDDS : plafond atteint',        X._livReste(ldds), 0);
+
+// Un LEP à moitié rempli, alimenté en cours d'année : la quinzaine de départ
+// compte autant que le taux.
+const lep = { type: 'lep', mouvements: [{ d: '2026-05-05', m: 5000 }] };
+chk('LEP : versé le 5 mai, 5 quinzaines acquises', X._livAcquis(lep).net, 5000 * 0.025 * 5 / 24);
+chk('LEP : projeté sur 15 quinzaines',             X._livProjete(lep).net, 5000 * 0.025 * 15 / 24);
+chk('LEP : reste à verser',                        X._livReste(lep), 5000);
+chk('LEP : exonéré, net = brut', X._livAcquis(lep).net, X._livAcquis(lep).brut);
+
+// La capitalisation passe le plafond chez tout le monde, compartiment ou pas :
+// le solde est accepté et rémunéré au taux réglementé.
+const lddsPlein = { type: 'ldds', mouvements: [{ d: '2025-01-01', m: 12204 }] };
+chk('LDDS au-delà du plafond : rémunéré au taux du livret',
+    X._livProjete(lddsPlein).brut, 12204 * 0.017);
+chk('LDDS au-delà du plafond : reste à verser nul', X._livReste(lddsPlein), 0);
+chk('LDDS au-delà du plafond : rien d’imposé',
+    X._livProjete(lddsPlein).net, X._livProjete(lddsPlein).brut);
 
 console.log(t.join('\n'));
 const ko = t.filter(x => x.startsWith('FAIL')).length;

@@ -1,15 +1,16 @@
 # Livrets & épargne — état des lieux et reprise
 
-Dernière mise à jour : 14 août 2026.
+Dernière mise à jour : 16 août 2026.
 
-> **Le Livret A est traité.** Le modèle à deux compartiments est en place :
-> le plafond est devenu une frontière de taux, le calcul par quinzaines répartit
-> chaque euro entre les deux tranches, et la fiscalité suit la tranche et non
-> plus le type de livret. Détail et reste à faire en section 6.1.
+> **Le module est public, quatre types de livrets sont ouverts** : Livret A,
+> LDDS, LEP, Livret Jeune. Le modèle à deux compartiments est en place — le
+> plafond est devenu une frontière de taux, et la fiscalité suit la tranche et
+> non plus le type de livret. Détail en section 6.1.
 >
-> Ce qui manque désormais, et que le code ne peut pas se donner tout seul :
-> **un vrai export de Livret A d'une autre banque que le CIC**, et le parcours
-> exercé dans un navigateur (section 3).
+> Ce qui manque, et que le code ne peut pas se donner tout seul : **un vrai
+> export d'une autre banque que le CIC**, et le parcours exercé dans un
+> navigateur (section 3). Le CEL et le PEL attendent, eux, une fiscalité liée à
+> la date d'ouverture du contrat.
 
 ---
 
@@ -20,12 +21,52 @@ cran *Bêta* a disparu de l'éditeur de menu, il ne reste que l'interrupteur
 masqué / visible. `config/app.features` et `config/app.beta` sont vides en
 base : rien à changer côté Firestore, l'ouverture a pris effet au déploiement.
 
-Ce n'est plus la section qui est retenue mais **les types de livrets** : seuls
-le **Livret A** et le **Livret Jeune** sont ouverts, les autres restent
-affichés dans le formulaire avec une pastille « Bientôt », inertes
-(`bientot: true` dans `LIV_BAREME`, `_livTypeOuvert`). Ouvrir un type = retirer
-son drapeau, dans le code ou depuis `config/app.bareme`. Un livret déjà
-enregistré d'un type fermé reste modifiable, sinon il deviendrait intouchable.
+Ce n'est plus la section qui est retenue mais **les types de livrets**. Quatre
+sont ouverts — **Livret A, LDDS, LEP, Livret Jeune** — les trois autres restent
+affichés avec une pastille « Bientôt », inertes (`bientot: true` dans
+`LIV_BAREME`, `_livTypeOuvert`). Ouvrir un type = retirer son drapeau, dans le
+code ou depuis `config/app.bareme`. Un livret déjà enregistré d'un type fermé
+reste modifiable, sinon il deviendrait intouchable.
+
+### Pourquoi ces quatre, et pas les autres
+
+La ligne de partage n'est pas le calcul — il est commun — mais les **règles
+propres** au produit. Les quatre ouverts sont des livrets réglementés à taux
+unique : leur barème suffit à les décrire, et il est vérifié en test. Les trois
+fermés demandent chacun un modèle que le code n'a pas.
+
+| Fermé | Ce qui manque |
+|---|---|
+| CEL | fiscalité liée à la **date d'ouverture** : un CEL antérieur à 2018 échappe à l'IR et ne subit que les prélèvements sociaux, 17,2 % et non 30 % |
+| PEL | la même fiscalité datée, plus un versement minimum annuel, un terme, la fermeture au premier retrait, et la prime d'État des anciens plans |
+| Livret bancaire | ni plafond ni taux réglementés ; les taux promotionnels (« boosté trois mois ») sont à moitié couverts par `tauxHist` |
+
+`fisc` est aujourd'hui un booléen par type, corrigé par la tranche. Le CEL et le
+PEL demandent un **troisième axe** : la date d'ouverture. C'est le vrai travail
+qui reste, et il ne se vérifie pas sans un contrat réel sous les yeux.
+
+### Ce qui remplace le relevé réel
+
+Personne dans l'équipe ne détient de LDDS ni de LEP : aucun export ne viendra
+les éprouver, et attendre reviendrait à ne jamais les ouvrir. Ce qui est
+vérifiable l'a donc été autrement, le 16/08 :
+
+- **le barème**, contre les sources publiques — LDDS 12 000 € à 1,70 %, aligné
+  sur le Livret A ; LEP 10 000 € à 2,50 %. Les deux figés en test, avec leur
+  exonération et leur unicité ;
+- **une garde sur l'ouverture** : un type ne peut pas être ouvert sans plafond
+  ni taux connus. Retirer `bientot` du livret bancaire ferait échouer la suite
+  au lieu d'offrir un livret rémunéré à 0 % ;
+- **le calcul, chiffre en main** : LDDS plein sur l'année, LEP alimenté en mai,
+  dépassement par capitalisation. Rien de propre au type n'y intervient.
+
+Reste non couvert : **la lecture d'un vrai écran de banque pour ces deux
+produits**. Elle ne dépend pas du type — le parseur cherche des libellés, pas un
+livret — mais elle n'a été éprouvée que sur des fiches de Livret A et de Livret
+Jeune au CIC. Le classement des compartiments, lui, a été durci : un bloc dont
+le taux atteint ou dépasse le taux réglementé n'est plus pris pour un
+dépassement, ce qui évitait qu'une fiche de Livret A déposée par erreur sur un
+LDDS devienne un compartiment à 1,70 %.
 
 L'entrée de menu porte une pastille **« New »** jusqu'à la première ouverture
 de la page (`NEW_SECTIONS`, `cb_sections_vues` en localStorage). C'est la
@@ -165,13 +206,13 @@ des tests sur les fonctions de calcul et de lecture, mais l'enchaînement des
 
 | Livret | Plafond | Taux | Fiscalité | Unique |
 |---|---|---|---|---|
-| Livret A | 22 950 € | 1,70 % | exonéré | oui |
-| LDDS | 12 000 € | 1,70 % | exonéré | oui |
-| LEP\*\* | 10 000 € | 2,50 % | exonéré | oui |
-| Livret Jeune | 1 600 € | 3,75 %\* | exonéré | oui |
-| PEL | 61 200 € | au contrat | imposé | non |
-| CEL | 15 300 € | au contrat | imposé | non |
-| Livret bancaire | aucun | au contrat | imposé | non |
+| Livret A ✅ | 22 950 € | 1,70 % | exonéré | oui |
+| LDDS ✅ | 12 000 € | 1,70 % | exonéré | oui |
+| LEP ✅ \*\* | 10 000 € | 2,50 % | exonéré | oui |
+| Livret Jeune ✅ | 1 600 € | 3,75 %\* | exonéré | oui |
+| PEL ⏳ | 61 200 € | au contrat | imposé | non |
+| CEL ⏳ | 15 300 € | au contrat | imposé | non |
+| Livret bancaire ⏳ | aucun | au contrat | imposé | non |
 
 \* Le taux du Livret Jeune est fixé librement par chaque banque, avec pour seul
 plancher légal celui du Livret A — `min: 'livretA'` refuse une saisie en
