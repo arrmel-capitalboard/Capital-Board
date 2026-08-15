@@ -1,6 +1,6 @@
 # À faire — Capital Board
 
-Dernière mise à jour : 14 août 2026.
+Dernière mise à jour : 15 août 2026.
 
 Priorité par ordre décroissant. Les points de sécurité sont en tête : ils passent
 avant toute nouvelle fonctionnalité.
@@ -26,53 +26,6 @@ avant toute nouvelle fonctionnalité.
 Classées par rapport valeur / effort. Rien ici n'est une faille connue : ce sont
 des couches supplémentaires. L'état actuel est sain, ces points le rendraient plus
 difficile à casser ou plus rapide à diagnostiquer.
-
-### A. Mettre Cloudflare devant capitalboard.fr — le plus gros gain
-
-Aujourd'hui le site est servi directement par GitHub Pages, qui ne permet aucun
-en-tête HTTP. Passer le domaine derrière Cloudflare (gratuit) débloque d'un coup :
-
-- **un vrai CSP**, en mode « rapport seulement » d'abord, ce qui permet enfin de
-  poser `script-src` et `connect-src` sans risquer de casser l'app en aveugle
-  (voir point B, qui devient facile)
-- `X-Frame-Options` / `frame-ancestors`, qui remplacerait la sortie de cadre en
-  JavaScript, contournable
-- `Strict-Transport-Security`, `Referrer-Policy`, `Permissions-Policy`
-- limitation de débit et WAF au bord, donc **avant** d'atteindre le Worker
-- purge de cache maîtrisée, utile au passage pour le gate de version
-
-Effort : une soirée, dont l'essentiel est du DNS. Aucun changement de code.
-
-### B. Compléter le CSP (`script-src`, `connect-src`)
-
-Posé le 30/07 : `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`.
-Manquent les deux directives qui limiteraient réellement une XSS. Elles demandent
-d'autoriser une douzaine d'hôtes (Firebase, Turnstile, reCAPTCHA, Yahoo, ipapi)
-et une omission casse l'app en silence.
-
-À faire après le point A, en mode rapport seulement. Sinon, en direct avec la
-console ouverte et un `git revert` prêt.
-
-### D. MFA Firebase native (TOTP) à la place de la 2FA maison
-
-La 2FA actuelle est désormais arbitrée par le Worker et solide, mais elle reste une
-mécanique maison : le gate vit dans le client, et c'est notre code qui décide. La
-MFA Firebase bloque au niveau de l'émission du jeton — aucun contournement client
-n'est possible, par construction. Gain net de robustesse, coût : refonte du parcours
-de connexion, et l'enrôlement TOTP à expliquer aux membres.
-
-### J. Sauvegardes Firestore — code fait, activation en attente
-
-`scripts/backup-firestore.mjs` exporte tout Firestore (parcours récursif,
-aucune liste de collections à maintenir) et l'envoie sur R2 chaque lundi
-(`.github/workflows/backup-firestore.yml`). Le repo est **public** : jamais
-en artifact GitHub Actions, jamais commité — R2 est un bucket à part.
-
-**Reste à faire, côté toi (Cloudflare, pas du code) :** créer le bucket R2,
-un token API limité à ce bucket, poser les 4 secrets GitHub
-(`R2_ACCOUNT_ID`, `R2_ACCESS_KEY_ID`, `R2_SECRET_ACCESS_KEY`, `R2_BUCKET`), et
-une règle de rétention (ex. 90 jours) dans les réglages du bucket. Sans ces
-secrets, le run échoue proprement (message explicite, pas d'échec silencieux).
 
 ### L. Surveiller la CI qui exécute du code de PR forkée
 
@@ -108,23 +61,24 @@ Toutes passées au crible, résultats :
   code PIN. Assumé, le chiffrer n'aurait pas de sens puisque la clé serait au même
   endroit.
 
-### Durcissement navigateur — posé
+### Durcissement navigateur — posé, complété le 15/08
 
 Posé le 30/07 sur `app.html`, `index.html` et la page communauté :
 `object-src 'none'`, `base-uri 'self'`, `form-action 'self'`, plus une sortie de
 cadre en JavaScript contre le clickjacking. GitHub Pages ne permettant pas
 d'en-tête HTTP, tout passe par une balise `meta`.
 
-Ce qui manque, et qui limiterait vraiment les dégâts d'une XSS future :
-`script-src` et `connect-src`. Les poser demande d'autoriser une douzaine
-d'hôtes — Firebase (gstatic, firestore, identitytoolkit, securetoken,
-fcmregistrations), Turnstile, reCAPTCHA, Yahoo, ipapi — et une erreur casse
-l'app en silence. À faire en gardant l'onglet ouvert sur la console, avec un
-`git revert` prêt.
+`script-src` et `connect-src` complétés le 15/08, testés en local puis en
+prod (une violation trouvée et corrigée : `content-firebaseappcheck.
+googleapis.com` manquait). `script-src` garde `'unsafe-inline'` — l'app utilise
+des `onclick=""` inline partout, les retirer serait une refonte à part ; la
+protection réelle contre l'exfiltration vient de `connect-src`, qui limite les
+hôtes atteignables même par un script injecté. `worker-src 'self'` posé au
+passage (pdf.js décode dans un worker).
 
-Note : `frame-ancestors` et `report-only` sont ignorés dans une balise `meta`,
-seul un en-tête HTTP les accepte. Un jour derrière Cloudflare devant le site,
-ce serait faisable proprement.
+Note : `frame-ancestors` et `report-only` restent ignorés dans une balise
+`meta`, seul un en-tête HTTP les accepte — non posés, `X-Frame-Options` reste
+géré par la sortie de cadre JavaScript existante.
 
 ### Chart.js hébergé chez nous — fait le 30/07
 
@@ -141,11 +95,61 @@ Reste chargé depuis l'extérieur, sans alternative : Turnstile et reCAPTCHA
 (chargeurs mutables, l'intégrité n'y est pas applicable) et le SDK Firebase depuis
 `gstatic.com`.
 
+### Cloudflare devant le site — fait le 15/08
+
+Le domaine était déjà sur les nameservers Cloudflare (c'est comme ça
+qu'`api.capitalboard.fr` marche pour le Worker), mais l'apex et `www`
+n'étaient pas proxifiés. Basculés en "Proxied" — confirmé par l'en-tête
+`Server: cloudflare` et un `CF-RAY` présent sur les deux. Aucun changement de
+DNS ni de nameservers, juste le nuage gris → orange sur les enregistrements
+existants.
+
+### Sauvegardes Firestore — fait et activé le 15/08
+
+`scripts/backup-firestore.mjs` exporte tout Firestore (parcours récursif) vers
+un bucket R2 privé chaque lundi 04h UTC
+(`.github/workflows/backup-firestore.yml`) — jamais en artifact GitHub
+Actions, le dépôt est public. Rétention 90 jours (règle de cycle de vie R2,
+préfixe `firestore/`). Premier run testé manuellement : 17 collections,
+0.44 Mo, succès.
+
+### Faille "jeton avant 2FA" fermée — fait le 15/08
+
+`signInWithEmailAndPassword`/`signInWithPopup` étaient appelés directement
+depuis le navigateur : Firebase délivrait un jeton valide dès l'identifiant
+bon, avant toute vérification d'appareil/2FA (gates côté client, après coup).
+Un jeton volé (XSS, extension malveillante) contournait donc tout le 2FA.
+
+Le Worker vérifie désormais l'identité lui-même — mot de passe (REST Identity
+Toolkit) ou jeton Google (Google Identity Services, plus le SDK Firebase
+direct) — et ne délivre un jeton ("custom token" signé service account) qu'après
+appareil de confiance + 2FA validés. `POST /login`, `/login-verify`,
+`/login-google`. Vaut pour email+mot de passe et Google Sign-In en contexte
+popup normal ; **iOS/PWA standalone reste sur l'ancien flux** (`signInWithRedirect`),
+GIS n'ayant pas d'équivalent fiable à une vraie navigation complète — gap
+connu, non testable ici faute d'appareil iOS.
+
+**TOTP optionnel** ajouté en 2ᵉ facteur, en plus de l'OTP email (Profil →
+Sécurité). Implémentation maison (RFC 6238, testée contre les vecteurs
+officiels) plutôt que Firebase MFA natif, qui demande le palier payant
+Identity Platform. Secret chiffré au repos (AES-GCM, clé Worker
+`TOTP_ENCRYPTION_KEY` — à poser côté Cloudflare pour activer, sinon échec
+propre). 8 codes de secours à usage unique.
+
+**Piège découvert en route, à retenir** : App Check est appliqué sur l'API
+d'authentification Firebase — tout appel REST `identitytoolkit` fait depuis
+le Worker (et pas depuis le SDK client) doit porter un jeton App Check
+(`X-Firebase-AppCheck`), sinon rejet 401 quel que soit le mot de passe. A
+cassé la prod une dizaine de minutes avant d'être corrigé.
+
 ### Rappels de conception à ne pas casser
 
-- **Le code PIN et la 2FA sont arbitrés par le Worker.** Ne jamais redonner au client
-  la génération d'un code, le calcul d'un condensat, ou l'écriture de
-  `users/{uid}/data/trustedDevices`.
+- **Le PIN, la 2FA et désormais le login lui-même sont arbitrés par le Worker.**
+  Ne jamais redonner au client la génération d'un code, le calcul d'un
+  condensat, l'écriture de `users/{uid}/data/trustedDevices`, ou l'appel direct
+  à `signInWithEmailAndPassword`/`signInWithPopup` — le jeton ne doit exister
+  côté client qu'après `/login`, `/login-verify` ou `/login-google` (sauf
+  iOS/PWA, encore sur l'ancien flux, gap documenté).
 - **Tout ce qui vient d'un utilisateur et finit dans du HTML doit être échappé** :
   `_escapeHtmlChat` pour du texte entre balises, `_attr` à l'intérieur d'un attribut,
   `_safeUrl` pour un `href` ou un `src`.

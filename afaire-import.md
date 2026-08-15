@@ -317,6 +317,3 @@ et réservée au repli.
 
 5. **Quelles banques d'abord ?** Il faut savoir où sont les comptes des
    membres. Une question dans le questionnaire d'accueil suffirait à trancher.
-
-6. **`worker-src 'self'`** quand le CSP sera complété (`afaire.md`, point B) :
-   pdf.js décode dans un worker, et tesseract.js aussi.

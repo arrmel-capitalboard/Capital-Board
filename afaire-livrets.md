@@ -435,8 +435,6 @@ Points à reprendre :
   montre que le silence induit en erreur.
 - **Brancher l'import sur les Dépenses** — le socle est prêt, le module n'a qu'à
   fournir un `onValider`. Voir `afaire-import.md`, point 2.
-- **`worker-src 'self'`** quand le CSP sera complété (`afaire.md`, point B) :
-  pdf.js décode dans un worker.
 
 ---
 
