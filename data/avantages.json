@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-11",
+  "generated_at": "2026-08-17",
   "source": "https://clubsactionnaires.fr/observatoire",
   "credit": "Clubs Actionnaires (2026), Observatoire des clubs actionnaires",
   "companies": [
@@ -10,7 +10,7 @@
       "sector": "Assurance",
       "minShares": 1,
       "count": 10,
-      "verifiedAt": "2026-05-15",
+      "verifiedAt": "2026-08-11",
       "site": "https://www.axa.com/fr/investisseurs",
       "clubUrl": "https://www.axa.com/fr/investisseurs/cercle-des-actionnaires",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/axa"
@@ -22,7 +22,7 @@
       "sector": "Hôtellerie",
       "minShares": 50,
       "count": 8,
-      "verifiedAt": "2026-05-15",
+      "verifiedAt": "2026-08-11",
       "site": "https://group.accor.com/fr-FR",
       "clubUrl": "https://group.accor.com/fr-FR/finance",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/accor"
@@ -34,7 +34,7 @@
       "sector": "Transport aérien",
       "minShares": 5,
       "count": 7,
-      "verifiedAt": "2026-05-15",
+      "verifiedAt": "2026-08-11",
       "site": "https://www.airfranceklm.com",
       "clubUrl": "https://www.airfranceklm.com/en/finance/shareholders/shareholders-club/air-france-klm-shareholdersclub",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/air-france-klm"
@@ -46,7 +46,7 @@
       "sector": "Industrie & Équipements",
       "minShares": 1,
       "count": 5,
-      "verifiedAt": "2026-07-17",
+      "verifiedAt": "2026-08-11",
       "site": "https://www.airliquide.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/air-liquide"
@@ -106,7 +106,7 @@
       "sector": "Banque",
       "minShares": 200,
       "count": 10,
-      "verifiedAt": "2026-05-15",
+      "verifiedAt": "2026-08-11",
       "site": "https://invest.bnpparibas/fr",
       "clubUrl": "https://cercle-actionnaires.bnpparibas/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/bnp-paribas"
@@ -178,7 +178,7 @@
       "sector": "Grande distribution",
       "minShares": 1,
       "count": 7,
-      "verifiedAt": "2026-05-15",
+      "verifiedAt": "2026-08-11",
       "site": "https://www.carrefour.com/fr/finance",
       "clubUrl": "https://www.clubactionnaires.carrefour.com/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/carrefour"
@@ -250,7 +250,7 @@
       "sector": "Énergie",
       "minShares": 1,
       "count": 8,
-      "verifiedAt": "2026-05-15",
+      "verifiedAt": "2026-08-11",
       "site": "https://www.engie.com/finance",
       "clubUrl": "https://clubactionnaires.engie.com/fr/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/engie"
@@ -286,7 +286,7 @@
       "sector": "Luxe",
       "minShares": 1,
       "count": 7,
-      "verifiedAt": "2026-07-17",
+      "verifiedAt": "2026-08-11",
       "site": "https://finance.hermes.com/fr/",
       "clubUrl": "https://finance.hermes.com/fr/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/hermes"
@@ -346,7 +346,7 @@
       "sector": "Cosmétiques",
       "minShares": 1,
       "count": 8,
-      "verifiedAt": "2026-07-17",
+      "verifiedAt": "2026-08-11",
       "site": "https://www.loreal.com",
       "clubUrl": "https://www.loreal-finance.com/fr/actionnaires-individuels",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/loreal"
@@ -466,7 +466,7 @@
       "sector": "Automobile",
       "minShares": 1,
       "count": 8,
-      "verifiedAt": "2026-05-15",
+      "verifiedAt": "2026-08-11",
       "site": "https://www.renaultgroup.com",
       "clubUrl": "https://www.renaultgroup.com/en/finance/shareholders/shareholders-club/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/renault"
@@ -514,7 +514,7 @@
       "sector": "Aéronautique & Défense",
       "minShares": 1,
       "count": 3,
-      "verifiedAt": "2026-06-09",
+      "verifiedAt": "2026-08-11",
       "site": "https://www.safran-group.com/fr",
       "clubUrl": "https://www.safran-group.com/fr/finance/actionnaires-individuels",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/safran"
@@ -562,7 +562,7 @@
       "sector": "Banque",
       "minShares": 100,
       "count": 10,
-      "verifiedAt": "2026-05-15",
+      "verifiedAt": "2026-08-11",
       "site": "https://investors.societegenerale.com/fr",
       "clubUrl": "https://monespaceactionnaire.societegenerale.com/club-offer",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/societe-generale"
@@ -658,7 +658,7 @@
       "sector": "Holding & Conglomérat",
       "minShares": 1,
       "count": 2,
-      "verifiedAt": "2026-07-29",
+      "verifiedAt": "2026-08-11",
       "site": "https://www.vivendi.com",
       "clubUrl": "https://www.vivendi.com/actionnaires-investisseurs/actionnaires-individuels/club-des-actionnaires/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/vivendi"
