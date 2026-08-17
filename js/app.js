@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260816q';
+const APP_VERSION = '20260816r';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4535,7 +4535,7 @@ function renderPortfolio() {
           <div class="ticker-cell">
             ${logoHtml(row.ticker, 26, 'ticker-icon')}
             <div>
-              <div class="ticker-name" title="${_attr(row.name || row.ticker)}">${row.name || row.ticker}<span class="${isETF(row.ticker) ? 'badge-etf' : 'badge-action'}">${isETF(row.ticker) ? 'ETF' : 'ACTION'}</span></div>
+              <div class="ticker-name" title="${_attr(row.name || row.ticker)}">${row.name || row.ticker}<span class="${_isEtfRow(row) ? 'badge-etf' : 'badge-action'}">${_isEtfRow(row) ? 'ETF' : 'ACTION'}</span></div>
               <div class="ticker-sym">${row.ticker || ''}</div>
             </div>
           </div>
@@ -5397,6 +5397,12 @@ const ISIN_MAP = {
 const LOGO_CACHE = {};
 const ETF_TICKERS_GLOBAL = new Set(['WPEA.PA','ESEE.PA','ESE.PA','PUST.PA','PANX.PA','PAEEM.PA','ETZ.PA','EWLD.PA','CW8.PA','MWRD.PA','RS2K.PA','PCEU.PA','PE500.PA','IUSQ.AS','IWDA.AS','VWCE.AS','VWRL.AS','CSPX.AS','EMIM.AS','XDWD.AS','SPPW.AS','SPY','QQQ','VTI','VT','VOO','ARKK','GLD','TLT','SOXX','SGLD.AS','BNKE.PA']);
 function isETF(ticker) { return ETF_TICKERS_GLOBAL.has(ticker) || /\.[A-Z]{2}$/.test(ticker) && /^(CW|MWRD|RS|PC|PA|PU|ET|EW|WP|ES|IU|IW|VC|VW|CS|EM|XD|SP|BN)/.test(ticker); }
+// Le vrai quoteType (Yahoo, stocké à l'ajout du titre) prime toujours sur le
+// préfixe de ticker : ce dernier est une heuristique de repli, pas une vérité.
+function _isEtfRow(row) {
+  return row.quoteType === 'ETF' || row.quoteType === 'MUTUALFUND'
+    || (!row.quoteType && isETF(row.ticker));
+}
 const TICKER_TO_ISIN = Object.fromEntries(Object.entries(ISIN_MAP).map(([k,v]) => [v, k]));
 
 // Resolve an ISIN or ticker to a Yahoo Finance ticker for API calls
@@ -13766,7 +13772,7 @@ function _paintWeeklyRecap() {
 
   const rows = r.lines.map(l => {
     const c = col(l.weekPct);
-    const badge = isETF(l.ticker)
+    const badge = _isEtfRow(l)
       ? '<span class="badge-etf">ETF</span>'
       : '<span class="badge-action">ACTION</span>';
     return '<tr>'
@@ -14284,7 +14290,7 @@ function _paintRecapPage() {
   const rows = r.lines.map(l => {
     const c = col(l.changePct);
     const dayVal = l.qty * (l.price - l.prev);
-    const badge  = isETF(l.ticker)
+    const badge  = _isEtfRow(l)
       ? '<span class="badge-etf">ETF</span>'
       : '<span class="badge-action">ACTION</span>';
     return '<tr>'
