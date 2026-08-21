@@ -1,0 +1,24 @@
+name: Gitleaks
+
+# Filet de sécurité anti-secrets, indépendant du hook local (.githooks/pre-commit)
+# qui ne s'active que si gitleaks est installé sur le poste du contributeur.
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  scan:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: gitleaks/gitleaks-action@v2
+        env:
+          GITLEAKS_CONFIG: .gitleaks.toml

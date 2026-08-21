@@ -2459,6 +2459,33 @@ function passwordProblem(pass, email) {
   return null;
 }
 
+// Vérifie le mot de passe contre l'API k-anonymity de HaveIBeenPwned : seuls
+// les 5 premiers caractères du hash SHA-1 partent en réseau, jamais le mot de
+// passe ni son hash complet. Une erreur réseau ne doit pas bloquer un
+// utilisateur légitime : on laisse passer (fail-open) dans ce cas.
+async function passwordPwnedProblem(pass) {
+  try {
+    const digest = await crypto.subtle.digest('SHA-1', new TextEncoder().encode(String(pass || '')));
+    const hashHex = Array.from(new Uint8Array(digest)).map(b => b.toString(16).padStart(2, '0')).join('').toUpperCase();
+    const prefix = hashHex.slice(0, 5);
+    const suffix = hashHex.slice(5);
+    const res = await fetch('https://api.pwnedpasswords.com/range/' + prefix);
+    if (!res.ok) return null;
+    const text = await res.text();
+    for (const line of text.split('\n')) {
+      const idx = line.indexOf(':');
+      if (idx === -1) continue;
+      if (line.slice(0, idx).trim() === suffix) {
+        const count = line.slice(idx + 1).trim();
+        return 'Ce mot de passe apparaît dans des fuites de données connues (' + count + ' fois) — choisissez-en un autre.';
+      }
+    }
+    return null;
+  } catch (_) {
+    return null;
+  }
+}
+
 window.doRegister = async function() {
   const firstName = (document.getElementById('reg-firstname').value || '').trim();
   const lastName  = (document.getElementById('reg-lastname').value || '').trim();
@@ -2493,6 +2520,12 @@ window.doRegister = async function() {
     return;
   }
   setLoading('btn-register-submit', true);
+  const _pwnedProblem = await passwordPwnedProblem(pass);
+  if (_pwnedProblem) {
+    setLoading('btn-register-submit', false);
+    err.textContent = _pwnedProblem; err.style.display = 'block';
+    return;
+  }
   const wantsRecap = document.getElementById('reg-recap')?.checked !== false;
   try {
     const cred = await createUserWithEmailAndPassword(fbAuth, email, pass);
@@ -3065,6 +3098,8 @@ window.saveNewPassword = async function() {
   if (newPass !== newPass2) { status.textContent = 'Les mots de passe ne correspondent pas.'; status.style.color = 'var(--negative)'; return; }
   const _pwProblem = passwordProblem(newPass, user.email);
   if (_pwProblem) { status.textContent = _pwProblem; status.style.color = 'var(--negative)'; return; }
+  const _pwnedProblem = await passwordPwnedProblem(newPass);
+  if (_pwnedProblem) { status.textContent = _pwnedProblem; status.style.color = 'var(--negative)'; return; }
 
   try {
     const cred = EmailAuthProvider.credential(user.email, oldPass);
@@ -15329,6 +15364,8 @@ async function saveForcedPassword(uid) {
   if (_pwProblem) return fail(_pwProblem);
   if (np !== np2) return fail('Les mots de passe ne correspondent pas.');
   if (np === cur) return fail('Choisissez un mot de passe différent du temporaire.');
+  const _pwnedProblem = await passwordPwnedProblem(np);
+  if (_pwnedProblem) return fail(_pwnedProblem);
   if (btn) { btn.disabled = true; btn.textContent = 'Enregistrement…'; }
   try {
     const user = fbAuth.currentUser;

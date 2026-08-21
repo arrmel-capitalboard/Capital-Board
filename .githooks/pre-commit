@@ -1,0 +1,11 @@
+#!/bin/sh
+# Scan des fichiers indexés avant chaque commit. Nécessite gitleaks installé
+# (https://github.com/gitleaks/gitleaks#installing) — si absent, on ne bloque
+# pas le commit localement : .github/workflows/gitleaks.yml reste le filet de
+# sécurité qui tourne sur chaque push/PR, gitleaks installé ou pas.
+if ! command -v gitleaks >/dev/null 2>&1; then
+  echo "gitleaks introuvable : scan de secrets ignoré localement (la CI le fera)." >&2
+  exit 0
+fi
+
+gitleaks protect --staged --redact --config .gitleaks.toml -v

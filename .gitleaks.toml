@@ -1,0 +1,23 @@
+title = "CapitalBoard gitleaks config"
+
+# Règles par défaut de gitleaks (clés API génériques, tokens des providers
+# connus, private keys, etc.), complétées ci-dessous plutôt que remplacées.
+[extend]
+useDefault = true
+
+[allowlist]
+paths = [
+  '''node_modules''',
+  '''package-lock\.json''',
+]
+
+# Valeurs remontées par le scan de l'historique complet, mais qui ne sont pas
+# des secrets dans l'architecture Firebase : la clé API Web est publique par
+# design (protégée par Firestore Security Rules + App Check, pas par son
+# secret), la clé VAPID est la clé *publique* des notifications web push, et
+# l'UID ci-dessous est un identifiant Firebase Auth, pas un jeton.
+regexes = [
+  '''AIzaSyBnHkOTwFoJNMvYOgG7Ne-AFKgE3GBRiNU''', # Firebase Web API key (publique)
+  '''BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ''', # VAPID public key
+  '''A6nZQ8PcxdURytSesA17xK81I9T2''', # UID admin (firestore.rules / storage.rules)
+]
