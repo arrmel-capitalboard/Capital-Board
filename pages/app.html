@@ -52,7 +52,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260821d">
+<link rel="stylesheet" href="css/style.css?v=20260821e">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -1317,8 +1317,12 @@
         </div>
       </div>
 
+      <!-- Utilisateurs + Diffusion côte à côte : aucune des deux ne remplit
+           la largeur seule (2 cartes chacune). -->
+      <div style="display:flex;flex-wrap:wrap;gap:32px;align-items:flex-start">
       <!-- ═══ Utilisateurs ═══ -->
-      <div style="--acc:var(--gold)">
+      <div style="--acc:var(--gold);flex:1 1 700px">
+
         <div class="admin-section-head">
           <div class="admin-section-bar"></div>
           <div class="admin-section-title">Utilisateurs</div>
@@ -1384,7 +1388,7 @@
       </div>
 
       <!-- ═══ Diffusion ═══ -->
-      <div style="--acc:var(--positive)">
+      <div style="--acc:var(--positive);flex:1 1 700px">
         <div class="admin-section-head">
           <div class="admin-section-bar"></div>
           <div class="admin-section-title">Diffusion</div>
@@ -1453,6 +1457,7 @@
 
         </div>
       </div>
+      </div><!-- /Utilisateurs + Diffusion -->
 
       </div><!-- /admin-groups -->
     </div>
@@ -3672,11 +3677,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260821d"></script>
+<script src="js/app.js?v=20260821e"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260821d"></script>
+<script src="js/onboarding.js?v=20260821e"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260821d"></script>
+<script src="js/import.js?v=20260821e"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
