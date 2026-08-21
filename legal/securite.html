@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Sécurité — Capital Board</title>
+<link rel="icon" type="image/png" href="../assets/logo.png">
+<link href="https://fonts.googleapis.com/css2?family=Syne:wght@600;700;800&family=DM+Sans:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="../css/style.css">
+<style>
+  .legal-wrap { max-width: 760px; margin: 0 auto; padding: 60px 24px 80px; }
+  .legal-back { display:inline-flex;align-items:center;gap:8px;color:var(--text3);font-size:13px;text-decoration:none;margin-bottom:40px;transition:color .15s }
+  .legal-back:hover { color:var(--accent) }
+  .legal-badge { display:inline-block;padding:4px 12px;background:var(--accent-d);color:var(--accent);border-radius:20px;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;margin-bottom:20px }
+  .legal-title { font-family:var(--display);font-size:clamp(28px,5vw,42px);font-weight:800;margin:0 0 8px;color:var(--text) }
+  .legal-date { font-size:12px;color:var(--text3);margin-bottom:48px }
+  .legal-section { margin-bottom:40px }
+  .legal-section h2 { font-size:16px;font-weight:700;color:var(--text);margin:0 0 14px;padding-bottom:10px;border-bottom:1px solid var(--border2) }
+  .legal-section p, .legal-section li { font-size:14px;line-height:1.8;color:var(--text2);margin:0 0 10px }
+  .legal-section ul { padding-left:20px;margin-bottom:10px }
+  .legal-section a { color:var(--accent);text-decoration:none }
+  .legal-section a:hover { text-decoration:underline }
+  .data-table { width:100%;border-collapse:collapse;margin-bottom:14px }
+  .data-table th { text-align:left;font-size:11px;font-weight:700;color:var(--text3);letter-spacing:1px;text-transform:uppercase;padding:8px 12px;border-bottom:1px solid var(--border2) }
+  .data-table td { font-size:13px;color:var(--text2);padding:10px 12px;border-bottom:1px solid var(--border);vertical-align:top }
+  .data-table tr:last-child td { border-bottom:none }
+  .rights-grid { display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px;margin-top:8px }
+  .right-card { background:var(--s2);border:1px solid var(--border2);border-radius:10px;padding:14px 16px }
+  .right-card .icon { font-size:20px;margin-bottom:8px }
+  .right-card .name { font-size:13px;font-weight:600;color:var(--text);margin-bottom:4px }
+  .right-card .desc { font-size:12px;color:var(--text3);line-height:1.5 }
+  .nav-legal { display:flex;gap:12px;flex-wrap:wrap;margin-bottom:48px }
+  .nav-legal a { font-size:12px;color:var(--text3);text-decoration:none;padding:6px 14px;border:1px solid var(--border2);border-radius:20px;transition:all .15s }
+  .nav-legal a:hover, .nav-legal a.active { border-color:var(--accent);color:var(--accent) }
+</style>
+</head>
+<body>
+<div class="legal-wrap">
+  <a href="../app.html" class="legal-back">← Retour au Dashboard</a>
+
+  <div class="nav-legal">
+    <a href="mentions-legales.html">Mentions légales</a>
+    <a href="politique-confidentialite.html">Politique de confidentialité</a>
+    <a href="cgu.html">CGU</a>
+    <a href="securite.html" class="active">Sécurité</a>
+  </div>
+
+  <div class="legal-badge">Transparence</div>
+  <h1 class="legal-title">Sécurité</h1>
+  <div class="legal-date">Dernière mise à jour : août 2026</div>
+
+  <div class="legal-section">
+    <h2>Comment on protège tes données</h2>
+    <p>Capital Board gère des informations sur ton patrimoine — pas de quoi jouer les experts en cybersécurité pour se donner un genre, mais assez pour prendre le sujet au sérieux. Voici, sans jargon, ce qui est réellement en place.</p>
+    <div class="rights-grid">
+      <div class="right-card">
+        <div class="icon">🔑</div>
+        <div class="name">Ton mot de passe ne traîne jamais</div>
+        <div class="desc">Jamais stocké en clair. À l'inscription et à chaque changement, il est comparé (sans jamais quitter ton navigateur en clair) aux fuites de données connues — s'il a déjà fuité ailleurs, on te le dit avant qu'un attaquant ne le retente ici.</div>
+      </div>
+      <div class="right-card">
+        <div class="icon">📱</div>
+        <div class="name">Double vérification</div>
+        <div class="desc">Code à usage unique (TOTP, type Google Authenticator) activable sur ton compte, en plus du mot de passe.</div>
+      </div>
+      <div class="right-card">
+        <div class="icon">🔒</div>
+        <div class="name">Code PIN local</div>
+        <div class="desc">Redemandé à chaque ouverture de l'app et après une période d'inactivité que tu choisis (15 min, 1h, ou jamais) — pour que ton portefeuille ne reste pas affiché sur un écran laissé sans surveillance.</div>
+      </div>
+      <div class="right-card">
+        <div class="icon">📍</div>
+        <div class="name">Connexion surveillée</div>
+        <div class="desc">Un email t'est envoyé si quelqu'un se connecte depuis un appareil ou un pays que tu n'as encore jamais utilisé.</div>
+      </div>
+      <div class="right-card">
+        <div class="icon">🧹</div>
+        <div class="name">Déconnexion à distance</div>
+        <div class="desc">Change ton mot de passe et toutes tes sessions ouvertes ailleurs sont coupées automatiquement.</div>
+      </div>
+      <div class="right-card">
+        <div class="icon">🕵️</div>
+        <div class="name">Code source public</div>
+        <div class="desc">L'application est open-source : n'importe qui peut lire le code qui traite tes données, pas seulement nous croire sur parole.</div>
+      </div>
+    </div>
+  </div>
+
+  <div class="legal-section">
+    <h2>Détail technique</h2>
+    <p>Pour celles et ceux que ça intéresse — l'ensemble de ces mesures est visible dans le code source, lien plus bas.</p>
+    <table class="data-table">
+      <thead>
+        <tr><th>Mesure</th><th>Détail</th></tr>
+      </thead>
+      <tbody>
+        <tr>
+          <td>Authentification</td>
+          <td>Firebase Auth, mots de passe hachés côté serveur, jamais stockés en clair. Politique renforcée (10 caractères min., majuscule, minuscule, chiffre) et vérification contre l'API HaveIBeenPwned (k-anonymity — seuls 5 caractères d'un hash SHA-1 quittent le navigateur, jamais le mot de passe).</td>
+        </tr>
+        <tr>
+          <td>Double authentification</td>
+          <td>TOTP (RFC 6238) optionnel, en plus d'un code PIN local obligatoire et d'une vérification par email pour tout nouvel appareil.</td>
+        </tr>
+        <tr>
+          <td>Verrouillage anti-brute-force</td>
+          <td>Tentatives de connexion, de code PIN et de code de vérification limitées et temporisées côté serveur (Cloudflare Worker), pas seulement côté client.</td>
+        </tr>
+        <tr>
+          <td>Emails jetables</td>
+          <td>Les domaines d'adresses email temporaires/jetables sont détectés à l'inscription.</td>
+        </tr>
+        <tr>
+          <td>Transport et stockage</td>
+          <td>HTTPS/TLS partout, chiffrement au repos AES-256 (Firestore, par défaut).</td>
+        </tr>
+        <tr>
+          <td>Contrôle d'accès aux données</td>
+          <td>Firestore Security Rules : chaque compte n'accède qu'à ses propres données, vérifié par une suite de tests automatisés exécutée sur chaque modification des règles.</td>
+        </tr>
+        <tr>
+          <td>Scan de secrets</td>
+          <td>Le dépôt de code est scanné (Gitleaks) avant chaque publication, pour qu'aucune clé ou identifiant ne parte par erreur dans l'historique public.</td>
+        </tr>
+        <tr>
+          <td>Content Security Policy</td>
+          <td>En-tête CSP restrictif sur les pages de l'application, pour limiter ce qu'un script injecté pourrait faire même en cas de faille.</td>
+        </tr>
+        <tr>
+          <td>Sauvegardes</td>
+          <td>Export automatique et régulier de la base de données vers un stockage séparé, avec rétention glissante.</td>
+        </tr>
+        <tr>
+          <td>Audit</td>
+          <td>Les actions administratives sensibles (réinitialisation de mot de passe, notifications de masse, etc.) sont journalisées et horodatées, indépendamment du client.</td>
+        </tr>
+        <tr>
+          <td>Suppression de compte</td>
+          <td>Processus en deux étapes (confirmation par email) qui efface le compte et les données associées.</td>
+        </tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="legal-section">
+    <h2>Signaler une faille</h2>
+    <p>Tu as trouvé une vulnérabilité ? Écris-nous à <a href="mailto:contact@capitalboard.fr">contact@capitalboard.fr</a> avec le détail nécessaire pour la reproduire. On s'engage à :</p>
+    <ul>
+      <li>accuser réception rapidement,</li>
+      <li>ne pas engager de poursuites contre une divulgation faite de bonne foi et sans exploitation abusive,</li>
+      <li>te tenir informé une fois le correctif déployé.</li>
+    </ul>
+    <p>Merci de ne pas tester sur des comptes qui ne sont pas les tiens, et de ne pas exfiltrer de données au-delà du strict nécessaire pour la preuve de concept.</p>
+  </div>
+
+  <div class="legal-section">
+    <h2>Code source</h2>
+    <p>Le code de Capital Board (application, Worker, bot Discord) est public sur GitHub : <a href="https://github.com/arrmel-capitalboard/Capital-Board" target="_blank" rel="noopener">github.com/arrmel-capitalboard/Capital-Board →</a></p>
+    <p>Voir aussi notre <a href="politique-confidentialite.html">politique de confidentialité</a> pour le détail des données collectées et des sous-traitants.</p>
+  </div>
+</div>
+</body>
+</html>

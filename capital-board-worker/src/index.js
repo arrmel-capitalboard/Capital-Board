@@ -4,6 +4,35 @@
 
 import { KB } from './kb.js';
 
+// Domaines email jetables/temporaires les plus répandus. Liste statique
+// entretenue à la main (pas de dépendance npm dans ce Worker à un seul
+// fichier) — voir /email-check ci-dessous pour l'usage.
+const DISPOSABLE_EMAIL_DOMAINS = new Set([
+  'mailinator.com', 'mailinator.net', 'mailinator2.com', 'sogetthis.com', 'thisisnotmyrealemail.com',
+  'guerrillamail.com', 'guerrillamail.net', 'guerrillamail.org', 'guerrillamail.biz', 'guerrillamail.de',
+  'guerrillamailblock.com', 'sharklasers.com', 'grr.la', 'spam4.me', 'pokemail.net',
+  '10minutemail.com', '10minutemail.net', '10minemail.com', '20minutemail.com', '10minutemail.co.uk',
+  'temp-mail.org', 'tempmail.com', 'tempmail.net', 'tempmailo.com', 'tempail.com', 'temp-mail.io',
+  'tempmail.dev', 'tmpmail.org', 'tmpmail.net', 'tmpeml.com', 'mytemp.email', 'moakt.com', 'moakt.cc',
+  'yopmail.com', 'yopmail.fr', 'yopmail.net', 'cool.fr.nf', 'jetable.fr.nf', 'nospam.ze.tc',
+  'throwawaymail.com', 'throwam.com', 'fakeinbox.com', 'fakemailgenerator.com', 'fakemail.net',
+  'getnada.com', 'getairmail.com', 'dispostable.com', 'maildrop.cc', 'mailnesia.com', 'mailcatch.com',
+  'mailnull.com', 'mintemail.com', 'mvrht.com', 'discard.email', 'discardmail.com', 'discardmail.de',
+  'trashmail.com', 'trashmail.net', 'trashmail.me', 'trash-mail.com', 'trashmail.org',
+  'emailondeck.com', 'inboxbear.com', 'luxusmail.org', 'spamgourmet.com', 'spambog.com', 'spamex.com',
+  'anonbox.net', 'anonymbox.com', 'burnermail.io', 'crazymailing.com', 'deadaddress.com',
+  'einrot.com', 'fleckens.hu', 'harakirimail.com', 'incognitomail.com', 'jetable.org',
+  'kasmail.com', 'kurzepost.de', 'lifebyfood.com', 'meltmail.com', 'mt2015.com', 'no-spam.ws',
+  'objectmail.com', 'proxymail.eu', 'rcpt.at', 'sneakemail.com', 'spamfree24.org', 'spamobox.com',
+  'suremail.info', 'tempinbox.com', 'tempomail.fr', 'tyldd.com', 'veryrealemail.com', 'wegwerfmail.de',
+  'wegwerfmail.net', 'wegwerfmail.org', 'zoemail.org', 'mohmal.com', 'mohmal.im', 'mohmal.tech',
+  'emailfake.com', 'email-fake.com', 'fakebox.org', 'linshiyouxiang.net', 'meail.com', 'moburl.com',
+  'chammy.info', 'devnullmail.com', 'letthemeatspam.com', 'mailmetrash.com', 'mailslite.com',
+  'mailzilla.com', 'noclickemail.com', 'quickinbox.com', 'shieldedmail.com', 'spamfree.eu',
+  'spamhole.com', 'tempsky.com', 'tafmail.com', 'inboxkitten.com', '1secmail.com', '1secmail.net',
+  '1secmail.org', 'esiix.com', 'wuuvo.com', 'xojxe.com', 'nwytg.com', 'nwytg.net',
+]);
+
 // ── Chatbot d'aide (POST /chat) ───────────────────────────────────────────
 // Moteur : Cloudflare Workers AI (Llama, gratuit sous quota). Répond à partir
 // de la base de connaissance KB (contenu public du site, généré par
@@ -1965,6 +1994,7 @@ export default {
         if (message.length > CHAT_MAX_CHARS) {
           return json({ error: `Question trop longue (max ${CHAT_MAX_CHARS} caractères).` }, 400);
         }
+        flagSuspiciousInput(message, 'chat', null, request, env);
 
         // Historique optionnel (derniers échanges), borné pour limiter les tokens.
         const history = Array.isArray(body?.history) ? body.history.slice(-6) : [];
@@ -2232,6 +2262,58 @@ export default {
         return json({ ok: true, sent, failed, total: tokens.length });
       }
 
+      // ── POST /admin/security-stats ──────────────────────────────────────
+      // Chiffres agrégés pour la page « Posture sécurité » de l'admin.
+      // Se limite volontairement aux collections top-level (roles, totpSecrets,
+      // auditLog) : users/{uid}/data/{docId} est une sous-collection par
+      // utilisateur, sans requête de groupe côté firestoreList — l'agréger
+      // (options 2FA par PIN, appareils de confiance…) demanderait une vraie
+      // requête de groupe de collection, pas ajoutée ici pour rester sur du
+      // code déjà éprouvé ailleurs dans ce fichier.
+      if (url.pathname === '/admin/security-stats' && request.method === 'POST') {
+        const { idToken } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        if (!user || user.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+
+        const [roles, totpSecrets, auditDocs] = await Promise.all([
+          firestoreList('roles', env),
+          firestoreList('totpSecrets', env).catch(() => []),
+          firestoreList('auditLog', env).catch(() => []),
+        ]);
+
+        const totalUsers = roles.length;
+        const totpEnrolled = totpSecrets.length;
+
+        const now = Date.now();
+        const DAY = 24 * 60 * 60 * 1000;
+        const byAction7d = {};
+        let last24h = 0, last7d = 0;
+        const recent = [];
+        for (const d of auditDocs) {
+          const atStr = d.fields?.at?.timestampValue;
+          const at = atStr ? Date.parse(atStr) : NaN;
+          const action = fsStr(d, 'action') || '?';
+          if (!Number.isNaN(at) && now - at <= 7 * DAY) {
+            last7d++;
+            byAction7d[action] = (byAction7d[action] || 0) + 1;
+            if (now - at <= DAY) last24h++;
+          }
+          recent.push({ action, details: fsStr(d, 'details') || '', by: fsStr(d, 'by') || '', ip: fsStr(d, 'ip') || '', at: atStr || null });
+        }
+        recent.sort((a, b) => (b.at || '').localeCompare(a.at || ''));
+
+        return json({
+          ok: true,
+          totalUsers,
+          totpEnrolled,
+          totpAdoptionPct: totalUsers ? Math.round((totpEnrolled / totalUsers) * 100) : 0,
+          auditLast24h: last24h,
+          auditLast7d: last7d,
+          auditByAction7d: byAction7d,
+          auditRecent: recent.slice(0, 30),
+        });
+      }
+
       // ── POST /admin/test-push ───────────────────────────────────────────
       // Envoie une push FCM (PWA) à UN SEUL utilisateur, ciblé par email.
       // Sert à vérifier que la diffusion arrive bien en notification système.
@@ -2334,6 +2416,15 @@ export default {
         // Le Worker devient un oracle de mot de passe : à protéger comme tel.
         if (!(await rateLimit(env, `login:${String(email).toLowerCase()}`, LOGIN_RL_MAX, LOGIN_RL_WINDOW))) {
           return json({ ok: false, error: 'Trop de tentatives, réessayez plus tard.' }, 429);
+        }
+
+        // IP à réputation connue mauvaise (AbuseIPDB) : avant le mot de passe,
+        // pour ne pas gaspiller un appel Identity Toolkit sur une IP déjà signalée.
+        const clientIp = request.headers.get('CF-Connecting-IP') || '';
+        const reputation = await checkIpReputation(clientIp, env);
+        if (reputation.blocked) {
+          audit('ip-blocked', `score=${reputation.score} ip=${clientIp}`, null, request, env).catch(() => {});
+          return json({ ok: false, error: 'Connexion refusée depuis cette adresse.' }, 403);
         }
 
         const humanVerified = await verifyTurnstile(turnstileToken, env);
@@ -2604,6 +2695,26 @@ export default {
         return json(r, status || 200);
       }
 
+      // ── GET /email-check?e=adresse ───────────────────────────────────────
+      // Signale les adresses email jetables à l'inscription — pas pour les
+      // bloquer (un opérateur légitime peut vouloir tester avec ce type
+      // d'adresse), mais pour l'afficher au client qui décide d'avertir ou
+      // non. Liste statique et non exhaustive : DISPOSABLE_EMAIL_DOMAINS ne
+      // remplace pas une vraie API tierce, mais couvre les services les plus
+      // utilisés pour contourner une vérification par email sans dépendance
+      // externe ni clé API.
+      if (url.pathname === '/email-check' && request.method === 'GET') {
+        const ip = request.headers.get('CF-Connecting-IP') || 'anon';
+        const rlKey = `ec:rl:${ip}`;
+        const n = parseInt((await env.EARNINGS.get(rlKey)) || '0', 10);
+        if (n >= 30) return json({ error: 'Trop de requêtes' }, 429);
+        await env.EARNINGS.put(rlKey, String(n + 1), { expirationTtl: 60 });
+
+        const email = (url.searchParams.get('e') || '').trim().toLowerCase();
+        const domain = email.split('@')[1] || '';
+        return json({ disposable: DISPOSABLE_EMAIL_DOMAINS.has(domain) });
+      }
+
       // ── GET /username-available?u=nom ───────────────────────────────────
       // Disponibilité d'un pseudo. Passe par le serveur parce que le client ne
       // peut plus lire la collection roles (elle exposait tous les membres), et
@@ -2646,6 +2757,55 @@ export default {
 // de trace. Ici l'entree part du Worker, a chaque route privilegiee, et le
 // declencheur n'a aucun moyen de l'eviter. Best-effort : un echec d'audit ne doit
 // pas empecher l'action demandee d'aboutir.
+// ── Détection d'inputs suspects (best-effort, ne bloque jamais) ────────────
+// Ne remplace pas l'échappement côté client (déjà fait partout via
+// textContent/_escapeHtmlChat) : sert à donner de la visibilité admin
+// (auditLog) sur les tentatives d'injection ou de contournement du system
+// prompt, pas à filtrer quoi que ce soit côté utilisateur — un faux positif
+// qui bloquerait une vraie question cassée serait pire que le signal manqué.
+const SUSPICIOUS_INPUT_PATTERNS = [
+  /<script[\s>]/i, /javascript:/i, /on\w+\s*=\s*["']/i,              // XSS
+  /union\s+select|drop\s+table|;\s*--/i,                             // SQLi (pas de base SQL ici, mais signal utile)
+  /\.\.\/\.\.\//,                                                    // path traversal
+  /ignore (all )?(previous|prior|above) instructions/i,              // prompt injection
+  /system\s*:\s*you are/i,
+];
+
+function flagSuspiciousInput(text, context, uid, request, env) {
+  const s = String(text || '');
+  const hit = SUSPICIOUS_INPUT_PATTERNS.find((re) => re.test(s));
+  if (!hit) return;
+  audit('suspicious-input', `${context}: ${hit.source}`, uid, request, env).catch(() => {});
+}
+
+// ── Réputation IP (AbuseIPDB, optionnelle) ──────────────────────────────
+// N'agit que si env.ABUSEIPDB_KEY est configuré (secret Wrangler absent par
+// défaut) : sans clé, no-op complet, comportement inchangé. Résultat mis en
+// cache 1h par IP pour rester large sous les 1000 requêtes/jour du plan
+// gratuit même en cas de pic de tentatives de connexion.
+const ABUSEIPDB_SCORE_BLOCK = 90; // confidence score (0-100) au-delà duquel on bloque
+async function checkIpReputation(ip, env) {
+  if (!env.ABUSEIPDB_KEY || !ip) return { blocked: false };
+  const cacheKey = `abuseipdb:${ip}`;
+  try {
+    const cached = await env.EARNINGS.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch (_) {}
+  let result = { blocked: false, score: 0 };
+  try {
+    const res = await fetch(`https://api.abuseipdb.com/api/v2/check?ipAddress=${encodeURIComponent(ip)}&maxAgeInDays=90`, {
+      headers: { Key: env.ABUSEIPDB_KEY, Accept: 'application/json' },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const score = Number(data?.data?.abuseConfidenceScore) || 0;
+      result = { blocked: score >= ABUSEIPDB_SCORE_BLOCK, score };
+    }
+  } catch (e) { console.error('AbuseIPDB: ' + e.message); }
+  try { await env.EARNINGS.put(cacheKey, JSON.stringify(result), { expirationTtl: 3600 }); } catch (_) {}
+  return result;
+}
+
 async function audit(action, details, uid, request, env) {
   try {
     const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;

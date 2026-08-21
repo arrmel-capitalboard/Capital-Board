@@ -42,6 +42,7 @@
     <a href="mentions-legales.html">Mentions légales</a>
     <a href="politique-confidentialite.html" class="active">Politique de confidentialité</a>
     <a href="cgu.html">CGU</a>
+    <a href="securite.html">Sécurité</a>
   </div>
 
   <div class="legal-badge">RGPD</div>
@@ -215,11 +216,15 @@
     <h2>6. Sécurité</h2>
     <p>Les données sont protégées par :</p>
     <ul>
-      <li>Chiffrement en transit (HTTPS/TLS)</li>
-      <li>Chiffrement au repos par Firebase</li>
+      <li>Chiffrement en transit (HTTPS/TLS) et au repos (AES-256, par défaut chez Firebase)</li>
       <li>Règles d'accès Firestore : chaque utilisateur n'accède qu'à ses propres données</li>
-      <li>Authentification Firebase avec hachage des mots de passe (bcrypt)</li>
+      <li>Mots de passe jamais stockés en clair (hachage Firebase Auth), vérifiés à l'inscription et au changement contre les fuites de données connues (API HaveIBeenPwned, méthode k-anonymity — aucun mot de passe n'est transmis en clair à ce service)</li>
+      <li>Double authentification disponible (TOTP), code PIN local obligatoire, verrouillage automatique après inactivité</li>
+      <li>Détection et email d'alerte en cas de connexion depuis un nouvel appareil ou pays</li>
+      <li>Code source scanné automatiquement contre les fuites de secrets avant chaque publication</li>
+      <li>Sauvegardes chiffrées et automatiques de la base de données</li>
     </ul>
+    <p>Détail complet des mesures en place sur la <a href="securite.html">page transparence sécurité →</a></p>
   </div>
 
   <div class="legal-section">

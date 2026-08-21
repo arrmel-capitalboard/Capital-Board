@@ -1412,16 +1412,32 @@ function _pinUnlockSuccess(user) {
 // setTimeout qui compte les secondes : les timers sont ralentis en arrière-plan,
 // un setTimeout seul laisserait passer largement plus de 30 min sur un onglet
 // resté caché.
-const INACTIVITY_LOCK_MS = 30 * 60 * 1000;
+const INACTIVITY_LOCK_MS = 30 * 60 * 1000; // défaut si l'utilisateur n'a jamais touché au réglage
 let _lastActivityAt = Date.now();
 let _inactivityWatchStarted = false;
 
 function _markActivity() { _lastActivityAt = Date.now(); }
 
+// Réglage par appareil (localStorage plutôt que Firestore : firestore.rules
+// verrouille les clés écrivables sur users/{uid}/data/security à
+// adminOptOut/adminOptOutAt, et un délai avant verrouillage a de toute façon
+// plus de sens par appareil — un ordinateur partagé et un téléphone perso
+// n'appellent pas le même délai).
+function _inactivityLockMs() {
+  const v = localStorage.getItem('cb_inactivityTimeout');
+  if (v === 'never') return Infinity;
+  const mins = parseInt(v, 10);
+  return (Number.isFinite(mins) && mins > 0) ? mins * 60 * 1000 : INACTIVITY_LOCK_MS;
+}
+
+window.setInactivityTimeout = function(v) {
+  localStorage.setItem('cb_inactivityTimeout', v);
+};
+
 async function _checkInactivityLock() {
   const appEl = document.getElementById('app');
   if (!appEl || appEl.style.display === 'none') return; // app pas affichée : déjà verrouillé, ou pas encore chargée
-  if (Date.now() - _lastActivityAt < INACTIVITY_LOCK_MS) return;
+  if (Date.now() - _lastActivityAt < _inactivityLockMs()) return;
   const user = fbAuth.currentUser;
   if (!user) return;
   try {
@@ -1455,6 +1471,8 @@ window.pinLockLogout = async function() {
 window.refreshPinStatus = async function() {
   const box = document.getElementById('pin-status-box');
   const actions = document.getElementById('pin-actions');
+  const timeoutSel = document.getElementById('inactivity-timeout-select');
+  if (timeoutSel) timeoutSel.value = localStorage.getItem('cb_inactivityTimeout') || '30';
   if (!box || !actions) return;
   const user = fbAuth.currentUser;
   if (!user) { box.textContent = 'Non connecté'; actions.innerHTML = ''; return; }
@@ -1886,6 +1904,15 @@ async function _isUsernameTaken(username, _selfUid) {
   if (!res.ok) throw new Error('vérification indisponible');
   const data = await res.json();
   return data.available === false;
+}
+
+// Liste de domaines jetables tenue côté Worker (voir GET /email-check) — pas
+// dans le client, pour rester modifiable sans redéployer l'app.
+async function _isDisposableEmail(email) {
+  const res = await fetch(`${WORKER_URL}/email-check?e=${encodeURIComponent(email)}`);
+  if (!res.ok) throw new Error('vérification indisponible');
+  const data = await res.json();
+  return data.disposable === true;
 }
 
 
@@ -2504,6 +2531,13 @@ window.doRegister = async function() {
   try {
     if (await _isUsernameTaken(username, '')) { err.textContent = 'Ce nom d\'utilisateur est déjà pris.'; err.style.display = 'block'; return; }
   } catch (_) { /* si la vérif échoue on laisse passer, contrôle repassé au 1er login */ }
+  try {
+    if (await _isDisposableEmail(email)) {
+      err.textContent = 'Les adresses email jetables/temporaires ne sont pas acceptées. Utilisez une adresse personnelle.';
+      err.style.display = 'block';
+      return;
+    }
+  } catch (_) { /* API indisponible : on laisse passer plutôt que de bloquer une inscription légitime */ }
   if (pass !== pass2) { err.textContent = 'Les mots de passe ne correspondent pas.'; err.style.display = 'block'; return; }
   const _pwProblem = passwordProblem(pass, email);
   if (_pwProblem) { err.textContent = _pwProblem; err.style.display = 'block'; return; }
@@ -14806,11 +14840,46 @@ function _startPresenceHeartbeat() {
 
 function isAdmin() { return currentUser === ADMIN_UID; }
 
+// Chiffres agrégés (adoption 2FA, activité auditLog) : POST /admin/security-stats,
+// gardé côté Worker (Admin SDK) parce que les collections agrégées (roles,
+// totpSecrets, auditLog en entier) ne sont pas lisibles en liste par un client,
+// même admin, sous les règles Firestore actuelles.
+async function _refreshAdminSecurityStats() {
+  const box = document.getElementById('admin-security-stats');
+  if (!box) return;
+  try {
+    const idToken = await fbAuth.currentUser.getIdToken();
+    const res = await fetch(`${WORKER_URL}/admin/security-stats`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    });
+    const d = await res.json();
+    if (!res.ok || !d.ok) { box.textContent = d.error || 'Erreur de chargement.'; return; }
+    const actions = Object.entries(d.auditByAction7d || {})
+      .sort((a, b) => b[1] - a[1])
+      .map(([action, n]) => `<span style="display:inline-block;background:var(--s3);border-radius:6px;padding:3px 8px;margin:0 6px 6px 0;font-family:var(--mono)">${_escapeHtmlChat(action)} · ${n}</span>`)
+      .join('') || '<span style="font-style:italic">Aucune activité.</span>';
+    box.innerHTML =
+      `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">` +
+        `<div><div style="font-size:20px;font-weight:800;color:var(--text)">${d.totalUsers}</div><div>Comptes</div></div>` +
+        `<div><div style="font-size:20px;font-weight:800;color:var(--text)">${d.totpAdoptionPct}%</div><div>2FA (TOTP) activée — ${d.totpEnrolled}/${d.totalUsers}</div></div>` +
+        `<div><div style="font-size:20px;font-weight:800;color:var(--text)">${d.auditLast24h}</div><div>Événements auditLog (24h)</div></div>` +
+      `</div>` +
+      `<div style="margin-bottom:6px;font-weight:600;color:var(--text2)">Activité par type (7 j) :</div>` +
+      `<div>${actions}</div>`;
+  } catch (e) {
+    box.textContent = 'Erreur réseau.';
+  }
+}
+
 // ─── PAGE ADMIN ──────────────────────────────────────────────────
 async function renderAdminPage() {
   if (!isAdmin()) { showPage('portfolio'); return; }
   let cfg = {};
   try { cfg = await _getAppConfig(); } catch (_) {}
+
+  _refreshAdminSecurityStats();
 
   // PIN
   const pinT = document.getElementById('admin-pin-toggle');

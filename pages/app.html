@@ -1203,6 +1203,12 @@
       <div id="admin-stats"></div>
 
       <div class="admin-grid">
+      <div class="section-card" style="max-width:680px">
+        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Posture sécurité</div>
+        <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:12px">Adoption de la 2FA et activité récente (auditLog, 7 derniers jours).</div>
+        <div id="admin-security-stats" style="font-size:12px;color:var(--text3)">Chargement…</div>
+      </div>
+
       <div class="section-card" style="max-width:560px">
         <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
           <div>
@@ -3187,6 +3193,19 @@
     </div>
     <div id="pin-status-box" style="padding:10px 12px;background:var(--s2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;font-size:12px;color:var(--text3)">Chargement…</div>
     <div id="pin-actions" style="display:flex;gap:8px"></div>
+
+    <!-- Sécurité — Verrouillage automatique -->
+    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
+      <div style="font-size:11px;color:var(--text3);line-height:1.55;margin-bottom:8px">
+        Reverrouille l'application (code PIN redemandé) après une période d'inactivité sur cet appareil.
+      </div>
+      <select id="inactivity-timeout-select" onchange="setInactivityTimeout(this.value)" style="width:100%;padding:9px 12px;background:var(--s2);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:12px;font-family:var(--sans)">
+        <option value="15">15 minutes</option>
+        <option value="30">30 minutes (défaut)</option>
+        <option value="60">1 heure</option>
+        <option value="never">Jamais</option>
+      </select>
+    </div>
 
     <!-- Sécurité — Code d'authentification (TOTP, facultatif) -->
     <div style="height:1px;background:var(--border);margin:18px 0"></div>

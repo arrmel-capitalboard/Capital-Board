@@ -81,9 +81,45 @@ async function fetchPrice(ticker) {
   }
 }
 
+// ─── SUIVI DE QUOTA (Tavily / Mistral) ────────────────────────
+// Compteurs du run en cours. Le cache Firestore (getOrFetchTavily) déduplique
+// déjà les appels par ticker et par jour ; un dépassement de seuil ici
+// signale donc soit une régression du cache, soit une hausse réelle et
+// inhabituelle du nombre de tickers suivis — dans les deux cas, quelque chose
+// qu'un humain doit regarder avant que le quota (ou la facture) ne saute.
+// Seuils choisis à vue de nez : à ajuster une fois un historique de run réel
+// disponible (voir apiUsage/{date} dans Firestore).
+const TAVILY_ALERT_THRESHOLD  = 200;
+const MISTRAL_ALERT_THRESHOLD = 100;
+let _tavilyCalls = 0;
+let _mistralCalls = 0;
+
+async function checkApiQuotaAndAlert() {
+  try {
+    await db.doc(`apiUsage/${todayIso}`).set({
+      tavilyCalls: _tavilyCalls, mistralCalls: _mistralCalls, at: new Date().toISOString(),
+    }, { merge: true });
+  } catch (e) { console.warn('apiUsage write error:', e.message); }
+
+  const overages = [];
+  if (_tavilyCalls  > TAVILY_ALERT_THRESHOLD)  overages.push(`Tavily : ${_tavilyCalls} appels (seuil ${TAVILY_ALERT_THRESHOLD})`);
+  if (_mistralCalls > MISTRAL_ALERT_THRESHOLD) overages.push(`Mistral : ${_mistralCalls} appels (seuil ${MISTRAL_ALERT_THRESHOLD})`);
+  if (!overages.length) return;
+
+  try {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    await db.doc(`opsAlerts/${id}`).set({
+      type: 'api-quota',
+      texte: `Récap quotidien — consommation API anormale :\n${overages.join('\n')}`,
+      createdAt: Date.now(),
+    });
+  } catch (e) { console.warn('opsAlerts write error:', e.message); }
+}
+
 // ─── RECHERCHE WEB (Tavily) ──────────────────────────────────
 // Renvoie des résultats web récents (titres + extraits) pour une requête.
 async function searchWeb(query) {
+  _tavilyCalls++;
   try {
     const res = await fetch('https://api.tavily.com/search', {
       method: 'POST',
@@ -143,6 +179,7 @@ async function getOrFetchTavily(ticker, name, type = 'daily') {
 
 // ─── MISTRAL — RÉDACTION DU RAPPORT ──────────────────────────
 async function callMistral(prompt) {
+  _mistralCalls++;
   const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
     method: 'POST',
     headers: {
@@ -609,7 +646,8 @@ async function main() {
     }
   }
 
-  console.log('\nRécap quotidien terminé\n');
+  await checkApiQuotaAndAlert();
+  console.log(`\nRécap quotidien terminé (Tavily: ${_tavilyCalls} appels, Mistral: ${_mistralCalls} appels)\n`);
 }
 
 main().catch(err => {

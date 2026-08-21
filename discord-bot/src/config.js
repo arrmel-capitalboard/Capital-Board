@@ -2,7 +2,7 @@
 
 require('dotenv').config();
 
-const { DISCORD_TOKEN, CLIENT_ID, GUILD_ID, ROLE_COMPTE_LIE } = process.env;
+const { DISCORD_TOKEN, CLIENT_ID, GUILD_ID, ROLE_COMPTE_LIE, OPS_ALERTS_CHANNEL_ID } = process.env;
 
 if (!DISCORD_TOKEN) throw new Error('DISCORD_TOKEN manquant (voir .env.example)');
 if (!CLIENT_ID) throw new Error('CLIENT_ID manquant (voir .env.example)');
@@ -14,6 +14,10 @@ module.exports = {
   // Rôle attribué automatiquement aux comptes Capital Board liés (voir lib/rolesync.js).
   // Surchargeable par ROLE_COMPTE_LIE pour tester sur un serveur de dev.
   roleCompteLie: ROLE_COMPTE_LIE || '1528779341184635121',
+  // Salon des alertes ops (quotas API, etc. — voir lib/ops-alerts.js). Pas de
+  // valeur par défaut : sans ID connu, mieux vaut désactiver l'écoute que
+  // poster dans le mauvais salon.
+  opsAlertsChannel: OPS_ALERTS_CHANNEL_ID || null,
   // Couleur de marque Capital Board (utilisée dans les embeds).
   brandColor: 0x2563eb,
   siteUrl: 'https://capitalboard.fr',
