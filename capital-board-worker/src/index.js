@@ -2275,10 +2275,19 @@ export default {
         const user = await verifyIdToken(idToken, env);
         if (!user || user.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
 
-        const [roles, totpSecrets, auditDocs] = await Promise.all([
+        const last7Dates = Array.from({ length: 7 }, (_, i) =>
+          new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
+
+        const [roles, totpSecrets, auditDocs, apiUsageDocs] = await Promise.all([
           firestoreList('roles', env),
           firestoreList('totpSecrets', env).catch(() => []),
           firestoreList('auditLog', env).catch(() => []),
+          Promise.all(last7Dates.map((date) =>
+            firestoreGet(`apiUsage/${date}`, env).then((d) => ({
+              date,
+              tavilyCalls: fsNum(d, 'tavilyCalls') || 0,
+              mistralCalls: fsNum(d, 'mistralCalls') || 0,
+            })).catch(() => ({ date, tavilyCalls: 0, mistralCalls: 0 })))),
         ]);
 
         const totalUsers = roles.length;
@@ -2311,6 +2320,7 @@ export default {
           auditLast7d: last7d,
           auditByAction7d: byAction7d,
           auditRecent: recent.slice(0, 30),
+          apiUsage7d: apiUsageDocs.reverse(), // du plus ancien au plus récent
         });
       }
 

@@ -14860,6 +14860,17 @@ async function _refreshAdminSecurityStats() {
       .sort((a, b) => b[1] - a[1])
       .map(([action, n]) => `<span style="display:inline-block;background:var(--s3);border-radius:6px;padding:3px 8px;margin:0 6px 6px 0;font-family:var(--mono)">${_escapeHtmlChat(action)} · ${n}</span>`)
       .join('') || '<span style="font-style:italic">Aucune activité.</span>';
+    // Seuils d'alerte Discord côté Worker (TAVILY_ALERT_THRESHOLD / MISTRAL_ALERT_THRESHOLD
+    // dans scripts/daily-recap.js) — repris ici juste pour colorer, pas pour décider quoi que ce soit.
+    const TAVILY_THRESHOLD = 200, MISTRAL_THRESHOLD = 100;
+    const usageRows = (d.apiUsage7d || []).map((u) => {
+      const tColor = u.tavilyCalls > TAVILY_THRESHOLD ? '#ff4d6a' : 'var(--text2)';
+      const mColor = u.mistralCalls > MISTRAL_THRESHOLD ? '#ff4d6a' : 'var(--text2)';
+      return `<tr><td style="padding:4px 10px 4px 0;color:var(--text3)">${_escapeHtmlChat(u.date)}</td>` +
+        `<td style="padding:4px 10px;color:${tColor};font-family:var(--mono)">${u.tavilyCalls}</td>` +
+        `<td style="padding:4px 0;color:${mColor};font-family:var(--mono)">${u.mistralCalls}</td></tr>`;
+    }).join('') || '<tr><td style="font-style:italic;color:var(--text3)">Aucune donnée.</td></tr>';
+
     box.innerHTML =
       `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">` +
         `<div><div style="font-size:20px;font-weight:800;color:var(--text)">${d.totalUsers}</div><div>Comptes</div></div>` +
@@ -14867,7 +14878,13 @@ async function _refreshAdminSecurityStats() {
         `<div><div style="font-size:20px;font-weight:800;color:var(--text)">${d.auditLast24h}</div><div>Événements auditLog (24h)</div></div>` +
       `</div>` +
       `<div style="margin-bottom:6px;font-weight:600;color:var(--text2)">Activité par type (7 j) :</div>` +
-      `<div>${actions}</div>`;
+      `<div style="margin-bottom:14px">${actions}</div>` +
+      `<div style="margin-bottom:6px;font-weight:600;color:var(--text2)">Quota API — récap quotidien (7 j) :</div>` +
+      `<table style="font-size:11px;border-collapse:collapse"><thead><tr>` +
+        `<th style="text-align:left;padding:4px 10px 4px 0;color:var(--text3)">Date</th>` +
+        `<th style="text-align:left;padding:4px 10px;color:var(--text3)">Tavily</th>` +
+        `<th style="text-align:left;padding:4px 0;color:var(--text3)">Mistral</th>` +
+      `</tr></thead><tbody>${usageRows}</tbody></table>`;
   } catch (e) {
     box.textContent = 'Erreur réseau.';
   }
