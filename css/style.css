@@ -23,7 +23,7 @@
   box-shadow: 0 8px 32px rgba(124,109,245,0.35);
 }
 .splash-name {
-  font-family: 'Switzer', sans-serif; font-weight: 800;
+  font-family: var(--display); font-weight: 800;
   font-size: 19px; color: #edf0f7; letter-spacing: -0.3px;
 }
 .splash-spinner {
@@ -72,8 +72,8 @@
   --logo-bg:     #eef1f7;
   --logo-border: rgba(255,255,255,0.12);
   --mono:     'JetBrains Mono', monospace;
-  --display:  'Switzer', sans-serif;
-  --sans:     'Switzer', sans-serif;
+  --display:  'Outfit', sans-serif;
+  --sans:     'Inter', sans-serif;
   --radius:   12px;
   --radius-lg: 16px;
 }
