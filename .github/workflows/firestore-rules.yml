@@ -28,6 +28,13 @@ jobs:
         with:
           node-version: '20'
 
+      # L'émulateur Firestore est un JAR : firebase-tools récent exige Java 21+,
+      # plus récent que le défaut d'ubuntu-latest.
+      - uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '21'
+
       - name: Install dependencies
         run: |
           cd firestore-tests
