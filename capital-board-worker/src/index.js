@@ -1834,6 +1834,15 @@ export default {
       new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
     try {
+      // ── GET /health ──────────────────────────────────────────────────────
+      // Ping public, sans auth ni accès Firestore — pour un moniteur externe
+      // (Upptime) qui doit juste savoir si le Worker répond. /admin/health
+      // fait un vrai bilan des services mais exige un idToken admin, donc
+      // inutilisable par un moniteur anonyme.
+      if (url.pathname === '/health' && request.method === 'GET') {
+        return json({ ok: true });
+      }
+
       // ── POST /support-upload ────────────────────────────────────────────
       // Depot d'une piece jointe de ticket. Corps = octets bruts du fichier.
       // Firebase Storage aurait fait l'affaire, mais il exige le plan Blaze :
