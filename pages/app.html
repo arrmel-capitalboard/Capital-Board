@@ -1194,193 +1194,282 @@
       </div>
 
       <style>
-        #page-admin .admin-grid{ column-width:330px; column-gap:16px; max-width:1180px }
-        #page-admin .admin-grid > .section-card{ break-inside:avoid; -webkit-column-break-inside:avoid; page-break-inside:avoid; display:inline-block; width:100%; max-width:none !important; margin:0 0 16px !important; box-sizing:border-box }
-        #admin-stats{ display:grid; grid-template-columns:repeat(3,minmax(120px,1fr)); gap:12px; max-width:1180px; margin-bottom:16px }
+        #admin-stats{ display:grid; grid-template-columns:repeat(3,minmax(120px,1fr)); gap:12px; max-width:1180px; margin-bottom:28px }
         @media (max-width:640px){ #admin-stats{ grid-template-columns:repeat(3,1fr) } }
+
+        #page-admin .admin-groups{ display:flex; flex-direction:column; gap:32px; max-width:1180px }
+        #page-admin .admin-section-head{ display:flex; align-items:center; gap:10px; margin-bottom:14px }
+        #page-admin .admin-section-bar{ width:3px; height:18px; border-radius:2px; background:var(--acc); flex-shrink:0 }
+        #page-admin .admin-section-title{ font-family:var(--display); font-size:15px; font-weight:800; color:var(--text); letter-spacing:-0.2px }
+        #page-admin .admin-section-badge{ min-width:20px; height:20px; padding:0 6px; border-radius:999px; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; background:color-mix(in srgb, var(--acc) 20%, transparent); color:var(--acc) }
+        #page-admin .admin-section-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px }
+        #page-admin .admin-card{ background:var(--s1); border-radius:var(--radius-lg); padding:18px; border:1px solid color-mix(in srgb, var(--acc) 30%, transparent); box-shadow:0 0 0 1px color-mix(in srgb, var(--acc) 7%, transparent), 0 12px 28px -18px color-mix(in srgb, var(--acc) 45%, transparent) }
+        #page-admin .admin-card.wide{ grid-column:1/-1 }
+        #page-admin .admin-card-head{ display:flex; align-items:flex-start; gap:12px; margin-bottom:4px }
+        #page-admin .admin-icon-sq{ width:32px; height:32px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:color-mix(in srgb, var(--acc) 15%, transparent); color:var(--acc) }
+        #page-admin .admin-card-title{ font-size:14px; font-weight:700; color:var(--text); margin-bottom:4px }
+        #page-admin .admin-card-desc{ font-size:12px; color:var(--text3); line-height:1.6 }
+        @media (max-width:640px){ #page-admin .admin-section-grid{ grid-template-columns:1fr } }
       </style>
 
       <div id="admin-stats"></div>
 
-      <div class="admin-grid">
-      <div class="section-card" style="max-width:680px">
-        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Posture sécurité</div>
-        <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:12px">Adoption de la 2FA, activité récente (auditLog) et quota API (Tavily/Mistral) — 7 derniers jours.</div>
-        <div id="admin-security-stats" style="font-size:12px;color:var(--text3)">Chargement…</div>
-      </div>
+      <div class="admin-groups">
 
-      <div class="section-card" style="max-width:560px">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
-          <div>
-            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Désactiver le code PIN</div>
-            <div style="font-size:12px;color:var(--text3);line-height:1.6;max-width:360px">Coupe le verrouillage PIN pour <strong>tous les comptes</strong>. Les utilisateurs accèdent à l'app sans saisir de code. Les codes existants sont conservés et réactivés dès que vous rebasculez.</div>
+      <!-- ═══ Sécurité ═══ -->
+      <div style="--acc:var(--accent)">
+        <div class="admin-section-head">
+          <div class="admin-section-bar"></div>
+          <div class="admin-section-title">Sécurité</div>
+          <div class="admin-section-badge">2</div>
+        </div>
+        <div class="admin-section-grid">
+
+          <div class="admin-card wide">
+            <div class="admin-card-head">
+              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
+              <div>
+                <div class="admin-card-title">Posture sécurité</div>
+                <div class="admin-card-desc">Adoption de la 2FA, activité récente (auditLog) et quota API (Tavily/Mistral) — 7 derniers jours.</div>
+              </div>
+            </div>
+            <div id="admin-security-stats" style="font-size:12px;color:var(--text3);margin-top:10px">Chargement…</div>
           </div>
-          <label class="toggle-switch" style="flex-shrink:0">
-            <input type="checkbox" id="admin-pin-toggle" onchange="adminTogglePinGlobal(this)">
-            <span class="toggle-track"></span>
-          </label>
-        </div>
-        <div id="admin-pin-status" style="margin-top:14px;font-size:12px;color:var(--text3)">Chargement…</div>
-      </div>
 
-      <div class="section-card" style="max-width:560px;margin-top:16px">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
-          <div>
-            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Mode maintenance</div>
-            <div style="font-size:12px;color:var(--text3);line-height:1.6;max-width:360px">Bloque l'accès à l'app pour <strong>tous les utilisateurs</strong> (vous restez admin). Un écran « maintenance en cours » s'affiche à leur place.</div>
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg></div>
+              <div style="flex:1">
+                <div class="admin-card-title">Désactiver le code PIN</div>
+                <div class="admin-card-desc">Coupe le verrouillage PIN pour <strong>tous les comptes</strong>. Les utilisateurs accèdent à l'app sans saisir de code. Les codes existants sont conservés et réactivés dès que vous rebasculez.</div>
+              </div>
+              <label class="toggle-switch" style="flex-shrink:0">
+                <input type="checkbox" id="admin-pin-toggle" onchange="adminTogglePinGlobal(this)">
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+            <div id="admin-pin-status" style="margin-top:14px;font-size:12px;color:var(--text3)">Chargement…</div>
           </div>
-          <label class="toggle-switch" style="flex-shrink:0">
-            <input type="checkbox" id="admin-maint-toggle" onchange="adminToggleMaintenance(this)">
-            <span class="toggle-track"></span>
-          </label>
-        </div>
-        <textarea id="admin-maint-msg" placeholder="Message affiché aux utilisateurs (optionnel)" style="width:100%;margin-top:12px;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:12px;font-family:var(--sans);padding:10px 12px;resize:vertical;min-height:56px;outline:none"></textarea>
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
-          <div id="admin-maint-status" style="font-size:12px;color:var(--text3)">Chargement…</div>
-          <button class="pf-btn ghost" onclick="adminSaveMaintenanceMsg()" style="font-size:11.5px">Enregistrer le message</button>
+
         </div>
       </div>
 
-      <div class="section-card" style="max-width:560px;margin-top:16px">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:16px">
-          <div>
-            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Inscriptions ouvertes</div>
-            <div style="font-size:12px;color:var(--text3);line-height:1.6;max-width:360px">Autorise la création de nouveaux comptes. Désactivé = accès sur invitation, les comptes existants continuent de se connecter.</div>
+      <!-- ═══ Accès & disponibilité ═══ -->
+      <div style="--acc:var(--accent2)">
+        <div class="admin-section-head">
+          <div class="admin-section-bar"></div>
+          <div class="admin-section-title">Accès &amp; disponibilité</div>
+          <div class="admin-section-badge">3</div>
+        </div>
+        <div class="admin-section-grid">
+
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94z"/></svg></div>
+              <div style="flex:1">
+                <div class="admin-card-title">Mode maintenance</div>
+                <div class="admin-card-desc">Bloque l'accès à l'app pour <strong>tous les utilisateurs</strong> (vous restez admin). Un écran « maintenance en cours » s'affiche à leur place.</div>
+              </div>
+              <label class="toggle-switch" style="flex-shrink:0">
+                <input type="checkbox" id="admin-maint-toggle" onchange="adminToggleMaintenance(this)">
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+            <textarea id="admin-maint-msg" placeholder="Message affiché aux utilisateurs (optionnel)" style="width:100%;margin-top:12px;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:12px;font-family:var(--sans);padding:10px 12px;resize:vertical;min-height:56px;outline:none"></textarea>
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px">
+              <div id="admin-maint-status" style="font-size:12px;color:var(--text3)">Chargement…</div>
+              <button class="pf-btn ghost" onclick="adminSaveMaintenanceMsg()" style="font-size:11.5px">Enregistrer le message</button>
+            </div>
           </div>
-          <label class="toggle-switch" style="flex-shrink:0">
-            <input type="checkbox" id="admin-signup-toggle" onchange="adminToggleSignup(this)">
-            <span class="toggle-track"></span>
-          </label>
-        </div>
-        <div id="admin-signup-status" style="margin-top:14px;font-size:12px;color:var(--text3)">Chargement…</div>
-      </div>
 
-      <div class="section-card" style="max-width:560px;margin-top:16px">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
-          <div>
-            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Top utilisateurs actifs</div>
-            <div style="font-size:12px;color:var(--text3);line-height:1.6;max-width:420px">Classés par jours de venue distincts, puis par sessions. Une même journée ne compte qu'une fois, quel que soit le nombre de rechargements.</div>
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="8.5" cy="7" r="4"/><line x1="20" y1="8" x2="20" y2="14"/><line x1="23" y1="11" x2="17" y2="11"/></svg></div>
+              <div style="flex:1">
+                <div class="admin-card-title">Inscriptions ouvertes</div>
+                <div class="admin-card-desc">Autorise la création de nouveaux comptes. Désactivé = accès sur invitation, les comptes existants continuent de se connecter.</div>
+              </div>
+              <label class="toggle-switch" style="flex-shrink:0">
+                <input type="checkbox" id="admin-signup-toggle" onchange="adminToggleSignup(this)">
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+            <div id="admin-signup-status" style="margin-top:14px;font-size:12px;color:var(--text3)">Chargement…</div>
           </div>
-        </div>
-        <div id="admin-active">Chargement…</div>
-      </div>
 
-      <div class="section-card" style="max-width:560px;margin-top:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Accueil des nouveaux</div>
-        <div style="font-size:12px;color:var(--text3);line-height:1.6;max-width:420px;margin-bottom:14px">Questionnaire de bienvenue et visite guidée. Désactivés, <strong>personne</strong> ne les voit — ni les nouveaux comptes, ni les membres déjà inscrits. Activés, ils s'affichent aussi aux inscrits qui n'ont pas encore répondu. Les essais ci-dessous n'enregistrent rien.</div>
-
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--border)">
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--text)">Questionnaire de profil</div>
-            <div style="font-size:11.5px;color:var(--text3)">6 questions, passable</div>
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
+              <div style="flex:1">
+                <div class="admin-card-title">État des services</div>
+                <div class="admin-card-desc">Firestore, Google/FCM, email, cours. <span id="admin-health-auto" style="color:var(--text3)">· actualisation auto</span></div>
+              </div>
+              <button class="pf-btn ghost" onclick="adminCheckHealth()" style="font-size:11.5px;flex-shrink:0">Actualiser</button>
+            </div>
+            <div id="admin-health" style="font-size:12.5px;color:var(--text3);font-family:var(--mono);margin-top:10px">—</div>
           </div>
-          <label class="toggle-switch" style="flex-shrink:0">
-            <input type="checkbox" id="admin-survey-toggle" onchange="adminToggleOnboarding('survey', this)">
-            <span class="toggle-track"></span>
-          </label>
-        </div>
 
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--border)">
-          <div>
-            <div style="font-size:13px;font-weight:600;color:var(--text)">Visite guidée</div>
-            <div style="font-size:11.5px;color:var(--text3)">6 étapes surlignées dans l'app</div>
+        </div>
+      </div>
+
+      <!-- ═══ Utilisateurs ═══ -->
+      <div style="--acc:var(--gold)">
+        <div class="admin-section-head">
+          <div class="admin-section-bar"></div>
+          <div class="admin-section-title">Utilisateurs</div>
+          <div class="admin-section-badge">4</div>
+        </div>
+        <div class="admin-section-grid">
+
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
+              <div>
+                <div class="admin-card-title">Top utilisateurs actifs</div>
+                <div class="admin-card-desc">Classés par jours de venue distincts, puis par sessions. Une même journée ne compte qu'une fois, quel que soit le nombre de rechargements.</div>
+              </div>
+            </div>
+            <div id="admin-active" style="margin-top:10px">Chargement…</div>
           </div>
-          <label class="toggle-switch" style="flex-shrink:0">
-            <input type="checkbox" id="admin-tour-toggle" onchange="adminToggleOnboarding('tour', this)">
-            <span class="toggle-track"></span>
-          </label>
-        </div>
 
-        <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
-          <button class="pf-btn ghost" onclick="showPage('portfolio');setTimeout(()=>CBOnboarding.testSurvey(),150)" style="font-size:11.5px">Tester le questionnaire</button>
-          <button class="pf-btn ghost" onclick="showPage('portfolio');setTimeout(()=>CBOnboarding.testTour(),150)" style="font-size:11.5px">Tester la visite</button>
-        </div>
-        <div id="admin-onboarding-status" style="margin-top:12px;font-size:12px;color:var(--text3)">Chargement…</div>
-      </div>
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polygon points="16.24 7.76 14.12 14.12 7.76 16.24 9.88 9.88 16.24 7.76"/></svg></div>
+              <div>
+                <div class="admin-card-title">Accueil des nouveaux</div>
+                <div class="admin-card-desc">Questionnaire de bienvenue et visite guidée. Désactivés, <strong>personne</strong> ne les voit — ni les nouveaux comptes, ni les membres déjà inscrits. Activés, ils s'affichent aussi aux inscrits qui n'ont pas encore répondu. Les essais ci-dessous n'enregistrent rien.</div>
+              </div>
+            </div>
 
-      <div class="section-card" style="max-width:680px;margin-top:16px">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
-          <div>
-            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Profils des inscrits</div>
-            <div style="font-size:12px;color:var(--text3);line-height:1.6;max-width:420px">Réponses au questionnaire de bienvenue. Passable : tous les comptes n'y figurent pas.</div>
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--border);margin-top:10px">
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--text)">Questionnaire de profil</div>
+                <div style="font-size:11.5px;color:var(--text3)">6 questions, passable</div>
+              </div>
+              <label class="toggle-switch" style="flex-shrink:0">
+                <input type="checkbox" id="admin-survey-toggle" onchange="adminToggleOnboarding('survey', this)">
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;gap:16px;padding:10px 0;border-top:1px solid var(--border)">
+              <div>
+                <div style="font-size:13px;font-weight:600;color:var(--text)">Visite guidée</div>
+                <div style="font-size:11.5px;color:var(--text3)">6 étapes surlignées dans l'app</div>
+              </div>
+              <label class="toggle-switch" style="flex-shrink:0">
+                <input type="checkbox" id="admin-tour-toggle" onchange="adminToggleOnboarding('tour', this)">
+                <span class="toggle-track"></span>
+              </label>
+            </div>
+
+            <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
+              <button class="pf-btn ghost" onclick="showPage('portfolio');setTimeout(()=>CBOnboarding.testSurvey(),150)" style="font-size:11.5px">Tester le questionnaire</button>
+              <button class="pf-btn ghost" onclick="showPage('portfolio');setTimeout(()=>CBOnboarding.testTour(),150)" style="font-size:11.5px">Tester la visite</button>
+            </div>
+            <div id="admin-onboarding-status" style="margin-top:12px;font-size:12px;color:var(--text3)">Chargement…</div>
           </div>
-        </div>
-        <!-- Le détail tient sur plusieurs écrans et se lit rarement : il vit
-             dans une fenêtre, et n'est chargé qu'à l'ouverture. -->
-        <button class="pf-btn ghost" onclick="adminOpenProfils()" style="font-size:11.5px">Voir les profils</button>
-      </div>
 
-      <div class="section-card" style="max-width:680px;margin-top:16px">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:12px">
-          <div>
-            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Utilisateurs</div>
-            <div style="font-size:12px;color:var(--text3);line-height:1.6;max-width:420px">Comptes connus (rôles, présence, support). Gérez les rôles ou effacez les données d'un compte (RGPD).</div>
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/></svg></div>
+              <div>
+                <div class="admin-card-title">Profils des inscrits</div>
+                <div class="admin-card-desc">Réponses au questionnaire de bienvenue. Passable : tous les comptes n'y figurent pas.</div>
+              </div>
+            </div>
+            <!-- Le détail tient sur plusieurs écrans et se lit rarement : il vit
+                 dans une fenêtre, et n'est chargé qu'à l'ouverture. -->
+            <button class="pf-btn ghost" onclick="adminOpenProfils()" style="font-size:11.5px;margin-top:10px">Voir les profils</button>
           </div>
-          <button class="pf-btn ghost" onclick="renderAdminUsers()" style="font-size:11.5px;flex-shrink:0">↻ Actualiser</button>
-        </div>
-        <div id="admin-users" style="font-size:12px;color:var(--text3)">Chargement…</div>
-      </div>
 
-      <div class="section-card" style="max-width:560px;margin-top:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Diffusion — notification push</div>
-        <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:12px">Envoie une notification à <strong>tous les utilisateurs</strong> abonnés au push.</div>
-        <textarea id="bc-push-body" placeholder="Message" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;resize:vertical;min-height:56px;outline:none;font-family:var(--sans)"></textarea>
-
-        <!-- Test push sur une seule adresse (vérifie que c'est bien une push PWA système) -->
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <input id="bc-push-test-email" type="email" value="armelpltr14@gmail.com" placeholder="Email de test" style="flex:1;min-width:0;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;outline:none;font-family:var(--sans)">
-          <button class="pf-btn ghost" onclick="adminTestPush()" style="font-size:11.5px;flex-shrink:0;white-space:nowrap">Envoyer test</button>
-        </div>
-
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:12px">
-          <div id="bc-push-status" style="font-size:12px;color:var(--text3)"></div>
-          <button class="pf-btn primary" onclick="adminBroadcastPush()" style="font-size:11.5px;flex-shrink:0">Envoyer le push</button>
-        </div>
-      </div>
-
-      <div class="section-card" style="max-width:560px;margin-top:16px">
-        <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">Diffusion — email</div>
-        <div style="font-size:12px;color:var(--text3);line-height:1.6;margin-bottom:12px">Envoie un email à <strong>tous les comptes</strong>. Testez d'abord sur une seule adresse, ou programmez l'envoi pour plus tard.</div>
-        <input id="bc-mail-subject" oninput="_renderMailPreview()" placeholder="Sujet" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;margin-bottom:8px;outline:none;font-family:var(--sans)">
-        <textarea id="bc-mail-body" oninput="_renderMailPreview()" placeholder="Message (texte)" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;resize:vertical;min-height:80px;outline:none;font-family:var(--sans)"></textarea>
-
-        <!-- Aperçu du rendu final -->
-        <div style="display:flex;justify-content:flex-end;margin-top:8px">
-          <button class="pf-btn ghost" id="bc-mail-preview-btn" onclick="adminToggleMailPreview()" style="font-size:11.5px">👁 Aperçu</button>
-        </div>
-        <iframe id="bc-mail-preview" title="Aperçu de l'email" style="display:none;width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:10px;margin-top:8px;height:340px;background:#0f0f13"></iframe>
-
-        <!-- Envoi test sur une seule adresse -->
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <input id="bc-mail-test" type="email" placeholder="Email de test (optionnel)" style="flex:1;min-width:0;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;outline:none;font-family:var(--sans)">
-          <button class="pf-btn ghost" onclick="adminBroadcastEmailTest()" style="font-size:11.5px;flex-shrink:0;white-space:nowrap">Envoyer test</button>
-        </div>
-
-        <!-- Envoi programmé -->
-        <div style="display:flex;gap:8px;margin-top:8px">
-          <input id="bc-mail-when" type="datetime-local" style="flex:1;min-width:0;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;outline:none;font-family:var(--sans)">
-          <button class="pf-btn ghost" onclick="adminScheduleEmail()" style="font-size:11.5px;flex-shrink:0;white-space:nowrap">Programmer</button>
-        </div>
-
-        <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:12px">
-          <div id="bc-mail-status" style="font-size:12px;color:var(--text3)"></div>
-          <button class="pf-btn primary" onclick="adminBroadcastEmail()" style="font-size:11.5px;flex-shrink:0">Envoyer à tous</button>
-        </div>
-
-        <div id="bc-mail-scheduled" style="margin-top:14px;font-size:12px;color:var(--text3)"></div>
-      </div>
-
-      <div class="section-card" style="max-width:560px;margin-top:16px">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px">
-          <div>
-            <div style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:4px">État des services</div>
-            <div style="font-size:12px;color:var(--text3);line-height:1.6">Firestore, Google/FCM, email, cours. <span id="admin-health-auto" style="color:var(--text3)">· actualisation auto</span></div>
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg></div>
+              <div style="flex:1">
+                <div class="admin-card-title">Utilisateurs</div>
+                <div class="admin-card-desc">Comptes connus (rôles, présence, support). Gérez les rôles ou effacez les données d'un compte (RGPD).</div>
+              </div>
+              <button class="pf-btn ghost" onclick="renderAdminUsers()" style="font-size:11.5px;flex-shrink:0">↻ Actualiser</button>
+            </div>
+            <div id="admin-users" style="font-size:12px;color:var(--text3);margin-top:10px">Chargement…</div>
           </div>
-          <button class="pf-btn ghost" onclick="adminCheckHealth()" style="font-size:11.5px;flex-shrink:0">Actualiser</button>
+
         </div>
-        <div id="admin-health" style="font-size:12.5px;color:var(--text3);font-family:var(--mono)">—</div>
       </div>
-      </div><!-- /admin-grid -->
+
+      <!-- ═══ Diffusion ═══ -->
+      <div style="--acc:var(--positive)">
+        <div class="admin-section-head">
+          <div class="admin-section-bar"></div>
+          <div class="admin-section-title">Diffusion</div>
+          <div class="admin-section-badge">2</div>
+        </div>
+        <div class="admin-section-grid">
+
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
+              <div>
+                <div class="admin-card-title">Notification push</div>
+                <div class="admin-card-desc">Envoie une notification à <strong>tous les utilisateurs</strong> abonnés au push.</div>
+              </div>
+            </div>
+            <textarea id="bc-push-body" placeholder="Message" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;resize:vertical;min-height:56px;outline:none;font-family:var(--sans);margin-top:10px"></textarea>
+
+            <!-- Test push sur une seule adresse (vérifie que c'est bien une push PWA système) -->
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <input id="bc-push-test-email" type="email" value="armelpltr14@gmail.com" placeholder="Email de test" style="flex:1;min-width:0;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;outline:none;font-family:var(--sans)">
+              <button class="pf-btn ghost" onclick="adminTestPush()" style="font-size:11.5px;flex-shrink:0;white-space:nowrap">Envoyer test</button>
+            </div>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:12px">
+              <div id="bc-push-status" style="font-size:12px;color:var(--text3)"></div>
+              <button class="pf-btn primary" onclick="adminBroadcastPush()" style="font-size:11.5px;flex-shrink:0">Envoyer le push</button>
+            </div>
+          </div>
+
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="4" width="20" height="16" rx="2"/><path d="m22 7-8.97 5.7a1.94 1.94 0 0 1-2.06 0L2 7"/></svg></div>
+              <div>
+                <div class="admin-card-title">Email</div>
+                <div class="admin-card-desc">Envoie un email à <strong>tous les comptes</strong>. Testez d'abord sur une seule adresse, ou programmez l'envoi pour plus tard.</div>
+              </div>
+            </div>
+            <input id="bc-mail-subject" oninput="_renderMailPreview()" placeholder="Sujet" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;margin-top:10px;margin-bottom:8px;outline:none;font-family:var(--sans)">
+            <textarea id="bc-mail-body" oninput="_renderMailPreview()" placeholder="Message (texte)" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;resize:vertical;min-height:80px;outline:none;font-family:var(--sans)"></textarea>
+
+            <!-- Aperçu du rendu final -->
+            <div style="display:flex;justify-content:flex-end;margin-top:8px">
+              <button class="pf-btn ghost" id="bc-mail-preview-btn" onclick="adminToggleMailPreview()" style="font-size:11.5px">👁 Aperçu</button>
+            </div>
+            <iframe id="bc-mail-preview" title="Aperçu de l'email" style="display:none;width:100%;box-sizing:border-box;border:1px solid var(--border);border-radius:10px;margin-top:8px;height:340px;background:#0f0f13"></iframe>
+
+            <!-- Envoi test sur une seule adresse -->
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <input id="bc-mail-test" type="email" placeholder="Email de test (optionnel)" style="flex:1;min-width:0;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;outline:none;font-family:var(--sans)">
+              <button class="pf-btn ghost" onclick="adminBroadcastEmailTest()" style="font-size:11.5px;flex-shrink:0;white-space:nowrap">Envoyer test</button>
+            </div>
+
+            <!-- Envoi programmé -->
+            <div style="display:flex;gap:8px;margin-top:8px">
+              <input id="bc-mail-when" type="datetime-local" style="flex:1;min-width:0;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;outline:none;font-family:var(--sans)">
+              <button class="pf-btn ghost" onclick="adminScheduleEmail()" style="font-size:11.5px;flex-shrink:0;white-space:nowrap">Programmer</button>
+            </div>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:12px">
+              <div id="bc-mail-status" style="font-size:12px;color:var(--text3)"></div>
+              <button class="pf-btn primary" onclick="adminBroadcastEmail()" style="font-size:11.5px;flex-shrink:0">Envoyer à tous</button>
+            </div>
+
+            <div id="bc-mail-scheduled" style="margin-top:14px;font-size:12px;color:var(--text3)"></div>
+          </div>
+
+        </div>
+      </div>
+
+      </div><!-- /admin-groups -->
     </div>
 
     <!-- ALERTES PRIX PAGE -->
