@@ -52,7 +52,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260821a">
+<link rel="stylesheet" href="css/style.css?v=20260821b">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -1317,20 +1317,9 @@
         <div class="admin-section-head">
           <div class="admin-section-bar"></div>
           <div class="admin-section-title">Utilisateurs</div>
-          <div class="admin-section-badge">4</div>
+          <div class="admin-section-badge">2</div>
         </div>
         <div class="admin-section-grid">
-
-          <div class="admin-card">
-            <div class="admin-card-head">
-              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg></div>
-              <div>
-                <div class="admin-card-title">Top utilisateurs actifs</div>
-                <div class="admin-card-desc">Classés par jours de venue distincts, puis par sessions. Une même journée ne compte qu'une fois, quel que soit le nombre de rechargements.</div>
-              </div>
-            </div>
-            <div id="admin-active" style="margin-top:10px">Chargement…</div>
-          </div>
 
           <div class="admin-card">
             <div class="admin-card-head">
@@ -1366,21 +1355,10 @@
             <div style="display:flex;gap:8px;margin-top:12px;flex-wrap:wrap">
               <button class="pf-btn ghost" onclick="showPage('portfolio');setTimeout(()=>CBOnboarding.testSurvey(),150)" style="font-size:11.5px">Tester le questionnaire</button>
               <button class="pf-btn ghost" onclick="showPage('portfolio');setTimeout(()=>CBOnboarding.testTour(),150)" style="font-size:11.5px">Tester la visite</button>
+              <button class="pf-btn ghost" onclick="adminOpenSurveyEditor()" style="font-size:11.5px">Gérer le questionnaire</button>
+              <button class="pf-btn ghost" onclick="adminOpenProfils()" style="font-size:11.5px">Voir les profils</button>
             </div>
-            <div id="admin-onboarding-status" style="margin-top:12px;font-size:12px;color:var(--text3)">Chargement…</div>
-          </div>
-
-          <div class="admin-card">
-            <div class="admin-card-head">
-              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><line x1="8" y1="8" x2="16" y2="8"/><line x1="8" y1="12" x2="16" y2="12"/><line x1="8" y1="16" x2="12" y2="16"/></svg></div>
-              <div>
-                <div class="admin-card-title">Profils des inscrits</div>
-                <div class="admin-card-desc">Réponses au questionnaire de bienvenue. Passable : tous les comptes n'y figurent pas.</div>
-              </div>
-            </div>
-            <!-- Le détail tient sur plusieurs écrans et se lit rarement : il vit
-                 dans une fenêtre, et n'est chargé qu'à l'ouverture. -->
-            <button class="pf-btn ghost" onclick="adminOpenProfils()" style="font-size:11.5px;margin-top:10px">Voir les profils</button>
+            <div id="admin-onboarding-status" style="margin-top:12px;font-size:12px;color:var(--text3)"></div>
           </div>
 
           <div class="admin-card">
@@ -1392,7 +1370,9 @@
               </div>
               <button class="pf-btn ghost" onclick="renderAdminUsers()" style="font-size:11.5px;flex-shrink:0">↻ Actualiser</button>
             </div>
-            <div id="admin-users" style="font-size:12px;color:var(--text3);margin-top:10px">Chargement…</div>
+            <input id="admin-users-search" type="search" placeholder="Rechercher un compte…" oninput="_renderAdminUsersCard()" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:12.5px;padding:8px 10px;margin:10px 0;outline:none;font-family:var(--sans)">
+            <div id="admin-users-list" style="font-size:12px;color:var(--text3)">Chargement…</div>
+            <button id="admin-users-more" onclick="adminOpenUsersModal()" class="pf-btn ghost" style="font-size:11.5px;margin-top:10px;display:none">Voir tous les comptes →</button>
           </div>
 
         </div>
@@ -3103,6 +3083,36 @@
   </div>
 </div>
 
+<!-- ═══ TOUS LES UTILISATEURS (admin) ═════════════════
+     La carte Admin n'en montre que 5 (avec recherche) ; cette fenêtre montre
+     tout le monde, y compris les comptes non enregistrés. -->
+<div class="modal-overlay" id="admin-users-modal" onclick="if(event.target===this)adminCloseUsersModal()" role="dialog" aria-modal="true" aria-labelledby="admin-users-modal-title">
+  <div class="modal" style="max-width:720px">
+    <div class="modal-title" id="admin-users-modal-title">Tous les utilisateurs</div>
+    <input id="admin-users-modal-search" type="search" placeholder="Rechercher un compte…" oninput="_renderAdminUsersModal()" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:9px 12px;margin:10px 0;outline:none;font-family:var(--sans)">
+    <div id="admin-users-modal-list" style="max-height:60vh;overflow:auto">Chargement…</div>
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="adminCloseUsersModal()">Fermer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ ÉDITEUR DU QUESTIONNAIRE (admin) ═══════════════
+     Édite le texte (titre, indice, libellés d'options) du questionnaire de
+     bienvenue — voir js/onboarding.js pour la structure figée derrière. -->
+<div class="modal-overlay" id="admin-survey-editor-modal" onclick="if(event.target===this)adminCloseSurveyEditor()" role="dialog" aria-modal="true" aria-labelledby="admin-survey-editor-title">
+  <div class="modal" style="max-width:640px">
+    <div class="modal-title" id="admin-survey-editor-title">Gérer le questionnaire</div>
+    <div class="modal-sub">Modifie le texte des 6 questions et de leurs options. La structure (ordre, choix multiple) ne change pas ici.</div>
+    <div id="admin-survey-editor" style="max-height:56vh;overflow:auto">Chargement…</div>
+    <div class="modal-footer">
+      <div id="admin-survey-editor-status" style="font-size:12px;color:var(--text3);flex:1"></div>
+      <button class="btn-secondary" onclick="adminCloseSurveyEditor()">Fermer</button>
+      <button class="btn-primary" onclick="adminSaveSurveyEditor()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
 <!-- ═══ MODAL PROFIL ════════════════════════════════ -->
 <!-- Modal : proposer une idée. Au niveau racine comme les autres modales :
      un ancêtre porteur d'un transform casserait le position:fixed. -->
@@ -3657,11 +3667,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260821a"></script>
+<script src="js/app.js?v=20260821b"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260821a"></script>
+<script src="js/onboarding.js?v=20260821b"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260821a"></script>
+<script src="js/import.js?v=20260821b"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

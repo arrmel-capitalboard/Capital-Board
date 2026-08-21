@@ -113,6 +113,38 @@
     },
   ];
 
+  // ── Personnalisation du questionnaire (admin) ──────────────────────────────
+  // config/onboardingText, écrit depuis la page Admin (adminSaveSurveyEditor
+  // dans app.js) : ne touche que le texte (titre, indice, libellés d'options),
+  // jamais la structure (clés, multi, ordre) — modifier ça casserait les
+  // agrégations déjà écrites dans profiles/{uid} et _PROFIL_LIBELLES.
+  let _overridesApplied = false;
+  function _mergeOverrides(cfg) {
+    if (!cfg) return;
+    QUESTIONS.forEach((qn) => {
+      const ov = cfg[qn.key];
+      if (!ov) return;
+      if (ov.title) qn.title = ov.title;
+      if (ov.hint !== undefined) qn.hint = ov.hint;
+      if (ov.options) {
+        qn.options.forEach((opt) => {
+          const o = ov.options[opt[0]];
+          if (!o) return;
+          if (o.label) opt[1] = o.label;
+          if (o.sub !== undefined) opt[2] = o.sub;
+        });
+      }
+    });
+  }
+  async function _applyOverridesOnce() {
+    if (_overridesApplied) return;
+    _overridesApplied = true;
+    try {
+      const snap = await getDocFromServer(firestoreDoc(db, 'config', 'onboardingText'));
+      _mergeOverrides(snap.exists() ? snap.data() : null);
+    } catch (_) {}
+  }
+
   // ── Visite guidée ─────────────────────────────────────────────────────────
   // Chaque étape désigne sa cible par une fonction : la barre du bas et la
   // barre latérale ne coexistent pas, la cible dépend donc de la largeur.
@@ -300,7 +332,8 @@
   // opts.test : rien n'est écrit dans Firestore, et un bandeau le dit. C'est le
   // mode utilisé depuis la page Admin pour juger le parcours sans se compter
   // soi-même dans les réponses ni se fermer la porte à un second essai.
-  function openQuestionnaire(uid, profil, opts) {
+  async function openQuestionnaire(uid, profil, opts) {
+    await _applyOverridesOnce();
     const o = opts || {};
     const test = o.test === true;
     const tourEnsuite = o.tourEnsuite !== false;
@@ -632,6 +665,18 @@
     // drapeau global n'a pas besoin d'être activé.
     testSurvey() { openQuestionnaire(currentUser, {}, { test: true, tourEnsuite: true }); },
     testTour()   { startTour(currentUser, { test: true }); },
+    // Éditeur admin (adminOpenSurveyEditor dans app.js) : texte courant,
+    // overrides déjà appliqués s'il y en a.
+    async getQuestionsSchema() {
+      await _applyOverridesOnce();
+      return QUESTIONS.map((q) => ({
+        key: q.key, short: q.short, title: q.title, hint: q.hint || '', multi: !!q.multi,
+        options: q.options.map((o) => ({ value: o[0], label: o[1], sub: o[2] || '' })),
+      }));
+    },
+    // Applique immédiatement ce que l'admin vient d'enregistrer, sans attendre
+    // un rechargement — pour que « Tester le questionnaire » reflète l'édit.
+    applyOverridesNow(cfg) { _mergeOverrides(cfg); },
     // Visite du module Livrets, lancée depuis sa page. Demandée à la main, elle
     // ne marque rien et se rejoue autant de fois qu'on veut.
     tourLivrets() {

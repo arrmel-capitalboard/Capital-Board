@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260821a';
+const APP_VERSION = '20260821b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -14872,19 +14872,25 @@ async function _refreshAdminSecurityStats() {
     }).join('') || '<tr><td style="font-style:italic;color:var(--text3)">Aucune donnée.</td></tr>';
 
     box.innerHTML =
-      `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px;margin-bottom:14px">` +
-        `<div><div style="font-size:20px;font-weight:800;color:var(--text)">${d.totalUsers}</div><div>Comptes</div></div>` +
-        `<div><div style="font-size:20px;font-weight:800;color:var(--text)">${d.totpAdoptionPct}%</div><div>2FA (TOTP) activée — ${d.totpEnrolled}/${d.totalUsers}</div></div>` +
-        `<div><div style="font-size:20px;font-weight:800;color:var(--text)">${d.auditLast24h}</div><div>Événements auditLog (24h)</div></div>` +
-      `</div>` +
-      `<div style="margin-bottom:6px;font-weight:600;color:var(--text2)">Activité par type (7 j) :</div>` +
-      `<div style="margin-bottom:14px">${actions}</div>` +
-      `<div style="margin-bottom:6px;font-weight:600;color:var(--text2)">Quota API — récap quotidien (7 j) :</div>` +
-      `<table style="font-size:11px;border-collapse:collapse"><thead><tr>` +
-        `<th style="text-align:left;padding:4px 10px 4px 0;color:var(--text3)">Date</th>` +
-        `<th style="text-align:left;padding:4px 10px;color:var(--text3)">Tavily</th>` +
-        `<th style="text-align:left;padding:4px 0;color:var(--text3)">Mistral</th>` +
-      `</tr></thead><tbody>${usageRows}</tbody></table>`;
+      `<div style="display:flex;gap:32px;flex-wrap:wrap">` +
+        `<div style="flex:1 1 260px;min-width:0">` +
+          `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px">` +
+            `<div><div style="font-size:20px;font-weight:800;color:var(--text)">${d.totalUsers}</div><div>Comptes</div></div>` +
+            `<div><div style="font-size:20px;font-weight:800;color:var(--text)">${d.totpAdoptionPct}%</div><div>2FA (TOTP) — ${d.totpEnrolled}/${d.totalUsers}</div></div>` +
+            `<div><div style="font-size:20px;font-weight:800;color:var(--text)">${d.auditLast24h}</div><div>Événements auditLog (24h)</div></div>` +
+          `</div>` +
+          `<div style="margin-bottom:6px;font-weight:600;color:var(--text2)">Activité par type (7 j) :</div>` +
+          `<div>${actions}</div>` +
+        `</div>` +
+        `<div style="flex:1 1 280px;min-width:0">` +
+          `<div style="margin-bottom:6px;font-weight:600;color:var(--text2)">Quota API — récap quotidien (7 j) :</div>` +
+          `<table style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr>` +
+            `<th style="text-align:left;padding:4px 10px 4px 0;color:var(--text3)">Date</th>` +
+            `<th style="text-align:left;padding:4px 10px;color:var(--text3)">Tavily</th>` +
+            `<th style="text-align:left;padding:4px 0;color:var(--text3)">Mistral</th>` +
+          `</tr></thead><tbody>${usageRows}</tbody></table>` +
+        `</div>` +
+      `</div>`;
   } catch (e) {
     box.textContent = 'Erreur réseau.';
   }
@@ -14934,7 +14940,6 @@ async function renderAdminPage() {
   // Stats + liste utilisateurs
   renderAdminStats();
   renderAdminUsers();
-  renderAdminActive();
   // Les profils ne sont plus lus au rendu de la page : ils vivent dans une
   // fenêtre, et leurs deux collections ne se chargent qu'à son ouverture.
 
@@ -15187,9 +15192,73 @@ function _relTimeShort(d) {
   if (s < 86400) return Math.floor(s / 3600) + 'H';
   return Math.floor(s / 86400) + 'J';
 }
+// Cache la dernière liste chargée : la carte (5 max) et la fenêtre « voir
+// tout le monde » filtrent toutes les deux dessus, sans refaire l'aller-retour
+// Firestore + Worker à chaque frappe dans la recherche.
+let _adminUsersCache = null; // { registered, pending, rowHtml }
+const ADMIN_USERS_CARD_MAX = 5;
+
+function _adminUsersMatch(u, needle) {
+  if (!needle) return true;
+  const hay = [u.firstName, u.lastName, u.username, u.email, u.name].filter(Boolean).join(' ').toLowerCase();
+  return hay.includes(needle);
+}
+
+function _renderAdminUsersCard() {
+  const box = document.getElementById('admin-users-list');
+  const moreBtn = document.getElementById('admin-users-more');
+  if (!box || !_adminUsersCache) return;
+  const q = (document.getElementById('admin-users-search') || {}).value || '';
+  const needle = q.trim().toLowerCase();
+  const { registered, rowHtml } = _adminUsersCache;
+  const matches = registered.filter(u => _adminUsersMatch(u, needle));
+  box.innerHTML = matches.length
+    ? matches.slice(0, ADMIN_USERS_CARD_MAX).map(rowHtml).join('')
+    : '<div style="color:var(--text3);padding:8px 0;font-size:12px">Aucun résultat.</div>';
+  if (moreBtn) {
+    const total = needle ? matches.length : registered.length;
+    moreBtn.style.display = total > ADMIN_USERS_CARD_MAX || needle ? '' : 'none';
+    moreBtn.textContent = needle
+      ? 'Voir les ' + matches.length + ' résultat(s) →'
+      : 'Voir les ' + registered.length + ' comptes →';
+  }
+}
+
+window.adminOpenUsersModal = function() {
+  const m = document.getElementById('admin-users-modal');
+  if (m) m.classList.add('open');
+  const searchEl = document.getElementById('admin-users-search');
+  const modalSearch = document.getElementById('admin-users-modal-search');
+  if (modalSearch) modalSearch.value = searchEl ? searchEl.value : '';
+  _renderAdminUsersModal();
+};
+window.adminCloseUsersModal = function() {
+  const m = document.getElementById('admin-users-modal');
+  if (m) m.classList.remove('open');
+};
+
+function _renderAdminUsersModal() {
+  const box = document.getElementById('admin-users-modal-list');
+  if (!box || !_adminUsersCache) return;
+  const q = (document.getElementById('admin-users-modal-search') || {}).value || '';
+  const needle = q.trim().toLowerCase();
+  const { registered, pending, rowHtml } = _adminUsersCache;
+  const matches = registered.filter(u => _adminUsersMatch(u, needle));
+  let html = matches.length
+    ? matches.map(rowHtml).join('')
+    : '<div style="color:var(--text3);padding:8px 0">Aucun résultat.</div>';
+  const pendingMatches = pending.filter(u => _adminUsersMatch(u, needle));
+  if (pendingMatches.length) {
+    html += '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--text3);margin:16px 0 8px">Non enregistrés (' + pendingMatches.length + ')</div>' +
+      '<div style="font-size:11px;color:var(--text3);line-height:1.6;margin-bottom:8px">Comptes sans prénom/nom/nom d\'utilisateur complet. Ceux marqués <strong style="color:#f5b731">MAIL NON VÉRIFIÉ</strong> n\'ont jamais confirmé leur adresse : ils sont supprimés automatiquement 7 jours après l\'inscription.</div>' +
+      pendingMatches.map(rowHtml).join('');
+  }
+  box.innerHTML = html;
+}
+
 async function renderAdminUsers() {
   if (!isAdmin()) return;
-  const box = document.getElementById('admin-users');
+  const box = document.getElementById('admin-users-list');
   if (!box) return;
   box.innerHTML = 'Chargement…';
   const empty = { forEach() {} };
@@ -15275,37 +15344,16 @@ async function renderAdminUsers() {
       '</div>';
     };
 
-    // Inscrits = prénom + nom + username renseignés. Les autres derrière un bouton.
+    // Inscrits = prénom + nom + username renseignés. Les autres derrière la fenêtre « voir tout ».
     const registered = list.filter(u => u.firstName && u.lastName && u.username);
     const pending = list.filter(u => !(u.firstName && u.lastName && u.username));
-
-    let html = registered.length
-      ? registered.map(rowHtml).join('')
-      : '<div style="color:var(--text3);padding:8px 0">Aucun utilisateur enregistré.</div>';
-
-    if (pending.length) {
-      html += '<button class="pf-btn ghost" id="admin-pending-btn" onclick="adminTogglePendingUsers()" style="font-size:11.5px;margin-top:12px">Voir les personnes non enregistrées (' + pending.length + ')</button>' +
-        '<div id="admin-pending-users" style="display:none;margin-top:4px">' +
-          '<div style="font-size:11px;color:var(--text3);line-height:1.6;margin:8px 0">Comptes sans prénom/nom/nom d\'utilisateur complet. Ceux marqués <strong style="color:#f5b731">MAIL NON VÉRIFIÉ</strong> n\'ont jamais confirmé leur adresse : ils sont supprimés automatiquement 7 jours après l\'inscription.</div>' +
-          pending.map(rowHtml).join('') +
-        '</div>';
-    }
-    box.innerHTML = html;
+    _adminUsersCache = { registered, pending, rowHtml };
+    _renderAdminUsersCard();
+    _renderAdminUsersModal();
   } catch (e) {
     console.error('[admin] users:', e);
     box.innerHTML = 'Erreur de chargement (droits Firestore insuffisants ?).';
   }
-}
-
-// Affiche/masque la liste des comptes non enregistrés.
-function adminTogglePendingUsers() {
-  const el = document.getElementById('admin-pending-users');
-  const btn = document.getElementById('admin-pending-btn');
-  if (!el) return;
-  const show = el.style.display === 'none';
-  el.style.display = show ? 'block' : 'none';
-  const n = el.querySelectorAll(':scope > div[style*="border-bottom"]').length;
-  if (btn) btn.textContent = (show ? 'Masquer' : 'Voir') + ' les personnes non enregistrées (' + n + ')';
 }
 
 async function adminSetRole(uid, role) {
@@ -15496,86 +15544,6 @@ async function renderAuditLog() {
   } catch (e) { box.innerHTML = 'Journal indisponible (droits Firestore ?).'; }
 }
 
-// ─── Top utilisateurs actifs ───
-// Les compteurs vivent sur presence/{uid} (voir _bumpActivity). Ils partent de
-// zéro à la mise en place : un compte ancien mais inactif depuis peut donc
-// apparaître bas, c'est voulu — la carte mesure l'habitude en cours, pas
-// l'ancienneté.
-async function renderAdminActive() {
-  if (!isAdmin()) return;
-  const box = document.getElementById('admin-active');
-  if (!box) return;
-  box.innerHTML = 'Chargement…';
-  const empty = { forEach() {} };
-  try {
-    const [presSnap, rolesSnap] = await Promise.all([
-      getDocs(firestoreCollection(db, 'presence')).catch(() => empty),
-      getDocs(firestoreCollection(db, 'roles')).catch(() => empty),
-    ]);
-    const noms = {};
-    rolesSnap.forEach(d => {
-      const r = d.data() || {};
-      noms[d.id] = ((r.firstName || '') + ' ' + (r.lastName || '')).trim()
-        || (r.username ? '@' + r.username : '');
-    });
-
-    const users = [];
-    presSnap.forEach(d => {
-      const p = d.data() || {};
-      const lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null;
-      users.push({
-        uid: d.id,
-        days: Number(p.days) || 0,
-        sessions: Number(p.sessions) || 0,
-        firstDay: p.firstDay || null,
-        lastSeen,
-        online: !!(lastSeen && (Date.now() - lastSeen.getTime()) < 70000),
-      });
-    });
-
-    const actifs = users
-      .filter(u => u.sessions > 0 || u.days > 0)
-      .sort((a, b) => (b.days - a.days) || (b.sessions - a.sessions)
-        || ((b.lastSeen ? b.lastSeen.getTime() : 0) - (a.lastSeen ? a.lastSeen.getTime() : 0)))
-      .slice(0, 10);
-
-    if (!actifs.length) {
-      box.innerHTML = '<div style="font-size:12px;color:var(--text3)">'
-        + 'Aucune mesure pour l\'instant. Le comptage démarre à la prochaine connexion de chaque membre.</div>';
-      return;
-    }
-
-    const maxJours = Math.max(...actifs.map(u => u.days), 1);
-    box.innerHTML = actifs.map((u, rang) => {
-      const qui = noms[u.uid] || (u.uid.slice(0, 10) + '…');
-      const largeur = Math.round((u.days / maxJours) * 100);
-      const dot = u.online
-        ? '<span style="width:6px;height:6px;border-radius:50%;background:var(--positive);box-shadow:0 0 8px var(--positive);flex-shrink:0"></span>'
-        : '';
-      return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-top:1px solid var(--border)">'
-        + '<span style="width:18px;font-family:var(--mono);font-size:11px;color:' + (rang < 3 ? 'var(--accent)' : 'var(--text3)') + ';flex-shrink:0">'
-        +   String(rang + 1).padStart(2, '0') + '</span>'
-        + '<div style="flex:1;min-width:0">'
-        +   '<div style="display:flex;align-items:center;gap:6px">'
-        +     '<span style="font-size:12.5px;font-weight:600;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _attr(qui) + '</span>' + dot
-        +   '</div>'
-        +   '<div style="height:4px;border-radius:2px;background:var(--s3);margin-top:5px;overflow:hidden">'
-        +     '<i style="display:block;height:100%;width:' + largeur + '%;background:var(--accent)"></i>'
-        +   '</div>'
-        + '</div>'
-        + '<div style="text-align:right;flex-shrink:0;font-family:var(--mono);font-size:10.5px;line-height:1.5">'
-        +   '<div style="color:var(--text)">' + u.days + ' j</div>'
-        +   '<div style="color:var(--text3)">' + u.sessions + ' sess.</div>'
-        + '</div>'
-        + '<div style="width:74px;text-align:right;flex-shrink:0;font-size:10.5px;color:var(--text3)">' + _relTime(u.lastSeen) + '</div>'
-        + '</div>';
-    }).join('');
-  } catch (e) {
-    console.error('[admin] actifs:', e);
-    box.innerHTML = 'Classement indisponible (droits Firestore ?).';
-  }
-}
-
 // ─── Profils des inscrits (questionnaire de bienvenue) ───
 // Deux lectures d'un même jeu de réponses : la répartition, qui dit qui sont
 // les inscrits dans l'ensemble, et le détail par compte, qui dit qui est qui.
@@ -15599,6 +15567,72 @@ window.adminOpenProfils = function() {
 window.adminCloseProfils = function() {
   const m = document.getElementById('admin-profils-modal');
   if (m) m.classList.remove('open');
+};
+
+// ─── Éditeur du questionnaire de bienvenue ───
+// Ne touche que le texte (titre, indice, libellés d'options) — jamais la
+// structure (clés, choix multiple, ordre) : la modifier casserait les
+// agrégations déjà écrites dans profiles/{uid} et _PROFIL_LIBELLES ci-dessus.
+window.adminOpenSurveyEditor = async function() {
+  const m = document.getElementById('admin-survey-editor-modal');
+  if (m) m.classList.add('open');
+  const box = document.getElementById('admin-survey-editor');
+  if (!box || !window.CBOnboarding) return;
+  box.innerHTML = 'Chargement…';
+  try {
+    const schema = await window.CBOnboarding.getQuestionsSchema();
+    box.dataset.schema = JSON.stringify(schema.map(q => ({ key: q.key, options: q.options.map(o => o.value) })));
+    box.innerHTML = schema.map((q, qi) => {
+      const hasSub = q.options.some(o => o.sub);
+      return '<div style="padding:14px 0;border-top:1px solid var(--border)">'
+        + '<div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);margin-bottom:8px">' + _attr(q.short) + (q.multi ? ' · choix multiple' : '') + '</div>'
+        + '<input data-q="' + qi + '" data-f="title" value="' + _attr(q.title) + '" placeholder="Titre de la question" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:13px;padding:8px 10px;margin-bottom:6px;outline:none;font-family:var(--sans)">'
+        + '<input data-q="' + qi + '" data-f="hint" value="' + _attr(q.hint) + '" placeholder="Indication (optionnel)" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:8px;color:var(--text3);font-size:12px;padding:7px 10px;margin-bottom:10px;outline:none;font-family:var(--sans)">'
+        + '<div style="display:flex;flex-direction:column;gap:6px">'
+        +   q.options.map((o, oi) =>
+              '<div style="display:flex;gap:6px">'
+              + '<input data-q="' + qi + '" data-o="' + oi + '" data-f="label" value="' + _attr(o.label) + '" style="flex:1;min-width:0;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:7px;color:var(--text);font-size:12px;padding:6px 9px;outline:none;font-family:var(--sans)">'
+              + (hasSub ? '<input data-q="' + qi + '" data-o="' + oi + '" data-f="sub" value="' + _attr(o.sub) + '" placeholder="Sous-texte" style="flex:1;min-width:0;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:7px;color:var(--text3);font-size:11.5px;padding:6px 9px;outline:none;font-family:var(--sans)">' : '')
+              + '</div>'
+            ).join('')
+        + '</div>'
+        + '</div>';
+    }).join('');
+  } catch (e) {
+    box.innerHTML = 'Erreur de chargement.';
+  }
+};
+window.adminCloseSurveyEditor = function() {
+  const m = document.getElementById('admin-survey-editor-modal');
+  if (m) m.classList.remove('open');
+};
+window.adminSaveSurveyEditor = async function() {
+  const box = document.getElementById('admin-survey-editor');
+  const st = document.getElementById('admin-survey-editor-status');
+  if (!box) return;
+  let meta;
+  try { meta = JSON.parse(box.dataset.schema || '[]'); } catch (_) { meta = []; }
+  const payload = {};
+  meta.forEach((q, qi) => {
+    const titleEl = box.querySelector('[data-q="' + qi + '"][data-f="title"]');
+    const hintEl  = box.querySelector('[data-q="' + qi + '"][data-f="hint"]');
+    const opts = {};
+    q.options.forEach((val, oi) => {
+      const labelEl = box.querySelector('[data-q="' + qi + '"][data-o="' + oi + '"][data-f="label"]');
+      const subEl   = box.querySelector('[data-q="' + qi + '"][data-o="' + oi + '"][data-f="sub"]');
+      opts[val] = { label: labelEl ? labelEl.value.trim() : '', sub: subEl ? subEl.value.trim() : '' };
+    });
+    payload[q.key] = { title: titleEl ? titleEl.value.trim() : '', hint: hintEl ? hintEl.value.trim() : '', options: opts };
+  });
+  if (st) st.textContent = 'Enregistrement…';
+  try {
+    await setFirestoreDoc(firestoreDoc(db, 'config', 'onboardingText'), payload);
+    if (window.CBOnboarding) window.CBOnboarding.applyOverridesNow(payload);
+    _audit('survey_edit', 'texte du questionnaire modifié');
+    if (st) { st.innerHTML = '<span style="color:var(--positive)">✓ Enregistré.</span>'; setTimeout(() => { st.textContent = ''; }, 2200); }
+  } catch (e) {
+    if (st) st.textContent = 'Échec de l\'enregistrement.';
+  }
 };
 
 async function renderAdminProfiles() {
@@ -15763,16 +15797,27 @@ async function adminCheckHealth(silent) {
   if (!box) return;
   if (!silent || box.textContent === '—' || !box.textContent) box.innerHTML = 'Vérification…';
   try {
-    const r = await _adminAuthPost('/admin/health', {});
+    const [r, discordSnap] = await Promise.all([
+      _adminAuthPost('/admin/health', {}),
+      getFirestoreDoc(firestoreDoc(db, 'config', 'discordStats')).catch(() => null),
+    ]);
     if (!r || !r.services) { box.textContent = r && r.error ? r.error : 'Erreur.'; return; }
     const dot = s => s === 'ok' ? '<span style="color:var(--positive)">● OK</span>' : '<span style="color:var(--negative)">● KO</span>';
     const s = r.services;
+    // Heartbeat écrit par le bot toutes les 60s (discord-bot/src/lib/ticketstats.js) :
+    // pas de vraie sonde, mais une absence de mise à jour récente veut dire
+    // que le process est down (ou n'a jamais tourné).
+    const dUpdated = discordSnap && discordSnap.exists() ? discordSnap.data().updatedAt : null;
+    const discordOk = typeof dUpdated === 'number' && (Date.now() - dUpdated) < 3 * 60000;
+    const discordLabel = dUpdated ? dot(discordOk ? 'ok' : 'ko') : '<span style="color:var(--text3)">● Inconnu</span>';
     box.innerHTML = [
+      'Worker (API) ' + dot('ok'),
       'Firestore ' + dot(s.firestore),
       'Google / FCM ' + dot(s.google),
       'Email (Resend) ' + dot(s.email),
       'Cours (Yahoo) ' + dot(s.yahoo),
       'Favoris (Instagram) ' + dot(s.instagram),
+      'Bot Discord ' + discordLabel,
     ].map(x => '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>' + x.split(' <')[0] + '</span><span>' + x.slice(x.indexOf('<')) + '</span></div>').join('');
     // Le motif de l'échec Meta vaut mieux qu'un point rouge : c'est lui qui dit
     // s'il faut régénérer le jeton ou retirer un compte de la liste.
@@ -16045,17 +16090,16 @@ async function adminToggleOnboarding(quoi, el) {
   } finally { el.disabled = false; }
 }
 
+// Les deux toggles montrent déjà leur propre état : ce texte ne sert plus
+// qu'à signaler le cas où rien n'est proposé du tout, ce que les toggles seuls
+// ne rendent pas évident (deux interrupteurs à l'œil, pas un message).
 async function _adminOnboardingStatus() {
   const s = document.getElementById('admin-onboarding-status');
   if (!s) return;
   let cfg = {};
   try { cfg = await _getAppConfig(); } catch (_) {}
   const q = cfg.onboardingSurvey === true, t = cfg.onboardingTour === true;
-  const etat = (v) => v
-    ? '<span style="color:var(--positive)">affiché</span>'
-    : '<span style="color:var(--text3)">masqué</span>';
-  s.innerHTML = 'Questionnaire : ' + etat(q) + ' · Visite : ' + etat(t)
-    + (q || t ? '' : ' — rien n\'est proposé aux membres pour l\'instant.');
+  s.innerHTML = (q || t) ? '' : 'Rien n\'est proposé aux membres pour l\'instant.';
 }
 
 function _adminPinStatusText(disabled) {
