@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260821f';
+const APP_VERSION = '20260821g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -5466,9 +5466,14 @@ const ISIN_MAP = {
 const LOGO_CACHE = {};
 const ETF_TICKERS_GLOBAL = new Set(['WPEA.PA','ESEE.PA','ESE.PA','PUST.PA','PANX.PA','PAEEM.PA','ETZ.PA','EWLD.PA','CW8.PA','MWRD.PA','RS2K.PA','PCEU.PA','PE500.PA','IUSQ.AS','IWDA.AS','VWCE.AS','VWRL.AS','CSPX.AS','EMIM.AS','XDWD.AS','SPPW.AS','SPY','QQQ','VTI','VT','VOO','ARKK','GLD','TLT','SOXX','SGLD.AS','BNKE.PA']);
 function isETF(ticker) { return ETF_TICKERS_GLOBAL.has(ticker) || /\.[A-Z]{2}$/.test(ticker) && /^(CW|MWRD|RS|PC|PA|PU|ET|EW|WP|ES|IU|IW|VC|VW|CS|EM|XD|SP|BN)/.test(ticker); }
-// Le vrai quoteType (Yahoo, stocké à l'ajout du titre) prime toujours sur le
-// préfixe de ticker : ce dernier est une heuristique de repli, pas une vérité.
+// Le vrai quoteType (Yahoo, stocké à l'ajout du titre) prime sur le préfixe de
+// ticker deviné par regex — celui-ci est une heuristique de repli, pas une
+// vérité. Mais ETF_TICKERS_GLOBAL est une liste vérifiée à la main, pas une
+// supposition : un quoteType 'EQUITY' erroné (arrivé sur plusieurs ETF PEA,
+// Yahoo les classe mal) ne doit pas l'emporter sur une ligne qu'on sait être
+// un ETF avec certitude.
 function _isEtfRow(row) {
+  if (ETF_TICKERS_GLOBAL.has(row.ticker)) return true;
   return row.quoteType === 'ETF' || row.quoteType === 'MUTUALFUND'
     || (!row.quoteType && isETF(row.ticker));
 }
