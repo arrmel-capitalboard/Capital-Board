@@ -52,7 +52,7 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&display=swap" rel="stylesheet">
 <link href="https://api.fontshare.com/v2/css?f[]=switzer@400,500,600,700,800,900&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260821c">
+<link rel="stylesheet" href="css/style.css?v=20260821d">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -1202,17 +1202,19 @@
         #page-admin .admin-section-bar{ width:3px; height:18px; border-radius:2px; background:var(--acc); flex-shrink:0 }
         #page-admin .admin-section-title{ font-family:var(--display); font-size:15px; font-weight:800; color:var(--text); letter-spacing:-0.2px }
         #page-admin .admin-section-badge{ min-width:20px; height:20px; padding:0 6px; border-radius:999px; font-size:11px; font-weight:800; display:flex; align-items:center; justify-content:center; background:color-mix(in srgb, var(--acc) 20%, transparent); color:var(--acc) }
-        /* align-items:start : sans ça, CSS Grid étire chaque carte à la hauteur
-           de la plus haute de sa ligne — une carte à un seul toggle devenait
-           aussi grande qu'une carte avec textarea + boutons à côté. */
-        #page-admin .admin-section-grid{ display:grid; grid-template-columns:repeat(auto-fit,minmax(320px,1fr)); gap:14px; align-items:start }
-        #page-admin .admin-card{ background:var(--s1); border-radius:var(--radius-lg); padding:18px; border:1px solid color-mix(in srgb, var(--acc) 30%, transparent); box-shadow:0 0 0 1px color-mix(in srgb, var(--acc) 7%, transparent), 0 12px 28px -18px color-mix(in srgb, var(--acc) 45%, transparent); max-width:440px }
-        #page-admin .admin-card.wide{ grid-column:1/-1; max-width:none }
+        /* flex plutôt que grid : une grille en repeat(auto-fit) crée des
+           colonnes aussi larges que le conteneur / le nombre de cartes, avec
+           un vide après chaque carte plafonnée à max-width. En flex, les
+           cartes se collent, ne prennent que la place qu'il faut, et
+           passent à la ligne suivante s'il en manque. */
+        #page-admin .admin-section-grid{ display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start }
+        #page-admin .admin-card{ background:var(--s1); border-radius:var(--radius-lg); padding:18px; border:1px solid color-mix(in srgb, var(--acc) 30%, transparent); box-shadow:0 0 0 1px color-mix(in srgb, var(--acc) 7%, transparent), 0 12px 28px -18px color-mix(in srgb, var(--acc) 45%, transparent); flex:1 1 320px; max-width:420px }
+        #page-admin .admin-card.wide{ flex:1 1 100%; max-width:none }
         #page-admin .admin-card-head{ display:flex; align-items:flex-start; gap:12px; margin-bottom:4px }
         #page-admin .admin-icon-sq{ width:32px; height:32px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:color-mix(in srgb, var(--acc) 15%, transparent); color:var(--acc) }
         #page-admin .admin-card-title{ font-size:14px; font-weight:700; color:var(--text); margin-bottom:4px }
         #page-admin .admin-card-desc{ font-size:12px; color:var(--text3); line-height:1.6 }
-        @media (max-width:640px){ #page-admin .admin-section-grid{ grid-template-columns:1fr } }
+        @media (max-width:640px){ #page-admin .admin-card{ flex-basis:100% } }
       </style>
 
       <div id="admin-stats"></div>
@@ -3670,11 +3672,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260821c"></script>
+<script src="js/app.js?v=20260821d"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260821c"></script>
+<script src="js/onboarding.js?v=20260821d"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260821c"></script>
+<script src="js/import.js?v=20260821d"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
