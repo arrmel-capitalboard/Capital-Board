@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260821g';
+const APP_VERSION = '20260821h';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -9476,6 +9476,11 @@ async function refreshPrices() {
         tickerRows[yt].forEach((row) => {
           row.currentPrice = q.price;
           row.changePct = q.prevClose ? ((q.price - q.prevClose) / q.prevClose * 100) : 0;
+          // Recale ETF/ACTION sur l'instrumentType du flux prix (chart Yahoo),
+          // plus fiable que le quoteType posé une fois pour toutes à l'ajout.
+          // Auto-correctif : plus besoin de retoucher une liste à la main
+          // quand Yahoo classait mal un titre.
+          if (q.instrumentType && q.instrumentType !== row.quoteType) row.quoteType = q.instrumentType;
         });
         changed = true;
       });
@@ -9490,9 +9495,11 @@ async function refreshPrices() {
           if (res && res.meta && res.meta.regularMarketPrice) {
             const price = res.meta.regularMarketPrice;
             const prev = res.meta.chartPreviousClose || res.meta.previousClose || price;
+            const it = res.meta.instrumentType;
             tickerRows[yt].forEach((row) => {
               row.currentPrice = price;
               row.changePct = prev ? ((price - prev) / prev * 100) : 0;
+              if (it && it !== row.quoteType) row.quoteType = it;
             });
             changed = true;
           }

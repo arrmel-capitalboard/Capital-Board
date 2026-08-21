@@ -3330,6 +3330,10 @@ async function audit(action, details, uid, request, env) {
                 prevClose: prev,
                 changePct: prev ? ((m.regularMarketPrice - prev) / prev * 100) : 0,
                 currency: m.currency || null,
+                // Plus fiable que le quoteType posé à l'ajout (quoteSummary
+                // classe mal certains ETF PEA en EQUITY) : le client recale
+                // dessus à chaque rafraîchissement, sans liste à maintenir.
+                instrumentType: m.instrumentType || null,
               };
             }
           } catch (_) { /* ticker HS : simplement absent de la réponse */ }
