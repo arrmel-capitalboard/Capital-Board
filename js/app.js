@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822a';
+const APP_VERSION = '20260822b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -15872,6 +15872,9 @@ async function adminCheckHealth(silent) {
       'Email (Resend) ' + dot(s.email),
       'Cours (Yahoo) ' + dot(s.yahoo),
       'Favoris (Instagram) ' + dot(s.instagram),
+      // Filtrage des IP douteuses sur /login. Fail-open par conception : un KO
+      // ne casse pas la connexion, il veut dire qu'elle n'est plus filtrée.
+      'Filtrage IP (AbuseIPDB) ' + dot(s.abuseipdb),
       'Bot Discord ' + discordLabel,
     ].map(x => '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>' + x.split(' <')[0] + '</span><span>' + x.slice(x.indexOf('<')) + '</span></div>').join('');
     // Le motif de l'échec Meta vaut mieux qu'un point rouge : c'est lui qui dit
@@ -15879,6 +15882,12 @@ async function adminCheckHealth(silent) {
     if (s.instagram !== 'ok' && s.instagramError) {
       box.innerHTML += '<div style="padding:7px 0;font-size:12px;color:var(--text3)">'
         + _escapeHtmlChat(s.instagramError) + '</div>';
+    }
+    // Même logique pour AbuseIPDB : « clé révoquée » et « quota du jour épuisé »
+    // ne se soignent pas pareil, un point rouge seul ne suffit pas à trancher.
+    if (s.abuseipdb !== 'ok' && s.abuseipdbError) {
+      box.innerHTML += '<div style="padding:7px 0;font-size:12px;color:var(--text3)">'
+        + 'AbuseIPDB : ' + _escapeHtmlChat(s.abuseipdbError) + '</div>';
     }
     const auto = document.getElementById('admin-health-auto');
     if (auto) auto.textContent = '· mis à jour à ' + new Date().toLocaleTimeString('fr-FR');

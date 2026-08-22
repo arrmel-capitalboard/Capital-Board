@@ -2004,10 +2004,42 @@ async function checkIpReputation(ip, env) {
       const data = await res.json();
       const score = Number(data?.data?.abuseConfidenceScore) || 0;
       result = { blocked: score >= ABUSEIPDB_SCORE_BLOCK, score };
+    } else {
+      // Clé invalide (401) ou quota épuisé (429) : le contrôle devient un
+      // no-op. Sans cette trace, une clé révoquée désactiverait la protection
+      // en silence — indiscernable d'une IP simplement propre. On ne met pas
+      // ce cas en cache : la prochaine tentative doit réessayer.
+      console.error(`AbuseIPDB HS: HTTP ${res.status} — protection inactive`);
+      return { blocked: false, score: 0, degraded: true };
     }
-  } catch (e) { console.error('AbuseIPDB: ' + e.message); }
+  } catch (e) {
+    console.error('AbuseIPDB: ' + e.message);
+    return { blocked: false, score: 0, degraded: true };
+  }
   try { await env.EARNINGS.put(cacheKey, JSON.stringify(result), { expirationTtl: 3600 }); } catch (_) {}
   return result;
+}
+
+// Sonde de /admin/health : la clé AbuseIPDB répond-elle encore ? Le contrôle
+// étant fail-open (une IP douteuse passe plutôt que de bloquer un légitime sur
+// une panne d'API), une clé révoquée ou un quota épuisé laisse `/login` sans
+// filtrage sans que rien ne le signale ailleurs que dans les logs. On interroge
+// une IP publique connue et stable (résolveur Cloudflare) : seule la validité
+// de la réponse compte, pas son score.
+async function probeAbuseIpdb(env) {
+  if (!env.ABUSEIPDB_KEY) return { ok: false, error: 'non configuré' };
+  try {
+    const res = await fetch('https://api.abuseipdb.com/api/v2/check?ipAddress=1.1.1.1&maxAgeInDays=90', {
+      headers: { Key: env.ABUSEIPDB_KEY, Accept: 'application/json' },
+      signal: AbortSignal.timeout(7000),
+    });
+    if (res.ok) return { ok: true };
+    const body = await res.json().catch(() => null);
+    const detail = body?.errors?.[0]?.detail || '';
+    return { ok: false, error: `HTTP ${res.status}${detail ? ' — ' + detail : ''}` };
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
 }
 
 // ── Main handler ───────────────────────────────────────────────────────────
@@ -2363,6 +2395,15 @@ export default {
           out.instagram = ig.ok ? 'ok' : 'ko';
           if (!ig.ok) out.instagramError = ig.error;
         } catch (e) { out.instagram = 'ko'; out.instagramError = e.message; }
+        // Filtrage des IP à mauvaise réputation sur /login. Le contrôle étant
+        // fail-open, un « ko » ici ne casse rien mais signifie que /login ne
+        // filtre plus : à traiter comme une protection tombée, pas comme un
+        // détail cosmétique.
+        try {
+          const ab = await probeAbuseIpdb(env);
+          out.abuseipdb = ab.ok ? 'ok' : 'ko';
+          if (!ab.ok) out.abuseipdbError = ab.error;
+        } catch (e) { out.abuseipdb = 'ko'; out.abuseipdbError = e.message; }
         return json({ ok: true, services: out });
       }
 
