@@ -39,8 +39,14 @@ const DISPOSABLE_EMAIL_DOMAINS = new Set([
 // scripts/build-kb.mjs). Ne donne PAS de conseil financier personnalisé.
 const CHAT_MODEL     = '@cf/meta/llama-3.3-70b-instruct-fp8-fast';
 const CHAT_MAX_CHARS = 1000;  // longueur max d'une question
-const CHAT_RL_MAX    = 15;    // requêtes max par IP et par fenêtre
+const CHAT_RL_MAX    = 15;    // requêtes max par IP et par fenêtre courte
 const CHAT_RL_WINDOW = 60;    // fenêtre rate-limit (s)
+// Plafond journalier par IP, en plus de la limite/minute : borne un abus
+// soutenu depuis une même IP (le coût réel de /chat est un appel Workers AI).
+// Ne stoppe pas un botnet distribué — seul App Check le ferait, au prix de
+// l'usage visiteur anonyme, écarté ici.
+const CHAT_RL_DAY_MAX    = 300;
+const CHAT_RL_DAY_WINDOW = 86400;
 
 const CHAT_SYSTEM = `Tu es l'assistant d'aide de Capital Board, une application web française de suivi de portefeuille PEA.
 
@@ -122,6 +128,13 @@ const LOG_SESSION_RL_WINDOW = 300;  // le dédoublonnage par IP+appareil ne suff
 
 const LOGIN_RL_MAX    = 8;    // tentatives de mot de passe max par compte et par fenêtre
 const LOGIN_RL_WINDOW = 300;  // le Worker vérifie désormais le mot de passe lui-même : devient un oracle à protéger
+
+// Limite par IP, cumulée à la limite par email : borne le credential stuffing
+// (1 mot de passe essayé sur beaucoup de comptes), invisible pour la limite par
+// email. Plus large que la limite par compte — une IP partagée (NAT, entreprise)
+// porte plusieurs utilisateurs légitimes.
+const LOGIN_IP_RL_MAX    = 30;
+const LOGIN_IP_RL_WINDOW = 300;
 
 const LOGIN_VERIFY_RL_MAX    = 8;   // tentatives de code (TOTP ou email) max par compte et par fenêtre
 const LOGIN_VERIFY_RL_WINDOW = 300;
@@ -745,11 +758,34 @@ async function verifyIdToken(idToken, env) {
   const valid    = await crypto.subtle.verify('RSASSA-PKCS1-v1_5', key, sig, sigInput);
   if (!valid) throw new Error('Signature invalide');
 
+  // Révocation : un changement de mot de passe ou /revoke-sessions coupe le
+  // refresh token, mais l'ID token courant reste valide jusqu'à son expiration
+  // (≤ 1 h). Sans ce contrôle, une session volée survit à sa révocation pendant
+  // toute cette fenêtre. On pose un horodatage de révocation par uid (KV) et on
+  // rejette tout jeton émis avant. Un jeton obtenu par une reconnexion légitime
+  // (iat postérieur) repasse normalement.
+  try {
+    const revokedAt = parseInt((await env.EARNINGS.get(`revoked:${payload.sub}`)) || '0', 10);
+    if (revokedAt && payload.iat < revokedAt) throw new Error('Token révoqué');
+  } catch (e) {
+    if (e.message === 'Token révoqué') throw e;
+    /* lecture KV en échec : on ne bloque pas un utilisateur légitime */
+  }
+
   return {
     localId: payload.sub,
     email: payload.email,
     emailVerified: payload.email_verified === true,
   };
+}
+
+// Marque tous les jetons d'un compte comme révoqués à partir de maintenant.
+// TTL 65 min : au-delà, tout jeton antérieur a de toute façon expiré (durée de
+// vie max d'un ID token Firebase = 1 h), le marqueur n'a plus d'utilité.
+async function markTokensRevoked(uid, env) {
+  const nowSec = Math.floor(Date.now() / 1000);
+  try { await env.EARNINGS.put(`revoked:${uid}`, String(nowSec), { expirationTtl: 3900 }); }
+  catch (e) { console.error('markTokensRevoked ' + uid + ': ' + e.message); }
 }
 
 // ── Limiteur de débit partagé (KV) ──────────────────────────────────────────
@@ -961,13 +997,19 @@ async function finishLogin(uid, email, emailVerified, deviceId, deviceLabel, loc
     return { body: { ok: false, need2fa: 'totp', pendingToken, email }, status: 200 };
   }
 
-  if (!emailVerified || !email) {
-    // Pas d'email vérifié : pas de canal pour un OTP. On mint quand même —
-    // c'est déjà le comportement actuel (le gate email-vérifié est un écran
-    // client APRÈS connexion, pas une barrière au jeton), et cet écran a
-    // besoin d'une session pour proposer de renvoyer le mail de vérification.
+  if (!email) {
+    // Aucune adresse (cas limite d'un provider sans email) : rien à vérifier ni
+    // à quoi envoyer un OTP, on mint faute de mieux.
     const customToken = await makeCustomToken(JSON.parse(env.FIREBASE_SERVICE_ACCOUNT), uid);
     return { body: { ok: true, customToken }, status: 200 };
+  }
+  if (!emailVerified) {
+    // Email non vérifié = adresse non prouvée, et donc AUCUN second facteur
+    // possible (TOTP non enrôlé ici, et pas de canal OTP fiable). On refuse le
+    // jeton plutôt que de livrer une session sans 2FA à qui a le mot de passe
+    // d'un compte jamais vérifié. Le client propose de renvoyer le lien
+    // (/resend-verification, sans session) puis de se reconnecter.
+    return { body: { ok: false, needVerify: true, email }, status: 200 };
   }
 
   const sent = await sendOtpChallenge(uid, email, '2fa', deviceId, deviceLabel, location, ipInfo, env);
@@ -1126,6 +1168,47 @@ async function purgeAuditLogAndOtp(env) {
   return deleted;
 }
 
+// Efface toutes les données Firestore d'un compte (hors Firebase Auth, que
+// l'appelant supprime ensuite — c'est le vrai point de non-retour). Best-effort
+// doc par doc : un échec isolé ne doit pas laisser des données à moitié
+// effacées bloquer la suppression du compte. Les sous-collections sont listées,
+// pas devinées, pour rester correct quand le schéma bouge. Partagé par
+// /delete-account (utilisateur, après OTP) et /admin/delete-user (admin, RGPD).
+async function purgeUserData(uid, env) {
+  // Pseudo à libérer dans usernames/ (réservation détenue par ce compte).
+  let username = null;
+  try { username = fsStr(await firestoreGet(`roles/${uid}`, env), 'username'); } catch (_) {}
+
+  const delDoc = (p) => firestoreDelete(p, env).catch(() => {});
+  const delCollection = async (col) => {
+    try {
+      const docs = await firestoreList(col, env);
+      await Promise.all(docs.map((d) => firestoreDelete(`${col}/${d.name.split('/').pop()}`, env).catch(() => {})));
+    } catch (_) { /* collection absente : rien à faire */ }
+  };
+
+  await Promise.all([
+    delCollection(`users/${uid}/data`),
+    delCollection(`users/${uid}/ideaVotes`),
+    delCollection(`supportChats/${uid}/messages`),
+  ]);
+  await Promise.all([
+    delDoc(`users/${uid}`),
+    delDoc(`roles/${uid}`),
+    delDoc(`profiles/${uid}`),
+    delDoc(`presence/${uid}`),
+    delDoc(`pinSecrets/${uid}`),
+    delDoc(`totpSecrets/${uid}`),
+    delDoc(`otpChallenges/${uid}`),
+    delDoc(`supportChats/${uid}`),
+    delDoc(`supportThreads/${uid}`),
+    username ? delDoc(`usernames/${username}`) : Promise.resolve(),
+  ]);
+  // earningsSubscribers/{sym}/users/{uid} : index inversé sans requête de groupe
+  // côté Worker — laissé tel quel (entrée orpheline inoffensive, le script de
+  // notification ignore un uid dont le compte n'existe plus).
+}
+
 // Génère un mot de passe temporaire lisible (sans caractères ambigus), avec au
 // moins une majuscule, une minuscule et un chiffre. 10 caractères.
 function genTempPassword() {
@@ -1252,6 +1335,45 @@ function emailPasswordReset(link) {
   <p class="link-fallback">Le bouton ne fonctionne pas ? Copiez ce lien dans votre navigateur :<br>${link}</p>
   <div class="footer">Capital Board · Ne pas répondre à cet email.</div>
 </div></body></html>`;
+}
+
+function emailVerifyLink(link) {
+  return `<!DOCTYPE html><html lang="fr"><head><meta charset="UTF-8"><style>${CSS_BASE}
+  .btn{display:inline-block;background:#7c6df5;color:#ffffff !important;text-decoration:none;
+    font-weight:700;font-size:15px;padding:15px 30px;border-radius:10px;margin:8px 0 8px}
+  .link-fallback{word-break:break-all;font-size:12px;color:#5a6178;margin-top:20px}
+  </style></head><body>
+<div class="card">
+  <div class="logo">Capital Board</div>
+  <h2>Vérifiez votre adresse email</h2>
+  <p>Pour activer votre compte Capital Board et vous connecter, confirmez votre adresse en cliquant ci-dessous :</p>
+  <p style="text-align:center;margin:24px 0"><a class="btn" href="${link}">Vérifier mon adresse</a></p>
+  <p>Une fois l'adresse vérifiée, revenez sur l'application et connectez-vous normalement.</p>
+  <p class="warn">Si vous n'êtes pas à l'origine de cette inscription, ignorez cet email.</p>
+  <p class="link-fallback">Le bouton ne fonctionne pas ? Copiez ce lien dans votre navigateur :<br>${link}</p>
+  <div class="footer">Capital Board · Ne pas répondre à cet email.</div>
+</div></body></html>`;
+}
+
+// Lien de vérification d'email (admin, sans passer par l'email Firebase par
+// défaut) — même mécanique que generateResetLink : oobCode récupéré via
+// returnOobLink, puis lien reconstruit vers notre page auth-action.html
+// (mode=verifyEmail), qu'on maîtrise (domaine + template).
+async function generateVerifyLink(email, env) {
+  const token = await getAccessToken(env);
+  const res = await fetch(
+    `https://identitytoolkit.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/accounts:sendOobCode`,
+    {
+      method: 'POST',
+      headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ requestType: 'VERIFY_EMAIL', email, returnOobLink: true }),
+    }
+  );
+  if (!res.ok) throw new Error(`sendOobCode VERIFY ${res.status}: ${await res.text()}`);
+  const data = await res.json();
+  const oobCode = new URL(data.oobLink).searchParams.get('oobCode');
+  const base = env.ALLOWED_ORIGIN || 'https://capitalboard.fr';
+  return `${base}/auth-action.html?mode=verifyEmail&oobCode=${encodeURIComponent(oobCode)}`;
 }
 
 // ── Génération lien de réinitialisation (admin, sans envoi Firebase) ────────
@@ -1819,6 +1941,75 @@ async function getEarningsForSymbols(syms, env) {
   return out;
 }
 
+// ── Journal d'audit (écrit par le serveur) ─────────────────────────────────
+// Le client en écrivait déjà un, mais il choisissait quoi y mettre : une
+// session admin volée pouvait agir sans laisser de trace. Ici l'entrée part du
+// Worker, à chaque route privilégiée, et le déclencheur n'a aucun moyen de
+// l'éviter. Best-effort : un échec d'audit ne doit pas empêcher l'action.
+async function audit(action, details, uid, request, env) {
+  try {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    await firestoreSet(`auditLog/${id}`, {
+      action:  { stringValue: String(action) },
+      details: { stringValue: String(details || '').slice(0, 300) },
+      by:      { stringValue: String(uid || '') },
+      ip:      { stringValue: request.headers.get('CF-Connecting-IP') || '' },
+      source:  { stringValue: 'worker' },
+      at:      { timestampValue: new Date().toISOString() },
+    }, env);
+  } catch (e) { console.error('audit ' + action + ': ' + e.message); }
+}
+
+// ── Détection d'inputs suspects (best-effort, ne bloque jamais) ─────────────
+// Ne remplace pas l'échappement côté client (déjà fait partout via
+// textContent/_escapeHtmlChat) : donne de la visibilité admin (auditLog) sur
+// les tentatives d'injection ou de contournement du system prompt, sans rien
+// filtrer côté utilisateur — un faux positif qui bloquerait une vraie question
+// serait pire que le signal manqué.
+// (Déclaré au niveau module, pas dans fetch() : y étant, ce const était lu par
+// /chat avant sa propre initialisation → ReferenceError, /chat renvoyait 500.)
+const SUSPICIOUS_INPUT_PATTERNS = [
+  /<script[\s>]/i, /javascript:/i, /on\w+\s*=\s*["']/i,              // XSS
+  /union\s+select|drop\s+table|;\s*--/i,                             // SQLi (pas de base SQL ici, mais signal utile)
+  /\.\.\/\.\.\//,                                                    // path traversal
+  /ignore (all )?(previous|prior|above) instructions/i,              // prompt injection
+  /system\s*:\s*you are/i,
+];
+
+function flagSuspiciousInput(text, context, uid, request, env) {
+  const s = String(text || '');
+  const hit = SUSPICIOUS_INPUT_PATTERNS.find((re) => re.test(s));
+  if (!hit) return;
+  audit('suspicious-input', `${context}: ${hit.source}`, uid, request, env).catch(() => {});
+}
+
+// ── Réputation IP (AbuseIPDB, optionnelle) ──────────────────────────────────
+// N'agit que si env.ABUSEIPDB_KEY est configuré (secret Wrangler absent par
+// défaut) : sans clé, no-op complet, comportement inchangé. Résultat mis en
+// cache 1h par IP pour rester large sous les 1000 requêtes/jour du plan gratuit.
+const ABUSEIPDB_SCORE_BLOCK = 90; // confidence score (0-100) au-delà duquel on bloque
+async function checkIpReputation(ip, env) {
+  if (!env.ABUSEIPDB_KEY || !ip) return { blocked: false };
+  const cacheKey = `abuseipdb:${ip}`;
+  try {
+    const cached = await env.EARNINGS.get(cacheKey);
+    if (cached) return JSON.parse(cached);
+  } catch (_) {}
+  let result = { blocked: false, score: 0 };
+  try {
+    const res = await fetch(`https://api.abuseipdb.com/api/v2/check?ipAddress=${encodeURIComponent(ip)}&maxAgeInDays=90`, {
+      headers: { Key: env.ABUSEIPDB_KEY, Accept: 'application/json' },
+    });
+    if (res.ok) {
+      const data = await res.json();
+      const score = Number(data?.data?.abuseConfidenceScore) || 0;
+      result = { blocked: score >= ABUSEIPDB_SCORE_BLOCK, score };
+    }
+  } catch (e) { console.error('AbuseIPDB: ' + e.message); }
+  try { await env.EARNINGS.put(cacheKey, JSON.stringify(result), { expirationTtl: 3600 }); } catch (_) {}
+  return result;
+}
+
 // ── Main handler ───────────────────────────────────────────────────────────
 
 export default {
@@ -1989,10 +2180,14 @@ export default {
       // ── POST /chat ──────────────────────────────────────────────────────
       // Chatbot d'aide basé sur la KB (contenu public du site) via Workers AI.
       if (url.pathname === '/chat' && request.method === 'POST') {
-        // Rate-limit léger par IP (protège le quota Workers AI).
+        // Rate-limit par IP (protège le quota Workers AI) : rafale/minute + cap
+        // journalier.
         const ip = request.headers.get('CF-Connecting-IP') || 'anon';
         if (!(await rateLimit(env, `chat:${ip}`, CHAT_RL_MAX, CHAT_RL_WINDOW))) {
           return json({ error: 'Trop de requêtes, réessayez dans une minute.' }, 429);
+        }
+        if (!(await rateLimit(env, `chat-day:${ip}`, CHAT_RL_DAY_MAX, CHAT_RL_DAY_WINDOW))) {
+          return json({ error: 'Limite quotidienne atteinte, réessayez demain.' }, 429);
         }
 
         let body;
@@ -2201,6 +2396,10 @@ export default {
         try {
           await setAuthPassword(uid, tempPassword, env);
           await firestoreUpdate(`roles/${uid}`, { mustChangePassword: { booleanValue: true } }, ['mustChangePassword'], env);
+          // Invalide immédiatement les sessions en cours de l'utilisateur ciblé :
+          // un reset admin fait souvent suite à une compromission, l'ID token
+          // déjà en circulation ne doit pas survivre au reset.
+          await markTokensRevoked(uid, env);
         } catch (e) {
           const msg = /USER_NOT_FOUND/.test(e.message)
             ? "Aucun compte de connexion pour cet utilisateur (compte Auth supprimé ou inscription incomplète)."
@@ -2208,6 +2407,38 @@ export default {
           return json({ error: msg }, 400);
         }
         return json({ ok: true, tempPassword });
+      }
+
+      // ── POST /admin/delete-user ─────────────────────────────────────────
+      // Suppression RGPD complète par l'admin : mêmes effacements que
+      // /delete-account (purge Firestore intégrale + compte Auth), mais
+      // déclenchée par l'admin sans OTP de l'utilisateur. Avant, l'admin
+      // n'effaçait côté client qu'une poignée de docs et devait supprimer le
+      // compte Auth à la main dans la console.
+      if (url.pathname === '/admin/delete-user' && request.method === 'POST') {
+        const { idToken, uid } = await request.json();
+        const admin = await verifyIdToken(idToken, env);
+        if (!admin || admin.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        if (!uid || !/^[A-Za-z0-9]{6,64}$/.test(uid)) return json({ error: 'uid invalide' }, 400);
+        if (uid === env.ADMIN_UID) return json({ error: 'Action interdite sur le compte admin' }, 400);
+
+        await audit('rgpd_delete', `uid=${uid}`, admin.localId, request, env);
+        await purgeUserData(uid, env);
+        try {
+          await deleteAuthUser(uid, env);
+        } catch (e) {
+          // USER_NOT_FOUND : compte Auth déjà absent (inscription incomplète) —
+          // la purge Firestore a quand même eu lieu, on considère l'effacement
+          // réussi. Toute autre erreur est un vrai échec.
+          if (!/USER_NOT_FOUND/.test(e.message)) {
+            console.error('admin/delete-user authDelete ' + uid + ': ' + e.message);
+            return json({ ok: false, error: 'Données effacées, mais suppression du compte de connexion impossible. Réessayez.' }, 500);
+          }
+        }
+        // Même raison que /delete-account : l'ID token du supprimé survit ≤ 1 h
+        // et ne doit pas pouvoir recréer des documents orphelins.
+        await markTokensRevoked(uid, env);
+        return json({ ok: true });
       }
 
       // ── POST /admin/idea-rejected ───────────────────────────────────────
@@ -2433,7 +2664,12 @@ export default {
         }
 
         // Le Worker devient un oracle de mot de passe : à protéger comme tel.
-        if (!(await rateLimit(env, `login:${String(email).toLowerCase()}`, LOGIN_RL_MAX, LOGIN_RL_WINDOW))) {
+        // Deux limites cumulées : par email (cible un compte) ET par IP (cible
+        // le credential stuffing — 1 mot de passe essayé sur N emails, que la
+        // limite par email ne voit jamais passer).
+        const loginIp = request.headers.get('CF-Connecting-IP') || 'anon';
+        if (!(await rateLimit(env, `login:${String(email).toLowerCase()}`, LOGIN_RL_MAX, LOGIN_RL_WINDOW))
+            || !(await rateLimit(env, `login-ip:${loginIp}`, LOGIN_IP_RL_MAX, LOGIN_IP_RL_WINDOW))) {
           return json({ ok: false, error: 'Trop de tentatives, réessayez plus tard.' }, 429);
         }
 
@@ -2505,7 +2741,10 @@ export default {
           return json({ ok: false, error: 'Paramètres invalides' }, 400);
         }
 
-        if (!(await rateLimit(env, `login-google:${deviceId}`, LOGIN_RL_MAX, LOGIN_RL_WINDOW))) {
+        // Clé sur l'IP, pas sur deviceId : deviceId vient du client, changé à
+        // chaque essai il viderait la limite de tout sens.
+        const gLoginIp = request.headers.get('CF-Connecting-IP') || 'anon';
+        if (!(await rateLimit(env, `login-ip:${gLoginIp}`, LOGIN_IP_RL_MAX, LOGIN_IP_RL_WINDOW))) {
           return json({ ok: false, error: 'Trop de tentatives, réessayez plus tard.' }, 429);
         }
 
@@ -2677,12 +2916,24 @@ export default {
       }
 
       // ── POST /totp-disable ──────────────────────────────────────────────
+      // Exige un code TOTP (ou de secours) courant : sans ça, une session volée
+      // désactivait le second facteur en silence, exactement quand il sert.
       if (url.pathname === '/totp-disable' && request.method === 'POST') {
-        const { idToken } = await request.json();
+        const { idToken, code } = await request.json();
         const user = await verifyIdToken(idToken, env);
+        if (!/^\d{6}$/.test(code ?? '')) {
+          return json({ ok: false, error: 'Code à 6 chiffres requis pour désactiver.' }, 400);
+        }
+        if (!(await rateLimit(env, `totp-disable:${user.localId}`, 8, 300))) {
+          return json({ ok: false, error: 'Trop de tentatives, réessayez plus tard.' }, 429);
+        }
+        if (!(await checkTotpOrBackup(user.localId, code, env))) {
+          return json({ ok: false, error: 'Code incorrect.' }, 401);
+        }
         await firestoreDelete(`totpSecrets/${user.localId}`, env);
         await firestoreUpdate(`users/${user.localId}/data/security`,
           { totpEnabled: { booleanValue: false } }, ['totpEnabled'], env);
+        await audit('totp_disable', '', user.localId, request, env);
         return json({ ok: true });
       }
 
@@ -2771,75 +3022,7 @@ export default {
       }
 
       // ── POST /log-session ───────────────────────────────────────────────
-      // Journal d'audit ecrit par le serveur. Le client en ecrivait deja un, mais il
-// choisissait quoi y mettre : une session admin volee pouvait agir sans laisser
-// de trace. Ici l'entree part du Worker, a chaque route privilegiee, et le
-// declencheur n'a aucun moyen de l'eviter. Best-effort : un echec d'audit ne doit
-// pas empecher l'action demandee d'aboutir.
-// ── Détection d'inputs suspects (best-effort, ne bloque jamais) ────────────
-// Ne remplace pas l'échappement côté client (déjà fait partout via
-// textContent/_escapeHtmlChat) : sert à donner de la visibilité admin
-// (auditLog) sur les tentatives d'injection ou de contournement du system
-// prompt, pas à filtrer quoi que ce soit côté utilisateur — un faux positif
-// qui bloquerait une vraie question cassée serait pire que le signal manqué.
-const SUSPICIOUS_INPUT_PATTERNS = [
-  /<script[\s>]/i, /javascript:/i, /on\w+\s*=\s*["']/i,              // XSS
-  /union\s+select|drop\s+table|;\s*--/i,                             // SQLi (pas de base SQL ici, mais signal utile)
-  /\.\.\/\.\.\//,                                                    // path traversal
-  /ignore (all )?(previous|prior|above) instructions/i,              // prompt injection
-  /system\s*:\s*you are/i,
-];
-
-function flagSuspiciousInput(text, context, uid, request, env) {
-  const s = String(text || '');
-  const hit = SUSPICIOUS_INPUT_PATTERNS.find((re) => re.test(s));
-  if (!hit) return;
-  audit('suspicious-input', `${context}: ${hit.source}`, uid, request, env).catch(() => {});
-}
-
-// ── Réputation IP (AbuseIPDB, optionnelle) ──────────────────────────────
-// N'agit que si env.ABUSEIPDB_KEY est configuré (secret Wrangler absent par
-// défaut) : sans clé, no-op complet, comportement inchangé. Résultat mis en
-// cache 1h par IP pour rester large sous les 1000 requêtes/jour du plan
-// gratuit même en cas de pic de tentatives de connexion.
-const ABUSEIPDB_SCORE_BLOCK = 90; // confidence score (0-100) au-delà duquel on bloque
-async function checkIpReputation(ip, env) {
-  if (!env.ABUSEIPDB_KEY || !ip) return { blocked: false };
-  const cacheKey = `abuseipdb:${ip}`;
-  try {
-    const cached = await env.EARNINGS.get(cacheKey);
-    if (cached) return JSON.parse(cached);
-  } catch (_) {}
-  let result = { blocked: false, score: 0 };
-  try {
-    const res = await fetch(`https://api.abuseipdb.com/api/v2/check?ipAddress=${encodeURIComponent(ip)}&maxAgeInDays=90`, {
-      headers: { Key: env.ABUSEIPDB_KEY, Accept: 'application/json' },
-    });
-    if (res.ok) {
-      const data = await res.json();
-      const score = Number(data?.data?.abuseConfidenceScore) || 0;
-      result = { blocked: score >= ABUSEIPDB_SCORE_BLOCK, score };
-    }
-  } catch (e) { console.error('AbuseIPDB: ' + e.message); }
-  try { await env.EARNINGS.put(cacheKey, JSON.stringify(result), { expirationTtl: 3600 }); } catch (_) {}
-  return result;
-}
-
-async function audit(action, details, uid, request, env) {
-  try {
-    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
-    await firestoreSet(`auditLog/${id}`, {
-      action:  { stringValue: String(action) },
-      details: { stringValue: String(details || '').slice(0, 300) },
-      by:      { stringValue: String(uid || '') },
-      ip:      { stringValue: request.headers.get('CF-Connecting-IP') || '' },
-      source:  { stringValue: 'worker' },
-      at:      { timestampValue: new Date().toISOString() },
-    }, env);
-  } catch (e) { console.error('audit ' + action + ': ' + e.message); }
-}
-
-// Journal des connexions, écrit par le serveur. Jusqu'ici rien ne permettait
+      // Journal des connexions, écrit par le serveur. Jusqu'ici rien ne permettait
       // à un membre de savoir qu'un tiers s'était connecté à son compte : on avait
       // beaucoup de prévention, aucune détection.
       //
@@ -2964,6 +3147,9 @@ async function audit(action, details, uid, request, env) {
           return json({ ok: false, error: 'Révocation impossible' }, 500);
         }
         await audit('revoke_sessions', '', user.localId, request, env);
+        // Coupe aussi les ID tokens déjà émis (validSince ne révoque que le
+        // refresh token ; l'ID token courant vivrait sinon jusqu'à 1 h).
+        await markTokensRevoked(user.localId, env);
         // Les appareils de confiance partent avec : sinon la 2FA ne serait pas
         // redemandée à la reconnexion, ce qui viderait la révocation de son sens.
         await firestoreUpdate(`users/${user.localId}/data/trustedDevices`,
@@ -3046,6 +3232,78 @@ async function audit(action, details, uid, request, env) {
         return json({ valid: true });
       }
 
+      // ── POST /delete-account ────────────────────────────────────────────
+      // Suppression complète, pilotée par le serveur. Avant, le client
+      // enchaînait deleteUser() puis une suppression Firestore best-effort : une
+      // interruption entre les deux (onglet fermé) laissait des données sans
+      // titulaire, et la liste de docs à effacer, tenue à la main côté client,
+      // oubliait déjà loginLog/trustedDevices/security/totpSecrets/pinSecrets.
+      // Ici on énumère les sous-collections (résistant au schéma qui bouge) et
+      // c'est le Worker qui consomme l'OTP `delete` — il est seul juge.
+      if (url.pathname === '/delete-account' && request.method === 'POST') {
+        const { idToken, code } = await request.json();
+        if (!idToken || !/^\d{6}$/.test(code ?? '')) {
+          return json({ ok: false, error: 'Paramètres invalides' }, 400);
+        }
+        const user = await verifyIdToken(idToken, env);
+        const uid = user.localId;
+        if (uid === env.ADMIN_UID) return json({ ok: false, error: 'Compte admin non supprimable ici' }, 403);
+
+        // L'OTP `delete` est vérifiée ici : ne pas la consommer ailleurs avant
+        // (le client n'appelle plus /verify-otp pour la suppression).
+        const otp = await checkOtpChallenge(uid, code, 'delete', env);
+        if (!otp.valid) {
+          const msg = otp.error === 'wrong'
+            ? `Code incorrect. ${otp.left ?? 0} tentative(s) restante(s).`
+            : 'Code expiré. Recommencez la suppression.';
+          return json({ ok: false, error: msg, otpError: otp.error }, 401);
+        }
+
+        await purgeUserData(uid, env);
+
+        // Point de non-retour, en dernier : si la purge a réussi, le compte de
+        // connexion disparaît.
+        try {
+          await deleteAuthUser(uid, env);
+        } catch (e) {
+          console.error('delete-account authDelete ' + uid + ': ' + e.message);
+          return json({ ok: false, error: 'Suppression du compte de connexion impossible. Réessayez.' }, 500);
+        }
+        // L'ID token du compte supprimé resterait cryptographiquement valide
+        // jusqu'à 1 h : sans ce marqueur, il pourrait encore appeler des routes
+        // qui écrivent (ex. /log-session) et recréer des documents orphelins.
+        await markTokensRevoked(uid, env);
+        await audit('delete_account', `uid=${uid}`, uid, request, env);
+        return json({ ok: true });
+      }
+
+      // ── POST /resend-verification ───────────────────────────────────────
+      // Renvoie un lien de vérification d'email SANS session : /login refuse
+      // désormais le jeton d'un compte non vérifié (pas de 2e facteur possible),
+      // donc l'utilisateur n'a pas de session pour déclencher l'envoi lui-même.
+      // Réponse toujours générique (anti-énumération), rate-limité email + IP.
+      if (url.pathname === '/resend-verification' && request.method === 'POST') {
+        const { email } = await request.json();
+        const addr = (email || '').trim();
+        if (!addr || !/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(addr)) {
+          return json({ ok: false, error: 'Email invalide' }, 400);
+        }
+        const rvIp = request.headers.get('CF-Connecting-IP') || 'anon';
+        if (!(await rateLimit(env, `resend-verif:${addr.toLowerCase()}`, 5, 900))
+            || !(await rateLimit(env, `resend-verif-ip:${rvIp}`, 20, 900))) {
+          return json({ ok: true }); // générique : ne pas révéler le throttling
+        }
+        try {
+          const link = await generateVerifyLink(addr, env);
+          await sendEmail(addr, 'Vérifiez votre adresse — Capital Board', emailVerifyLink(link), env);
+        } catch (e) {
+          // Email inconnu, ou déjà vérifié (sendOobCode renvoie une erreur) : on
+          // ne remonte rien pour ne pas révéler l'état du compte.
+          console.warn('[resend-verification]', e.message);
+        }
+        return json({ ok: true });
+      }
+
       // ── POST /forgot-password ───────────────────────────────────────────
       // Génère un lien de réinitialisation (admin) et l'envoie via Resend
       // depuis noreply@capitalboard.fr. Réponse toujours générique : ne
@@ -3086,6 +3344,47 @@ async function audit(action, details, uid, request, env) {
         }
         await setAuthDisplayName(user.localId, nm, env);
         return json({ ok: true, name: nm });
+      }
+
+      // ── POST /claim-username ────────────────────────────────────────────
+      // Attribution INITIALE du pseudo, à l'inscription. Le client ne peut plus
+      // écrire roles/{uid}.username directement (les règles Firestore le
+      // refusent) : sinon format, blocklist et surtout unicité étaient
+      // contournables en écrivant le champ à la main. Réservé au premier set —
+      // un compte qui a déjà un pseudo doit passer par /change-username (avec
+      // cooldown). Ne pose pas usernameChangedAt : le premier vrai changement
+      // reste gratuit, comportement inchangé.
+      if (url.pathname === '/claim-username' && request.method === 'POST') {
+        const { idToken, username } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        const uid = user.localId;
+        const uname = (username || '').trim().toLowerCase();
+
+        if (!/^[a-z0-9._-]{3,20}$/.test(uname)) {
+          return json({ ok: false, error: 'Format invalide : 3–20 caractères (lettres, chiffres, . - _).' }, 400);
+        }
+        if (/capitalboard/.test(uname)) {
+          return json({ ok: false, error: "Ce nom d'utilisateur n'est pas autorisé." }, 400);
+        }
+
+        let roleDoc = null;
+        try { roleDoc = await firestoreGet(`roles/${uid}`, env); } catch (_) {}
+        if (roleDoc && fsStr(roleDoc, 'username')) {
+          return json({ ok: false, error: 'Un nom d\'utilisateur est déjà défini.' }, 409);
+        }
+
+        // Unicité : comptes existants (roles) + réservation atomique (usernames/)
+        const holders = await rolesWithUsername(uname, env);
+        if (holders.some((h) => h !== uid)) {
+          return json({ ok: false, error: "Ce nom d'utilisateur est déjà pris." }, 409);
+        }
+        const claimed = await firestoreCreate('usernames', uname, { uid: { stringValue: uid } }, env);
+        if (!claimed) {
+          return json({ ok: false, error: "Ce nom d'utilisateur est déjà pris." }, 409);
+        }
+
+        await firestoreUpdate(`roles/${uid}`, { username: { stringValue: uname } }, ['username'], env);
+        return json({ ok: true, username: uname });
       }
 
       // ── POST /change-username ───────────────────────────────────────────

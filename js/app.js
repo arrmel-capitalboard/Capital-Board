@@ -58,7 +58,7 @@ let fbApp, fbAuth, db,
     createUserWithEmailAndPassword, signInWithEmailAndPassword, signInWithCustomToken, sendEmailVerification,
     signOut, onAuthStateChanged, GoogleAuthProvider,
     signInWithRedirect, getRedirectResult,
-    updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider, deleteUser,
+    updateProfile, updatePassword, reauthenticateWithCredential, EmailAuthProvider,
     getFirestoreDoc, getDocFromServer, setFirestoreDoc, firestoreDoc, firestoreCollection, deleteFirestoreDoc, getDocs,
     addFirestoreDoc, onSnapshot, firestoreQuery, firestoreWhere, firestoreOrderBy, firestoreLimit, serverTimestamp,
     firestoreArrayUnion, firestoreArrayRemove, firestoreOr, firestoreDeleteField,
@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260821h';
+const APP_VERSION = '20260822a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -168,7 +168,6 @@ _splashWatchdog = setTimeout(() => {
   updatePassword                 = auth.updatePassword;
   reauthenticateWithCredential   = auth.reauthenticateWithCredential;
   EmailAuthProvider              = auth.EmailAuthProvider;
-  deleteUser                     = auth.deleteUser;
 
   getFirestoreDoc     = firestore.getDoc;
   getDocFromServer    = firestore.getDocFromServer;
@@ -672,42 +671,11 @@ function _fsWrite(uid, col, data) {
     .catch(e => console.warn('Firestore write error:', col, e));
 }
 
-// Suppression complète des données utilisateur
-async function deleteAllUserData(uid) {
-  const del = (path) => deleteFirestoreDoc(firestoreDoc(db, ...path)).catch(() => {});
-
-  // Docs sous users/{uid}/data
-  const dataDocs = [
-    'portfolio', 'transactions', 'versements', 'watchlist',
-    'dailyValues', 'alerts', 'notifHistory', 'trCohort', 'divIgnored', 'nominatif',
-    'settings', 'recap', 'weeklyRecap', 'fcmTokens'
-  ];
-
-  // Support chat messages (besoin getDocs avant delete)
-  const supportMsgsTask = (async () => {
-    try {
-      const msgsCol = firestoreCollection(db, 'supportChats', uid, 'messages');
-      const msgs = await getDocs(msgsCol);
-      await Promise.all(msgs.docs.map(d => deleteFirestoreDoc(d.ref).catch(() => {})));
-    } catch(_) {}
-  })();
-
-  // Storage support-attachments : skip (bucket CORS non configuré + en pratique 0 fichier).
-  // À réactiver si pièces jointes chat support ré-implémentées + bucket CORS configuré.
-  const storageTask = Promise.resolve();
-
-  // Tout en parallèle
-  await Promise.all([
-    ...dataDocs.map(d => del(['users', uid, 'data', d])),
-    del(['users', uid]),
-    del(['supportChats', uid]),
-    del(['supportThreads', uid]),
-    del(['presence', uid]),
-    del(['roles', uid]),
-    supportMsgsTask,
-    storageTask,
-  ]);
-}
+// La suppression de compte (utilisateur et admin) est désormais intégralement
+// pilotée côté serveur : le Worker (/delete-account, /admin/delete-user) purge
+// Firestore ET supprime le compte Auth via l'Admin SDK. L'ancienne
+// deleteAllUserData() cliente, best-effort et incomplète (elle laissait
+// loginLog/trustedDevices/security/totpSecrets/pinSecrets), a été retirée.
 
 // logTransaction reste synchrone
 // Frais et taxes retenus sur un ordre (courtage + TTF). Champ facultatif :
@@ -1739,26 +1707,73 @@ window.totpEnrollConfirmSubmit = async function() {
   }
 };
 
-window.totpDisable = function() {
+// Petit overlay de saisie d'un code à 6 chiffres, auto-suffisant (créé à la
+// volée, retiré à la fermeture). Résout avec le code saisi, ou null si annulé.
+// Utilisé quand une action sensible doit être confirmée par un second facteur.
+function _promptCode({ title, body, okLabel = 'Confirmer', danger = false }) {
+  return new Promise((resolve) => {
+    const ov = document.createElement('div');
+    ov.style.cssText = 'position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:100000;display:flex;align-items:center;justify-content:center;padding:20px';
+    ov.innerHTML =
+      '<div style="max-width:360px;width:100%;background:#1a1a24;border:1px solid #2a2a3a;border-radius:16px;padding:28px;font-family:var(--sans,sans-serif)">' +
+        '<h3 style="margin:0 0 10px;color:#e8eaf0;font-size:18px">' + _escapeHtmlChat(title) + '</h3>' +
+        '<p style="margin:0 0 16px;color:#8892a8;font-size:13.5px;line-height:1.5">' + _escapeHtmlChat(body) + '</p>' +
+        '<input type="text" inputmode="numeric" autocomplete="one-time-code" maxlength="6" ' +
+          'style="width:100%;box-sizing:border-box;padding:12px;font-size:20px;letter-spacing:6px;text-align:center;' +
+          'background:#12121c;border:1px solid #2a2a3a;border-radius:10px;color:#e8eaf0;font-family:monospace" placeholder="——————">' +
+        '<div class="_pc-err" style="display:none;color:#ff4d6a;font-size:12.5px;margin-top:8px"></div>' +
+        '<div style="display:flex;gap:10px;margin-top:18px">' +
+          '<button class="_pc-cancel" style="flex:1;padding:11px;background:transparent;border:1px solid #2a2a3a;color:#8892a8;border-radius:10px;font-weight:600;cursor:pointer;font-family:inherit">Annuler</button>' +
+          '<button class="_pc-ok" style="flex:1;padding:11px;background:' + (danger ? '#ff4d6a' : '#7c6df5') + ';border:none;color:#fff;border-radius:10px;font-weight:700;cursor:pointer;font-family:inherit">' + _escapeHtmlChat(okLabel) + '</button>' +
+        '</div>' +
+      '</div>';
+    document.body.appendChild(ov);
+    const input  = ov.querySelector('input');
+    const errEl  = ov.querySelector('._pc-err');
+    const close  = (val) => { ov.remove(); resolve(val); };
+    input.focus();
+    const submit = () => {
+      const v = (input.value || '').trim();
+      if (!/^\d{6}$/.test(v)) { errEl.textContent = 'Code à 6 chiffres attendu.'; errEl.style.display = 'block'; return; }
+      close(v);
+    };
+    ov.querySelector('._pc-ok').onclick = submit;
+    ov.querySelector('._pc-cancel').onclick = () => close(null);
+    ov.addEventListener('click', (e) => { if (e.target === ov) close(null); });
+    input.addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+  });
+}
+
+window.totpDisable = async function() {
   const user = fbAuth.currentUser;
   if (!user) return;
-  showConfirmModal({
-    icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 9.9-1"/></svg>',
+  // Un code courant (TOTP ou code de secours) est exigé côté Worker : sans ça,
+  // une session volée désactivait le 2e facteur en silence.
+  const code = await _promptCode({
     title: "Désactiver le code d'authentification ?",
-    body: 'Les nouveaux appareils redemanderont un code par email à la place, comme avant.',
+    body: "Saisissez un code de votre application d'authentification (ou un code de secours) pour confirmer. Les nouveaux appareils redemanderont ensuite un code par email, comme avant.",
     okLabel: 'Désactiver',
     danger: true,
-    onConfirm: async () => {
-      try {
-        const idToken = await user.getIdToken();
-        await fetch(`${WORKER_URL}/totp-disable`, {
-          method: 'POST', headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ idToken }),
-        });
-        await window.refreshTotpStatus();
-      } catch(e) { console.error('[totp] désactivation échouée:', e); }
-    },
   });
+  if (!code) return;
+  try {
+    const idToken = await user.getIdToken();
+    const res = await fetch(`${WORKER_URL}/totp-disable`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, code }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      showConfirmModal({
+        icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+        title: 'Désactivation impossible',
+        body: data.error || 'Code incorrect. La double authentification reste active.',
+        okLabel: 'OK', infoOnly: true,
+      });
+      return;
+    }
+    await window.refreshTotpStatus();
+  } catch(e) { console.error('[totp] désactivation échouée:', e); }
 };
 
 // ─── CODE PIN 6 CHIFFRES — App lock au démarrage ───────
@@ -2420,6 +2435,25 @@ window.doLogin = async function() {
       _showLoginOtpVerify(email, data.need2fa);
       return;
     }
+    if (data.needVerify) {
+      // Compte non vérifié : le Worker n'a délivré aucun jeton (pas de 2e
+      // facteur possible). On renvoie un lien de vérification (sans session) et
+      // on invite à se reconnecter une fois l'adresse confirmée.
+      _resetTurnstile('turnstile-login');
+      try {
+        await fetch(`${WORKER_URL}/resend-verification`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ email: data.email || email }),
+        });
+      } catch (_) { /* best-effort : le message reste utile même si l'envoi échoue */ }
+      showConfirmModal({
+        icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>',
+        title: 'Vérifiez votre adresse email',
+        body: 'Votre adresse n\'est pas encore vérifiée. Nous venons de vous renvoyer un lien de vérification à ' + (data.email || email) + '. Cliquez-le, puis reconnectez-vous.',
+        okLabel: 'Compris', infoOnly: true,
+      });
+      return;
+    }
     err.textContent = data.error || 'Une erreur est survenue. Réessayez.';
     err.style.display = 'block';
     _resetTurnstile('turnstile-login'); // jeton Turnstile à usage unique, déjà consommé par la tentative
@@ -2563,10 +2597,22 @@ window.doRegister = async function() {
   const wantsRecap = document.getElementById('reg-recap')?.checked !== false;
   try {
     const cred = await createUserWithEmailAndPassword(fbAuth, email, pass);
-    // Prénom + Nom → roles/{uid} (lisible admin) + displayName Auth
+    // Prénom + Nom → roles/{uid} (lisible admin) + displayName Auth. Le pseudo
+    // n'est PLUS écrit ici : les règles Firestore l'interdisent côté client
+    // (l'unicité/blocklist était sinon contournable). Il passe par le Worker
+    // (/claim-username), seul juge de l'unicité.
     try {
-      await setFirestoreDoc(firestoreDoc(db, 'roles', cred.user.uid), { firstName, lastName, username }, { merge: true });
-      window._nameSetupDone = true;
+      await setFirestoreDoc(firestoreDoc(db, 'roles', cred.user.uid), { firstName, lastName }, { merge: true });
+      try {
+        const idToken = await cred.user.getIdToken();
+        const ures = await fetch(`${WORKER_URL}/claim-username`, {
+          method: 'POST', headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ idToken, username }),
+        });
+        // Succès → onboarding n'a plus à redemander le pseudo. Échec (course sur
+        // l'unicité) → on laisse _nameSetupDone à false : l'onboarding reprendra.
+        window._nameSetupDone = (ures.ok && (await ures.json().catch(() => ({})))?.ok === true);
+      } catch (_) { /* Worker indisponible : onboarding redemandera le pseudo */ }
     } catch (_) {}
     try { if (auth.updateProfile) await auth.updateProfile(cred.user, { displayName: firstName + ' ' + lastName }); } catch (_) {}
     // Sauvegarder préférence recap — onAuthStateChanged prend le relai ensuite
@@ -3512,49 +3558,38 @@ window.delVerifyOtp = async function() {
   if (!user || !user.email) return;
   setLoading('del-verify-btn', true);
   try {
-    const r = await _verifyOtp(user, 'delete', input);
-    if (!r.valid) {
-      if (oerr) { oerr.textContent = _otpErrorText(r); oerr.style.display = 'block'; }
-      return;
-    }
-    // Code OK → bascule étape progress
+    // Bascule étape progression : la suppression est désormais atomique côté
+    // serveur (le Worker consomme l'OTP, efface Firestore ET le compte Auth via
+    // l'Admin SDK). Plus de deleteUser client, donc plus de « reauth récente »
+    // ni de risque de données orphelines si l'onglet se ferme en cours de route.
     document.getElementById('del-step-4').style.display = 'none';
     const s3 = document.getElementById('del-step-3');
     if (s3) s3.style.display = 'block';
 
-    const uid = user.uid;
-    // Cleanup OTP doc
-    try { await deleteFirestoreDoc(ref); } catch(_) {}
-    // Unsubscribe tous les listeners Firestore avant suppression (évite snapshot permission-denied)
+    // Détache les listeners avant que le compte disparaisse (évite des snapshots
+    // permission-denied bruyants juste après la suppression).
     try { _detachUserListeners(); } catch(_) {}
 
-    // 1) Suppression compte Auth EN PREMIER (test reauth récente)
-    //    Si fail, données utilisateur restent intactes.
-    try {
-      await deleteUser(user);
-    } catch(e) {
-      if (e.code === 'auth/requires-recent-login') {
-        if (s3) s3.style.display = 'none';
-        document.getElementById('del-step-4').style.display = 'block';
-        if (oerr) {
-          oerr.textContent = 'Session expirée. Déconnectez-vous, reconnectez-vous puis relancez la suppression.';
-          oerr.style.display = 'block';
-        }
-        return;
-      }
-      throw e;
+    const idToken = await user.getIdToken();
+    const res = await fetch(`${WORKER_URL}/delete-account`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, code: input }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      if (s3) s3.style.display = 'none';
+      document.getElementById('del-step-4').style.display = 'block';
+      if (oerr) { oerr.textContent = data.error || 'Suppression impossible. Réessayez.'; oerr.style.display = 'block'; }
+      return;
     }
-    // 2) Suppression données Firestore + Storage (compte Auth déjà supprimé)
-    await deleteAllUserData(uid);
-    // 3) (Mail confirmation post-suppression supprimé — template EmailJS réaffecté au 2FA,
-    //    quota 2 templates max sur plan gratuit. L'OTP suppression sert déjà de preuve d'action.)
-    // 4) Ferme toutes modals + force retour login
+
+    // Compte supprimé côté serveur : on ferme et on force le retour login.
     window.closeDeleteAccountModal();
     try { window.closeProfilModal && window.closeProfilModal(); } catch(_) {}
     try { await signOut(fbAuth); } catch(_) {}
     try { stopApp(); } catch(_) {}
   } catch(e) {
-    console.error('[delete] verify OTP échoué:', e);
+    console.error('[delete] suppression échouée:', e);
     const s3 = document.getElementById('del-step-3'); if (s3) s3.style.display = 'none';
     document.getElementById('del-step-4').style.display = 'block';
     if (oerr) {
@@ -15384,29 +15419,37 @@ async function adminDeleteUser(uid, label) {
   if (!isAdmin() || uid === currentUser || uid === ADMIN_UID) return;
   showConfirmModal({
     icon: '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#ff5d78" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/></svg>',
-    title: 'Effacer les données de ce compte ?',
-    body: 'Efface toutes les données Firestore de « ' + label + ' » (portefeuille, transactions, support, rôle). Le compte de connexion (Auth) doit être supprimé côté serveur. Action irréversible.',
+    title: 'Effacer ce compte ?',
+    body: 'Efface définitivement toutes les données de « ' + label + ' » (portefeuille, transactions, support, rôle, 2FA…) ET le compte de connexion, côté serveur. Action irréversible.',
     okLabel: 'Effacer', cancelLabel: 'Annuler', danger: true,
-    onConfirm: () => _doAdminDeleteUser(uid),
+    onConfirm: () => _doAdminDeleteUser(uid, label),
   });
 }
 
-async function _doAdminDeleteUser(uid) {
-  const del = ref => deleteFirestoreDoc(ref).catch(e => console.warn('[rgpd] skip', e && e.message));
-  // Données utilisateur (nécessite la règle admin sur users/{uid})
-  const dataDocs = ['portfolio', 'transactions', 'versements', 'settings', 'recap', 'weeklyRecap', 'security'];
-  await Promise.all(dataDocs.map(c => del(firestoreDoc(db, 'users', uid, 'data', c))));
-  // Support : messages + thread
+async function _doAdminDeleteUser(uid, label) {
+  // Suppression intégrale côté serveur (purge Firestore complète + compte Auth)
+  // via l'Admin SDK. Avant, le client n'effaçait qu'une poignée de docs et
+  // laissait le compte Auth vivant : suppression RGPD incomplète.
   try {
-    const msgs = await getDocs(firestoreCollection(db, 'supportChats', uid, 'messages'));
-    await Promise.all(msgs.docs.map(m => del(m.ref)));
-  } catch (_) {}
-  await del(firestoreDoc(db, 'supportThreads', uid));
-  // Rôle + présence + réponses au questionnaire de bienvenue
-  await del(firestoreDoc(db, 'roles', uid));
-  await del(firestoreDoc(db, 'presence', uid));
-  await del(firestoreDoc(db, 'profiles', uid));
-  _audit('rgpd_delete', 'uid=' + uid);
+    const idToken = await fbAuth.currentUser.getIdToken();
+    const res = await fetch(`${WORKER_URL}/admin/delete-user`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, uid }),
+    });
+    const data = await res.json().catch(() => ({}));
+    if (!res.ok || !data.ok) {
+      showConfirmModal({
+        icon: '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#ff5d78" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>',
+        title: 'Suppression impossible',
+        body: (data.error || 'Erreur serveur.') + (label ? ' (compte « ' + label + ' »)' : ''),
+        okLabel: 'OK', infoOnly: true,
+      });
+      return;
+    }
+  } catch (e) {
+    console.warn('[rgpd] suppression:', e && e.message);
+    return;
+  }
   renderAdminUsers();
   // La fenêtre des profils n'est peut-être pas ouverte : renderAdminProfiles
   // sort de lui-même si sa boîte n'est pas là.

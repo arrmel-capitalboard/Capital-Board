@@ -140,21 +140,51 @@ test('signalements : ni lecture, ni update, ni delete, pas même par l\'auteur',
   await assertFails(deleteDoc(doc(asVerified(ALICE), 'signalements/s1')));
 });
 
+test('signalements : champ hors liste refusé', async () => {
+  await assertFails(setDoc(doc(asVerified(ALICE), 'signalements/s1'),
+    { uid: ALICE, texte: 'x', module: 'm', evil: 'field' }));
+});
+
+test('signalements : email ne peut pas être celui d\'un tiers', async () => {
+  const alice = testEnv.authenticatedContext(ALICE, { email_verified: true, email: 'alice@x.com' }).firestore();
+  await assertSucceeds(setDoc(doc(alice, 'signalements/ok'),
+    { uid: ALICE, texte: 'x', module: 'm', email: 'alice@x.com' }));
+  await assertFails(setDoc(doc(alice, 'signalements/ko'),
+    { uid: ALICE, texte: 'x', module: 'm', email: 'victime@x.com' }));
+});
+
+test('signalements : imageUrl doit pointer vers notre stockage', async () => {
+  await assertSucceeds(setDoc(doc(asVerified(ALICE), 'signalements/ok'),
+    { uid: ALICE, texte: 'x', module: 'm', imageUrl: 'https://api.capitalboard.fr/support-file/support/abc?s=deadbeef' }));
+  await assertFails(setDoc(doc(asVerified(ALICE), 'signalements/ko'),
+    { uid: ALICE, texte: 'x', module: 'm', imageUrl: 'https://evil.example/x.png' }));
+});
+
 // ── roles ───────────────────────────────────────────────────────────────
 
 test('roles/{uid} : création par soi avec champs autorisés', async () => {
   await assertSucceeds(setDoc(doc(asVerified(ALICE), `roles/${ALICE}`),
+    { firstName: 'A', lastName: 'B' }));
+});
+
+test('roles/{uid} : le client ne peut pas écrire username (réservé au Worker)', async () => {
+  // L'unicité/blocklist du pseudo ne s'imposent qu'au Worker : le client qui
+  // écrit username directement contournait tout. Interdit à la création…
+  await assertFails(setDoc(doc(asVerified(ALICE), `roles/${ALICE}`),
     { firstName: 'A', lastName: 'B', username: 'alice' }));
+  // …et à la mise à jour.
+  await seedAsAdmin(`roles/${ALICE}`, { firstName: 'A', lastName: 'B', username: 'alice' });
+  await assertFails(updateDoc(doc(asVerified(ALICE), `roles/${ALICE}`), { username: 'squatt' }));
 });
 
 test('roles/{uid} : impossible de s\'auto-promouvoir admin', async () => {
   await assertFails(setDoc(doc(asVerified(ALICE), `roles/${ALICE}`),
-    { firstName: 'A', lastName: 'B', username: 'alice', role: 'admin' }));
+    { firstName: 'A', lastName: 'B', role: 'admin' }));
 });
 
 test('roles/{uid} : champ hors liste refusé', async () => {
   await assertFails(setDoc(doc(asVerified(ALICE), `roles/${ALICE}`),
-    { firstName: 'A', lastName: 'B', username: 'alice', email: 'a@b.com' }));
+    { firstName: 'A', lastName: 'B', email: 'a@b.com' }));
 });
 
 test('roles/{uid} : lecture réservée au titulaire et à l\'admin', async () => {
@@ -166,9 +196,11 @@ test('roles/{uid} : lecture réservée au titulaire et à l\'admin', async () =>
 
 // ── usernames (réservation) ─────────────────────────────────────────────
 
-test('usernames/{name} : lecture ouverte aux comptes connectés seulement', async () => {
+test('usernames/{name} : fermée au client, lecture comprise', async () => {
+  // La disponibilité passe par le Worker (Admin SDK). Aucun code client ne lit
+  // cette collection : la garder lisible en faisait un annuaire name→uid.
   await seedAsAdmin('usernames/alice', { uid: ALICE });
-  await assertSucceeds(getDoc(doc(asVerified(BOB), 'usernames/alice')));
+  await assertFails(getDoc(doc(asVerified(BOB), 'usernames/alice')));
   await assertFails(getDoc(doc(anon(), 'usernames/alice')));
 });
 

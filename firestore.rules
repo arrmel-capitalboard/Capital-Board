@@ -67,13 +67,26 @@ service cloud.firestore {
     // Discord ne peut plus être rappelé.
     match /signalements/{id} {
       allow read, update, delete: if false;
+      // Champs énumérés (hasOnly) : sans ça le client posait des champs libres
+      // que le bot Discord affiche tels quels dans le salon admin. L'email est
+      // contraint à celui du compte (sinon on signalait sous l'identité d'un
+      // tiers) et imageUrl à une URL de notre propre stockage (sinon on
+      // injectait une image arbitraire dans un embed Discord).
       allow create: if _isVerified()
         && request.resource.data.uid == request.auth.uid
+        && request.resource.data.keys().hasOnly(['uid','nom','email','module','texte','imageUrl','createdAt'])
         && request.resource.data.texte is string
         && request.resource.data.texte.size() > 0
         && request.resource.data.texte.size() <= 2000
         && request.resource.data.module is string
-        && request.resource.data.module.size() <= 60;
+        && request.resource.data.module.size() <= 60
+        && (!('nom' in request.resource.data) || request.resource.data.nom == null
+            || (request.resource.data.nom is string && request.resource.data.nom.size() <= 120))
+        && (!('email' in request.resource.data) || request.resource.data.email == null
+            || request.resource.data.email == request.auth.token.email)
+        && (!('imageUrl' in request.resource.data) || request.resource.data.imageUrl == null
+            || (request.resource.data.imageUrl is string
+                && request.resource.data.imageUrl.matches('https://api[.]capitalboard[.]fr/support-file/.*')));
     }
 
     match /users/{uid}/ideaVotes/{ideaId} {
@@ -86,12 +99,17 @@ service cloud.firestore {
       // laissait énumérer nom, prénom, pseudo et jeton push de tous les membres.
       // La disponibilité d'un pseudo se demande au Worker (/username-available).
       allow read: if _isSelf(uid) || _isAdmin();
+      // `username` n'est PAS dans les clés écrivables par le client : format,
+      // blocklist et surtout unicité ne peuvent s'imposer qu'au Worker
+      // (/claim-username à l'inscription, /change-username ensuite), qui écrit
+      // via l'Admin SDK (hors de ces règles). Le laisser au client rendait
+      // l'unicité contournable et permettait de squatter un pseudo réservé.
       allow create: if _isAdmin() || (_isSelf(uid)
-        && request.resource.data.keys().hasOnly(['firstName','lastName','username','avatarHue','fcmToken','mustChangePassword','role'])
+        && request.resource.data.keys().hasOnly(['firstName','lastName','avatarHue','fcmToken','mustChangePassword','role'])
         && (!('role' in request.resource.data) || request.resource.data.role == 'user'));
       allow update: if _isAdmin() || (_isSelf(uid)
         && request.resource.data.diff(resource.data).affectedKeys()
-             .hasOnly(['firstName','lastName','username','avatarHue','fcmToken','mustChangePassword'])
+             .hasOnly(['firstName','lastName','avatarHue','fcmToken','mustChangePassword'])
         && (!('role' in request.resource.data) || request.resource.data.role == 'user'));
       allow delete: if _isAdmin();
     }
@@ -115,11 +133,12 @@ service cloud.firestore {
     // connectés ; toute écriture appartient au Worker (Admin SDK, hors règles),
     // qui réserve à la création du pseudo et libère l'ancien lors d'un changement.
     match /usernames/{name} {
-      allow read: if request.auth != null;
-      // Aucune écriture client : le Worker (/change-username) réserve et libère.
-      // La création côté client n'était utilisée par rien et permettait de
-      // squatter autant de pseudos qu'on voulait.
-      allow create, update, delete: if false;
+      // Fermée au client, lecture comprise : la disponibilité d'un pseudo passe
+      // par le Worker (/username-available, Admin SDK). Ouverte aux comptes
+      // connectés, cette collection était un annuaire énumérable name→uid ; plus
+      // aucun code client ne la lit. Le Worker (/claim-username, /change-username)
+      // réserve et libère via l'Admin SDK, hors de ces règles.
+      allow read, create, update, delete: if false;
     }
 
     // Index inversé des abonnements aux résultats : earningsSubscribers/{sym}/users/{uid}.

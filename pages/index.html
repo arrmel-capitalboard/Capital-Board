@@ -7,7 +7,11 @@
      necessaire (onclick="" inline dans l'app) — c'est connect-src qui limite
      l'exfiltration d'une XSS aux hotes ci-dessous, pas un domaine inconnu. -->
 <meta http-equiv="Content-Security-Policy"
-      content="object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self';
+      content="default-src 'self'; object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self';
+      img-src 'self' data: https:;
+      style-src 'self' 'unsafe-inline' https://fonts.googleapis.com;
+      font-src 'self' data: https://fonts.gstatic.com;
+      frame-src 'self' https://www.google.com https://capitalboard.firebaseapp.com;
       script-src 'self' 'unsafe-inline' https://www.gstatic.com https://www.google.com;
       connect-src 'self' https://identitytoolkit.googleapis.com https://securetoken.googleapis.com https://firestore.googleapis.com https://firebaseinstallations.googleapis.com https://content-firebaseappcheck.googleapis.com https://www.google.com">
 <script>
