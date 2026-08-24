@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822e';
+const APP_VERSION = '20260822f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -234,6 +234,12 @@ _splashWatchdog = setTimeout(() => {
     return;
   }
 
+  // Vrai le temps d'une 2FA demandée au retour d'un login Google par redirect :
+  // la session Firebase est volontairement rendue à ce moment-là, et le premier
+  // déclenchement de onAuthStateChanged ne doit pas prendre cette absence pour
+  // une déconnexion.
+  let googleOtpEnAttente = false;
+
   // Google Sign-In : récupère le résultat du signInWithRedirect (iOS/PWA standalone).
   try {
     const redirectResult = await getRedirectResult(fbAuth);
@@ -251,7 +257,7 @@ _splashWatchdog = setTimeout(() => {
         }
       } else {
         // Compte existant : on repasse par le Worker, comme le flux popup.
-        await _redirectGoogleViaWorker(redirectResult);
+        googleOtpEnAttente = (await _redirectGoogleViaWorker(redirectResult)) === 'otp';
       }
     }
   } catch(e) {
@@ -262,7 +268,11 @@ _splashWatchdog = setTimeout(() => {
 
   {
     auth.onAuthStateChanged(fbAuth, async user => {
-      if (!user) { stopApp(); return; }
+      if (!user) {
+        if (googleOtpEnAttente) { googleOtpEnAttente = false; return; }
+        stopApp();
+        return;
+      }
       // Gate vérification email — providers OAuth (Google) ont emailVerified=true direct
       try { await user.reload(); } catch(_) {}
       const u = fbAuth.currentUser || user;
@@ -2831,7 +2841,7 @@ async function _redirectGoogleViaWorker(redirectResult) {
   // utilisateur iOS qui n'a pas d'autre chemin de connexion.
   if (!googleAccessToken) {
     console.warn("[google] redirect sans jeton d'accès : contrôles client uniquement.");
-    return;
+    return 'ignore';
   }
 
   // La session pré-contrôle ne doit pas survivre à l'appel : c'est elle le
@@ -2839,6 +2849,18 @@ async function _redirectGoogleViaWorker(redirectResult) {
   try { await signOut(fbAuth); } catch (_) {}
 
   const ipInfo = await _fetchIpInfo();
+
+  // App Check : /login-google le passe à signInWithIdp, qui refuse la
+  // connexion sans lui quand l'application est protégée. Le flux popup
+  // l'envoyait déjà — l'oublier ici renvoyait l'utilisateur à l'écran de
+  // connexion sans explication.
+  let appCheckToken = null;
+  try {
+    if (window._appCheckMod && window._appCheck) {
+      appCheckToken = (await window._appCheckMod.getToken(window._appCheck, false)).token;
+    }
+  } catch (_) {}
+
   const res = await fetch(`${WORKER_URL}/login-google`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
@@ -2848,21 +2870,24 @@ async function _redirectGoogleViaWorker(redirectResult) {
       deviceLabel: _getDeviceLabel(),
       location: _fmtLocation(ipInfo) || 'Lieu inconnu',
       ipInfo: ipInfo || null,
+      appCheckToken,
     }),
   });
   const data = await res.json().catch(() => ({}));
 
   if (data.ok && data.customToken) {
     await signInWithCustomToken(fbAuth, data.customToken);
-    return;
+    return 'ok';
   }
   if (data.need2fa === 'email' || data.need2fa === 'totp') {
     _loginPending = { pendingToken: data.pendingToken };
     _hideSplash();
     _showLoginOtpVerify(data.email || '', data.need2fa);
-    return;
+    return 'otp';
   }
+  console.error('[google] /login-google a refusé :', res.status, data.error || '');
   showErr(data.error || 'Connexion Google impossible.');
+  return 'erreur';
 }
 
 // ─── LOGOUT ───────────────────────────────────────────
