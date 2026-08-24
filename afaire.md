@@ -14,6 +14,10 @@ avant toute nouvelle fonctionnalité.
 > parcours navigateur jamais testé en vrai, et un export d'une autre banque
 > que le CIC pour éprouver le parseur.
 >
+> **Sécurité** : la séance du 24/08 et ce qu'il reste à faire sont dans
+> [`afaire-securite.md`](afaire-securite.md) — connexion Google en PWA à
+> réparer en priorité, boutons de validation Discord à activer.
+>
 > **Dépenses & abonnements** a son propre fichier : [`afaire-depenses.md`](afaire-depenses.md).
 > Module livré et ouvrable en bêta depuis le 12 août 2026 ; la suite du sujet —
 > arrêter la saisie manuelle, agrégation bancaire via Enable Banking — y est
