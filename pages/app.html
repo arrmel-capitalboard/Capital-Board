@@ -283,6 +283,21 @@
       <div class="login-title">Code de déverrouillage</div>
       <div class="login-subtitle">Capital Board</div>
     </div>
+    <!-- Avis de re-verrouillage. Affiché à la place du clavier quand la session
+         a été verrouillée pour inactivité : sans lui, l'utilisateur retrouve un
+         écran de code sans savoir pourquoi. -->
+    <div id="pin-idle-notice" style="display:none">
+      <div style="text-align:center;line-height:1.55;margin-bottom:16px;padding:16px 14px;background:var(--s2);border:1px solid var(--border);border-radius:10px">
+        <div style="font-size:15px;font-weight:600;color:var(--text);margin-bottom:6px">Session verrouillée</div>
+        <div style="font-size:13px;color:var(--text2)">
+          Vous avez été déconnecté après <span id="pin-idle-delay">5</span> minutes d'inactivité.
+          Saisissez votre code pour reprendre.
+        </div>
+      </div>
+      <button id="pin-idle-continue" onclick="pinIdleAcknowledge()" style="width:100%;padding:12px;background:var(--accent);border:none;color:#fff;border-radius:10px;font-size:14px;font-weight:600;cursor:pointer;font-family:var(--sans)">Continuer</button>
+    </div>
+
+    <div id="pin-lock-form">
     <div style="text-align:center;font-size:13px;color:var(--text2);line-height:1.55;margin-bottom:18px">
       Saisissez votre code à 6 chiffres pour accéder à l'application.
     </div>
@@ -297,6 +312,7 @@
     <div class="pin-keypad" id="pin-lock-keypad"></div>
     <div style="text-align:center;margin-top:16px;font-size:12px;color:var(--text3)">
       <span onclick="pinLockLogout()" style="color:var(--accent);cursor:pointer;font-weight:600">Code oublié ? Se déconnecter</span>
+    </div>
     </div>
   </div>
 
@@ -3681,7 +3697,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260822c"></script>
+<script src="js/app.js?v=20260822d"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
 <script src="js/onboarding.js?v=20260822b"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->

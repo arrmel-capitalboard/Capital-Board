@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822c';
+const APP_VERSION = '20260822d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1294,6 +1294,7 @@ function showPinLockView(user) {
   }
   _renderPinKeypad('pin-lock-keypad', 'pin-lock-input', () => window.pinLockSubmit());
   const err = document.getElementById('pin-lock-error'); if (err) err.style.display = 'none';
+  _showPinIdleNotice(false);
   _hideSplash();
 }
 
@@ -1373,6 +1374,22 @@ function _pinUnlockSuccess(user) {
   }, 560);
 }
 
+// Bascule entre l'avis de re-verrouillage et le clavier. L'avis remplace le
+// clavier au lieu de se superposer : un seul élément interactif à la fois,
+// et rien de l'application ne reste visible derrière.
+function _showPinIdleNotice(on) {
+  const notice = document.getElementById('pin-idle-notice');
+  const form = document.getElementById('pin-lock-form');
+  if (notice) notice.style.display = on ? 'block' : 'none';
+  if (form) form.style.display = on ? 'none' : 'block';
+}
+
+window.pinIdleAcknowledge = function() {
+  _showPinIdleNotice(false);
+  const inp = document.getElementById('pin-lock-input');
+  if (inp) setTimeout(() => inp.focus(), 50);
+};
+
 // ─── Re-lock après inactivité ─────────────────────────────────────────────
 // Le code PIN est demandé au chargement et au rechargement, mais une session
 // laissée ouverte restait ouverte indéfiniment — précisément le cas (ordinateur
@@ -1422,6 +1439,9 @@ async function _checkInactivityLock() {
     el.style.display = '';
   });
   showPinLockView(user);
+  const delai = document.getElementById('pin-idle-delay');
+  if (delai) delai.textContent = String(Math.max(1, Math.round(_inactivityLockMs() / 60000)));
+  _showPinIdleNotice(true);
 }
 
 function _startInactivityWatch() {
