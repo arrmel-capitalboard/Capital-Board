@@ -1,5 +1,5 @@
 {
-  "generated_at": "2026-08-17",
+  "generated_at": "2026-08-24",
   "source": "https://clubsactionnaires.fr/observatoire",
   "credit": "Clubs Actionnaires (2026), Observatoire des clubs actionnaires",
   "companies": [
@@ -21,10 +21,10 @@
       "index": "CAC40",
       "sector": "Hôtellerie",
       "minShares": 50,
-      "count": 8,
-      "verifiedAt": "2026-08-11",
-      "site": "https://group.accor.com/fr-FR",
-      "clubUrl": "https://group.accor.com/fr-FR/finance",
+      "count": 5,
+      "verifiedAt": "2026-08-20",
+      "site": "https://group.accor.com/fr",
+      "clubUrl": "https://group.accor.com/fr/finance/individual-shareholders",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/accor"
     },
     {
@@ -45,8 +45,8 @@
       "index": "CAC40",
       "sector": "Industrie & Équipements",
       "minShares": 1,
-      "count": 5,
-      "verifiedAt": "2026-08-11",
+      "count": 4,
+      "verifiedAt": "2026-08-20",
       "site": "https://www.airliquide.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/air-liquide"
@@ -249,9 +249,9 @@
       "index": "CAC40",
       "sector": "Énergie",
       "minShares": 1,
-      "count": 8,
-      "verifiedAt": "2026-08-11",
-      "site": "https://www.engie.com/finance",
+      "count": 7,
+      "verifiedAt": "2026-08-20",
+      "site": "https://www.engie.com/investisseurs/",
       "clubUrl": "https://clubactionnaires.engie.com/fr/",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/engie"
     },
@@ -358,9 +358,9 @@
       "sector": "Luxe",
       "minShares": 1,
       "count": 10,
-      "verifiedAt": "2026-07-31",
-      "site": "https://www.lvmh.fr",
-      "clubUrl": "https://www.clublvmh-actionnaires.fr",
+      "verifiedAt": "2026-08-20",
+      "site": "https://www.lvmh.com/fr",
+      "clubUrl": "https://www.lvmh.com/fr/actionnaires/club-des-actionnaires",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/lvmh"
     },
     {
@@ -374,6 +374,18 @@
       "site": "https://www.legrand.com/",
       "clubUrl": "",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/legrand"
+    },
+    {
+      "ticker": "LISN.SW",
+      "name": "",
+      "index": "SIX Swiss Exchange",
+      "sector": "Alimentation & Boissons",
+      "minShares": 1,
+      "count": 1,
+      "verifiedAt": "2026-08-22",
+      "site": "https://www.lindt-spruengli.com",
+      "clubUrl": "https://www.lindt-spruengli.com/investors/annual-general-meeting/",
+      "pageUrl": "https://clubsactionnaires.fr/entreprises/lindt-sprungli"
     },
     {
       "ticker": "MAP.MC",
@@ -645,10 +657,10 @@
       "index": "CAC40",
       "sector": "BTP / Concessions",
       "minShares": 1,
-      "count": 9,
-      "verifiedAt": "2026-07-31",
+      "count": 7,
+      "verifiedAt": "2026-08-20",
       "site": "https://www.vinci.com",
-      "clubUrl": "https://actionnaires.vinci.com/",
+      "clubUrl": "https://www.vinci.com/finances/actionnaires/club-actionnaires",
       "pageUrl": "https://clubsactionnaires.fr/entreprises/vinci"
     },
     {
