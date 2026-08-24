@@ -2914,12 +2914,31 @@ export default {
         // Sans cette clé, le secret ne peut pas être chiffré avant Firestore —
         // autant le dire clairement que laisser remonter une erreur opaque.
         if (!env.TOTP_ENCRYPTION_KEY) return json({ ok: false, error: 'Fonctionnalité non configurée côté serveur.' }, 503);
-        const { idToken, code } = await request.json();
+        const { idToken, code, currentCode } = await request.json();
         if (!/^\d{6}$/.test(code ?? '')) return json({ ok: false, error: 'Code invalide' }, 400);
         const user = await verifyIdToken(idToken, env);
 
         if (!(await rateLimit(env, `totp-enroll-confirm:${user.localId}`, 8, 300))) {
           return json({ ok: false, error: 'Trop de tentatives, recommencez l\'enrôlement.' }, 429);
+        }
+
+        // Un authentificateur déjà enregistré ne se remplace pas sans preuve du
+        // facteur courant. Sinon une session volée enrôle le sien, évince celui
+        // du titulaire, et le second facteur finit par protéger l'attaquant au
+        // lieu du compte. Même exigence que /totp-disable, pour la même raison.
+        let dejaEnrole = false;
+        try { await firestoreGet(`totpSecrets/${user.localId}`, env); dejaEnrole = true; } catch (_) {}
+        if (dejaEnrole) {
+          if (!/^[0-9]{6}$/.test(currentCode ?? '')) {
+            return json({
+              ok: false,
+              need: 'currentCode',
+              error: 'Un authentificateur est déjà enregistré. Donnez un code courant pour le remplacer.',
+            }, 409);
+          }
+          if (!(await checkTotpOrBackup(user.localId, currentCode, env))) {
+            return json({ ok: false, error: 'Code courant incorrect.' }, 401);
+          }
         }
 
         const secret = await env.EARNINGS.get(`totp-pending:${user.localId}`);
@@ -2952,6 +2971,7 @@ export default {
         }, env);
         await firestoreUpdate(`users/${user.localId}/data/security`,
           { totpEnabled: { booleanValue: true } }, ['totpEnabled'], env);
+        await audit(dejaEnrole ? 'totp_replace' : 'totp_enroll', '', user.localId, request, env);
 
         return json({ ok: true, backupCodes });
       }

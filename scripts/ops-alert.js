@@ -24,6 +24,9 @@ const opt = (nom) => {
 const type    = opt('type') || 'alerte';
 const salon   = opt('salon');
 const titre   = opt('titre');
+// Un rôle mentionné ne notifie que depuis le contenu du message, jamais depuis
+// l'embed : le bot le sort donc de la description (voir ops-alerts.js).
+const mention = opt('mention');
 const fichier = opt('fichier');
 
 const couleurBrute = opt('couleur');
@@ -52,6 +55,7 @@ await db.doc(`opsAlerts/${id}`).set({
   createdAt: Date.now(),
   ...(salon ? { salon } : {}),
   ...(titre ? { titre } : {}),
+  ...(mention ? { mention } : {}),
   ...(couleur !== null ? { couleur } : {}),
 });
 

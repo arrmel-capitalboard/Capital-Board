@@ -119,6 +119,13 @@
   // jamais la structure (clés, multi, ordre) — modifier ça casserait les
   // agrégations déjà écrites dans profiles/{uid} et _PROFIL_LIBELLES.
   let _overridesApplied = false;
+  // Les libellés du questionnaire sont surchargeables depuis `config/onboardingText`
+  // (écrit par l'admin) et finissent dans de l'innerHTML : sans échappement, un
+  // texte de configuration devient du code exécuté chez tous les membres.
+  const esc = (v) => String(v ?? '').replace(/[&<>"']/g, (c) => (
+    { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]
+  ));
+
   function _mergeOverrides(cfg) {
     if (!cfg) return;
     QUESTIONS.forEach((qn) => {
@@ -362,15 +369,15 @@
         + '</div>'
         + rail(step)
         + '<div class="ob-body">'
-        +   '<h2 class="ob-q">' + qn.title + '</h2>'
-        +   (qn.hint ? '<p class="ob-hint">' + qn.hint + '</p>' : '')
+        +   '<h2 class="ob-q">' + esc(qn.title) + '</h2>'
+        +   (qn.hint ? '<p class="ob-hint">' + esc(qn.hint) + '</p>' : '')
         +   '<div class="ob-options' + (qn.multi ? ' ob-multi' : '') + '">'
         +     qn.options.map(([v, label, sub], i) =>
                 '<button type="button" class="ob-opt' + (choisi(v) ? ' on' : '') + '" data-v="' + v + '"'
                 + ' style="--d:' + (i * 28) + 'ms">'
                 + '<span class="ob-tick"></span>'
-                + '<span class="ob-opt-txt"><span class="ob-opt-l">' + label + '</span>'
-                + (sub ? '<span class="ob-opt-s">' + sub + '</span>' : '') + '</span>'
+                + '<span class="ob-opt-txt"><span class="ob-opt-l">' + esc(label) + '</span>'
+                + (sub ? '<span class="ob-opt-s">' + esc(sub) + '</span>' : '') + '</span>'
                 + '</button>').join('')
         +   '</div>'
         + '</div>'
@@ -434,7 +441,7 @@
         .map((qn) => {
           const v = answers[qn.key];
           const txt = qn.multi ? v.map((x) => libelle(qn, x)).join(', ') : libelle(qn, v);
-          return '<span class="ob-chip"><b>' + qn.short + '</b>' + txt + '</span>';
+          return '<span class="ob-chip"><b>' + esc(qn.short) + '</b>' + esc(txt) + '</span>';
         });
       return lignes.length ? '<div class="ob-fiche">' + lignes.join('') + '</div>' : '';
     };
@@ -452,7 +459,7 @@
         const v = answers[qn.key];
         if (!v || (qn.multi && !v.length)) return '';
         const txt = qn.multi ? v.map((x) => libelle(qn, x)).join(' · ') : libelle(qn, v);
-        return '<div class="ob-sheet-row"><span>' + qn.short + '</span><b>' + txt + '</b></div>';
+        return '<div class="ob-sheet-row"><span>' + esc(qn.short) + '</span><b>' + esc(txt) + '</b></div>';
       }).join('');
 
       card.innerHTML = (test ? '<div class="ob-test">Mode test — rien n’a été enregistré</div>' : '')

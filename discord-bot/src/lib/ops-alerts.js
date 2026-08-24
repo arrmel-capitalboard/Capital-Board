@@ -6,7 +6,7 @@
 // module l'écoute et le poste. Pas de règle Firestore à ouvrir : écriture et
 // lecture passent toutes les deux par le SDK admin.
 //
-//   opsAlerts/{id} = { type, texte, createdAt, salon?, titre?, couleur?, posteLe?, messageId? }
+//   opsAlerts/{id} = { type, texte, createdAt, salon?, titre?, couleur?, mention?, posteLe?, messageId? }
 //
 // `salon` permet à l'émetteur de router son alerte vers un salon précis (le
 // scan de sécurité a le sien) sans toucher à la config du bot. Absent, on
@@ -27,7 +27,16 @@ function payload(data) {
     .setTitle(data.titre || `⚠ Alerte ops — ${data.type || 'inconnue'}`)
     .setDescription(String(data.texte || '').slice(0, 4000))
     .setTimestamp(data.createdAt || Date.now());
-  return { embeds: [embed] };
+
+  // Une mention placée dans un embed ne notifie personne : Discord ne la
+  // résout que dans le contenu du message. `allowedMentions` la borne au seul
+  // rôle demandé, pour qu'un texte d'alerte ne puisse pas pinger @everyone.
+  const roleId = data.mention ? String(data.mention) : null;
+  return {
+    ...(roleId ? { content: `<@&${roleId}>` } : {}),
+    embeds: [embed],
+    allowedMentions: { roles: roleId ? [roleId] : [], parse: [] },
+  };
 }
 
 async function poster(client, id, data) {

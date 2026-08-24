@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822d';
+const APP_VERSION = '20260822e';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -249,6 +249,9 @@ _splashWatchdog = setTimeout(() => {
         } else {
           try { localStorage.setItem('signup_auto_trust', '1'); } catch(_) {}
         }
+      } else {
+        // Compte existant : on repasse par le Worker, comme le flux popup.
+        await _redirectGoogleViaWorker(redirectResult);
       }
     }
   } catch(e) {
@@ -1709,12 +1712,28 @@ window.totpEnrollConfirmSubmit = async function() {
   setLoading('totp-enroll-confirm-btn', true);
   try {
     const idToken = await user.getIdToken();
-    const res = await fetch(`${WORKER_URL}/totp-enroll-confirm`, {
-      method: 'POST', headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken, code }),
-    });
-    const data = await res.json().catch(() => ({}));
-    if (!res.ok || !data.ok) {
+    const envoyer = async (currentCode) => {
+      const r = await fetch(`${WORKER_URL}/totp-enroll-confirm`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(currentCode ? { idToken, code, currentCode } : { idToken, code }),
+      });
+      return r.json().catch(() => ({}));
+    };
+
+    let data = await envoyer();
+    // Un authentificateur est déjà en place : le Worker refuse de le remplacer
+    // sans preuve du facteur courant. On demande ce code et on rejoue une fois.
+    if (data.need === 'currentCode') {
+      const actuel = await _promptCode({
+        title: 'Remplacer votre authentificateur',
+        body: 'Un authentificateur est déjà enregistré sur ce compte. Saisissez un code venant de celui-ci, ou un code de secours, pour autoriser le remplacement.',
+        okLabel: 'Remplacer',
+        danger: true,
+      });
+      if (!actuel) return;
+      data = await envoyer(actuel);
+    }
+    if (!data.ok) {
       if (err) { err.textContent = data.error || 'Code incorrect.'; err.style.display = 'block'; }
       return;
     }
@@ -2702,11 +2721,11 @@ window.doLoginGoogle = async function() {
     }
   }
 
-  // iOS / PWA standalone : les popups échouent → navigation par redirect.
-  // Reste sur l'ancien flux Firebase (signInWithPopup/Redirect direct) : GIS
-  // n'a pas d'équivalent fiable à une vraie navigation complète pour ce cas,
-  // et c'est justement le seul endroit où les popups posent problème. Gate
-  // 2FA/device encore côté client ici (onAuthStateChanged, gap connu et documenté).
+  // iOS / PWA standalone : les popups échouent → navigation par redirect. GIS
+  // n'a pas d'équivalent fiable à une vraie navigation complète, on reste donc
+  // sur signInWithRedirect. Au retour, _redirectGoogleViaWorker rend la session
+  // et repasse par /login-google : device-trust et 2FA sont tranchés par le
+  // Worker, comme sur le flux popup.
   if (_shouldUseRedirectAuth()) {
     try {
       const provider = new GoogleAuthProvider();
@@ -2790,6 +2809,61 @@ window.doLoginGoogle = async function() {
     showErr('Connexion Google impossible : ' + (e && e.message || 'erreur inconnue'));
   }
 };
+
+// Le retour de signInWithRedirect (iOS / PWA) livre une session Firebase AVANT
+// tout contrôle d'appareil ou de second facteur. Les gates de
+// onAuthStateChanged sont côté navigateur : quiconque tient déjà le compte
+// Google peut les sauter avec la console et parler au Worker avec le jeton.
+// On refait donc ici ce que fait le flux popup — rendre la session, puis
+// laisser le Worker trancher avant d'émettre le moindre jeton.
+async function _redirectGoogleViaWorker(redirectResult) {
+  const errEl = document.getElementById('login-error');
+  const showErr = (m) => { _hideSplash(); showLoginView(); if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } };
+
+  let googleAccessToken = null;
+  try {
+    const cred = GoogleAuthProvider.credentialFromResult(redirectResult);
+    googleAccessToken = cred && cred.accessToken;
+  } catch (_) {}
+
+  // Sans jeton d'accès exploitable, le Worker ne peut pas vérifier l'identité.
+  // On garde alors l'ancien comportement plutôt que d'enfermer dehors un
+  // utilisateur iOS qui n'a pas d'autre chemin de connexion.
+  if (!googleAccessToken) {
+    console.warn("[google] redirect sans jeton d'accès : contrôles client uniquement.");
+    return;
+  }
+
+  // La session pré-contrôle ne doit pas survivre à l'appel : c'est elle le
+  // problème. On la rend avant même de parler au Worker.
+  try { await signOut(fbAuth); } catch (_) {}
+
+  const ipInfo = await _fetchIpInfo();
+  const res = await fetch(`${WORKER_URL}/login-google`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      googleAccessToken,
+      deviceId: _getDeviceId(),
+      deviceLabel: _getDeviceLabel(),
+      location: _fmtLocation(ipInfo) || 'Lieu inconnu',
+      ipInfo: ipInfo || null,
+    }),
+  });
+  const data = await res.json().catch(() => ({}));
+
+  if (data.ok && data.customToken) {
+    await signInWithCustomToken(fbAuth, data.customToken);
+    return;
+  }
+  if (data.need2fa === 'email' || data.need2fa === 'totp') {
+    _loginPending = { pendingToken: data.pendingToken };
+    _hideSplash();
+    _showLoginOtpVerify(data.email || '', data.need2fa);
+    return;
+  }
+  showErr(data.error || 'Connexion Google impossible.');
+}
 
 // ─── LOGOUT ───────────────────────────────────────────
 window.doLogout = async function() {
