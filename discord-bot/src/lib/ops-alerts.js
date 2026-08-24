@@ -6,7 +6,11 @@
 // module l'écoute et le poste. Pas de règle Firestore à ouvrir : écriture et
 // lecture passent toutes les deux par le SDK admin.
 //
-//   opsAlerts/{id} = { type, texte, createdAt, posteLe?, messageId? }
+//   opsAlerts/{id} = { type, texte, createdAt, salon?, posteLe?, messageId? }
+//
+// `salon` permet à l'émetteur de router son alerte vers un salon précis (le
+// scan de sécurité a le sien) sans toucher à la config du bot. Absent, on
+// retombe sur OPS_ALERTS_CHANNEL_ID.
 
 const { EmbedBuilder } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
@@ -25,15 +29,16 @@ function payload(data) {
 }
 
 async function poster(client, id, data) {
-  const channel = await client.channels.fetch(config.opsAlertsChannel);
+  const cible = data.salon || config.opsAlertsChannel;
+  if (!cible) throw new Error('aucun salon de destination (ni `salon`, ni OPS_ALERTS_CHANNEL_ID)');
+  const channel = await client.channels.fetch(cible);
   const msg = await channel.send(payload(data));
   await col().doc(id).update({ posteLe: Date.now(), messageId: msg.id, channelId: channel.id });
 }
 
 function start(client) {
   if (!config.opsAlertsChannel) {
-    console.warn('[ops-alerts] OPS_ALERTS_CHANNEL_ID non défini : écoute désactivée.');
-    return;
+    console.warn('[ops-alerts] OPS_ALERTS_CHANNEL_ID non défini : seules les alertes précisant un `salon` seront postées.');
   }
   if (!isConfigured()) {
     console.warn('[ops-alerts] Firestore non configuré : écoute désactivée.');
