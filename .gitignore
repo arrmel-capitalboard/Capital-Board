@@ -41,3 +41,10 @@ SETUP-MACHINE.md
 # Rapport du scan de sécurité automatisé : même raison que ci-dessus, il décrit
 # des failles non corrigées. Produit dans un runner éphémère, jamais commité.
 .scan-report.md
+
+# Threat model et rapports d'audit datés : documents internes qui cartographient
+# l'architecture, les frontières de confiance et les écarts non corrigés. Le
+# dépôt est public — ils restent en local. (La règle SECURITE-AUDIT-*.md
+# ci-dessus ne les attrapait pas : les noms réels ne correspondent pas.)
+threat-model.md
+audit-securite-*.md
