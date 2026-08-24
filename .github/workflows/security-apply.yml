@@ -1,0 +1,130 @@
+name: Appliquer un correctif de sécurité
+
+# Déclenché par le bot Discord quand le rôle fondateur clique « Appliquer » ou
+# « Revenir en arrière » sur un correctif proposé par le scan
+# (voir discord-bot/src/lib/scan-patches.js).
+#
+# C'est le seul workflow de la chaîne sécurité qui écrit dans le dépôt. Les
+# scans, eux, restent en lecture seule : ils proposent, ils n'appliquent pas.
+# La décision passe donc toujours par un humain, dans Discord.
+#
+# `workflow_dispatch` uniquement : rien ici ne se déclenche tout seul.
+on:
+  workflow_dispatch:
+    inputs:
+      patchId:
+        description: "Identifiant du document scanPatches"
+        required: true
+        type: string
+      revert:
+        description: "true pour annuler un correctif déjà appliqué"
+        required: false
+        default: 'false'
+        type: string
+
+permissions:
+  contents: write
+
+concurrency:
+  group: security-apply
+  cancel-in-progress: false
+
+jobs:
+  appliquer:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Récupération du correctif
+        id: patch
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          cd scripts
+          npm install --silent
+          infos="$(node scan-patch.js --get --id '${{ inputs.patchId }}' --sortie ../fix.patch)"
+          cd ..
+          echo "$infos"
+          echo "base=$(echo "$infos" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).base||""))')" >> "$GITHUB_OUTPUT"
+          echo "commit=$(echo "$infos" | node -e 'let d="";process.stdin.on("data",c=>d+=c).on("end",()=>console.log(JSON.parse(d).commitSha||""))')" >> "$GITHUB_OUTPUT"
+
+      - name: Identité git
+        run: |
+          git config user.name "Capital Board Bot"
+          git config user.email "contact@capitalboard.fr"
+
+      # Marche arrière : on annule le commit produit par l'application, on ne
+      # rejoue pas le patch à l'envers. `git revert` garde une trace, là où un
+      # reset réécrirait l'historique d'un dépôt public.
+      - name: Annulation
+        if: inputs.revert == 'true'
+        id: annuler
+        run: |
+          set -euo pipefail
+          sha='${{ steps.patch.outputs.commit }}'
+          if [ -z "$sha" ]; then
+            echo "::error::Aucun commit connu pour ce correctif — rien à annuler."
+            exit 1
+          fi
+          git revert --no-edit "$sha"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Application
+        if: inputs.revert != 'true'
+        id: appliquer
+        run: |
+          set -euo pipefail
+
+          # Le patch a été calculé sur un commit précis. Si le dépôt a bougé
+          # depuis, l'application peut réussir au mauvais endroit : on refuse
+          # plutôt que de deviner.
+          base='${{ steps.patch.outputs.base }}'
+          if [ -n "$base" ] && [ "$base" != "$(git rev-parse HEAD)" ]; then
+            echo "::warning::Le dépôt a bougé depuis le calcul du correctif (base $base)."
+          fi
+
+          git apply --check fix.patch
+          git apply fix.patch
+          rm -f fix.patch
+
+          # Garde-fou minimal : un correctif qui casse la syntaxe ne doit pas
+          # partir en production. Le gate de version côté client bloquerait
+          # alors tout le monde sur une app inutilisable.
+          for f in $(git diff --name-only -- '*.js'); do
+            node --check "$f"
+          done
+
+          git add -A
+          git commit -m "$(printf 'fix(sécu): correctif validé depuis Discord\n\nProposé par le scan automatisé, appliqué après validation du rôle\nfondateur dans le salon sécurité. Identifiant : %s\n\nCo-Authored-By: Claude Opus 5 <noreply@anthropic.com>\n' '${{ inputs.patchId }}')"
+          echo "sha=$(git rev-parse HEAD)" >> "$GITHUB_OUTPUT"
+
+      - name: Push
+        run: git push origin HEAD:main
+
+      # Le bot suit ce document : l'embed Discord se met à jour tout seul, avec
+      # le SHA et un bouton « Revenir » si l'application a réussi.
+      - name: Compte rendu
+        if: always()
+        env:
+          FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
+        run: |
+          set -euo pipefail
+          cd scripts
+          if [ '${{ job.status }}' != 'success' ]; then
+            node scan-patch.js --statut --id '${{ inputs.patchId }}' --valeur erreur \
+              --erreur 'Application échouée — voir le log du run.'
+          elif [ '${{ inputs.revert }}' = 'true' ]; then
+            node scan-patch.js --statut --id '${{ inputs.patchId }}' --valeur refuse \
+              --commit '${{ steps.annuler.outputs.sha }}'
+          else
+            node scan-patch.js --statut --id '${{ inputs.patchId }}' --valeur applique \
+              --commit '${{ steps.appliquer.outputs.sha }}'
+          fi

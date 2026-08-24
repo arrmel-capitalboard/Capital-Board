@@ -2,7 +2,10 @@
 
 require('dotenv').config();
 
-const { DISCORD_TOKEN, CLIENT_ID, GUILD_ID, ROLE_COMPTE_LIE, OPS_ALERTS_CHANNEL_ID } = process.env;
+const {
+  DISCORD_TOKEN, CLIENT_ID, GUILD_ID, ROLE_COMPTE_LIE, OPS_ALERTS_CHANNEL_ID,
+  GITHUB_DISPATCH_TOKEN, GITHUB_REPO,
+} = process.env;
 
 if (!DISCORD_TOKEN) throw new Error('DISCORD_TOKEN manquant (voir .env.example)');
 if (!CLIENT_ID) throw new Error('CLIENT_ID manquant (voir .env.example)');
@@ -18,6 +21,12 @@ module.exports = {
   // valeur par défaut : sans ID connu, mieux vaut désactiver l'écoute que
   // poster dans le mauvais salon.
   opsAlertsChannel: OPS_ALERTS_CHANNEL_ID || null,
+  // Déclenchement du workflow d'application des correctifs de sécurité
+  // (voir lib/scan-patches.js). Le jeton vit sur la VM, jamais dans le dépôt :
+  // il peut lancer des workflows et pousser sur main. Absent, les boutons
+  // « Appliquer » répondent une erreur au lieu d'agir en silence.
+  githubToken: GITHUB_DISPATCH_TOKEN || null,
+  githubRepo: GITHUB_REPO || 'arrmel-capitalboard/Capital-Board',
   // Couleur de marque Capital Board (utilisée dans les embeds).
   brandColor: 0x2563eb,
   siteUrl: 'https://capitalboard.fr',

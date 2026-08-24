@@ -14,6 +14,7 @@ const suggestions = require('./lib/suggestions');
 const restartmonitor = require('./lib/restartmonitor');
 const signalements = require('./lib/signalements');
 const opsAlerts = require('./lib/ops-alerts');
+const scanPatches = require('./lib/scan-patches');
 const bareme = require('./lib/bareme');
 const tickets = require('./lib/tickets');
 const ticketstats = require('./lib/ticketstats');
@@ -51,6 +52,7 @@ client.once(Events.ClientReady, (c) => {
   ticketstats.start(c);
   signalements.start(c);
   opsAlerts.start(c);
+  scanPatches.watch(c);
   bareme.start(c);
   restartmonitor.handleOnReady(c).catch(() => {});
 });
@@ -198,6 +200,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (newsqueue.isNewsButton(interaction.customId)) { await newsqueue.handleButton(interaction); return; }
       if (suggestions.isSuggestionButton(interaction.customId)) { await suggestions.handleButton(interaction); return; }
+      if (scanPatches.isScanPatchButton(interaction.customId)) { await scanPatches.handleButton(interaction); return; }
 
       if (interaction.customId.startsWith('role_')) {
         const roleId = interaction.customId.slice(5);
