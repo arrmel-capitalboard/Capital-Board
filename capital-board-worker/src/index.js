@@ -2061,6 +2061,26 @@ export default {
     if (request.method === 'OPTIONS') return new Response(null, { status: 204, headers: corsHeaders });
 
     const url = new URL(request.url);
+
+    // ── Relais du gestionnaire d'authentification Firebase ────────────────
+    // signInWithRedirect (iOS, PWA — les popups y sont bloquées) revient sur
+    // l'app, mais getRedirectResult ne renvoie rien : le SDK écrit son état sur
+    // capitalboard.firebaseapp.com, et Safari cloisonne le stockage par
+    // origine depuis ITP. L'app ne peut donc pas le relire, et la connexion
+    // Google échoue en silence sur iPhone.
+    //
+    // Le remède documenté est de servir /__/auth/* depuis notre propre origine,
+    // ce que ce relais fait. `authDomain` doit alors valoir capitalboard.fr, et
+    // https://capitalboard.fr/__/auth/handler être autorisé comme URI de
+    // redirection sur le client OAuth Google.
+    //
+    // Sans route Cloudflare vers ce Worker sur capitalboard.fr/__/*, ce bloc
+    // n'est jamais atteint : il est inoffensif tant qu'elle n'existe pas.
+    if (url.pathname.startsWith('/__/')) {
+      const amont = new URL(url.pathname + url.search, 'https://capitalboard.firebaseapp.com');
+      return fetch(new Request(amont, request));
+    }
+
     const json = (data, status = 200) =>
       new Response(JSON.stringify(data), { status, headers: { 'Content-Type': 'application/json', ...corsHeaders } });
 
