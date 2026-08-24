@@ -6,7 +6,7 @@
 // module l'écoute et le poste. Pas de règle Firestore à ouvrir : écriture et
 // lecture passent toutes les deux par le SDK admin.
 //
-//   opsAlerts/{id} = { type, texte, createdAt, salon?, posteLe?, messageId? }
+//   opsAlerts/{id} = { type, texte, createdAt, salon?, titre?, couleur?, posteLe?, messageId? }
 //
 // `salon` permet à l'émetteur de router son alerte vers un salon précis (le
 // scan de sécurité a le sien) sans toucher à la config du bot. Absent, on
@@ -20,9 +20,11 @@ const COL = 'opsAlerts';
 const col = () => getDb().collection(COL);
 
 function payload(data) {
+  // `titre` et `couleur` permettent à l'émetteur de sortir de l'habillage
+  // « alerte » : un compte rendu de scan sans problème arrive en vert.
   const embed = new EmbedBuilder()
-    .setColor(0xff9f43)
-    .setTitle(`⚠ Alerte ops — ${data.type || 'inconnue'}`)
+    .setColor(Number.isInteger(data.couleur) ? data.couleur : 0xff9f43)
+    .setTitle(data.titre || `⚠ Alerte ops — ${data.type || 'inconnue'}`)
     .setDescription(String(data.texte || '').slice(0, 4000))
     .setTimestamp(data.createdAt || Date.now());
   return { embeds: [embed] };

@@ -6,6 +6,10 @@
 // Usage :
 //   node ops-alert.js --type "scan de sécurité" --salon 123 --fichier rapport.md
 //   node ops-alert.js --type ping --texte "coucou"
+//
+// `--titre` et `--couleur` (hexadécimal, ex. 0x22d98a) remplacent l'habillage
+// « alerte » par défaut : un scan qui ne trouve rien ne doit pas arriver en
+// orange avec un panneau attention.
 
 import { initializeApp, cert } from 'firebase-admin/app';
 import { getFirestore }        from 'firebase-admin/firestore';
@@ -19,7 +23,15 @@ const opt = (nom) => {
 
 const type    = opt('type') || 'alerte';
 const salon   = opt('salon');
+const titre   = opt('titre');
 const fichier = opt('fichier');
+
+const couleurBrute = opt('couleur');
+const couleur = couleurBrute ? Number(couleurBrute) : null;
+if (couleurBrute && !Number.isInteger(couleur)) {
+  console.error(`--couleur invalide : ${couleurBrute} (attendu 0xRRGGBB)`);
+  process.exit(1);
+}
 
 const texte = fichier ? readFileSync(fichier, 'utf8') : (opt('texte') || '');
 if (!texte.trim()) {
@@ -39,6 +51,8 @@ await db.doc(`opsAlerts/${id}`).set({
   texte: texte.slice(0, 3900),
   createdAt: Date.now(),
   ...(salon ? { salon } : {}),
+  ...(titre ? { titre } : {}),
+  ...(couleur !== null ? { couleur } : {}),
 });
 
 console.log(`opsAlerts/${id} écrit (salon ${salon || 'par défaut'}).`);
