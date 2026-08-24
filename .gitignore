@@ -41,6 +41,7 @@ SETUP-MACHINE.md
 # Rapport du scan de sécurité automatisé : même raison que ci-dessus, il décrit
 # des failles non corrigées. Produit dans un runner éphémère, jamais commité.
 .scan-report.md
+.weekly-digest.md
 
 # Threat model et rapports d'audit datés : documents internes qui cartographient
 # l'architecture, les frontières de confiance et les écarts non corrigés. Le
