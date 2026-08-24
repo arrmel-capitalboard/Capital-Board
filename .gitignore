@@ -37,3 +37,7 @@ SECURITE-AUDIT-*.md
 
 # Guide de setup machine : nomme les comptes et emails de service. Local only.
 SETUP-MACHINE.md
+
+# Rapport du scan de sécurité automatisé : même raison que ci-dessus, il décrit
+# des failles non corrigées. Produit dans un runner éphémère, jamais commité.
+.scan-report.md
