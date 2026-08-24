@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822b';
+const APP_VERSION = '20260822c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1378,9 +1378,9 @@ function _pinUnlockSuccess(user) {
 // laissée ouverte restait ouverte indéfiniment — précisément le cas (ordinateur
 // sans surveillance) que le PIN est censé couvrir. Horloge murale plutôt qu'un
 // setTimeout qui compte les secondes : les timers sont ralentis en arrière-plan,
-// un setTimeout seul laisserait passer largement plus de 30 min sur un onglet
+// un setTimeout seul laisserait passer largement plus que le délai sur un onglet
 // resté caché.
-const INACTIVITY_LOCK_MS = 30 * 60 * 1000; // défaut si l'utilisateur n'a jamais touché au réglage
+const INACTIVITY_LOCK_MS = 5 * 60 * 1000; // défaut si l'utilisateur n'a jamais touché au réglage
 let _lastActivityAt = Date.now();
 let _inactivityWatchStarted = false;
 
@@ -1414,6 +1414,13 @@ async function _checkInactivityLock() {
     if (!(await _isPinEnabled(user.uid))) return;
   } catch (_) { return; } // fail-open, cohérent avec le reste du gate PIN
   _markActivity(); // évite de reverrouiller en boucle si la vérification traîne
+  // Les modales vivent hors de #app et sont en position fixed : masquer #app ne
+  // les cache pas, et #login-screen n'a pas de z-index. Sans ça, un profil ou un
+  // formulaire resté ouvert s'afficherait par-dessus l'écran de verrouillage.
+  document.querySelectorAll('.modal-overlay').forEach(el => {
+    el.classList.remove('open');
+    el.style.display = '';
+  });
   showPinLockView(user);
 }
 
@@ -1426,7 +1433,7 @@ function _startInactivityWatch() {
   document.addEventListener('visibilitychange', () => {
     if (document.visibilityState === 'visible') _checkInactivityLock();
   });
-  setInterval(_checkInactivityLock, 60 * 1000);
+  setInterval(_checkInactivityLock, 15 * 1000);
 }
 
 window.pinLockLogout = async function() {
@@ -1440,7 +1447,7 @@ window.refreshPinStatus = async function() {
   const box = document.getElementById('pin-status-box');
   const actions = document.getElementById('pin-actions');
   const timeoutSel = document.getElementById('inactivity-timeout-select');
-  if (timeoutSel) timeoutSel.value = localStorage.getItem('cb_inactivityTimeout') || '30';
+  if (timeoutSel) timeoutSel.value = localStorage.getItem('cb_inactivityTimeout') || '5';
   if (!box || !actions) return;
   const user = fbAuth.currentUser;
   if (!user) { box.textContent = 'Non connecté'; actions.innerHTML = ''; return; }

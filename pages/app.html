@@ -3312,8 +3312,9 @@
         Reverrouille l'application (code PIN redemandé) après une période d'inactivité sur cet appareil.
       </div>
       <select id="inactivity-timeout-select" onchange="setInactivityTimeout(this.value)" style="width:100%;padding:9px 12px;background:var(--s2);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:12px;font-family:var(--sans)">
+        <option value="5">5 minutes (défaut)</option>
         <option value="15">15 minutes</option>
-        <option value="30">30 minutes (défaut)</option>
+        <option value="30">30 minutes</option>
         <option value="60">1 heure</option>
         <option value="never">Jamais</option>
       </select>
@@ -3680,7 +3681,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260822b"></script>
+<script src="js/app.js?v=20260822c"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
 <script src="js/onboarding.js?v=20260822b"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
