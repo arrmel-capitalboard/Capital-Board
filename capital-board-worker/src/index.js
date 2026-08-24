@@ -1009,7 +1009,15 @@ async function finishLogin(uid, email, emailVerified, deviceId, deviceLabel, loc
     // jeton plutôt que de livrer une session sans 2FA à qui a le mot de passe
     // d'un compte jamais vérifié. Le client propose de renvoyer le lien
     // (/resend-verification, sans session) puis de se reconnecter.
-    return { body: { ok: false, needVerify: true, email }, status: 200 };
+    return {
+      body: {
+        ok: false,
+        needVerify: true,
+        email,
+        error: 'Adresse non vérifiée. Confirmez le lien reçu par email, puis reconnectez-vous.',
+      },
+      status: 200,
+    };
   }
 
   const sent = await sendOtpChallenge(uid, email, '2fa', deviceId, deviceLabel, location, ipInfo, env);
@@ -2836,6 +2844,19 @@ export default {
           if (!signupOpen) {
             try { await deleteAuthUser(uid, env); } catch (_) {}
             return json({ ok: false, error: 'Les inscriptions sont temporairement fermées.' }, 403);
+          }
+          // Toute la sécurité d'un compte Google repose sur le fait que Google
+          // atteste l'adresse. Sans cette attestation, le compte naîtrait avec
+          // zéro facteur vérifié, sur un appareil déclaré de confiance dans la
+          // foulée : on refuse et on supprime le compte créé en effet de bord,
+          // comme pour les inscriptions fermées. Le contrôle existait déjà pour
+          // les comptes existants (finishLogin), il manquait à la création.
+          if (!emailVerified) {
+            try { await deleteAuthUser(uid, env); } catch (_) {}
+            return json({
+              ok: false,
+              error: "Cette adresse Google n'est pas vérifiée. Vérifiez-la auprès de Google, puis réessayez.",
+            }, 403);
           }
           // Premier appareil : auto-trust, comme /trust-device pour l'email —
           // un compte qui vient de naître n'a pas de 2FA à passer.

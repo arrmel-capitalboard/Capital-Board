@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822g';
+const APP_VERSION = '20260822h';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2814,6 +2814,10 @@ window.doLoginGoogle = async function() {
       _showLoginOtpVerify(data.email || '', data.need2fa);
       return;
     }
+    if (data.needVerify) {
+      showVerifyView(data.email || '');
+      return;
+    }
     showErr(data.error || 'Connexion Google impossible.');
   } catch(e) {
     showErr('Connexion Google impossible : ' + (e && e.message || 'erreur inconnue'));
@@ -2869,6 +2873,14 @@ async function _redirectGoogleViaWorker(redirectResult) {
       }),
     });
     data = await res.json().catch(() => ({}));
+    // Refus explicite pour adresse non vérifiée : c'est une décision du Worker,
+    // pas une panne. On ne retombe pas sur les contrôles navigateur.
+    if (data.needVerify) {
+      try { await signOut(fbAuth); } catch (_) {}
+      _hideSplash();
+      showVerifyView(data.email || '');
+      return 'verif';
+    }
     if (!data.ok && !data.need2fa) {
       throw new Error(`${res.status} ${data.error || 'réponse inattendue'}`);
     }
