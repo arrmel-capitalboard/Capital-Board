@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822h';
+const APP_VERSION = '20260822i';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -772,6 +772,9 @@ window.showLoginView = function() {
   const fv = document.getElementById('forgot-view'); if (fv) fv.style.display = 'none';
   document.getElementById('login-error').textContent = '';
   stopVerifyPolling();
+  // Après le vidage : un retour Google raté n'a laissé aucune trace à l'écran,
+  // c'est ici qu'on la remet.
+  _afficherDiagGoogle();
 };
 window.showForgotView = function() {
   document.getElementById('login-view').style.display = 'none';
@@ -2830,6 +2833,27 @@ window.doLoginGoogle = async function() {
 // Google peut les sauter avec la console et parler au Worker avec le jeton.
 // On refait donc ici ce que fait le flux popup — rendre la session, puis
 // laisser le Worker trancher avant d'émettre le moindre jeton.
+// Le retour de redirect se joue au démarrage, avant tout écran : une erreur y
+// est invisible, et sur iPhone il n'y a pas de console à ouvrir. On garde donc
+// la raison sous la main et on l'affiche au prochain écran de connexion.
+function _noterDiagGoogle(raison) {
+  console.error('[google]', raison);
+  try {
+    localStorage.setItem('cb_google_diag', raison + ' — ' + new Date().toLocaleString('fr-FR'));
+  } catch (_) {}
+}
+
+function _afficherDiagGoogle() {
+  let diag = null;
+  try { diag = localStorage.getItem('cb_google_diag'); } catch (_) {}
+  if (!diag) return;
+  const el = document.getElementById('login-error');
+  if (!el) return;
+  el.textContent = 'Connexion Google dégradée : ' + diag;
+  el.style.display = 'block';
+  try { localStorage.removeItem('cb_google_diag'); } catch (_) {}
+}
+
 async function _redirectGoogleViaWorker(redirectResult) {
   let googleAccessToken = null;
   try {
@@ -2839,7 +2863,7 @@ async function _redirectGoogleViaWorker(redirectResult) {
 
   // Sans jeton d'accès exploitable, le Worker ne peut pas vérifier l'identité.
   if (!googleAccessToken) {
-    console.warn("[google] redirect sans jeton d'accès : contrôles client uniquement.");
+    _noterDiagGoogle('aucun jeton d’accès dans le retour du redirect');
     return 'ignore';
   }
 
@@ -2860,18 +2884,21 @@ async function _redirectGoogleViaWorker(redirectResult) {
       }
     } catch (_) {}
 
-    const res = await fetch(`${WORKER_URL}/login-google`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        googleAccessToken,
-        deviceId: _getDeviceId(),
-        deviceLabel: _getDeviceLabel(),
-        location: _fmtLocation(ipInfo) || 'Lieu inconnu',
-        ipInfo: ipInfo || null,
-        appCheckToken,
+    const res = await Promise.race([
+      fetch(`${WORKER_URL}/login-google`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          googleAccessToken,
+          deviceId: _getDeviceId(),
+          deviceLabel: _getDeviceLabel(),
+          location: _fmtLocation(ipInfo) || 'Lieu inconnu',
+          ipInfo: ipInfo || null,
+          appCheckToken,
+        }),
       }),
-    });
+      new Promise((_, rejeter) => setTimeout(() => rejeter(new Error('Worker sans réponse après 12 s')), 12000)),
+    ]);
     data = await res.json().catch(() => ({}));
     // Refus explicite pour adresse non vérifiée : c'est une décision du Worker,
     // pas une panne. On ne retombe pas sur les contrôles navigateur.
@@ -2889,9 +2916,7 @@ async function _redirectGoogleViaWorker(redirectResult) {
     // les contrôles client faire leur travail, comme avant ce correctif. Moins
     // protecteur, mais un utilisateur iOS n'a pas d'autre chemin de connexion —
     // le laisser dehors serait pire que le trou qu'on essaie de fermer.
-    const raison = (e && e.message) || 'erreur inconnue';
-    console.error('[google] Worker injoignable ou refus :', raison);
-    try { localStorage.setItem('cb_google_diag', raison + ' @ ' + new Date().toISOString()); } catch (_) {}
+    _noterDiagGoogle((e && e.message) || 'erreur inconnue');
     return 'ignore';
   }
 
