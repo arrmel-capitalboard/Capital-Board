@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822i';
+const APP_VERSION = '20260822j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -245,18 +245,20 @@ _splashWatchdog = setTimeout(() => {
     const redirectResult = await getRedirectResult(fbAuth);
     if (redirectResult && redirectResult.user) {
       const isNew = redirectResult._tokenResponse && redirectResult._tokenResponse.isNewUser;
-      if (isNew) {
-        // Inscriptions fermées : refuse le nouveau compte Google
-        if (!(await _isSignupOpen())) {
-          try { await redirectResult.user.delete(); } catch(_) {}
-          try { await signOut(fbAuth); } catch(_) {}
-          const errEl = document.getElementById('login-error');
-          if (errEl) errEl.textContent = 'Les inscriptions sont temporairement fermées.';
-        } else {
-          try { localStorage.setItem('signup_auto_trust', '1'); } catch(_) {}
-        }
+      // Inscriptions fermées : refuse le nouveau compte Google, que
+      // signInWithRedirect vient de créer en effet de bord.
+      if (isNew && !(await _isSignupOpen())) {
+        try { await redirectResult.user.delete(); } catch(_) {}
+        try { await signOut(fbAuth); } catch(_) {}
+        const errEl = document.getElementById('login-error');
+        if (errEl) errEl.textContent = 'Les inscriptions sont temporairement fermées.';
       } else {
-        // Compte existant : on repasse par le Worker, comme le flux popup.
+        // Nouveau compte comme compte existant : on repasse par le Worker.
+        // Le compte vient d'être créé, donc le Worker le voit déjà existant et
+        // lui applique finishLogin — un code par email avant le premier accès,
+        // exactement comme l'inscription par mot de passe. Plus d'auto-trust du
+        // premier appareil : c'était le raccourci qui laissait entrer sans
+        // qu'aucune preuve de contrôle de la boîte ne soit demandée.
         googleOtpEnAttente = (await _redirectGoogleViaWorker(redirectResult)) === 'otp';
       }
     }

@@ -2858,11 +2858,13 @@ export default {
               error: "Cette adresse Google n'est pas vérifiée. Vérifiez-la auprès de Google, puis réessayez.",
             }, 403);
           }
-          // Premier appareil : auto-trust, comme /trust-device pour l'email —
-          // un compte qui vient de naître n'a pas de 2FA à passer.
-          await trustDevice(uid, deviceId, deviceLabel, ipInfo, env);
-          const customToken = await makeCustomToken(JSON.parse(env.FIREBASE_SERVICE_ACCOUNT), uid);
-          return json({ ok: true, customToken });
+          // Pas d'auto-trust ici, contrairement à l'inscription par mot de
+          // passe : celle-ci exige déjà de cliquer un lien reçu par email avant
+          // le premier accès. Un compte Google entrait, lui, sans qu'aucune
+          // preuve de contrôle de la boîte ne soit demandée — l'attestation de
+          // Google dit que l'adresse existe, pas que la personne y accède
+          // aujourd'hui. Même règle pour tout le monde : on tombe dans
+          // finishLogin juste en dessous, qui enverra un code par email.
         }
 
         const { body, status } = await finishLogin(uid, email, emailVerified, deviceId, deviceLabel, location, ipInfo, env);
