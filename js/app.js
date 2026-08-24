@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822f';
+const APP_VERSION = '20260822g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2827,9 +2827,6 @@ window.doLoginGoogle = async function() {
 // On refait donc ici ce que fait le flux popup — rendre la session, puis
 // laisser le Worker trancher avant d'émettre le moindre jeton.
 async function _redirectGoogleViaWorker(redirectResult) {
-  const errEl = document.getElementById('login-error');
-  const showErr = (m) => { _hideSplash(); showLoginView(); if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } };
-
   let googleAccessToken = null;
   try {
     const cred = GoogleAuthProvider.credentialFromResult(redirectResult);
@@ -2837,57 +2834,67 @@ async function _redirectGoogleViaWorker(redirectResult) {
   } catch (_) {}
 
   // Sans jeton d'accès exploitable, le Worker ne peut pas vérifier l'identité.
-  // On garde alors l'ancien comportement plutôt que d'enfermer dehors un
-  // utilisateur iOS qui n'a pas d'autre chemin de connexion.
   if (!googleAccessToken) {
     console.warn("[google] redirect sans jeton d'accès : contrôles client uniquement.");
     return 'ignore';
   }
 
-  // La session pré-contrôle ne doit pas survivre à l'appel : c'est elle le
-  // problème. On la rend avant même de parler au Worker.
-  try { await signOut(fbAuth); } catch (_) {}
-
-  const ipInfo = await _fetchIpInfo();
-
-  // App Check : /login-google le passe à signInWithIdp, qui refuse la
-  // connexion sans lui quand l'application est protégée. Le flux popup
-  // l'envoyait déjà — l'oublier ici renvoyait l'utilisateur à l'écran de
-  // connexion sans explication.
-  let appCheckToken = null;
+  // On interroge le Worker AVANT de rendre la session. L'ordre inverse coûtait
+  // cher : au moindre refus, la session était déjà rendue, onAuthStateChanged
+  // voyait une déconnexion, stopApp() repeignait l'écran de connexion, et le
+  // message d'erreur disparaissait avec. L'utilisateur ne voyait qu'un rebond.
+  let data = {};
   try {
-    if (window._appCheckMod && window._appCheck) {
-      appCheckToken = (await window._appCheckMod.getToken(window._appCheck, false)).token;
+    const ipInfo = await _fetchIpInfo();
+
+    // App Check : /login-google le passe à signInWithIdp, qui refuse la
+    // connexion sans lui quand l'application est protégée — et elle l'est.
+    let appCheckToken = null;
+    try {
+      if (window._appCheckMod && window._appCheck) {
+        appCheckToken = (await window._appCheckMod.getToken(window._appCheck, false)).token;
+      }
+    } catch (_) {}
+
+    const res = await fetch(`${WORKER_URL}/login-google`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        googleAccessToken,
+        deviceId: _getDeviceId(),
+        deviceLabel: _getDeviceLabel(),
+        location: _fmtLocation(ipInfo) || 'Lieu inconnu',
+        ipInfo: ipInfo || null,
+        appCheckToken,
+      }),
+    });
+    data = await res.json().catch(() => ({}));
+    if (!data.ok && !data.need2fa) {
+      throw new Error(`${res.status} ${data.error || 'réponse inattendue'}`);
     }
-  } catch (_) {}
-
-  const res = await fetch(`${WORKER_URL}/login-google`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      googleAccessToken,
-      deviceId: _getDeviceId(),
-      deviceLabel: _getDeviceLabel(),
-      location: _fmtLocation(ipInfo) || 'Lieu inconnu',
-      ipInfo: ipInfo || null,
-      appCheckToken,
-    }),
-  });
-  const data = await res.json().catch(() => ({}));
-
-  if (data.ok && data.customToken) {
-    await signInWithCustomToken(fbAuth, data.customToken);
-    return 'ok';
+  } catch (e) {
+    // Le Worker n'a pas tranché : on garde la session déjà obtenue et on laisse
+    // les contrôles client faire leur travail, comme avant ce correctif. Moins
+    // protecteur, mais un utilisateur iOS n'a pas d'autre chemin de connexion —
+    // le laisser dehors serait pire que le trou qu'on essaie de fermer.
+    const raison = (e && e.message) || 'erreur inconnue';
+    console.error('[google] Worker injoignable ou refus :', raison);
+    try { localStorage.setItem('cb_google_diag', raison + ' @ ' + new Date().toISOString()); } catch (_) {}
+    return 'ignore';
   }
+
+  // À partir d'ici le Worker a tranché : la session pré-contrôle peut partir.
   if (data.need2fa === 'email' || data.need2fa === 'totp') {
+    try { await signOut(fbAuth); } catch (_) {}
     _loginPending = { pendingToken: data.pendingToken };
     _hideSplash();
     _showLoginOtpVerify(data.email || '', data.need2fa);
     return 'otp';
   }
-  console.error('[google] /login-google a refusé :', res.status, data.error || '');
-  showErr(data.error || 'Connexion Google impossible.');
-  return 'erreur';
+
+  // Appareil de confiance : le jeton du Worker remplace la session du redirect.
+  await signInWithCustomToken(fbAuth, data.customToken);
+  return 'ok';
 }
 
 // ─── LOGOUT ───────────────────────────────────────────
