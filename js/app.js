@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260825b';
+const APP_VERSION = '20260825c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -9067,6 +9067,16 @@ async function renderPortfolioChart() {
     const buyData = dataValues.map((v, i) => buyPoints.includes(i) ? v : null);
     const sellData = dataValues.map((v, i) => sellPoints.includes(i) ? v : null);
 
+    // Même cadrage que les courbes de ligne : sans bornes, Chart.js arrondit et
+    // un portefeuille passé de 3 100 € à 3 400 € se trace dans une échelle
+    // 0–4 000, où la progression ne se voit plus. L'axe est masqué ici, mais il
+    // décide quand même de la hauteur du tracé. Les nulls sont les jours sans
+    // valeur — ils ne comptent pas dans les bornes.
+    const _valeurs = dataValues.filter(v => v != null);
+    let pfMin = _valeurs[0], pfMax = _valeurs[0];
+    for (const v of _valeurs) { if (v < pfMin) pfMin = v; if (v > pfMax) pfMax = v; }
+    const pfMarge = (pfMax - pfMin) > 0 ? (pfMax - pfMin) * 0.14 : Math.max(Math.abs(pfMax || 1) * 0.02, 1);
+
     chartPortfolio = new Chart(ctx, {
       type: 'line',
       data: {
@@ -9140,7 +9150,12 @@ async function renderPortfolioChart() {
         },
         scales: {
           x: { display: false },
-          y: { display: false, beginAtZero: false }
+          y: {
+            display: false,
+            beginAtZero: false,
+            min: _valeurs.length ? pfMin - pfMarge : undefined,
+            max: _valeurs.length ? pfMax + pfMarge : undefined,
+          }
         }
       },
       plugins: [pfRevealPlugin]

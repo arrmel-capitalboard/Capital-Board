@@ -1666,9 +1666,15 @@ button.ec-choice:hover { border-color: var(--accent); background: var(--s3); }
 }
 /* Écrans larges : on grandit la hauteur pour que la pente reste lisible
    (sinon largeur >> hauteur écrase la courbe sur ultrawide). */
-@media (min-width: 1500px) { .portf-canvas-wrap { height: 230px; } }
-@media (min-width: 1920px) { .portf-canvas-wrap { height: 300px; } }
-@media (min-width: 2400px) { .portf-canvas-wrap { height: 360px; } }
+/* Hauteur par palier : 130 px sur un écran de 1400 px de large donnaient un
+   rapport de 10 pour 1, où la courbe paraît plate quoi qu'elle fasse. Le
+   téléphone garde 130 px — la largeur y est petite, le rapport déjà correct, et
+   plus haut pousserait le reste de la page sous la ligne de flottaison. */
+@media (min-width: 768px)  { .portf-canvas-wrap { height: 190px; } }
+@media (min-width: 1100px) { .portf-canvas-wrap { height: 220px; } }
+@media (min-width: 1500px) { .portf-canvas-wrap { height: 260px; } }
+@media (min-width: 1920px) { .portf-canvas-wrap { height: 320px; } }
+@media (min-width: 2400px) { .portf-canvas-wrap { height: 380px; } }
 
 .portf-chart-loader {
   position: absolute; inset: 0;
