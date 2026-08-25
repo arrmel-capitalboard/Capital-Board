@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260825j';
+const APP_VERSION = '20260825k';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -16292,7 +16292,32 @@ async function renderAdminStats() {
       getDocs(firestoreCollection(db, 'supportThreads')).catch(() => empty),
       getFirestoreDoc(firestoreDoc(db, 'config', 'discordStats')).catch(() => null),
     ]);
-    let inscrits = 0; roles.forEach(() => inscrits++);
+    // Les comptes réels sont ceux de Firebase Auth, pas les documents `roles` :
+    // une suppression de compte laisse son document derrière elle, et la tuile
+    // annonçait 45 inscrits quand la liste des utilisateurs, elle filtrée sur
+    // Auth, n'en montrait que 27. Repli sur le comptage des documents si le
+    // Worker ne répond pas — mieux vaut un chiffre approché que rien, et le
+    // sous-titre dit alors d'où il vient.
+    let authUsers = null;
+    try {
+      const r = await _adminAuthPost('/admin/list-auth-users', {});
+      if (r && r.ok && Array.isArray(r.users)) authUsers = r.users;
+    } catch (_) { /* repli ci-dessous */ }
+
+    const profils = {};
+    roles.forEach(d => { profils[d.id] = d.data() || {}; });
+    let inscrits, inscritsSub;
+    if (authUsers) {
+      inscrits = authUsers.length;
+      const complets = authUsers.filter(a => {
+        const p = profils[a.localId];
+        return p && p.firstName && p.lastName && p.username;
+      }).length;
+      inscritsSub = complets + ' profil(s) complet(s)';
+    } else {
+      inscrits = 0; roles.forEach(() => inscrits++);
+      inscritsSub = 'comptes Auth indisponibles';
+    }
     let actifs24 = 0; const now = Date.now();
     pres.forEach(d => { const p = d.data(); const ls = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate().getTime() : 0; if (now - ls < 86400000) actifs24++; });
     // Tickets ouverts = support in-app (Capital Board) + salons Discord de la
@@ -16307,7 +16332,7 @@ async function renderAdminStats() {
       (sub ? '<div style="font-size:10.5px;color:var(--text3);margin-top:5px;font-family:var(--mono)">' + sub + '</div>' : '') +
       '</div>';
     const ticketSub = 'CB ' + cbTickets + ' · Discord ' + (discKnown ? discTickets : '—');
-    box.innerHTML = tile('Inscrits', inscrits) + tile('Actifs 24 h', actifs24, 'var(--positive)') + tile('Tickets ouverts', totalTickets, 'var(--gold)', ticketSub);
+    box.innerHTML = tile('Inscrits', inscrits, null, inscritsSub) + tile('Actifs 24 h', actifs24, 'var(--positive)') + tile('Tickets ouverts', totalTickets, 'var(--gold)', ticketSub);
   } catch (e) { box.innerHTML = '<div style="color:var(--text3)">Stats indisponibles.</div>'; }
 }
 
