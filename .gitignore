@@ -43,6 +43,16 @@ SETUP-MACHINE.md
 .scan-report.md
 .weekly-digest.md
 
+# Fichiers de travail des workflows de sécurité (liste des fichiers modifiés,
+# commits de la semaine, accusé Discord). Non suivis et non ignorés, ils
+# entraient dans le `git add -A` de l'étape « Capture du correctif » : chaque
+# run repartait alors comme un correctif proposé, et le compte rendu avec sa
+# mention du rôle fondateur n'était plus jamais envoyé.
+changed.txt
+commits.txt
+jour.txt
+accuse.md
+
 # Threat model et rapports d'audit datés : documents internes qui cartographient
 # l'architecture, les frontières de confiance et les écarts non corrigés. Le
 # dépôt est public — ils restent en local. (La règle SECURITE-AUDIT-*.md

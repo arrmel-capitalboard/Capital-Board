@@ -3165,7 +3165,18 @@ export default {
         // du titulaire, et le second facteur finit par protéger l'attaquant au
         // lieu du compte. Même exigence que /totp-disable, pour la même raison.
         let dejaEnrole = false;
-        try { await firestoreGet(`totpSecrets/${user.localId}`, env); dejaEnrole = true; } catch (_) {}
+        try {
+          await firestoreGet(`totpSecrets/${user.localId}`, env);
+          dejaEnrole = true;
+        } catch (e) {
+          // Seul un 404 prouve qu'aucun authentificateur n'est enregistré. Sur
+          // toute autre panne, avaler l'erreur reviendrait à sauter le contrôle
+          // juste en dessous : on refuse plutôt que de remplacer le second
+          // facteur sans preuve du facteur courant.
+          if (!/^Firestore 404\b/.test(String(e && e.message))) {
+            return json({ ok: false, error: 'Vérification impossible, réessayez.' }, 503);
+          }
+        }
         if (dejaEnrole) {
           if (!/^[0-9]{6}$/.test(currentCode ?? '')) {
             return json({

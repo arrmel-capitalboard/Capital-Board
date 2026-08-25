@@ -91,7 +91,16 @@ async function poster(client, id, data) {
   const fichiersJoints = data.patch
     ? [new AttachmentBuilder(Buffer.from(data.patch, 'utf8'), { name: `correctif-${id}.patch` })]
     : [];
-  const msg = await channel.send({ ...base, files: fichiersJoints });
+  // Une décision est attendue : le rôle fondateur est mentionné, comme pour les
+  // alertes du scan. La mention doit être dans le contenu (Discord ne la résout
+  // pas dans un embed) et `allowedMentions` la borne à ce seul rôle. Seul l'envoi
+  // la porte : les mises à jour de statut passent par payload(), sans contenu.
+  const msg = await channel.send({
+    content: `<@&${FONDATEUR_ROLE}>`,
+    allowedMentions: { roles: [FONDATEUR_ROLE], parse: [] },
+    ...base,
+    files: fichiersJoints,
+  });
   await col().doc(id).update({ messageId: msg.id, channelId: channel.id });
 }
 
