@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260825i';
+const APP_VERSION = '20260825j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1436,6 +1436,16 @@ function showPinLockView(user) {
   _hideSplash();
 }
 
+// Le code saisi ne survit à aucun échec : ni un mauvais code, ni une panne, ni
+// une coupure réseau. Un écran de verrouillage qui garde six chiffres à
+// l'affichage pendant que la vérification traîne annule ce qu'il protège.
+function _clearPinEntry() {
+  const inp = document.getElementById('pin-lock-input');
+  if (inp) inp.value = '';
+  _updatePinDots(0);
+  if (inp) setTimeout(() => inp.focus(), 50);
+}
+
 window.pinLockSubmit = async function() {
   const inp = document.getElementById('pin-lock-input');
   const err = document.getElementById('pin-lock-error');
@@ -1453,14 +1463,15 @@ window.pinLockSubmit = async function() {
     if (r.valid) {
           _pinUnlockSuccess(user);
     } else if (r.serverError) {
-      if (err) { err.textContent = 'Vérification indisponible — ' + r.serverError; err.style.display = 'block'; }
+      _clearPinEntry();
+      if (err) { err.textContent = 'Vérification indisponible — ' + r.serverError + '. Ressaisissez votre code.'; err.style.display = 'block'; }
       console.error('[pin] verify serveur:', r.serverError);
     } else if (r.noSecret) {
+      _clearPinEntry();
       if (err) { err.textContent = 'Aucun code enregistré sur ce compte. Déconnectez-vous et reconnectez-vous.'; err.style.display = 'block'; }
     } else {
       _shakePinDots();
-      inp.value = '';
-      _updatePinDots(0);
+      _clearPinEntry();
       if (r.locked) {
         const min = Math.max(1, Math.ceil((r.retryAfterSec || 900) / 60));
         if (err) { err.textContent = `Trop de tentatives. Réessayez dans ${min} minute(s).`; err.style.display = 'block'; }
@@ -1476,7 +1487,8 @@ window.pinLockSubmit = async function() {
     }
   } catch(e) {
     console.error('[pin] verify échoué:', e);
-    if (err) { err.textContent = 'Erreur : ' + (e.message || e.code || 'inconnue'); err.style.display = 'block'; }
+    _clearPinEntry();
+    if (err) { err.textContent = 'Erreur : ' + (e.message || e.code || 'inconnue') + '. Ressaisissez votre code.'; err.style.display = 'block'; }
   } finally {
     setLoading('pin-lock-btn', false);
   }
@@ -2236,12 +2248,18 @@ async function _setupPin(uid, pin) {
 // comptage des tentatives et le verrouillage sont décidés côté serveur, le
 // compteur local ne servant plus qu'à l'affichage.
 async function _verifyPin(uid, pin) {
+  // Sans délai maximal, une connexion coupée en cours de route laisse la requête
+  // pendante aussi longtemps que le navigateur l'accepte : le bouton tourne, et
+  // le code saisi reste affiché à l'écran pendant tout ce temps.
+  const abandon = new AbortController();
+  const minuterie = setTimeout(() => abandon.abort(), 12000);
   try {
     const idToken = await fbAuth.currentUser.getIdToken();
     const res = await fetch(`${WORKER_URL}/verify-pin`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ idToken, pin }),
+      signal: abandon.signal,
     });
     const data = await res.json().catch(() => ({}));
     // Une panne du Worker ne doit pas se lire « Code incorrect » : sans ce test,
@@ -2250,7 +2268,10 @@ async function _verifyPin(uid, pin) {
     return data;
   } catch (e) {
     console.error('_verifyPin error:', e);
+    if (e.name === 'AbortError') return { valid: false, serverError: 'délai dépassé' };
     return { valid: false, serverError: e.message || 'réseau' };
+  } finally {
+    clearTimeout(minuterie);
   }
 }
 
