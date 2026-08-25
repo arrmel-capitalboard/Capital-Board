@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822s';
+const APP_VERSION = '20260822t';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2074,7 +2074,112 @@ function showMaintenanceScreen(msg) {
 function _ensureUserName(user) {
   if (window.IS_DEMO || !user) return;
   window._nameSetupDone = true;
-  _startOnboarding(user.uid);
+  // Les questions personnelles passent avant : elles visent cette personne
+  // nommément, l'onboarding s'adresse à tout le monde. L'onboarding démarre
+  // quand il n'en reste plus, sinon deux modales bloquantes se superposent.
+  _traiterQuestionsPerso(user.uid);
+}
+
+// ─── Messages personnels ──────────────────────────────────────────────────
+// Questions posées par l'admin à des membres nommés (page Admin → Diffusion).
+// Rendues en modale bloquante : on ne va pas plus loin sans avoir répondu.
+// Tout passe par le Worker — la collection n'est pas lisible depuis le
+// navigateur, faute de règles Firestore la couvrant.
+async function _traiterQuestionsPerso(uid) {
+  if (window.IS_DEMO || !uid) return;
+  let rows = [];
+  try {
+    const idToken = await fbAuth.currentUser.getIdToken();
+    const res = await fetch(WORKER_URL + '/my-questions', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken }),
+    });
+    const data = await res.json();
+    rows = (data && data.ok && Array.isArray(data.rows)) ? data.rows : [];
+  } catch (e) {
+    // Worker injoignable : on ne bloque personne dehors pour ça.
+    console.warn('[questions] lecture:', e && e.message);
+  }
+  if (!rows.length) { _startOnboarding(uid); return; }
+  _afficherQuestionPerso(rows, 0, uid);
+}
+
+function _afficherQuestionPerso(rows, i, uid) {
+  if (i >= rows.length) { _startOnboarding(uid); return; }
+  const q = rows[i];
+  const suivante = () => _afficherQuestionPerso(rows, i + 1, uid);
+
+  let el = document.getElementById('pq-gate');
+  if (!el) { el = document.createElement('div'); el.id = 'pq-gate'; document.body.appendChild(el); }
+  el.style.cssText = 'position:fixed;inset:0;z-index:2147483000;display:flex;align-items:center;'
+    + 'justify-content:center;background:rgba(4,6,11,.92);padding:20px;overflow-y:auto';
+
+  const reste = rows.length > 1 ? '<div style="font-size:11px;color:var(--text3);font-family:var(--mono);margin-bottom:10px">'
+    + (i + 1) + ' / ' + rows.length + '</div>' : '';
+
+  // Le libellé vient de l'admin, mais il finit dans de l'innerHTML : échappé
+  // comme tout le reste, sans exception pour la provenance.
+  const corps = q.type === 'boutons'
+    ? '<div style="display:flex;flex-direction:column;gap:8px">'
+      + (q.options || []).map((o, k) =>
+          '<button type="button" class="pf-btn ghost pq-choice" data-k="' + k + '" '
+          + 'style="width:100%;justify-content:center;font-size:13px;padding:11px 14px">'
+          + _escapeHtmlChat(o) + '</button>').join('')
+      + '</div>'
+    : '<textarea id="pq-answer" rows="4" placeholder="Votre réponse" '
+      + 'style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);'
+      + 'border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;resize:vertical;'
+      + 'outline:none;font-family:var(--sans)"></textarea>'
+      + '<div style="display:flex;justify-content:flex-end;margin-top:10px">'
+      + '<button type="button" class="pf-btn primary" id="pq-send" style="font-size:12px">Envoyer</button></div>';
+
+  el.innerHTML =
+    '<div style="max-width:460px;width:100%;background:var(--s1,#0f131c);border:1px solid var(--border);'
+    + 'border-radius:16px;padding:22px">'
+    + reste
+    + '<div style="font-size:11px;font-weight:700;letter-spacing:.5px;color:var(--accent,#7c6df5);'
+    + 'font-family:var(--mono);margin-bottom:10px">MESSAGE DE L’ÉQUIPE</div>'
+    + '<div style="font-size:15px;font-weight:600;color:var(--text);line-height:1.5;margin-bottom:16px">'
+    + _escapeHtmlChat(q.question || '') + '</div>'
+    + corps
+    + '<div id="pq-err" style="font-size:12px;color:#ff5d78;margin-top:10px;display:none"></div>'
+    + '</div>';
+
+  const err = el.querySelector('#pq-err');
+  const montrerErr = (m) => { if (err) { err.textContent = m; err.style.display = 'block'; } };
+
+  const envoyer = async (reponse) => {
+    if (!String(reponse || '').trim()) { montrerErr('Réponse vide.'); return; }
+    el.querySelectorAll('button').forEach((b) => { b.disabled = true; });
+    try {
+      const idToken = await fbAuth.currentUser.getIdToken();
+      const res = await fetch(WORKER_URL + '/my-questions/answer', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, id: q.id, answer: reponse }),
+      });
+      const data = await res.json().catch(() => ({}));
+      // 409 « déjà répondu » : la question a été traitée sur un autre appareil.
+      // Ce n'est pas un échec, on passe à la suivante.
+      if (!data.ok && res.status !== 409) throw new Error(data.error || 'envoi impossible');
+    } catch (e) {
+      el.querySelectorAll('button').forEach((b) => { b.disabled = false; });
+      montrerErr(e && e.message || 'Envoi impossible.');
+      return;
+    }
+    el.remove();
+    suivante();
+  };
+
+  if (q.type === 'boutons') {
+    el.querySelectorAll('.pq-choice').forEach((b) => {
+      b.onclick = () => envoyer((q.options || [])[Number(b.dataset.k)]);
+    });
+  } else {
+    const send = el.querySelector('#pq-send');
+    if (send) send.onclick = () => envoyer(el.querySelector('#pq-answer').value);
+  }
 }
 
 // Questionnaire de profil puis visite guidée (js/onboarding.js).
@@ -15704,6 +15809,9 @@ async function renderAdminUsers() {
     _adminUsersCache = { registered, pending, rowHtml };
     _renderAdminUsersCard();
     _renderAdminUsersModal();
+    // La carte Message perso vit de ce meme cache : elle se peuple ici plutot
+    // que de redemander la liste des comptes pour son seul selecteur.
+    try { adminRenderQuestionUsers(); adminQuestionTypeChange(); adminLoadQuestions(); } catch (_) {}
   } catch (e) {
     console.error('[admin] users:', e);
     box.innerHTML = 'Erreur de chargement (droits Firestore insuffisants ?).';
@@ -16132,6 +16240,145 @@ async function adminForceUpdate(btn) {
 }
 
 // ─── Diffusion + état des services (worker) ───
+// ─── Admin · Message perso ────────────────────────────────────────────────
+// Une question adressée à des membres nommés, rendue chez eux en modale
+// bloquante. La liste des destinataires réutilise le cache déjà constitué par
+// la carte Utilisateurs : pas de second aller-retour pour la même donnée.
+
+window.adminQuestionTypeChange = function() {
+  const type = document.getElementById('pq-type');
+  const opts = document.getElementById('pq-options');
+  if (!type || !opts) return;
+  opts.style.display = type.value === 'boutons' ? '' : 'none';
+};
+
+window.adminRenderQuestionUsers = function() {
+  const box = document.getElementById('pq-users');
+  if (!box) return;
+  if (!_adminUsersCache) { box.innerHTML = '<div style="padding:8px;color:var(--text3)">Chargement des utilisateurs…</div>'; return; }
+  const q = (document.getElementById('pq-search') || {}).value || '';
+  const needle = q.trim().toLowerCase();
+  // Inscrits ET comptes incomplets : une question peut viser quelqu'un qui n'a
+  // jamais fini son profil, c'est même souvent le but.
+  const tous = _adminUsersCache.registered.concat(_adminUsersCache.pending);
+  const list = needle ? tous.filter(u => _adminUsersMatch(u, needle)) : tous;
+  if (!list.length) { box.innerHTML = '<div style="padding:8px;color:var(--text3)">Aucun utilisateur.</div>'; return; }
+  // Les cases déjà cochées survivent au filtrage : sinon taper dans la
+  // recherche viderait une sélection en cours de constitution.
+  const coches = _pqSelection();
+  box.innerHTML = list.map(u => {
+    const nom = ((u.firstName || '') + ' ' + (u.lastName || '')).trim() || u.name || u.email || u.uid.slice(0, 10);
+    const sub = (u.username ? '@' + u.username + ' · ' : '') + (u.email || '');
+    return '<label style="display:flex;align-items:center;gap:9px;padding:6px 7px;border-radius:8px;cursor:pointer">'
+      + '<input type="checkbox" class="pq-u" value="' + _attr(u.uid) + '"' + (coches.includes(u.uid) ? ' checked' : '') + '>'
+      + '<span style="min-width:0">'
+      + '<span style="display:block;font-size:12.5px;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escapeHtmlChat(nom) + '</span>'
+      + '<span style="display:block;font-size:10.5px;color:var(--text3);font-family:var(--mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">' + _escapeHtmlChat(sub) + '</span>'
+      + '</span></label>';
+  }).join('');
+};
+
+// Sélection courante, mémorisée hors du DOM pour ne pas se perdre au filtrage.
+let _pqCoches = [];
+function _pqSelection() {
+  const box = document.getElementById('pq-users');
+  if (box) {
+    box.querySelectorAll('.pq-u').forEach(c => {
+      const i = _pqCoches.indexOf(c.value);
+      if (c.checked && i < 0) _pqCoches.push(c.value);
+      if (!c.checked && i >= 0) _pqCoches.splice(i, 1);
+    });
+  }
+  return _pqCoches;
+}
+
+window.adminQuestionSelectAll = function() {
+  const box = document.getElementById('pq-users');
+  if (!box) return;
+  const cases = box.querySelectorAll('.pq-u');
+  const toutCoche = Array.from(cases).every(c => c.checked);
+  cases.forEach(c => { c.checked = !toutCoche; });
+  _pqSelection();
+};
+
+window.adminSendQuestion = async function() {
+  const st = document.getElementById('pq-status');
+  const dire = (m) => { if (st) st.textContent = m; };
+  const question = (document.getElementById('pq-question') || {}).value || '';
+  const type = (document.getElementById('pq-type') || {}).value || 'boutons';
+  const options = ((document.getElementById('pq-options') || {}).value || '')
+    .split('\n').map(x => x.trim()).filter(Boolean);
+  const uids = _pqSelection().slice();
+
+  if (!question.trim()) { dire('Question vide.'); return; }
+  if (!uids.length) { dire('Aucun destinataire coché.'); return; }
+  if (type === 'boutons' && options.length < 2) { dire('Au moins deux réponses possibles.'); return; }
+
+  dire('Envoi…');
+  try {
+    const r = await _adminAuthPost('/admin/ask', { question, type, options, uids });
+    if (!r || !r.ok) throw new Error((r && r.error) || 'échec');
+    dire(r.poses + ' question(s) posée(s).');
+    const qEl = document.getElementById('pq-question'); if (qEl) qEl.value = '';
+    const oEl = document.getElementById('pq-options'); if (oEl) oEl.value = '';
+    _pqCoches = [];
+    adminRenderQuestionUsers();
+    adminLoadQuestions();
+  } catch (e) {
+    dire('Échec : ' + (e && e.message || 'erreur'));
+  }
+};
+
+window.adminLoadQuestions = async function() {
+  const box = document.getElementById('pq-list');
+  if (!box) return;
+  box.textContent = 'Chargement…';
+  let rows = [];
+  try {
+    const r = await _adminAuthPost('/admin/questions-list', {});
+    if (!r || !r.ok) throw new Error((r && r.error) || 'échec');
+    rows = r.rows || [];
+  } catch (e) {
+    box.textContent = 'Erreur de chargement : ' + (e && e.message || 'erreur');
+    return;
+  }
+  if (!rows.length) { box.textContent = 'Aucune question posée.'; return; }
+
+  // Nom lisible plutôt qu'un uid : le cache Utilisateurs l'a déjà.
+  const noms = {};
+  if (_adminUsersCache) {
+    _adminUsersCache.registered.concat(_adminUsersCache.pending).forEach(u => {
+      noms[u.uid] = ((u.firstName || '') + ' ' + (u.lastName || '')).trim() || u.name || u.email || u.uid.slice(0, 10);
+    });
+  }
+
+  box.innerHTML = rows.map(r => {
+    const qui = noms[r.uid] || (r.uid || '').slice(0, 10) + '…';
+    const etat = r.answeredAt
+      ? '<span style="color:var(--positive)">' + _escapeHtmlChat(r.answer || '') + '</span>'
+      : '<span style="color:var(--text3);font-style:italic">en attente</span>';
+    return '<div style="display:flex;gap:10px;align-items:flex-start;padding:7px 0;border-top:1px solid var(--border)">'
+      + '<div style="flex:1;min-width:0">'
+      + '<div style="color:var(--text);font-size:12px">' + _escapeHtmlChat(r.question || '') + '</div>'
+      + '<div style="margin-top:2px;font-size:11px"><span style="font-family:var(--mono);color:var(--text3)">'
+      + _escapeHtmlChat(qui) + '</span> — ' + etat + '</div>'
+      + '</div>'
+      + '<button class="pf-btn ghost" style="font-size:10.5px;padding:5px 9px;flex-shrink:0" '
+      + 'onclick="adminDeleteQuestion(\'' + _attr(r.id) + '\')">Supprimer</button>'
+      + '</div>';
+  }).join('');
+};
+
+window.adminDeleteQuestion = async function(id) {
+  try {
+    const r = await _adminAuthPost('/admin/question-delete', { id });
+    if (!r || !r.ok) throw new Error((r && r.error) || 'échec');
+  } catch (e) {
+    console.error('[admin] suppression question:', e);
+  }
+  adminLoadQuestions();
+};
+
 async function _adminAuthPost(path, payload) {
   const idToken = await fbAuth.currentUser.getIdToken();
   const res = await fetch(WORKER_URL + path, {

@@ -886,6 +886,27 @@ async function rolesWithUsername(username, env) {
   return rows.filter((r) => r.document).map((r) => r.document.name.split('/').pop());
 }
 
+// Requête par égalité sur un champ, pour une collection quelconque. Un filtre
+// d'égalité simple n'a besoin d'aucun index composite.
+async function firestoreQueryEq(collection, champ, valeur, limite, env) {
+  const token = await getAccessToken(env);
+  const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents:runQuery`;
+  const res = await fetch(url, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      structuredQuery: {
+        from: [{ collectionId: collection }],
+        where: { fieldFilter: { field: { fieldPath: champ }, op: 'EQUAL', value: { stringValue: valeur } } },
+        limit: limite || 50,
+      },
+    }),
+  });
+  if (!res.ok) throw new Error(`Firestore runQuery ${res.status}: ${await res.text()}`);
+  const rows = await res.json();
+  return rows.filter((r) => r.document).map((r) => r.document);
+}
+
 async function firestoreDelete(path, env) {
   const token = await getAccessToken(env);
   const url = `https://firestore.googleapis.com/v1/projects/${env.FIREBASE_PROJECT_ID}/databases/(default)/documents/${path}`;
@@ -2717,6 +2738,163 @@ export default {
         if (!user || user.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
         if (!id || /[^\w.-]/.test(id)) return json({ error: 'id invalide' }, 400);
         await firestoreDelete(`scheduledEmails/${id}`, env);
+        return json({ ok: true });
+      }
+
+      // ── Messages personnels ──────────────────────────────────────────────
+      // Une question posée par l'admin à un ou plusieurs membres nommés, rendue
+      // en modale bloquante à leur prochaine connexion.
+      //
+      // Tout passe par le Worker, y compris la lecture par le destinataire :
+      // une collection lisible depuis le navigateur demanderait des règles
+      // Firestore, et la question porte le nom de la personne visée. Ici le
+      // compte de service écrit et lit, et chaque route vérifie qui appelle.
+      //
+      // Un document par couple (question, destinataire) : la réponse de l'un
+      // n'a pas à voisiner celle d'un autre, et la lecture d'un membre se
+      // ramène à un filtre d'égalité sur `uid`, sans index composite.
+
+      // ── POST /admin/ask ─────────────────────────────────────────────────
+      if (url.pathname === '/admin/ask' && request.method === 'POST') {
+        const { idToken, question, type, options, uids } = await request.json();
+        const admin = await verifyIdToken(idToken, env);
+        if (!admin || admin.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+
+        const texte = String(question || '').trim();
+        if (!texte) return json({ error: 'Question vide' }, 400);
+        if (texte.length > 500) return json({ error: 'Question trop longue (500 caractères)' }, 400);
+        if (type !== 'boutons' && type !== 'texte') return json({ error: 'Type invalide' }, 400);
+
+        // Les libellés de boutons finissent dans le DOM du destinataire : on
+        // borne leur nombre et leur taille ici, l'échappement se fait au rendu.
+        let choix = [];
+        if (type === 'boutons') {
+          choix = (Array.isArray(options) ? options : [])
+            .map((o) => String(o || '').trim())
+            .filter(Boolean)
+            .slice(0, 6);
+          if (choix.length < 2) return json({ error: 'Au moins deux réponses possibles' }, 400);
+          if (choix.some((o) => o.length > 60)) return json({ error: 'Réponse trop longue (60 caractères)' }, 400);
+        }
+
+        const cibles = (Array.isArray(uids) ? uids : [])
+          .map((u) => String(u || '').trim())
+          .filter((u) => /^[A-Za-z0-9]{6,64}$/.test(u))
+          .slice(0, 200);
+        if (!cibles.length) return json({ error: 'Aucun destinataire' }, 400);
+
+        const groupe = crypto.randomUUID();
+        const maintenant = Date.now();
+        let poses = 0;
+        for (const uid of cibles) {
+          const fields = {
+            uid: { stringValue: uid },
+            question: { stringValue: texte },
+            type: { stringValue: type },
+            options: { arrayValue: { values: choix.map((o) => ({ stringValue: o })) } },
+            groupId: { stringValue: groupe },
+            createdAt: { integerValue: String(maintenant) },
+          };
+          try {
+            await firestoreSet(`personalQuestions/${crypto.randomUUID()}`, fields, env);
+            poses++;
+          } catch (e) {
+            console.error('admin/ask: ' + e.message);
+          }
+        }
+        return json({ ok: true, poses });
+      }
+
+      // ── POST /admin/questions-list ──────────────────────────────────────
+      if (url.pathname === '/admin/questions-list' && request.method === 'POST') {
+        const { idToken } = await request.json();
+        const admin = await verifyIdToken(idToken, env);
+        if (!admin || admin.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        let docs = [];
+        try { docs = await firestoreList('personalQuestions', env); }
+        catch (e) { console.error('questions-list: ' + e.message); return json({ error: 'Erreur serveur' }, 500); }
+        const rows = docs.map((d) => ({
+          id: d.name.split('/').pop(),
+          uid: fsStr(d, 'uid'),
+          question: fsStr(d, 'question'),
+          type: fsStr(d, 'type'),
+          options: (d.fields?.options?.arrayValue?.values || []).map((v) => v.stringValue),
+          answer: fsStr(d, 'answer'),
+          createdAt: fsNum(d, 'createdAt'),
+          answeredAt: fsNum(d, 'answeredAt'),
+        })).sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+        return json({ ok: true, rows });
+      }
+
+      // ── POST /admin/question-delete ─────────────────────────────────────
+      if (url.pathname === '/admin/question-delete' && request.method === 'POST') {
+        const { idToken, id } = await request.json();
+        const admin = await verifyIdToken(idToken, env);
+        if (!admin || admin.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        if (!id || /[^\w-]/.test(id)) return json({ error: 'id invalide' }, 400);
+        await firestoreDelete(`personalQuestions/${id}`, env);
+        return json({ ok: true });
+      }
+
+      // ── POST /my-questions ──────────────────────────────────────────────
+      // Questions en attente pour l'appelant. `uid` vient du jeton vérifié et
+      // jamais du corps de la requête : sinon n'importe qui lirait les
+      // questions posées à n'importe qui d'autre.
+      if (url.pathname === '/my-questions' && request.method === 'POST') {
+        const { idToken } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        if (!user) return json({ error: 'non authentifié' }, 401);
+        let docs = [];
+        try {
+          docs = await firestoreQueryEq('personalQuestions', 'uid', user.localId, 50, env);
+        } catch (e) {
+          console.error('my-questions: ' + e.message);
+          return json({ error: 'Erreur serveur' }, 500);
+        }
+        const rows = docs
+          .filter((d) => fsNum(d, 'answeredAt') === null)
+          .map((d) => ({
+            id: d.name.split('/').pop(),
+            question: fsStr(d, 'question'),
+            type: fsStr(d, 'type'),
+            options: (d.fields?.options?.arrayValue?.values || []).map((v) => v.stringValue),
+            createdAt: fsNum(d, 'createdAt'),
+          }))
+          .sort((a, b) => (a.createdAt || 0) - (b.createdAt || 0));
+        return json({ ok: true, rows });
+      }
+
+      // ── POST /my-questions/answer ───────────────────────────────────────
+      if (url.pathname === '/my-questions/answer' && request.method === 'POST') {
+        const { idToken, id, answer } = await request.json();
+        const user = await verifyIdToken(idToken, env);
+        if (!user) return json({ error: 'non authentifié' }, 401);
+        if (!id || /[^\w-]/.test(id)) return json({ error: 'id invalide' }, 400);
+
+        let doc;
+        try { doc = await firestoreGet(`personalQuestions/${id}`, env); }
+        catch { return json({ error: 'Question introuvable' }, 404); }
+        // Le destinataire est celui inscrit dans le document, pas celui qui
+        // demande : un id deviné ne doit rien ouvrir.
+        if (fsStr(doc, 'uid') !== user.localId) return json({ error: 'forbidden' }, 403);
+        if (fsNum(doc, 'answeredAt') !== null) return json({ error: 'Déjà répondu' }, 409);
+
+        const brut = String(answer ?? '').trim();
+        if (!brut) return json({ error: 'Réponse vide' }, 400);
+        if (brut.length > 2000) return json({ error: 'Réponse trop longue' }, 400);
+        // Question à boutons : la réponse doit être l'un des libellés proposés.
+        // Sans ce contrôle, le champ serait libre malgré l'apparence fermée.
+        if (fsStr(doc, 'type') === 'boutons') {
+          const choix = (doc.fields?.options?.arrayValue?.values || []).map((v) => v.stringValue);
+          if (!choix.includes(brut)) return json({ error: 'Réponse hors des choix proposés' }, 400);
+        }
+
+        await firestoreUpdate(
+          `personalQuestions/${id}`,
+          { answer: { stringValue: brut }, answeredAt: { integerValue: String(Date.now()) } },
+          ['answer', 'answeredAt'],
+          env
+        );
         return json({ ok: true });
       }
 

@@ -1411,7 +1411,7 @@
         <div class="admin-section-head">
           <div class="admin-section-bar"></div>
           <div class="admin-section-title">Diffusion</div>
-          <div class="admin-section-badge">2</div>
+          <div class="admin-section-badge">3</div>
         </div>
         <div class="admin-section-grid">
 
@@ -1474,6 +1474,47 @@
             <div id="bc-mail-scheduled" style="margin-top:14px;font-size:12px;color:var(--text3)"></div>
           </div>
 
+
+          <div class="admin-card">
+            <div class="admin-card-head">
+              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+              <div>
+                <div class="admin-card-title">Message perso</div>
+                <div class="admin-card-desc">Pose une question à <strong>un ou plusieurs membres choisis</strong>. Elle s'affiche en modale bloquante à leur prochaine connexion.</div>
+              </div>
+            </div>
+
+            <textarea id="pq-question" placeholder="Votre question" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;outline:none;font-family:var(--sans);resize:vertical;min-height:56px;margin-top:10px"></textarea>
+
+            <div style="display:flex;gap:8px;margin-top:8px;align-items:center">
+              <select id="pq-type" onchange="adminQuestionTypeChange()" style="flex:1;min-width:0;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;outline:none;font-family:var(--sans)">
+                <option value="boutons">Réponses à choisir (boutons)</option>
+                <option value="texte">Réponse libre (texte)</option>
+              </select>
+            </div>
+
+            <textarea id="pq-options" placeholder="Une réponse possible par ligne (2 à 6)" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;outline:none;font-family:var(--sans);resize:vertical;min-height:56px;margin-top:8px"></textarea>
+
+            <div style="margin-top:10px">
+              <div style="display:flex;align-items:center;justify-content:space-between;gap:8px;margin-bottom:6px">
+                <div style="font-size:12px;color:var(--text3)">Destinataires</div>
+                <button class="pf-btn ghost" onclick="adminQuestionSelectAll()" style="font-size:11px;padding:5px 9px">Tout cocher</button>
+              </div>
+              <input id="pq-search" oninput="adminRenderQuestionUsers()" placeholder="Filtrer par nom, pseudo ou email" style="width:100%;box-sizing:border-box;background:var(--s2);border:1px solid var(--border);border-radius:10px;color:var(--text);font-size:13px;padding:10px 12px;outline:none;font-family:var(--sans);margin-bottom:6px">
+              <div id="pq-users" style="max-height:190px;overflow-y:auto;border:1px solid var(--border);border-radius:10px;padding:6px"></div>
+            </div>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:12px">
+              <div id="pq-status" style="font-size:12px;color:var(--text3)"></div>
+              <button class="pf-btn primary" onclick="adminSendQuestion()" style="font-size:11.5px;flex-shrink:0">Poser la question</button>
+            </div>
+
+            <div style="display:flex;align-items:center;justify-content:space-between;margin-top:16px;gap:8px">
+              <div style="font-size:12px;color:var(--text3)">Questions posées</div>
+              <button class="pf-btn ghost" onclick="adminLoadQuestions()" style="font-size:11px;padding:5px 9px">Rafraîchir</button>
+            </div>
+            <div id="pq-list" style="margin-top:8px;font-size:12px;color:var(--text3)"></div>
+          </div>
         </div>
       </div>
       </div><!-- /Utilisateurs + Diffusion -->
@@ -3697,9 +3738,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260822s"></script>
+<script src="js/app.js?v=20260822t"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260822s"></script>
+<script src="js/onboarding.js?v=20260822t"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
 <script src="js/import.js?v=20260822b"></script>
 
