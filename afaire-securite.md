@@ -8,51 +8,80 @@ marché.
 
 ## À faire, dans l'ordre
 
-### 1. Réparer la connexion Google en PWA iPhone — à tester sur iPhone
+### 1. Connexion Google en PWA iPhone — réparée le 25/08
 
-Tout est posé, il ne reste que l'essai sur l'appareil.
+Testée et fonctionnelle sur iPhone, en Safari comme en PWA.
 
 **Le problème.** Le login Google ne fonctionnait pas sur iPhone : la page
 Google se fermait, on revenait à l'écran de connexion, Turnstile se
 réinitialisait, et rien ne se passait. Aucune erreur.
 
-**La cause, vérifiée le 24/08.** `firebaseConfig.authDomain` valait
-`capitalboard.firebaseapp.com`, une origine différente de `capitalboard.fr`.
-Au retour de `signInWithRedirect`, le SDK avait écrit son état sur
-`firebaseapp.com` ; Safari cloisonne le stockage par origine depuis ITP, donc
-`capitalboard.fr` ne pouvait pas le relire. `getRedirectResult()` renvoyait
-`null`, le SDK concluait qu'il n'y avait pas eu de connexion. Ce n'était pas une
-régression : ce chemin n'a probablement jamais marché en PWA. Sur PC, la
-connexion Google passe par Google Identity Services et n'utilise pas
-`authDomain` du tout — elle n'était pas concernée.
+**Trois causes empilées**, découvertes l'une après l'autre — la première
+masquait les deux suivantes.
 
-**Le remède, posé le 25/08.** `/__/auth/*` est servi depuis notre propre
-origine, par le relais en tête du `fetch` du Worker.
+1. **Stockage cloisonné.** `authDomain` valait `capitalboard.firebaseapp.com`,
+   une origine différente de `capitalboard.fr`. Au retour de
+   `signInWithRedirect`, le SDK avait écrit son état sur `firebaseapp.com` ;
+   Safari cloisonne le stockage par origine depuis ITP, donc `capitalboard.fr`
+   ne pouvait pas le relire. Ce chemin n'a probablement jamais marché en PWA.
+2. **URI de redirection non enregistrée.** Une fois `authDomain` basculé, Google
+   a répondu `redirect_uri_mismatch`. Les *origines JavaScript* du client OAuth
+   contenaient bien `https://capitalboard.fr`, mais les *URI de redirection*
+   n'avaient que `capitalboard.firebaseapp.com/__/auth/handler`. Deux listes
+   distinctes, et c'est la seconde que Google vérifie au retour d'un redirect.
+3. **Retour lu une seule fois.** `getRedirectResult()` n'était appelé qu'au
+   démarrage. Dans une PWA iOS, la page Google s'ouvre dans une vue posée
+   par-dessus l'app : à sa fermeture l'app reprend son contexte sans recharger,
+   et le retour n'était jamais lu.
 
-- Route Cloudflare `capitalboard.fr/__/*` → `capital-board-worker`, posée le
-  25/08 sur le compte `admin.capitalboard@gmail.com`. Vérifiée : `handler`,
-  `handler.js`, `experiments.js`, `iframe` et `iframe.js` répondent tous 200
-  avec le vrai helper Firebase, et le reste du site sort toujours de GitHub
-  Pages.
-- URI de redirection `https://capitalboard.fr/__/auth/handler` autorisée sur le
-  client OAuth Google, et `capitalboard.fr` dans les domaines autorisés
-  Firebase — les deux étaient déjà en place.
-- `authDomain` basculé sur `capitalboard.fr` (`js/app.js`), version bumpée en
-  `20260822k`.
+**Ce qui a été posé.**
 
-L'ancienne URI `capitalboard.firebaseapp.com/__/auth/handler` reste autorisée
-côté Google, et `capitalboard.firebaseapp.com` reste dans `frame-src` : à
-retirer une fois la bascule éprouvée, pas avant.
+- Route Cloudflare `capitalboard.fr/__/*` → `capital-board-worker`, sur le
+  compte `admin.capitalboard@gmail.com`. Le relais était déjà dans le Worker
+  depuis le 24/08, il était simplement inatteignable.
+- URI `https://capitalboard.fr/__/auth/handler` ajoutée aux **URI de
+  redirection** du client OAuth `719745213666-t6mh98ub…`.
+- `authDomain` → `capitalboard.fr` dans `js/app.js`.
+- Retour de redirect rejoué quand l'app redevient visible, et non plus au seul
+  démarrage.
+- `https://apis.google.com` ajouté à `script-src` et `connect-src` : le SDK y
+  charge `api.js` pour l'iframe qui lui rend l'événement d'authentification.
+  Hôte documenté par Firebase, oublié lors du durcissement CSP du 15/08.
+- Diagnostic à l'écran : version, étape atteinte, état d'App Check, état de
+  gapi, réponse serveur, début de pile. Sans lui, rien n'était diagnosticable —
+  un iPhone n'a pas de console, et `auth/internal-error` ne dit rien seul.
 
-Les trois autres fichiers qui portent un `authDomain`
-(`firebase-messaging-sw.js`, `pages/auth-action.html`, `pages/index.html`) ne
-font aucun `signInWithRedirect` : config inerte, laissée telle quelle.
+**Ce qui reste ouvert, sans urgence.** L'ancienne URI
+`capitalboard.firebaseapp.com/__/auth/handler` reste autorisée côté Google, et
+`capitalboard.firebaseapp.com` reste dans `frame-src` : à retirer une fois la
+bascule éprouvée sur la durée. Les trois autres fichiers qui portent un
+`authDomain` (`firebase-messaging-sw.js`, `pages/auth-action.html`,
+`pages/index.html`) ne font aucun `signInWithRedirect` : config inerte, laissée
+telle quelle.
 
-**Test :** sur iPhone, app fermée puis rouverte, connexion Google. Attendu :
-soit l'app s'ouvre, soit un code 2FA est demandé. Si l'écran de connexion
-revient, une ligne rouge « Connexion Google dégradée : … » doit apparaître et
-donner la raison. Un `redirect_uri_mismatch` dans les minutes qui suivent une
-modification côté Google est un délai de propagation : réessayer.
+**Piège à ne pas redécouvrir.** Avant le login, la vérification de version ne
+tourne qu'au chargement de la page — la boucle qui revérifie chaque minute ne
+démarre qu'une fois connecté. Un onglet resté ouvert sur l'écran de connexion
+ne verra jamais un nouveau déploiement arriver. D'où l'estampille `v=` dans le
+message de diagnostic.
+
+### 1 bis. Consentement contourné par le bouton Google — corrigé le 25/08
+
+Le bouton Google était le même sur la connexion et sur l'inscription, mais
+seule la seconde présente les CGU et le RGPD. Un clic depuis la connexion
+créait pourtant un compte, sans qu'aucun consentement n'ait été recueilli :
+`signInWithRedirect` le crée en effet de bord sur iOS, `accounts:signInWithIdp`
+le crée côté Worker sur le flux popup.
+
+L'intention de départ (`intent`) est désormais transmise et vérifiée aux deux
+endroits. Un compte né d'un clic « Connexion » est supprimé, et la réponse
+invite à créer un compte. `intent` vient du client et se falsifie, comme la
+case à cocher elle-même : ce contrôle sert la cohérence du parcours de
+consentement, pas la protection contre un attaquant.
+
+**À tester** : cliquer « Continuer avec Google » depuis la connexion, avec une
+adresse Google jamais utilisée. Attendu : « Aucun compte n'est associé à cette
+adresse Google. Créez d'abord un compte. », et aucun compte laissé derrière.
 
 ### 2. Activer les boutons de validation Discord
 
