@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260825d';
+const APP_VERSION = '20260825e';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -12663,6 +12663,17 @@ function initDividendes() {
       if (added) { try { renderPortfolio(); } catch(_) {} }
     }
 
+    // Un dernier versement vieux de plus de dix-huit mois ne se reconduit pas :
+    // l'entreprise a coupé son dividende. Sans cette borne, Eutelsat — suspendu
+    // depuis novembre 2022 — était projeté à 0,72 €/action pour l'année en
+    // cours, sur la foi de son dernier versement connu. Signalé par un membre le
+    // 22/08/2026. Dix-huit mois laissent passer un versement annuel en retard de
+    // six mois, sans ressusciter un dividende abandonné.
+    const perimeStr = (() => {
+      const d = new Date(); d.setMonth(d.getMonth() - 18);
+      return d.toISOString().slice(0, 10);
+    })();
+
     // Mettre à jour KPIs dynamiques
     const totalHolding   = rows.reduce((s, x) => s + x.duringHolding.length, 0);
     // Les rompus d'attribution gratuite sont un produit de cession de droits,
@@ -12728,6 +12739,9 @@ function initDividendes() {
         const nextEntry = history.find(d => d.next === true);
         const refDiv = nextEntry || lastKnown;
         if (!refDiv) return null;
+        // Une date annoncée fait foi, même si le dernier versement est ancien :
+        // c'est une reprise de distribution, pas une extrapolation.
+        if (!nextEntry && lastKnown && lastKnown.date < perimeStr) return null;
         const freq = Math.max(history.filter(d => !d.next && d.date >= oneYearAgoStr).length, 1);
         const annual = refDiv.amount * r.qty * freq;
         // Réel = ce qui a été encaissé depuis le 1er janvier. Les attributions
@@ -12806,7 +12820,16 @@ function initDividendes() {
             <td data-label="Détenu depuis" class="mono" style="font-size:11px;color:var(--text3)">${buyStr}</td>
             <td data-label="Quantité" class="mono">${r.qty}</td>
             <td data-label="Total reçu" class="mono" style="color:${totalRecu > 0 ? 'var(--positive)' : 'var(--text3)'};font-weight:600">${totalRecu > 0 ? totalRecu.toFixed(2)+' €' : '—'}</td>
-            <td data-label="Dernier div./action" class="mono" style="color:var(--text2)">${lastKnown ? lastKnown.amount.toFixed(2)+' €/action' : '—'}</td>
+            <td data-label="Dernier div./action" class="mono" style="color:var(--text2)">${lastKnown
+              ? lastKnown.amount.toFixed(2) + ' €/action'
+                // Le montant seul se lisait comme un dividende courant. La date
+                // dit tout de suite qu'il remonte à 2022, et la mention retire
+                // le doute quand il ne sert plus de référence.
+                + '<div style="font-size:10px;color:var(--text3);margin-top:2px">'
+                + new Date(lastKnown.date + 'T12:00:00').toLocaleDateString('fr-FR', { month: 'short', year: 'numeric' })
+                + (lastKnown.date < perimeStr ? ' · plus versé depuis' : '')
+                + '</div>'
+              : '—'}</td>
             <td data-label="Prochain estimé" style="font-size:11px;color:var(--text2)">${nextEstim !== '—' ? nextEstim : '—'}</td>
             <td data-label="Pendant détention">${holdingBadge}</td>
           </tr>`;
