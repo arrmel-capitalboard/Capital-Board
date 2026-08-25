@@ -24,6 +24,8 @@ on:
 
 permissions:
   contents: write
+  # Pour déclencher les workflows de déploiement (voir l'étape « Déploiements »).
+  actions: write
 
 concurrency:
   group: security-apply
@@ -108,6 +110,38 @@ jobs:
 
       - name: Push
         run: git push origin HEAD:main
+
+      # Un push fait avec le GITHUB_TOKEN ne déclenche aucun autre workflow :
+      # GitHub coupe la chaîne pour éviter les boucles. Sans cette étape, le
+      # correctif atterrit sur main et n'est jamais mis en ligne — le trou
+      # qu'il bouche reste ouvert en production, alors que Discord affiche
+      # « appliqué ». Constaté sur le premier correctif validé, le 25/08.
+      #
+      # `workflow_dispatch` est la seule exception à cette règle : un workflow
+      # lancé ainsi tourne, même déclenché avec le jeton du workflow.
+      - name: Déploiements
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          touches="$(git diff --name-only HEAD~1 HEAD)"
+          echo "Fichiers du commit :"
+          echo "$touches"
+
+          # Le site part dans tous les cas : la page publiée doit correspondre
+          # à main, et Pages republie l'ensemble quoi qu'il arrive.
+          gh workflow run deploy.yml --ref main
+          echo "Site : déploiement lancé."
+
+          if echo "$touches" | grep -q '^capital-board-worker/'; then
+            gh workflow run deploy-worker.yml --ref main
+            echo "Worker : déploiement lancé."
+          fi
+
+          if echo "$touches" | grep -q '^discord-bot/'; then
+            gh workflow run deploy-bot.yml --ref main
+            echo "Bot : déploiement lancé."
+          fi
 
       # Le bot suit ce document : l'embed Discord se met à jour tout seul, avec
       # le SHA et un bouton « Revenir » si l'application a réussi.
