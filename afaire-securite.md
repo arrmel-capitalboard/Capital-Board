@@ -99,16 +99,6 @@ produit bien un commit.
   Attendu : un code à 6 chiffres arrive par email avant tout accès. Penser à
   supprimer les comptes de test ensuite.
 
-### 4. Ticket GitHub — suivre la réponse
-
-Demande de ramasse-miettes envoyée le 24/08 (catégorie « Suppressions »), pour
-purger les objets devenus inatteignables après la réécriture d'historique. Tant
-qu'elle n'est pas traitée, `threat-model.md` et `audit-securite-2026-08-22.md`
-restent lisibles par leur SHA d'origine.
-
-**D'ici là : ne pas créer de fork et ne pas ouvrir de PR** — l'un comme l'autre
-réancre les objets et fait échouer le nettoyage.
-
 ---
 
 ## Fait le 24 août
