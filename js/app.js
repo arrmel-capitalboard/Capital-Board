@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822l';
+const APP_VERSION = '20260822m';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -310,9 +310,29 @@ _splashWatchdog = setTimeout(() => {
     } catch(e) {
       _retourGoogleTraite = true;
       _redirectGoogleSolde();
-      console.warn('[google] getRedirectResult:', e && e.message);
+      console.warn('[google] getRedirectResult:', e);
+      // auth/internal-error est une enveloppe : la cause réelle est la réponse
+      // du backend, que le SDK range dans customData. Sans elle il n'y a rien à
+      // diagnostiquer, surtout sur un téléphone où la console est hors d'atteinte.
+      let detail = '';
+      try {
+        const sr = e && e.customData && e.customData.serverResponse;
+        if (sr) detail = ' — ' + (typeof sr === 'string' ? sr : JSON.stringify(sr)).slice(0, 400);
+      } catch (_) {}
+      // Un jeton App Check absent fait rejeter signInWithIdp en 401, et le SDK
+      // le remonte en internal-error : on dit tout de suite dans quel état il est.
+      let ac = 'inconnu';
+      try {
+        if (!window._appCheckMod || !window._appCheck) ac = 'non initialisé';
+        else ac = (await window._appCheckMod.getToken(window._appCheck, false)).token ? 'ok' : 'vide';
+      } catch (eac) { ac = 'échec (' + ((eac && eac.message) || '?') + ')'; }
+      const msg = 'Connexion Google impossible : ' + (e && (e.code || e.message) || 'erreur')
+        + detail + ' [appcheck=' + ac + ']';
+      // Noté avant d'être affiché : la vue peut basculer et vider le message,
+      // la trace le réaffichera au prochain écran de connexion.
+      _noterDiagGoogle(msg);
       const errEl = document.getElementById('login-error');
-      if (errEl) errEl.textContent = 'Connexion Google impossible : ' + (e && (e.message || e.code) || 'erreur');
+      if (errEl) { errEl.textContent = msg; errEl.style.display = 'block'; }
     }
   }
 
