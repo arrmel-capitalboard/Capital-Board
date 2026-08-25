@@ -1,6 +1,6 @@
 # Sécurité — reprise
 
-Journal de la séance du 24 août 2026, et ce qui reste à faire. Écrit pour être
+Journal des séances des 24 et 25 août 2026, et ce qui reste à faire. Écrit pour être
 repris à froid : chaque tâche dit où cliquer et comment vérifier qu'elle a
 marché.
 
@@ -83,30 +83,48 @@ consentement, pas la protection contre un attaquant.
 adresse Google jamais utilisée. Attendu : « Aucun compte n'est associé à cette
 adresse Google. Créez d'abord un compte. », et aucun compte laissé derrière.
 
-### 2. Activer les boutons de validation Discord
+### 2. Boutons de validation Discord — activés le 25/08
 
-Le scan sait proposer des correctifs et les poster dans le salon sécurité avec
-deux boutons, mais le bot ne peut pas encore déclencher leur application.
+Le jeton vivait bien sur la VM, mais la ligne du `.env` portait le préfixe deux
+fois : `github_pat_github_pat_11B7…`. GitHub répondait `401 Bad credentials`, et
+les deux propositions en attente mouraient en « erreur » sans que rien ne parte.
+Rien à voir avec les droits accordés au jeton : un 401 dit qu'il n'est pas
+reconnu du tout, un droit manquant aurait donné 403 ou 404. Le diagnostic s'est
+lu dans le champ `erreur` des documents `scanPatches`, que le bot y écrit —
+sans lui, il n'y avait rien à regarder, la VM ne garde pas ces logs.
 
-**a.** Créer un jeton GitHub fine-grained sur `arrmel-capitalboard/Capital-Board` :
-Actions **Read and write**, Contents **Read and write**.
+Premier correctif validé de bout en bout dans la foulée : commit `f2c0149`.
 
-**b.** Sur la VM du bot :
+**Deux pièges relevés au passage.**
 
-```bash
-nano ~/Capital-Board/discord-bot/.env
-# GITHUB_DISPATCH_TOKEN=github_pat_...
-# GITHUB_REPO=arrmel-capitalboard/Capital-Board
-pm2 restart capitalboard-bot --update-env
-```
+- **Un correctif en « erreur » n'a plus aucun bouton.** `payload()` n'en pose
+  que sur `attente` et `applique`. Jeton réparé, les deux propositions
+  restaient donc inertes : il a fallu repasser le document en `attente` avec la
+  clé de service. À reprendre : un bouton « Réessayer » sur le statut `erreur`.
+- **Un push fait par un workflow ne déclenche aucun autre workflow.** GitHub
+  coupe la chaîne pour éviter les boucles. Le correctif est arrivé sur `main`
+  sans être déployé : le Worker a continué à tourner avec le code troué pendant
+  que Discord affichait « appliqué ». `security-apply` déclenche désormais les
+  déploiements lui-même (`a4f8e86`) — site à chaque fois, Worker et bot selon
+  les fichiers touchés. `workflow_dispatch` est la seule exception à la règle
+  anti-boucle, c'est ce qui rend la manœuvre possible.
 
-`--update-env` est indispensable : sans lui pm2 garde les anciennes variables.
+**À faire, hérité de la séance.** Le jeton GitHub, le jeton Discord et la clé
+Mistral ont été lus en clair dans une capture d'écran du `.env` partagée
+pendant la séance. Les trois sont à régénérer : Discord d'abord (qui l'a pilote
+le bot), puis Mistral, puis le jeton GitHub maintenant que la chaîne est
+validée.
 
-**c.** Déclencher un scan manuel (Actions → Scan de sécurité → Run workflow) et
-vérifier qu'une proposition arrive avec ses boutons, et que « Appliquer »
-produit bien un commit.
+### 3. Compte rendu du scan — reformulé le 25/08
 
-### 3. Tests en attente
+La section « Regardé » listait des noms de fichiers. Lue sur un téléphone, elle
+n'apprenait rien : `index.js (worker)` ne dit pas ce qui a été relu. Le prompt
+demande maintenant les sujets en langage courant — « la connexion Google sur
+iPhone », « les boutons de validation dans Discord » — cinq lignes au plus. Le
+nom du fichier reste sur la ligne « Où » d'un problème, où il sert à retrouver
+la ligne exacte. Commit `9cb510b`, effet au prochain scan.
+
+### 4. Tests en attente
 
 - **Remplacement TOTP.** Profil → Sécurité → enrôler un nouvel authentificateur
   alors qu'un existe déjà. Attendu : une fenêtre demande un code de l'actuel.
@@ -177,5 +195,10 @@ quand une décision est attendue.
   de l'API GitHub : *« Allow forks setting can only be changed on org-owned
   private repositories »*. Sans objet en pratique : un `git clone` ne demande
   aucune permission.
-- **Pas de clé de service `capitalboard` en local** pour diagnostiquer Firestore
-  (celle des Téléchargements appartient au projet `dashboard-pea`).
+- ~~**Pas de clé de service `capitalboard` en local.**~~ Faux, découvert le
+  25/08 : `discord-bot/firebase-key.json` est bien celle du projet
+  `capitalboard`, et elle est ignorée par git. Elle lit et écrit Firestore
+  depuis le poste — c'est ce qui a permis de lire l'erreur GitHub des
+  propositions bloquées et de les remettre en attente. La clé du dossier
+  Téléchargements, elle, appartient au projet `dashboard-pea` : c'est la
+  confusion d'origine.

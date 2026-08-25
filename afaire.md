@@ -1,6 +1,6 @@
 # À faire — Capital Board
 
-Dernière mise à jour : 15 août 2026.
+Dernière mise à jour : 25 août 2026.
 
 Priorité par ordre décroissant. Les points de sécurité sont en tête : ils passent
 avant toute nouvelle fonctionnalité.
@@ -14,9 +14,11 @@ avant toute nouvelle fonctionnalité.
 > parcours navigateur jamais testé en vrai, et un export d'une autre banque
 > que le CIC pour éprouver le parseur.
 >
-> **Sécurité** : la séance du 24/08 et ce qu'il reste à faire sont dans
-> [`afaire-securite.md`](afaire-securite.md) — connexion Google en PWA à
-> réparer en priorité, boutons de validation Discord à activer.
+> **Sécurité** : les séances des 24 et 25/08 et ce qu'il reste à faire sont
+> dans [`afaire-securite.md`](afaire-securite.md). La connexion Google en PWA
+> est réparée, les boutons de validation Discord tournent, un premier correctif
+> a été appliqué depuis Discord. Restent des tests à faire à la main, et trois
+> secrets à régénérer après une capture d'écran de trop.
 >
 > **Dépenses & abonnements** a son propre fichier : [`afaire-depenses.md`](afaire-depenses.md).
 > Module livré et ouvrable en bêta depuis le 12 août 2026 ; la suite du sujet —
