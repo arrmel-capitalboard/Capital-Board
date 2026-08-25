@@ -1149,12 +1149,16 @@ async function purgeUnverifiedAccounts(env) {
     if (u.localId === env.ADMIN_UID) continue;     // jamais l'admin
     if (!u.createdAt || u.createdAt > cutoff) continue; // date inconnue → on garde
     try {
+      // Purge complète, puis Auth : c'est la suppression du compte Auth qui est
+      // le point de non-retour, et une purge partielle laisse des données
+      // personnelles derrière elle. Ce chemin n'effaçait que trois documents,
+      // en supposant qu'un compte non vérifié n'était jamais entré dans l'app.
+      // C'est faux — un compte peut se créer, utiliser l'application et ne
+      // jamais cliquer le lien de vérification. Relevé le 25/08 : cinq
+      // documents `users/{uid}` restaient, avec l'adresse email et, pour deux
+      // d'entre eux, la sous-collection `data` du portefeuille.
+      await purgeUserData(u.localId, env);
       await deleteAuthUser(u.localId, env);
-      // Best-effort : ces comptes n'ont normalement aucun doc (ils ne sont
-      // jamais entrés dans l'app), mais on nettoie au cas où.
-      for (const path of [`roles/${u.localId}`, `presence/${u.localId}`, `supportThreads/${u.localId}`]) {
-        try { await firestoreDelete(path, env); } catch (_) {}
-      }
       purged++;
       console.log(`purge non vérifié: ${u.localId} (${u.email})`);
     } catch (e) {
