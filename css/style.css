@@ -104,6 +104,15 @@ html { scroll-behavior: smooth; }
    PEA ne tenaient pas sous l'en-tête. La déclaration `hidden` reste en repli
    pour les navigateurs qui ignorent `clip`. */
 body { font-family: var(--sans); background: var(--bg); color: var(--text); min-height: 100vh; overflow-x: hidden; overflow-x: clip; }
+/* Le glissement latéral est verrouillé sur la racine, et pas seulement sur
+   `body` : posée sur `body` seul, la règle dépend de la propagation au viewport,
+   qu'iOS n'applique pas de façon fiable — d'où la page d'administration qui se
+   décalait au doigt le 23/08. Une largeur de bloc en trop devient alors
+   invisible au lieu de déplacer tout l'écran. Les conteneurs qui doivent
+   défiler horizontalement (tableaux, barres d'onglets) gardent leur propre
+   défilement : ils ne sont pas concernés par cette coupe. */
+html { overflow-x: clip; }
+@supports not (overflow-x: clip) { html, body { overflow-x: hidden; } }
 
 /* Barres de défilement. Les règles -webkit- sont isolées dans @supports :
    Firefox ne connaît pas ::-webkit-scrollbar et signalait « sélecteur

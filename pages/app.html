@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260825f">
+<link rel="stylesheet" href="css/style.css?v=20260825g">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -1214,7 +1214,10 @@
 
       <style>
         #admin-stats{ display:grid; grid-template-columns:repeat(3,minmax(120px,1fr)); gap:12px; max-width:1800px; margin-bottom:28px }
-        @media (max-width:640px){ #admin-stats{ grid-template-columns:repeat(3,1fr) } }
+        /* minmax(0,1fr) et non 1fr : le minimum automatique d'une piste de
+           grille vaut la largeur du contenu, et trois tuiles de 120 px plus
+           leurs gouttières dépassaient un écran de 360 px. */
+        @media (max-width:640px){ #admin-stats{ grid-template-columns:repeat(3,minmax(0,1fr)) } }
 
         #page-admin .admin-groups{ display:flex; flex-direction:column; gap:32px; max-width:1800px }
         #page-admin .admin-section-head{ display:flex; align-items:center; gap:10px; margin-bottom:14px }
@@ -1227,13 +1230,22 @@
            cartes se collent, ne prennent que la place qu'il faut, et
            passent à la ligne suivante s'il en manque. */
         #page-admin .admin-section-grid{ display:flex; flex-wrap:wrap; gap:14px; align-items:flex-start }
-        #page-admin .admin-card{ background:var(--s1); border-radius:var(--radius-lg); padding:18px; border:1px solid color-mix(in srgb, var(--acc) 30%, transparent); box-shadow:0 0 0 1px color-mix(in srgb, var(--acc) 7%, transparent), 0 12px 28px -18px color-mix(in srgb, var(--acc) 45%, transparent); flex:1 1 320px; max-width:420px }
+        /* min-width:0 : sans lui, un élément flex refuse de descendre sous la
+           largeur de son contenu, et une seule ligne longue (l'erreur Meta dans
+           l'état des services) élargissait toute la page. */
+        #page-admin .admin-card{ background:var(--s1); border-radius:var(--radius-lg); padding:18px; border:1px solid color-mix(in srgb, var(--acc) 30%, transparent); box-shadow:0 0 0 1px color-mix(in srgb, var(--acc) 7%, transparent), 0 12px 28px -18px color-mix(in srgb, var(--acc) 45%, transparent); flex:1 1 320px; max-width:420px; min-width:0; overflow-wrap:anywhere }
         #page-admin .admin-card.wide{ flex:1 1 100%; max-width:none }
         #page-admin .admin-card-head{ display:flex; align-items:flex-start; gap:12px; margin-bottom:4px }
         #page-admin .admin-icon-sq{ width:32px; height:32px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:color-mix(in srgb, var(--acc) 15%, transparent); color:var(--acc) }
         #page-admin .admin-card-title{ font-size:14px; font-weight:700; color:var(--text); margin-bottom:4px }
         #page-admin .admin-card-desc{ font-size:12px; color:var(--text3); line-height:1.6 }
-        @media (max-width:640px){ #page-admin .admin-card{ flex-basis:100% } }
+        @media (max-width:640px){
+          #page-admin .admin-card{ flex-basis:100%; max-width:100% }
+          /* Les deux colonnes « Utilisateurs » et « Diffusion » sont posées en
+             ligne à 700 px de base : sur téléphone elles passent l'une sous
+             l'autre au lieu de pousser la page. */
+          #page-admin .admin-groups div[style*="flex:1 1 700px"]{ flex-basis:100%; min-width:0 }
+        }
       </style>
 
       <div id="admin-stats"></div>
@@ -3738,11 +3750,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260825f"></script>
+<script src="js/app.js?v=20260825g"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260825f"></script>
+<script src="js/onboarding.js?v=20260825g"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260825f"></script>
+<script src="js/import.js?v=20260825g"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
