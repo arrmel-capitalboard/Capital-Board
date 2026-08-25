@@ -22,7 +22,6 @@
 (function () {
 
   const COL = 'profiles';
-  const RELANCE_MS = 7 * 24 * 3600 * 1000; // délai avant de reproposer un questionnaire passé
   const LS_TOUR = 'cb_tour_done';          // repli local : évite un flash de visite si Firestore tarde
   // Visite du module Livrets, jouée d'office au premier passage sur sa page.
   // Purement locale : elle ne conditionne rien, et attendre Firestore pour la
@@ -292,6 +291,15 @@
     await setFirestoreDoc(ref(uid), { ...data, updatedAt: Date.now(), v: 1 }, { merge: true });
   }
 
+  // Statut d'un parcours : 'complete', 'skip', ou null quand il n'a jamais été
+  // vu. Aucun champ dédié n'est ajouté : les règles Firestore de `profiles` ne
+  // laissent passer qu'une liste blanche de clés, et les dates déjà écrites
+  // portent exactement ces trois états.
+  const statutSurvey = (p) =>
+    p.completedAt ? 'complete' : (p.skippedAt ? 'skip' : null);
+  const statutTour = (p) =>
+    p.tourDoneAt ? 'complete' : (p.tourSkippedAt ? 'skip' : null);
+
   // ── Enchaînement ──────────────────────────────────────────────────────────
   // Appelé après le modal prénom/nom. Ne fait rien en démo, pour l'admin, ou
   // si l'utilisateur a déjà tout vu.
@@ -325,15 +333,15 @@
     try { p = await readProfile(uid); }
     catch (_) { return; } // pas de confirmation serveur → on ne montre rien
 
-    const doitRepondre = surveyOn && !p.completedAt
-      && (!p.skippedAt || (Date.now() - p.skippedAt > RELANCE_MS && (p.skipCount || 0) < 2));
-
-    if (doitRepondre) { openQuestionnaire(uid, p, { tourEnsuite: tourOn }); return; }
+    // Trois états par parcours, et un seul force : l'absence. `complete` et
+    // `skip` sont deux fins de partie, un membre qui a passé son tour n'est plus
+    // relancé. Le questionnaire revenait avant au bout d'une semaine, deux fois.
+    if (surveyOn && !statutSurvey(p)) { openQuestionnaire(uid, p, { tourEnsuite: tourOn }); return; }
     if (!tourOn) return;
-
-    let tourVu = !!(p.tourDoneAt || p.tourSkippedAt);
-    try { tourVu = tourVu || localStorage.getItem(LS_TOUR) === '1'; } catch (_) {}
-    if (!tourVu) startTour(uid);
+    // Le statut vient de Firestore et de lui seul. `localStorage` entrait avant
+    // dans la décision : la visite passait pour vue sur un appareil alors que la
+    // base ne l'avait jamais enregistrée, et elle ne revenait nulle part.
+    if (!statutTour(p)) startTour(uid);
   }
 
   // ── Questionnaire : rendu ─────────────────────────────────────────────────
@@ -479,7 +487,8 @@
         +     (tourEnsuite ? 'Visiter l’app' : 'Terminer') + '</button>'
         + '</div>';
       if (!test) {
-        save(uid, { ...answers, completedAt: Date.now() }).catch((e) => console.warn('[onboarding] save:', e.message));
+        save(uid, { ...answers, completedAt: Date.now() })
+          .catch((e) => console.warn('[onboarding] save:', e.message));
       } else {
         console.log('[onboarding] test — réponses non enregistrées :', answers);
       }
@@ -499,9 +508,7 @@
       }
       // La visite, elle, reste proposée : elle ne demande rien à personne.
       if (!tourEnsuite) return;
-      let tourVu = !!(profil.tourDoneAt || profil.tourSkippedAt);
-      try { tourVu = tourVu || localStorage.getItem(LS_TOUR) === '1'; } catch (_) {}
-      if (test || !tourVu) setTimeout(() => startTour(uid, { test }), 400);
+      if (test || !statutTour(profil)) setTimeout(() => startTour(uid, { test }), 400);
     }
 
     render();
@@ -513,6 +520,8 @@
   const replace = () => place(false);
 
   function markTour(uid, champ) {
+    // Repli local conservé : il évite un éclair de visite si Firestore tarde à
+    // répondre. Il n'entre plus dans la décision, qui vient du statut en base.
     try { localStorage.setItem(LS_TOUR, '1'); } catch (_) {}
     if (uid && db) save(uid, { [champ]: Date.now() }).catch(() => {});
   }
