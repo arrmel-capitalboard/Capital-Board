@@ -125,6 +125,10 @@ async function handleModal(interaction) {
   if (interaction.customId.startsWith('suggdec:')) return finalizeDecision(interaction);
 }
 
+// Nom lisible d'un membre : son nom d'affichage s'il en a choisi un, son
+// identifiant de compte sinon.
+const nomAuteur = (user) => user.globalName || user.username || 'Membre';
+
 async function submitSuggestion(interaction) {
   const text = (interaction.fields.getTextInputValue('text') || '').trim();
   if (!text) {
@@ -141,7 +145,14 @@ async function submitSuggestion(interaction) {
     .setColor(BRAND)
     .setTitle('💡 Nouvelle suggestion')
     .setDescription(text)
-    .addFields({ name: 'Auteur', value: `<@${interaction.user.id}>`, inline: true })
+    // Le nom est écrit en clair à côté de la mention : l'auteur n'a pas accès au
+    // salon de validation, et Discord n'y résout alors pas son identifiant — on
+    // ne lisait qu'une suite de chiffres.
+    .addFields({
+      name: 'Auteur',
+      value: `**${nomAuteur(interaction.user)}** · <@${interaction.user.id}>`,
+      inline: true,
+    })
     .setFooter({ text: `ID auteur : ${interaction.user.id}` })
     .setTimestamp();
   if (images.length) embed.setImage(`attachment://${images[0].name}`);
