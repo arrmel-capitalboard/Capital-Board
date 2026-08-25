@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822o';
+const APP_VERSION = '20260822p';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -339,8 +339,27 @@ _splashWatchdog = setTimeout(() => {
         const st = String((e && e.stack) || '').slice(0, 200);
         if (st) pile = ' @' + st;
       } catch (_) {}
+      // Le SDK convertit un échec de chargement de gapi en internal-error, sans
+      // rien dire de plus. On refait le chargement nous-mêmes pour trancher :
+      // bloqué par la CSP, coupé par le réseau, ou parfaitement disponible.
+      let gapi = 'non testé';
+      try {
+        await new Promise((ok, ko) => {
+          if (window.gapi) return ok();
+          const sc = document.createElement('script');
+          sc.src = 'https://apis.google.com/js/api.js';
+          sc.onload = ok;
+          sc.onerror = () => ko(new Error('chargement refusé'));
+          document.head.appendChild(sc);
+          setTimeout(() => ko(new Error('délai dépassé')), 8000);
+        });
+        gapi = 'ok';
+      } catch (eg) { gapi = 'KO (' + ((eg && eg.message) || '?') + ')'; }
+      // La version est dans le message : sans elle, impossible de savoir sur
+      // quel déploiement un rapport a été produit.
       const msg = 'Connexion Google impossible : ' + (e && (e.code || e.message) || 'erreur')
-        + detail + ' [étape=' + etape + ', appcheck=' + ac + ']' + pile;
+        + detail + ' [v=' + APP_VERSION + ', étape=' + etape + ', appcheck=' + ac
+        + ', gapi=' + gapi + ']' + pile;
       // Noté avant d'être affiché : la vue peut basculer et vider le message,
       // la trace le réaffichera au prochain écran de connexion.
       _noterDiagGoogle(msg);
