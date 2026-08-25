@@ -2421,6 +2421,13 @@ body.sb-collapsed .main { margin-left: 58px; }
     padding: 72px 14px calc(96px + max(20px, env(safe-area-inset-bottom, 0px)));
     /* Marge horizontale de .main, relue par les cartes qui vont bord à bord. */
     --bleed: 14px;
+    /* Deuxième verrou, au niveau du conteneur : le verrou racine dépend de la
+       propagation au viewport, qu'iOS applique mal. Ici, un enfant trop large
+       est coupé sur place et n'élargit jamais la page. `clip` et non `hidden` :
+       il ne crée pas de conteneur de défilement, donc les sous-onglets du PEA
+       restent collés sous l'en-tête. Les tableaux et barres d'onglets qui
+       défilent horizontalement ont leur propre défilement, intact. */
+    overflow-x: clip;
   }
 
   /* Grilles */
