@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822k';
+const APP_VERSION = '20260822l';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -241,32 +241,88 @@ _splashWatchdog = setTimeout(() => {
   let googleOtpEnAttente = false;
 
   // Google Sign-In : récupère le résultat du signInWithRedirect (iOS/PWA standalone).
-  try {
-    const redirectResult = await getRedirectResult(fbAuth);
-    if (redirectResult && redirectResult.user) {
-      const isNew = redirectResult._tokenResponse && redirectResult._tokenResponse.isNewUser;
-      // Inscriptions fermées : refuse le nouveau compte Google, que
-      // signInWithRedirect vient de créer en effet de bord.
-      if (isNew && !(await _isSignupOpen())) {
-        try { await redirectResult.user.delete(); } catch(_) {}
-        try { await signOut(fbAuth); } catch(_) {}
-        const errEl = document.getElementById('login-error');
-        if (errEl) errEl.textContent = 'Les inscriptions sont temporairement fermées.';
-      } else {
-        // Nouveau compte comme compte existant : on repasse par le Worker.
-        // Le compte vient d'être créé, donc le Worker le voit déjà existant et
-        // lui applique finishLogin — un code par email avant le premier accès,
-        // exactement comme l'inscription par mot de passe. Plus d'auto-trust du
-        // premier appareil : c'était le raccourci qui laissait entrer sans
-        // qu'aucune preuve de contrôle de la boîte ne soit demandée.
-        googleOtpEnAttente = (await _redirectGoogleViaWorker(redirectResult)) === 'otp';
+  //
+  // Rejouable, pour deux raisons. Dans une PWA iOS, la page Google s'ouvre dans
+  // une vue posée par-dessus l'app : à sa fermeture l'app reprend son contexte
+  // JavaScript sans recharger, et un bloc joué une seule fois au démarrage ne
+  // verrait jamais le retour. Et un retour vide ne laissait aucune trace, donc
+  // rien à diagnostiquer sur un téléphone, où il n'y a pas de console.
+  let _retourGoogleTraite = false;
+
+  // Vrai si un signInWithRedirect a été lancé d'ici et n'a pas encore été
+  // dénoué. Périmé au-delà de 10 min : un utilisateur qui abandonne en route ne
+  // doit pas se voir reprocher un échec à sa prochaine ouverture.
+  const _redirectGoogleAttendu = () => {
+    try {
+      const t = parseInt(localStorage.getItem('cb_google_redirect') || '0', 10);
+      return t > 0 && (Date.now() - t) < 10 * 60 * 1000;
+    } catch (_) { return false; }
+  };
+  const _redirectGoogleSolde = () => {
+    try { localStorage.removeItem('cb_google_redirect'); } catch (_) {}
+  };
+
+  async function _traiterRetourGoogle(auDemarrage) {
+    if (_retourGoogleTraite) return;
+    const attendu = _redirectGoogleAttendu();
+    // Hors démarrage, ne rien tenter tant qu'aucun redirect n'est en cours :
+    // l'app repasse en premier plan des dizaines de fois par session.
+    if (!auDemarrage && !attendu) return;
+    try {
+      const redirectResult = await getRedirectResult(fbAuth);
+      if (redirectResult && redirectResult.user) {
+        _retourGoogleTraite = true;
+        _redirectGoogleSolde();
+        const isNew = redirectResult._tokenResponse && redirectResult._tokenResponse.isNewUser;
+        // Inscriptions fermées : refuse le nouveau compte Google, que
+        // signInWithRedirect vient de créer en effet de bord.
+        if (isNew && !(await _isSignupOpen())) {
+          try { await redirectResult.user.delete(); } catch(_) {}
+          try { await signOut(fbAuth); } catch(_) {}
+          const errEl = document.getElementById('login-error');
+          if (errEl) errEl.textContent = 'Les inscriptions sont temporairement fermées.';
+        } else {
+          // Nouveau compte comme compte existant : on repasse par le Worker.
+          // Le compte vient d'être créé, donc le Worker le voit déjà existant et
+          // lui applique finishLogin — un code par email avant le premier accès,
+          // exactement comme l'inscription par mot de passe. Plus d'auto-trust du
+          // premier appareil : c'était le raccourci qui laissait entrer sans
+          // qu'aucune preuve de contrôle de la boîte ne soit demandée.
+          googleOtpEnAttente = (await _redirectGoogleViaWorker(redirectResult)) === 'otp';
+        }
+        return;
       }
+      // Un redirect était en cours et revient les mains vides. Le SDK n'a pas
+      // levé d'erreur : il ne trouve simplement aucun événement en attente. On
+      // le dit, avec de quoi trancher entre les causes possibles.
+      if (attendu) {
+        _retourGoogleTraite = true;
+        _redirectGoogleSolde();
+        const ctx = [
+          'getRedirectResult vide',
+          'authDomain=' + (firebaseConfig.authDomain || '?'),
+          'standalone=' + (!!(window.navigator.standalone === true ||
+            (window.matchMedia && window.matchMedia('(display-mode: standalone)').matches))),
+          'session=' + (fbAuth.currentUser ? 'oui' : 'non'),
+        ].join(', ');
+        _noterDiagGoogle(ctx);
+      }
+    } catch(e) {
+      _retourGoogleTraite = true;
+      _redirectGoogleSolde();
+      console.warn('[google] getRedirectResult:', e && e.message);
+      const errEl = document.getElementById('login-error');
+      if (errEl) errEl.textContent = 'Connexion Google impossible : ' + (e && (e.message || e.code) || 'erreur');
     }
-  } catch(e) {
-    console.warn('[google] getRedirectResult:', e && e.message);
-    const errEl = document.getElementById('login-error');
-    if (errEl) errEl.textContent = 'Connexion Google impossible : ' + (e && (e.message || e.code) || 'erreur');
   }
+
+  await _traiterRetourGoogle(true);
+
+  // Retour depuis la vue Google d'une PWA iOS : pas de rechargement, seulement
+  // l'app qui redevient visible.
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState === 'visible') _traiterRetourGoogle(false);
+  });
 
   {
     auth.onAuthStateChanged(fbAuth, async user => {
@@ -2745,6 +2801,9 @@ window.doLoginGoogle = async function() {
     try {
       const provider = new GoogleAuthProvider();
       provider.setCustomParameters({ prompt: 'select_account' });
+      // Trace du départ : au retour, elle distingue « rien ne s'est passé »
+      // d'un aller-retour qui revient sans résultat.
+      try { localStorage.setItem('cb_google_redirect', String(Date.now())); } catch (_) {}
       await signInWithRedirect(fbAuth, provider);
       // la page navigue, le résultat est récupéré au retour (getRedirectResult)
     } catch(e) {
