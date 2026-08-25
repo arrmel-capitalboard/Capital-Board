@@ -316,9 +316,10 @@
     if (btn) btn.style.display = tourOn ? '' : 'none';
 
     if (!surveyOn && !tourOn) return;
-    // L'admin garde l'entrée de menu mais n'est jamais interrompu : il déclenche
-    // les parcours quand il veut, depuis sa page.
-    try { if (typeof isAdmin === 'function' && isAdmin()) return; } catch (_) {}
+    // L'admin était exclu, pour ne pas être interrompu alors qu'il lance les
+    // parcours quand il veut depuis sa page. Il les voit désormais comme tout le
+    // monde : c'est aussi le seul moyen de constater ce que voient les membres
+    // sans créer un compte de test.
 
     let p;
     try { p = await readProfile(uid); }
