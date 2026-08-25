@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822m';
+const APP_VERSION = '20260822n';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -268,14 +268,19 @@ _splashWatchdog = setTimeout(() => {
     // Hors démarrage, ne rien tenter tant qu'aucun redirect n'est en cours :
     // l'app repasse en premier plan des dizaines de fois par session.
     if (!auDemarrage && !attendu) return;
+    // Le bloc enchaîne quatre opérations très différentes ; sans marqueur, une
+    // erreur levée par l'une d'elles est indiscernable des trois autres.
+    let etape = 'getRedirectResult';
     try {
       const redirectResult = await getRedirectResult(fbAuth);
+      etape = redirectResult ? (redirectResult.user ? 'retour avec user' : 'retour sans user') : 'retour vide';
       if (redirectResult && redirectResult.user) {
         _retourGoogleTraite = true;
         _redirectGoogleSolde();
         const isNew = redirectResult._tokenResponse && redirectResult._tokenResponse.isNewUser;
         // Inscriptions fermées : refuse le nouveau compte Google, que
         // signInWithRedirect vient de créer en effet de bord.
+        etape = 'isSignupOpen';
         if (isNew && !(await _isSignupOpen())) {
           try { await redirectResult.user.delete(); } catch(_) {}
           try { await signOut(fbAuth); } catch(_) {}
@@ -288,7 +293,9 @@ _splashWatchdog = setTimeout(() => {
           // exactement comme l'inscription par mot de passe. Plus d'auto-trust du
           // premier appareil : c'était le raccourci qui laissait entrer sans
           // qu'aucune preuve de contrôle de la boîte ne soit demandée.
+          etape = 'redirectGoogleViaWorker';
           googleOtpEnAttente = (await _redirectGoogleViaWorker(redirectResult)) === 'otp';
+          etape = 'terminé';
         }
         return;
       }
@@ -326,8 +333,14 @@ _splashWatchdog = setTimeout(() => {
         if (!window._appCheckMod || !window._appCheck) ac = 'non initialisé';
         else ac = (await window._appCheckMod.getToken(window._appCheck, false)).token ? 'ok' : 'vide';
       } catch (eac) { ac = 'échec (' + ((eac && eac.message) || '?') + ')'; }
+      // Début de pile : nomme la fonction qui a réellement levé.
+      let pile = '';
+      try {
+        const st = String((e && e.stack) || '').slice(0, 200);
+        if (st) pile = ' @' + st;
+      } catch (_) {}
       const msg = 'Connexion Google impossible : ' + (e && (e.code || e.message) || 'erreur')
-        + detail + ' [appcheck=' + ac + ']';
+        + detail + ' [étape=' + etape + ', appcheck=' + ac + ']' + pile;
       // Noté avant d'être affiché : la vue peut basculer et vider le message,
       // la trace le réaffichera au prochain écran de connexion.
       _noterDiagGoogle(msg);
