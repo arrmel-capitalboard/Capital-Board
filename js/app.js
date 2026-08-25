@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260825k';
+const APP_VERSION = '20260825l';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3422,7 +3422,6 @@ window.openProfilModal = function() {
   try { window.refreshTotpStatus && window.refreshTotpStatus(); } catch(_) {}
   document.getElementById('profil-modal-overlay').classList.add('open');
   loadProfilePage(fbAuth.currentUser);
-  renderPushSettings();
 };
 window.closeProfilModal = function() {
   document.getElementById('profil-modal-overlay').classList.remove('open');
@@ -3478,10 +3477,6 @@ function loadProfilePage(user) {
   // Cacher section MDP si Google
   const passSection = document.getElementById('profil-password-section');
   if (passSection) passSection.style.display = isGoogle ? 'none' : 'block';
-
-  // Préférence récap quotidien push
-  const settings    = getUserSettings(user.uid);
-  _paintRecapButtons(settings.pushRecap !== false);
 
   // Nom d'utilisateur + état du cooldown
   _loadProfileUsername(user.uid);
@@ -4342,6 +4337,7 @@ const SECTION_LABELS = {
   av: 'Assurance-vie', per: 'PER', livrets: 'Livrets & épargne',
   immo: 'Immobilier & SCPI', or: 'Or & métaux', nonco: 'Crowdfunding & non coté',
   actualites: 'Actualités', favoris: 'Contenus favoris', idees: 'Boîte à idées', support: 'Support',
+  notifications: 'Notifications',
   fiscalite: 'Récap fiscal',
   admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord', facebook: 'Facebook', linkedin: 'LinkedIn',
 };
@@ -4351,7 +4347,7 @@ const ADMIN_ONLY_KEYS = ['admin']; // rendus uniquement pour l'admin
 // remanié : une config enregistrée par l'admin prime sur DEFAULT_NAV, et sans
 // ce garde-fou un remaniement restait invisible tant que personne n'avait
 // rouvert l'éditeur pour réenregistrer le menu.
-const NAV_LAYOUT_VERSION = 6;
+const NAV_LAYOUT_VERSION = 7;
 
 // Organisation sauvegardée, ou null si elle date d'avant le dernier remaniement
 // — auquel cas DEFAULT_NAV reprend la main. Réenregistrer le menu depuis
@@ -4373,7 +4369,7 @@ const DEFAULT_NAV = [
   // perdait en bas d'une liste de onze comptes.
   { title: 'Administration', items: ['admin'] },
   { title: 'Mes comptes',    items: ['patrimoine', 'portfolio', 'cto', 'av', 'per', 'crypto', 'livrets', 'immo', 'or', 'nonco', 'depenses'] },
-  { title: 'Outils',         items: ['actualites', 'favoris', 'fiscalite', 'idees', 'support'] },
+  { title: 'Outils',         items: ['actualites', 'favoris', 'fiscalite', 'notifications', 'idees', 'support'] },
   { title: 'Réseaux',        items: ['instagram', 'tiktok', 'youtube', 'discord', 'facebook', 'linkedin'] },
 ];
 let _navNodes = null;   // cache des noeuds .nav-item par clé (sidebar desktop)
@@ -4557,6 +4553,7 @@ function _runPageHook(id) {
   if (id === 'actualites')  renderActualites();
   if (id === 'favoris')     renderFavoris();
   if (id === 'support')     renderSupportPage();
+  if (id === 'notifications') renderPushSettings();
   if (id === 'idees')       renderIdeasPage();
   if (id === 'earnings')    renderEarningsCalendar();
   if (id === 'admin')       renderAdminPage();
@@ -14297,13 +14294,18 @@ function checkPriceAlerts() {
   if (changed) saveAlerts(currentUser, alerts);
 }
 
-// Réglages push du profil. Ils vivaient sur une page dédiée qui ne portait
-// que ces deux interrupteurs, deux boutons et un paragraphe.
+// Réglages de la page Notifications. Ils ont fait un détour par la fenêtre
+// Profil, où ils se perdaient entre le mot de passe et la sauvegarde ; la page
+// les rend de nouveau atteignables en un geste depuis le menu.
 function renderPushSettings() {
   renderNotifSettings();
   updatePushBtn();
   const hint = document.getElementById('ios-push-hint');
   if (hint) hint.style.display = _isIOSNonStandalone() ? 'flex' : 'none';
+  // L'état du récap était peint par l'ouverture du profil. La page doit savoir
+  // se peindre seule, sans quoi les deux boutons s'affichent tous deux éteints.
+  const user = fbAuth.currentUser;
+  if (user) _paintRecapButtons(getUserSettings(user.uid).pushRecap !== false);
 }
 
 // ─── PAGE RÉCAP DU JOUR ───────────────────────────────
