@@ -1343,6 +1343,7 @@ function emailUnusualLogin(deviceLabel, location) {
     <span>Appareil : <strong style="color:#e8eaf0">${deviceLabel || 'Inconnu'}</strong></span>
     <span>Lieu : <strong style="color:#e8eaf0">${location || 'Inconnu'}</strong></span>
   </div>
+  <p>Le lieu vient de l'adresse de connexion. Si vous utilisez le <strong style="color:#e8eaf0">Relais privé iCloud</strong> (activé par défaut avec iCloud+) ou un VPN, c'est le pays du relais qui s'affiche, pas le vôtre — une connexion depuis la France peut alors apparaître à Londres ou ailleurs.</p>
   <p class="warn">Si c'est vous, ignorez cet email. Sinon, changez votre mot de passe et révoquez vos sessions depuis Profil → Sécurité.</p>
   <div class="footer">Capital Board · Ne pas répondre à cet email.</div>
 </div></body></html>`;
@@ -3413,8 +3414,11 @@ export default {
             const doc = await firestoreGet(`roles/${user.localId}`, env);
             const fcmToken = fsStr(doc, 'fcmToken');
             if (fcmToken) {
+              // Le lieu vient de l'adresse de connexion : sous Relais privé
+              // iCloud ou VPN, c'est celui du relais. Le dire ici évite une
+              // frayeur inutile — la notification arrive souvent avant l'email.
               await sendFcm(fcmToken, 'Nouvelle connexion inhabituelle',
-                `Connexion depuis ${location || 'un lieu inconnu'}. Pas vous ? Vérifiez vos sessions.`, env);
+                `Connexion depuis ${location || 'un lieu inconnu'}. Relais privé iCloud ou VPN ? C'est le lieu du relais. Sinon, vérifiez vos sessions.`, env);
             }
           } catch (e) { console.error('alerte connexion, push: ' + e.message); }
         }

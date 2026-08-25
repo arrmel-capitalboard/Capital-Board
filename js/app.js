@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260825h';
+const APP_VERSION = '20260825i';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -2494,6 +2494,15 @@ window.refreshLoginLog = async function() {
           (e.ip ? ' · ' + _escapeHtmlChat(e.ip) : '') + '</span>' +
       '</div>';
     }).join('');
+    // Le journal affiche le lieu de l'adresse de connexion. Sous Relais privé
+    // iCloud — activé par défaut avec iCloud+ — c'est celui du relais : une même
+    // session voit défiler La Rochelle, Vierzon, Marseille, parfois Londres.
+    // Sans cette note, la liste ressemble à un compte partagé dans toute
+    // l'Europe.
+    el.innerHTML += '<div style="color:var(--text3);font-size:11px;line-height:1.5;padding-top:8px">'
+      + "Le lieu vient de l'adresse de connexion. Avec le Relais privé iCloud ou un VPN, "
+      + "c'est celui du relais et non le vôtre — il change d'une connexion à l'autre."
+      + '</div>';
   } catch (e) {
     el.innerHTML = '<div style="color:var(--text3);font-style:italic">Journal indisponible.</div>';
   }
