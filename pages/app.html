@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260825e">
+<link rel="stylesheet" href="css/style.css?v=20260825f">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -102,7 +102,7 @@
 <div id="splash-screen">
   <img src="assets/logo.png" alt="Capital Board" class="splash-logo">
   <div class="splash-name">Capital Board</div>
-  <div class="splash-spinner" id="splash-spinner"></div>
+  <div class="splash-bar" id="splash-loader"></div>
   <div class="splash-text" id="splash-text">Chargement…</div>
   <div class="splash-error" id="splash-error"></div>
   <button class="splash-reload" id="splash-reload" onclick="location.reload()">Recharger</button>
@@ -3738,11 +3738,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260825e"></script>
+<script src="js/app.js?v=20260825f"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260825e"></script>
+<script src="js/onboarding.js?v=20260825f"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260825e"></script>
+<script src="js/import.js?v=20260825f"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

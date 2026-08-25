@@ -26,13 +26,31 @@
   font-family: var(--display); font-weight: 800;
   font-size: 19px; color: #edf0f7; letter-spacing: -0.3px;
 }
-.splash-spinner {
-  width: 30px; height: 30px; border-radius: 50%;
-  border: 3px solid rgba(124,109,245,0.25);
-  border-top-color: #7c6df5;
-  animation: splash-spin .7s linear infinite;
+/* Un trait qui balaie plutôt qu'un cercle qui tourne : le spinner rond
+   n'appartenait à rien, alors que la barre reprend le vocabulaire des barres de
+   progression de l'app. Le geste est aussi plus calme sur une attente courte. */
+.splash-bar {
+  position: relative; width: 116px; height: 2px;
+  border-radius: 2px; background: rgba(255,255,255,0.07); overflow: hidden;
 }
-@keyframes splash-spin { to { transform: rotate(360deg); } }
+.splash-bar::after {
+  content: ''; position: absolute; inset: 0 auto 0 0; width: 38%;
+  border-radius: 2px;
+  background: linear-gradient(90deg, transparent, #7c6df5, transparent);
+  animation: splash-sweep 1.5s ease-in-out infinite;
+}
+@keyframes splash-sweep {
+  0%   { transform: translateX(-110%); }
+  100% { transform: translateX(300%); }
+}
+/* Mouvement réduit : la barre reste, immobile et partiellement remplie — elle
+   dit toujours « en cours », sans rien faire bouger. */
+@media (prefers-reduced-motion: reduce) {
+  .splash-bar::after {
+    animation: none; width: 35%; transform: none;
+    background: #7c6df5; opacity: 0.7;
+  }
+}
 .splash-text { font-family: sans-serif; font-size: 12px; color: #8892a8; }
 .splash-error {
   display: none; max-width: 320px; text-align: center;

@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260825e';
+const APP_VERSION = '20260825f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -122,7 +122,7 @@ function _hideSplash() {
 function _splashError(msg) {
   if (_splashWatchdog) { clearTimeout(_splashWatchdog); _splashWatchdog = null; }
   const err  = document.getElementById('splash-error');
-  const sp   = document.getElementById('splash-spinner');
+  const sp   = document.getElementById('splash-loader');
   const txt  = document.getElementById('splash-text');
   const btn  = document.getElementById('splash-reload');
   if (err) { err.textContent = msg; err.style.display = 'block'; }
