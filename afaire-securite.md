@@ -8,65 +8,51 @@ marché.
 
 ## À faire, dans l'ordre
 
-### 1. Réparer la connexion Google en PWA iPhone
+### 1. Réparer la connexion Google en PWA iPhone — à tester sur iPhone
 
-**C'est le seul point qui casse quelque chose aujourd'hui.** Le login Google ne
-fonctionne pas sur iPhone : la page Google se ferme, on revient à l'écran de
-connexion, Turnstile se réinitialise, et rien ne se passe. Aucune erreur.
+Tout est posé, il ne reste que l'essai sur l'appareil.
 
-**Cause, vérifiée le 24/08.** `firebaseConfig.authDomain` vaut
+**Le problème.** Le login Google ne fonctionnait pas sur iPhone : la page
+Google se fermait, on revenait à l'écran de connexion, Turnstile se
+réinitialisait, et rien ne se passait. Aucune erreur.
+
+**La cause, vérifiée le 24/08.** `firebaseConfig.authDomain` valait
 `capitalboard.firebaseapp.com`, une origine différente de `capitalboard.fr`.
-Au retour de `signInWithRedirect`, le SDK a écrit son état sur
+Au retour de `signInWithRedirect`, le SDK avait écrit son état sur
 `firebaseapp.com` ; Safari cloisonne le stockage par origine depuis ITP, donc
-`capitalboard.fr` ne peut pas le relire. `getRedirectResult()` renvoie `null`,
-le SDK conclut qu'il n'y a pas eu de connexion.
+`capitalboard.fr` ne pouvait pas le relire. `getRedirectResult()` renvoyait
+`null`, le SDK concluait qu'il n'y avait pas eu de connexion. Ce n'était pas une
+régression : ce chemin n'a probablement jamais marché en PWA. Sur PC, la
+connexion Google passe par Google Identity Services et n'utilise pas
+`authDomain` du tout — elle n'était pas concernée.
 
-Ce n'est pas une régression : ce chemin n'a probablement jamais marché en PWA.
-Sur PC, la connexion Google passe par Google Identity Services et n'utilise pas
-`authDomain` du tout — elle n'est pas concernée.
+**Le remède, posé le 25/08.** `/__/auth/*` est servi depuis notre propre
+origine, par le relais en tête du `fetch` du Worker.
 
-État des lieux au moment d'écrire :
+- Route Cloudflare `capitalboard.fr/__/*` → `capital-board-worker`, posée le
+  25/08 sur le compte `admin.capitalboard@gmail.com`. Vérifiée : `handler`,
+  `handler.js`, `experiments.js`, `iframe` et `iframe.js` répondent tous 200
+  avec le vrai helper Firebase, et le reste du site sort toujours de GitHub
+  Pages.
+- URI de redirection `https://capitalboard.fr/__/auth/handler` autorisée sur le
+  client OAuth Google, et `capitalboard.fr` dans les domaines autorisés
+  Firebase — les deux étaient déjà en place.
+- `authDomain` basculé sur `capitalboard.fr` (`js/app.js`), version bumpée en
+  `20260822k`.
 
-```
-capitalboard.fr/__/auth/handler             → 404
-capitalboard.firebaseapp.com/__/auth/handler → 200
-```
+L'ancienne URI `capitalboard.firebaseapp.com/__/auth/handler` reste autorisée
+côté Google, et `capitalboard.firebaseapp.com` reste dans `frame-src` : à
+retirer une fois la bascule éprouvée, pas avant.
 
-Le remède est de servir `/__/auth/*` depuis notre propre origine. **Le Worker
-sait déjà le faire** (bloc en tête de `fetch`, poussé le 24/08) ; il est
-inatteignable tant qu'aucune route ne pointe vers lui, donc rien n'est cassé en
-attendant.
-
-**a. Route Cloudflare.** Tableau de bord Cloudflare, compte
-`admin.capitalboard@gmail.com` (pas `armelplt14`), zone `capitalboard.fr` →
-Workers Routes → Add route :
-
-- Route : `capitalboard.fr/__/*`
-- Worker : `capital-board-worker`
-
-Vérifier : `https://capitalboard.fr/__/auth/handler` doit renvoyer une page
-Firebase. Si c'est encore 404, ne pas continuer.
-
-**b. Autoriser l'URI côté Google.** console.cloud.google.com → projet
-`capitalboard` → APIs & Services → Credentials → le client OAuth *Web
-application* → Authorized redirect URIs → ajouter :
-
-```
-https://capitalboard.fr/__/auth/handler
-```
-
-Garder l'ancienne (`capitalboard.firebaseapp.com/__/auth/handler`) pendant la
-bascule. Vérifier au passage que Firebase Console → Authentication → Settings →
-Authorized domains contient `capitalboard.fr`.
-
-**c. Basculer `authDomain`.** Dans `js/app.js`, `firebaseConfig.authDomain` →
-`capitalboard.fr`. Bumper la version (voir plus bas). À faire seulement une fois
-(a) et (b) vérifiés.
+Les trois autres fichiers qui portent un `authDomain`
+(`firebase-messaging-sw.js`, `pages/auth-action.html`, `pages/index.html`) ne
+font aucun `signInWithRedirect` : config inerte, laissée telle quelle.
 
 **Test :** sur iPhone, app fermée puis rouverte, connexion Google. Attendu :
 soit l'app s'ouvre, soit un code 2FA est demandé. Si l'écran de connexion
-revient, une ligne rouge « Connexion Google dégradée : … » doit maintenant
-apparaître et donner la raison.
+revient, une ligne rouge « Connexion Google dégradée : … » doit apparaître et
+donner la raison. Un `redirect_uri_mismatch` dans les minutes qui suivent une
+modification côté Google est un délai de propagation : réessayer.
 
 ### 2. Activer les boutons de validation Discord
 
