@@ -2842,7 +2842,10 @@ export default {
       // questions posées à n'importe qui d'autre.
       if (url.pathname === '/my-questions' && request.method === 'POST') {
         const { idToken } = await request.json();
-        const user = await verifyIdToken(idToken, env);
+        // verifyIdToken lève sur un jeton absent ou invalide : sans ce filet,
+        // l'erreur remonterait au catch général et sortirait en 500 opaque.
+        let user = null;
+        try { user = await verifyIdToken(idToken, env); } catch (_) {}
         if (!user) return json({ error: 'non authentifié' }, 401);
         let docs = [];
         try {
@@ -2867,7 +2870,8 @@ export default {
       // ── POST /my-questions/answer ───────────────────────────────────────
       if (url.pathname === '/my-questions/answer' && request.method === 'POST') {
         const { idToken, id, answer } = await request.json();
-        const user = await verifyIdToken(idToken, env);
+        let user = null;
+        try { user = await verifyIdToken(idToken, env); } catch (_) {}
         if (!user) return json({ error: 'non authentifié' }, 401);
         if (!id || /[^\w-]/.test(id)) return json({ error: 'id invalide' }, 400);
 
