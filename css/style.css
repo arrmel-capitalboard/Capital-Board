@@ -2188,22 +2188,28 @@ body.sb-collapsed .main { margin-left: 58px; }
   border-top: 1px solid var(--border2);
   /* Même réserve que la barre : la dernière rangée de cases ne doit pas tomber
      dans la zone de gestes du téléphone. */
-  padding: 12px 0 calc(16px + max(20px, env(safe-area-inset-bottom, 0px)));
-  max-height: 75vh; overflow-y: auto;
+  padding: 10px 0 calc(12px + max(20px, env(safe-area-inset-bottom, 0px)));
+  /* 75vh laissait Outils et Réseaux sous la pliure : le tiroir sert justement à
+     voir tout ce que la barre du bas ne montre pas. */
+  max-height: 90vh; overflow-y: auto;
   transform: translateY(100%);
   transition: transform 0.35s cubic-bezier(0.16,1,0.3,1);
 }
 .mobile-drawer-overlay.open .mobile-drawer { transform: translateY(0); }
 .mobile-drawer-handle {
   width: 36px; height: 4px; border-radius: 2px;
-  background: var(--border2); margin: 0 auto 16px;
+  background: var(--border2); margin: 0 auto 10px;
 }
-/* Grille plutôt que liste : les seize entrées tiennent alors dans un écran, là
-   où la liste en imposait le défilement. Les titres de section prennent une
-   ligne entière, les entrées se rangent en cases sous chacun d'eux. */
+/* Grille plutôt que liste : les entrées tiennent alors dans un écran, là où la
+   liste en imposait le défilement. Les titres de section prennent une ligne
+   entière, les entrées se rangent en cases sous chacun d'eux.
+   Quatre colonnes et non trois : à trois, les vingt-trois entrées demandaient
+   neuf rangées et le bas du menu restait invisible. À quatre, il en reste huit,
+   plus courtes — et une case de 84 px reste largement au-dessus de la cible
+   tactile de 44 px. */
 .mobile-drawer {
-  display: grid; grid-template-columns: repeat(3, 1fr);
-  gap: 8px; padding-left: 14px; padding-right: 14px;
+  display: grid; grid-template-columns: repeat(4, 1fr);
+  gap: 6px; padding-left: 12px; padding-right: 12px;
 }
 /* Le bloc dynamique est un intermédiaire de rendu, pas un groupe visuel : il
    s'efface pour que ses entrées rejoignent la grille du tiroir. */
@@ -2211,24 +2217,28 @@ body.sb-collapsed .main { margin-left: 58px; }
 .mobile-drawer-handle { grid-column: 1 / -1; }
 .mobile-drawer-item {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
-  gap: 7px; text-align: center;
-  padding: 13px 6px; cursor: pointer; color: var(--text2);
-  font-size: 11px; font-weight: 600; line-height: 1.25;
+  gap: 5px; text-align: center;
+  padding: 9px 3px; cursor: pointer; color: var(--text2);
+  font-size: 10px; font-weight: 600; line-height: 1.2;
+  /* « Crowdfunding » ne rentre pas d'une pièce dans une colonne de 84 px : sans
+     coupure, le mot déborderait de sa case. */
+  overflow-wrap: anywhere;
   background: var(--s2); border: 1px solid var(--border); border-radius: 12px;
   transition: background 0.12s, border-color 0.12s;
   -webkit-tap-highlight-color: transparent;
 }
 .mobile-drawer-item:hover, .mobile-drawer-item:active { background: var(--s3); border-color: var(--border2); }
 .mobile-drawer-item.active { color: var(--accent); border-color: rgba(124,109,245,0.4); background: var(--accent-d); }
-.mobile-drawer-icon { font-size: 18px; width: 24px; height: 20px; text-align: center; }
+.mobile-drawer-icon { font-size: 16px; width: 20px; height: 18px; text-align: center; }
+.mobile-drawer-icon svg { width: 15px; height: 15px; }
 /* Le badge « Bientôt » passe sous le libellé : à côté, il doublait la largeur
    de la case et cassait l'alignement de la grille. */
-.mobile-drawer-item .nav-soon { font-size: 8px; padding: 1px 5px; }
+.mobile-drawer-item .nav-soon { font-size: 7px; padding: 0 4px; letter-spacing: 0.4px; }
 .mobile-drawer-section {
   grid-column: 1 / -1;
   font-size: 9px; font-weight: 600; color: var(--text3);
   text-transform: uppercase; letter-spacing: 2px;
-  padding: 10px 2px 0; font-family: var(--mono);
+  padding: 6px 2px 0; font-family: var(--mono);
 }
 
 /* ─── Second niveau du tiroir ─── */
