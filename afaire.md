@@ -15,7 +15,8 @@ avant toute nouvelle fonctionnalité.
 > que le CIC pour éprouver le parseur.
 >
 > **Sécurité** : les séances des 24 et 25/08 et ce qu'il reste à faire sont
-> dans [`afaire-securite.md`](afaire-securite.md). La connexion Google en PWA
+> dans `afaire-securite.md`, **qui ne vit qu'en local** — il décrit des failles
+> et des procédures d'accès, et le dépôt est public. La connexion Google en PWA
 > est réparée, les boutons de validation Discord tournent, un premier correctif
 > a été appliqué depuis Discord. Restent des tests à faire à la main, et trois
 > secrets à régénérer après une capture d'écran de trop.

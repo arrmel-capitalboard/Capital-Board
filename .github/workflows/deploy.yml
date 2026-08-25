@@ -26,12 +26,26 @@ jobs:
       - name: Configure Pages
         uses: actions/configure-pages@v4
 
-      - name: Prepare artifact
-        run: cp pages/index.html index.html && cp pages/app.html app.html && cp pages/auth-action.html auth-action.html && cp pages/soutien.html soutien.html && cp pages/404.html 404.html
+      # Le dépôt entier était publié : capitalboard.fr servait afaire.md,
+      # discord-bot/, scripts/, firestore.rules et le reste — tout répondait 200
+      # et robots.txt laissait les moteurs les indexer. Le site est désormais
+      # assemblé à partir de ce dont il a besoin, et de rien d'autre.
+      - name: Assemblage du site
+        run: |
+          set -euo pipefail
+          mkdir -p _site
+          cp pages/index.html pages/app.html pages/auth-action.html pages/soutien.html pages/404.html _site/
+          cp -r assets css js data communaute guides legal _site/
+          cp manifest.json firebase-messaging-sw.js robots.txt sitemap.xml CNAME _site/
+          # data/app-help.md alimente la base de connaissances du chatbot,
+          # construite en CI : le site n'a aucune raison de le servir.
+          find _site -name '*.md' -delete
+          echo "Contenu publié :"
+          find _site -maxdepth 1 -mindepth 1 | sort
 
       - uses: actions/upload-pages-artifact@v3
         with:
-          path: '.'
+          path: '_site'
 
       - uses: actions/deploy-pages@v4
         id: deployment
