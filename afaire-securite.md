@@ -97,10 +97,12 @@ Premier correctif validé de bout en bout dans la foulée : commit `f2c0149`.
 
 **Deux pièges relevés au passage.**
 
-- **Un correctif en « erreur » n'a plus aucun bouton.** `payload()` n'en pose
-  que sur `attente` et `applique`. Jeton réparé, les deux propositions
-  restaient donc inertes : il a fallu repasser le document en `attente` avec la
-  clé de service. À reprendre : un bouton « Réessayer » sur le statut `erreur`.
+- **Un correctif en « erreur » n'avait plus aucun bouton.** `payload()` n'en
+  posait que sur `attente` et `applique`. Jeton réparé, les deux propositions
+  restaient inertes : il a fallu repasser le document en `attente` avec la clé
+  de service. Corrigé le soir même (`f6263df`) — le statut `erreur` porte
+  désormais « Réessayer » et « Abandonner », et le sens de la demande est
+  mémorisé pour qu'un échec sur une annulation rejoue bien une annulation.
 - **Un push fait par un workflow ne déclenche aucun autre workflow.** GitHub
   coupe la chaîne pour éviter les boucles. Le correctif est arrivé sur `main`
   sans être déployé : le Worker a continué à tourner avec le code troué pendant
