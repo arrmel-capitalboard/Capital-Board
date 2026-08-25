@@ -64,9 +64,14 @@ if (next <= current) {
 write(APP_JS, js.replace(APP_VERSION_RE, `const APP_VERSION = '${next}'`));
 write(VERSION, JSON.stringify({ v: next }));
 
-// Les cache-busters portent l'ancienne version ; on ne remplace que ceux-là,
-// pour ne pas toucher à un numéro qui ressemblerait à une version ailleurs.
-const html = read(APP_HTML).replaceAll(`?v=${current}`, `?v=${next}`);
+// Tous les cache-busters passent à la nouvelle version, quelle que soit celle
+// qu'ils portaient. Ne remplacer que ceux égaux à `current` laissait derrière
+// les fichiers oubliés lors d'un bump précédent : style.css et import.js sont
+// restés bloqués sur 20260822b pendant que le reste avançait, si bien qu'une
+// modification du CSS ne parvenait jamais à un navigateur qui l'avait en
+// cache. Le motif ne vise que les `?v=` d'une URL, pas un nombre croisé
+// ailleurs dans la page.
+const html = read(APP_HTML).replace(/\?v=[0-9a-z]+/g, `?v=${next}`);
 write(APP_HTML, html);
 
 // Contrôle : les trois marqueurs doivent afficher la même valeur.

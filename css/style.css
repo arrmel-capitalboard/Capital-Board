@@ -3008,7 +3008,10 @@ body.has-demo-banner { padding-top: 40px; }
 }
 .wl-period-btn:hover { border-color: var(--border2); color: var(--text); background: var(--s2); }
 .wl-period-btn.active { background: var(--accent-d); border-color: rgba(124,109,245,0.25); color: var(--accent); }
-.wl-chart-canvas-wrap { position: relative; height: 180px; }
+/* Hauteur : 180 px sur un tableau large de 1500 px donnait un rapport de 8 pour
+   1, où toute variation paraît plate. La courbe respire à partir d'un rapport
+   d'environ 5 pour 1, sans pousser la ligne suivante hors de l'écran. */
+.wl-chart-canvas-wrap { position: relative; height: clamp(200px, 26vh, 320px); }
 .wl-chart-loading {
   position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   color: var(--text3); font-size: 11px; font-family: var(--mono);
@@ -3036,6 +3039,9 @@ body.has-demo-banner { padding-top: 40px; }
     text-align: center; overflow: hidden;
   }
   .wl-chart-canvas-wrap canvas { max-width: 100%; }
+  /* Sur un téléphone la largeur tombe à ~350 px : le rapport est déjà bon, et
+     une courbe plus haute pousserait le reste du tableau hors de l'écran. */
+  .wl-chart-canvas-wrap { height: 200px; }
 }
 
 /* ═══ ACTUALITÉS MARCHÉS ═══════════════════════════════════════════ */

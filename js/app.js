@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822t';
+const APP_VERSION = '20260825b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -10356,6 +10356,16 @@ async function loadWlChart(i, ticker, period) {
     const isUp      = pts.length >= 2 ? pts[pts.length - 1] >= pts[0] : true;
     const lineColor = isUp ? '#00e09e' : '#ff4d6a';
 
+    // Chart.js cadre l'axe sur des valeurs rondes : une action entre 16,20 € et
+    // 20,20 € se retrouvait dans un axe 14–22, la moitié de la hauteur perdue
+    // et une courbe qui paraît plate. On cadre sur les données, avec une marge
+    // pour ne pas coller aux bords. Signalé par un membre le 12/08.
+    let yMin = pts[0], yMax = pts[0];
+    for (const v of pts) { if (v < yMin) yMin = v; if (v > yMax) yMax = v; }
+    // Ligne parfaitement plate (valeur non cotée du jour) : sans amplitude, une
+    // marge proportionnelle vaudrait zéro et l'axe serait dégénéré.
+    const yMarge = (yMax - yMin) > 0 ? (yMax - yMin) * 0.12 : Math.max(Math.abs(yMax) * 0.01, 0.01);
+
     // Avant ouverture et après clôture : tracé gris, ces cotations n'ayant ni
     // la même liquidité ni la même valeur d'information que la séance.
     // Yahoo donne les bornes de la séance ; toutes les places n'ont pas de
@@ -10406,7 +10416,14 @@ async function loadWlChart(i, ticker, period) {
           fill: true,
           spanGaps: true,
           backgroundColor: (ctx2) => {
-            const g = ctx2.chart.ctx.createLinearGradient(0, 0, 0, 180);
+            // La hauteur du cadre était écrite en dur : le dégradé s'arrêtait
+            // avant le bas dès que la zone grandissait. Il suit maintenant la
+            // zone réellement tracée. Au tout premier appel elle n'existe pas
+            // encore ; Chart.js rappelle la fonction une fois la mise en page
+            // faite.
+            const zone = ctx2.chart.chartArea;
+            if (!zone) return 'rgba(0,0,0,0)';
+            const g = ctx2.chart.ctx.createLinearGradient(0, zone.top, 0, zone.bottom);
             g.addColorStop(0, isUp ? 'rgba(0,224,158,0.15)' : 'rgba(255,77,106,0.15)');
             g.addColorStop(1, 'rgba(0,0,0,0)');
             return g;
@@ -10446,6 +10463,8 @@ async function loadWlChart(i, ticker, period) {
           },
           y: {
             position: 'right',
+            min: yMin - yMarge,
+            max: yMax + yMarge,
             grid: { color: 'rgba(255,255,255,0.03)', drawBorder: false },
             border: { display: false },
             ticks: {
