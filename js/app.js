@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260822p';
+const APP_VERSION = '20260822q';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -278,6 +278,9 @@ _splashWatchdog = setTimeout(() => {
         _retourGoogleTraite = true;
         _redirectGoogleSolde();
         const isNew = redirectResult._tokenResponse && redirectResult._tokenResponse.isNewUser;
+        let intention = 'login';
+        try { intention = localStorage.getItem('cb_google_intent') || 'login'; } catch (_) {}
+        try { localStorage.removeItem('cb_google_intent'); } catch (_) {}
         // Inscriptions fermées : refuse le nouveau compte Google, que
         // signInWithRedirect vient de créer en effet de bord.
         etape = 'isSignupOpen';
@@ -286,6 +289,15 @@ _splashWatchdog = setTimeout(() => {
           try { await signOut(fbAuth); } catch(_) {}
           const errEl = document.getElementById('login-error');
           if (errEl) errEl.textContent = 'Les inscriptions sont temporairement fermées.';
+        } else if (isNew && intention !== 'register') {
+          // Le compte vient de naître d'un clic sur « Connexion » :
+          // signInWithRedirect le crée en effet de bord, sans que les CGU ni le
+          // RGPD n'aient jamais été présentés. On le supprime et on renvoie vers
+          // l'inscription, seul endroit où ce consentement est recueilli.
+          etape = 'compte inexistant sur le chemin connexion';
+          try { await redirectResult.user.delete(); } catch(_) {}
+          try { await signOut(fbAuth); } catch(_) {}
+          _noterDiagGoogle('__aucun_compte__');
         } else {
           // Nouveau compte comme compte existant : on repasse par le Worker.
           // Le compte vient d'être créé, donc le Worker le voit déjà existant et
@@ -294,7 +306,7 @@ _splashWatchdog = setTimeout(() => {
           // premier appareil : c'était le raccourci qui laissait entrer sans
           // qu'aucune preuve de contrôle de la boîte ne soit demandée.
           etape = 'redirectGoogleViaWorker';
-          googleOtpEnAttente = (await _redirectGoogleViaWorker(redirectResult)) === 'otp';
+          googleOtpEnAttente = (await _redirectGoogleViaWorker(redirectResult, intention)) === 'otp';
           etape = 'terminé';
         }
         return;
@@ -2834,6 +2846,11 @@ window.doLoginGoogle = async function() {
   const showErr = (m) => { if (errEl) { errEl.textContent = m; errEl.style.display = 'block'; } };
   if (errEl) errEl.textContent = '';
 
+  // Connexion ou inscription : le bouton Google est le même des deux côtés,
+  // mais un compte ne doit naître que du second. Sans cette trace, un clic
+  // depuis la connexion créait un compte qui n'avait accepté ni CGU ni RGPD.
+  const intention = regVisible ? 'register' : 'login';
+
   // Sur la vue inscription : acceptation CGU/RGPD obligatoire avant tout signup.
   if (regVisible) {
     const rgpd = document.getElementById('reg-rgpd');
@@ -2855,7 +2872,10 @@ window.doLoginGoogle = async function() {
       provider.setCustomParameters({ prompt: 'select_account' });
       // Trace du départ : au retour, elle distingue « rien ne s'est passé »
       // d'un aller-retour qui revient sans résultat.
-      try { localStorage.setItem('cb_google_redirect', String(Date.now())); } catch (_) {}
+      try {
+        localStorage.setItem('cb_google_redirect', String(Date.now()));
+        localStorage.setItem('cb_google_intent', intention);
+      } catch (_) {}
       await signInWithRedirect(fbAuth, provider);
       // la page navigue, le résultat est récupéré au retour (getRedirectResult)
     } catch(e) {
@@ -2916,6 +2936,7 @@ window.doLoginGoogle = async function() {
         location: _fmtLocation(ipInfo) || 'Lieu inconnu',
         ipInfo: ipInfo || null,
         appCheckToken,
+        intent: intention,
       }),
     });
     const data = await res.json().catch(() => ({}));
@@ -2962,12 +2983,15 @@ function _afficherDiagGoogle() {
   if (!diag) return;
   const el = document.getElementById('login-error');
   if (!el) return;
-  el.textContent = 'Connexion Google dégradée : ' + diag;
+  // Compte inexistant : ce n'est pas une panne, le message doit dire quoi faire.
+  el.textContent = diag === '__aucun_compte__'
+    ? "Aucun compte n'est associé à cette adresse Google. Créez d'abord un compte."
+    : 'Connexion Google dégradée : ' + diag;
   el.style.display = 'block';
   try { localStorage.removeItem('cb_google_diag'); } catch (_) {}
 }
 
-async function _redirectGoogleViaWorker(redirectResult) {
+async function _redirectGoogleViaWorker(redirectResult, intention) {
   let googleAccessToken = null;
   try {
     const cred = GoogleAuthProvider.credentialFromResult(redirectResult);
@@ -3008,6 +3032,7 @@ async function _redirectGoogleViaWorker(redirectResult) {
           location: _fmtLocation(ipInfo) || 'Lieu inconnu',
           ipInfo: ipInfo || null,
           appCheckToken,
+          intent: intention || 'login',
         }),
       }),
       new Promise((_, rejeter) => setTimeout(() => rejeter(new Error('Worker sans réponse après 12 s')), 12000)),

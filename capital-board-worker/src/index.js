@@ -2805,7 +2805,7 @@ export default {
       // qui l'échange contre l'identité — même pipeline ensuite (device
       // trust, 2FA, mint) que le mot de passe.
       if (url.pathname === '/login-google' && request.method === 'POST') {
-        const { googleAccessToken, deviceId, deviceLabel, location, ipInfo, appCheckToken } = await request.json();
+        const { googleAccessToken, deviceId, deviceLabel, location, ipInfo, appCheckToken, intent } = await request.json();
         if (!googleAccessToken || !deviceId) {
           return json({ ok: false, error: 'Paramètres invalides' }, 400);
         }
@@ -2864,6 +2864,19 @@ export default {
           if (!signupOpen) {
             try { await deleteAuthUser(uid, env); } catch (_) {}
             return json({ ok: false, error: 'Les inscriptions sont temporairement fermées.' }, 403);
+          }
+          // Le bouton Google est le même sur la connexion et sur l'inscription,
+          // mais seul le second présente les CGU et le RGPD. Un compte né d'un
+          // clic sur « Connexion » n'a donc rien accepté : on le supprime et on
+          // renvoie vers l'inscription. `intent` vient du client et se falsifie,
+          // comme la case à cocher elle-même — ce contrôle sert la cohérence du
+          // parcours de consentement, pas la protection contre un attaquant.
+          if (intent !== 'register') {
+            try { await deleteAuthUser(uid, env); } catch (_) {}
+            return json({
+              ok: false,
+              error: "Aucun compte n'est associé à cette adresse Google. Créez d'abord un compte.",
+            }, 404);
           }
           // Toute la sécurité d'un compte Google repose sur le fait que Google
           // atteste l'adresse. Sans cette attestation, le compte naîtrait avec
