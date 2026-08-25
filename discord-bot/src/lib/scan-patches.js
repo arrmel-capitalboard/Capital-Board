@@ -13,6 +13,7 @@
 //     createdAt, decidePar, decideLe,
 //     messageId, channelId,
 //     commitSha, erreur,       // remplis par le workflow d'application
+//     revertDemande,           // sens de la dernière demande, pour la rejouer
 //   }
 //
 // Flux : le scan écrit un doc « attente » et ne pousse rien. Le bot poste le
@@ -78,6 +79,18 @@ function payload(id, data) {
   } else if (statut === 'applique') {
     row = new ActionRowBuilder().addComponents(
       new ButtonBuilder().setCustomId(`sp:rev:${id}`).setLabel('Revenir en arrière').setStyle(ButtonStyle.Danger).setEmoji('↩️'),
+    );
+  } else if (statut === 'erreur') {
+    // Sans bouton ici, un déclenchement raté fige la proposition : plus rien à
+    // cliquer, et il faut rouvrir Firestore avec la clé de service pour la
+    // relancer. Arrivé le 25/08, le jeton GitHub de la VM étant mauvais.
+    row = new ActionRowBuilder().addComponents(
+      new ButtonBuilder()
+        .setCustomId(`sp:retry:${id}`)
+        .setLabel(data.revertDemande ? "Réessayer l'annulation" : 'Réessayer')
+        .setStyle(ButtonStyle.Primary)
+        .setEmoji('🔁'),
+      new ButtonBuilder().setCustomId(`sp:no:${id}`).setLabel('Abandonner').setStyle(ButtonStyle.Secondary),
     );
   }
 
@@ -155,18 +168,27 @@ async function handleButton(interaction) {
     return;
   }
 
-  // Appliquer et Revenir passent tous deux par le workflow ; seul le sens change.
-  const revert = action === 'rev';
-  if (!revert && data.statut !== 'attente') {
-    await interaction.reply({ content: `Déjà traité (${data.statut}).`, flags: MessageFlags.Ephemeral });
-    return;
-  }
-  if (revert && data.statut !== 'applique') {
-    await interaction.reply({ content: 'Rien à annuler : ce correctif n\'est pas appliqué.', flags: MessageFlags.Ephemeral });
+  // Appliquer, Revenir et Réessayer passent tous par le workflow ; seul le sens
+  // change. Réessayer rejoue celui qui a échoué : l'embed n'en garde pas trace,
+  // le document si.
+  const revert = action === 'rev' || (action === 'retry' && data.revertDemande === true);
+
+  const attenduPour = { retry: 'erreur', rev: 'applique', ok: 'attente' };
+  if (data.statut !== attenduPour[action]) {
+    const message = action === 'rev'
+      ? 'Rien à annuler : ce correctif n\'est pas appliqué.'
+      : `Déjà traité (${data.statut}).`;
+    await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
     return;
   }
 
-  const maj = { statut: 'demande', decidePar: interaction.user.id, decideLe: Date.now(), erreur: null };
+  const maj = {
+    statut: 'demande',
+    decidePar: interaction.user.id,
+    decideLe: Date.now(),
+    erreur: null,
+    revertDemande: revert,
+  };
   await snap.ref.update(maj);
   await interaction.update(payload(id, { ...data, ...maj }));
 
