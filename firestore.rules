@@ -158,7 +158,12 @@ service cloud.firestore {
     }
 
     match /presence/{uid} {
-      allow read: if request.auth != null;
+      // Lecture limitée à soi et à l'admin, comme `roles`. Ouverte à tout compte
+      // connecté, la collection se listait entièrement : uid de tous les membres,
+      // nombre de sessions, jours de venue, dernière connexion, usage PWA. Seuls
+      // le titulaire (activité) et l'admin (panneau membres, badge du support)
+      // la lisent côté client.
+      allow read: if _isSelf(uid) || _isAdmin();
       allow write: if _isVerified() && _isSelf(uid);
     }
 
