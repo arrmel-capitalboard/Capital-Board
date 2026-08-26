@@ -1,0 +1,16 @@
+[
+  "Consulter ton portefeuille et ouvrir le détail d'une position",
+  "Aller sur la watchlist et ajouter/retirer un titre",
+  "Faire un export CSV Boursorama",
+  "Faire un import CSV Boursorama",
+  "Consulter la page Benchmark et changer d'indice (S&P 500, CAC 40, MSCI World, Euro Stoxx 50, Nasdaq 100)",
+  "Aller sur le mur à idées, proposer une idée",
+  "Aller sur le mur à idées et voter sur une idée existante",
+  "Ouvrir les settings/profil et modifier un champ",
+  "Vérifier la page de présence/statut en ligne",
+  "Tester le chat support (envoyer un message)",
+  "Se déconnecter puis se reconnecter (tester le flow de login)",
+  "Consulter l'historique/audit log si visible",
+  "Modifier le questionnaire de profil (experience/goal/wrappers)",
+  "S'abonner à un earnings alert sur un titre"
+]

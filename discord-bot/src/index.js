@@ -19,6 +19,8 @@ const bareme = require('./lib/bareme');
 const tickets = require('./lib/tickets');
 const ticketstats = require('./lib/ticketstats');
 const { checkPub } = require('./lib/automod-pub');
+const cron = require('node-cron');
+const securityTestActions = require('../security-test-actions.json');
 
 const LOG_CHANNEL   = '1520208505880187042';
 const ROLE_VISITEUR = '1512906509078495232';
@@ -55,7 +57,55 @@ client.once(Events.ClientReady, (c) => {
   scanPatches.watch(c);
   bareme.start(c);
   restartmonitor.handleOnReady(c).catch(() => {});
+  startSecurityTest(c);
 });
+
+// ── Rappel de test de sécurité manuel ─────────────────────────────
+// Toutes les 48h à 10h (heure de Paris), le bot pioche une action dans
+// security-test-actions.json et la poste dans le salon dédié, avec le rappel
+// de lancer Burp Suite avant de la rejouer sur capitalboard.fr.
+const SECURITY_TEST_CHANNEL = '1542226706838978621';
+const SECURITY_TEST_CRON    = '0 10 */2 * *';
+
+async function sendSecurityTestAction(client) {
+  const action = securityTestActions[Math.floor(Math.random() * securityTestActions.length)];
+  console.log(`[security-test] ${new Date().toISOString()} — action tiree : ${action}`);
+
+  try {
+    const channel = await client.channels.fetch(SECURITY_TEST_CHANNEL);
+    if (!channel?.isTextBased()) {
+      console.error(`[security-test] Salon ${SECURITY_TEST_CHANNEL} introuvable ou non textuel — message non envoye.`);
+      return;
+    }
+
+    const embed = new EmbedBuilder()
+      .setColor(0xf97316)
+      .setTitle('🎯 Action de test sécurité')
+      .setDescription(action)
+      .addFields({
+        name: '⚠️ Rappel',
+        value: 'Assure-toi que Burp Suite est ouvert avec le proxy actif (127.0.0.1:8080) avant de faire cette action sur capitalboard.fr',
+      })
+      .setFooter({ text: 'Capital Board — test de sécurité manuel' })
+      .setTimestamp();
+
+    await channel.send({ embeds: [embed] });
+  } catch (err) {
+    console.error(`[security-test] Envoi impossible dans le salon ${SECURITY_TEST_CHANNEL} (permissions manquantes ou salon absent ?) : ${err.message}`);
+  }
+}
+
+/** Programme le rappel de test de sécurité (best-effort, ne casse jamais le bot). */
+function startSecurityTest(client) {
+  cron.schedule(
+    SECURITY_TEST_CRON,
+    () => {
+      sendSecurityTestAction(client).catch((err) => console.error('[security-test] erreur :', err.message));
+    },
+    { timezone: 'Europe/Paris' },
+  );
+  console.log(`[security-test] Rappel programme (${SECURITY_TEST_CRON}, Europe/Paris) — ${securityTestActions.length} actions.`);
+}
 
 // Rafraîchit le compteur de tickets dès qu'un salon est créé/supprimé.
 client.on(Events.ChannelCreate, () => ticketstats.push(client));
