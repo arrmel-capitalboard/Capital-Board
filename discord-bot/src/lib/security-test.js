@@ -14,6 +14,7 @@ const fs = require('fs');
 const path = require('path');
 const cron = require('node-cron');
 const { EmbedBuilder } = require('discord.js');
+const burpaudit = require('./burp-audit');
 
 const ACTIONS_FILE = path.join(__dirname, '..', '..', 'security-test-actions.json');
 const CHANNEL_ID = '1542226706838978621';
@@ -94,7 +95,9 @@ async function sendAction(client) {
       console.error(`[security-test] Salon ${CHANNEL_ID} introuvable ou non textuel — message non envoye.`);
       return null;
     }
-    await channel.send({ embeds: [buildEmbed(picked, reminder)] });
+    // Le bouton d'export vit sur ce rappel ; l'analyse, elle, sort dans le
+    // salon sécurité (voir lib/burp-audit.js).
+    await channel.send({ embeds: [buildEmbed(picked, reminder)], components: [burpaudit.bouton()] });
     return picked;
   } catch (err) {
     console.error(`[security-test] Envoi impossible dans le salon ${CHANNEL_ID} (permissions manquantes ou salon absent ?) : ${err.message}`);
