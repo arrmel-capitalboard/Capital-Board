@@ -63,9 +63,11 @@ function bouton() {
 function depotModal() {
   const upload = new FileUploadBuilder()
     .setCustomId('export').setMinValues(1).setMaxValues(1).setRequired(true);
+  // Discord plafonne la description d'un label à 100 caractères : la marche à
+  // suivre complète vit dans le rappel de l'embed, pas ici.
   const label = new LabelBuilder()
     .setLabel('Export HTTP history (.xml ou .json)')
-    .setDescription("Burp → Proxy → HTTP history → tout sélectionner → clic droit → Save items. Filtrez sur capitalboard.fr : Discord refuse au-delà de 10 Mo.")
+    .setDescription('Burp → HTTP history → Save items. Filtrez capitalboard.fr : 10 Mo max chez Discord.')
     .setFileUploadComponent(upload);
 
   return new ModalBuilder()
@@ -158,4 +160,7 @@ async function handleModal(interaction) {
 const isBurpButton = (customId) => customId.startsWith('burp:');
 const isBurpModal  = (customId) => customId === 'burpaudit';
 
-module.exports = { bouton, handleButton, handleModal, isBurpButton, isBurpModal, SECURITE_CHANNEL };
+// `depotModal` est exporté pour être validé hors ligne : Discord refuse une
+// description de label au-delà de 100 caractères, et l'erreur ne se voyait
+// qu'au clic, en production.
+module.exports = { bouton, depotModal, handleButton, handleModal, isBurpButton, isBurpModal, SECURITE_CHANNEL };
