@@ -1237,6 +1237,14 @@ async function purgeUserData(uid, env) {
     delDoc(`supportThreads/${uid}`),
     username ? delDoc(`usernames/${username}`) : Promise.resolve(),
   ]);
+  // personalQuestions : un document par couple (question, destinataire), rangé
+  // hors de `users/{uid}`. Il porte l'uid et la réponse écrite par la personne,
+  // donc du texte libre qu'elle a produit : la purge doit aller le chercher par
+  // requête, sans quoi il survit à la suppression du compte.
+  try {
+    const questions = await firestoreQueryEq('personalQuestions', 'uid', uid, 200, env);
+    await Promise.all(questions.map((d) => delDoc(`personalQuestions/${d.name.split('/').pop()}`)));
+  } catch (_) { /* collection absente ou requête en échec : rien de plus à faire */ }
   // earningsSubscribers/{sym}/users/{uid} : index inversé sans requête de groupe
   // côté Worker — laissé tel quel (entrée orpheline inoffensive, le script de
   // notification ignore un uid dont le compte n'existe plus).
