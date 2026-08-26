@@ -2,11 +2,13 @@
 
 // Rappel de test de sécurité manuel : toutes les 48h à 10h (heure de Paris),
 // une liste d'actions est tirée au sort dans security-test-actions.json (racine
-// du bot) et postée dans le salon dédié, avec le rappel de lancer Burp Suite
-// avant de les rejouer sur capitalboard.fr.
+// du bot) et postée dans le salon dédié, avec le rappel d'outillage qui
+// l'accompagne.
 //
-// La liste est lue à chaque envoi (pas au require) : elle peut vivre hors du
-// dépôt, sur la VM seulement, sans empêcher le bot de démarrer si elle manque.
+// Le contenu (actions + rappel) est volontairement hors du dépôt public : il
+// vit sur la VM uniquement, voir security-test-actions.example.json pour le
+// format. Il est relu à chaque envoi, donc son absence n'empêche pas le bot de
+// démarrer — le rappel se désactive en le signalant dans les logs.
 
 const fs = require('fs');
 const path = require('path');
@@ -19,16 +21,30 @@ const CRON_EXPR = '0 10 */2 * *';
 // Nombre d'actions par rappel (tronqué si le fichier en contient moins).
 const SAMPLE_SIZE = 12;
 const ORANGE = 0xf97316;
+// Utilisé si le fichier n'en fournit pas : rien de spécifique au dépôt public.
+const DEFAULT_REMINDER = "Vérifie que ton proxy d'interception est actif avant de commencer.";
 
-/** Liste des actions, ou [] si le fichier est absent/invalide. */
-function loadActions() {
+/**
+ * Contenu du fichier : { actions, reminder }. Accepte aussi un simple tableau
+ * d'actions (ancien format). Retourne une liste vide si le fichier est absent
+ * ou invalide.
+ */
+function loadConfig() {
   try {
-    const actions = JSON.parse(fs.readFileSync(ACTIONS_FILE, 'utf8'));
-    return Array.isArray(actions) ? actions.filter((a) => typeof a === 'string' && a.trim()) : [];
+    const raw = JSON.parse(fs.readFileSync(ACTIONS_FILE, 'utf8'));
+    const list = Array.isArray(raw) ? raw : raw?.actions;
+    const actions = Array.isArray(list) ? list.filter((a) => typeof a === 'string' && a.trim()) : [];
+    const reminder = typeof raw?.reminder === 'string' && raw.reminder.trim() ? raw.reminder : DEFAULT_REMINDER;
+    return { actions, reminder };
   } catch (err) {
     console.error(`[security-test] Lecture de ${ACTIONS_FILE} impossible : ${err.message}`);
-    return [];
+    return { actions: [], reminder: DEFAULT_REMINDER };
   }
+}
+
+/** Raccourci : les actions seules. */
+function loadActions() {
+  return loadConfig().actions;
 }
 
 /** Tire au sort `count` actions distinctes (Fisher-Yates sur une copie). */
@@ -42,7 +58,7 @@ function pickActions(actions, count = SAMPLE_SIZE) {
 }
 
 /** Embed d'une liste d'actions de test. */
-function buildEmbed(actions) {
+function buildEmbed(actions, reminder = DEFAULT_REMINDER) {
   const list = actions.map((a, i) => `**${i + 1}.** ${a}`).join('\n');
   return new EmbedBuilder()
     .setColor(ORANGE)
@@ -50,7 +66,7 @@ function buildEmbed(actions) {
     .setDescription(list)
     .addFields({
       name: '⚠️ Rappel',
-      value: 'Assure-toi que Burp Suite est ouvert avec le proxy actif (127.0.0.1:8080) avant de faire ces actions sur capitalboard.fr',
+      value: reminder,
     })
     .setFooter({ text: 'Capital Board — test de sécurité manuel' })
     .setTimestamp();
@@ -62,7 +78,7 @@ function buildEmbed(actions) {
  * throw, le process ne doit pas tomber sur un rappel raté.
  */
 async function sendAction(client) {
-  const actions = loadActions();
+  const { actions, reminder } = loadConfig();
   if (!actions.length) {
     console.error('[security-test] Aucune action disponible — rappel ignoré.');
     return null;
@@ -78,7 +94,7 @@ async function sendAction(client) {
       console.error(`[security-test] Salon ${CHANNEL_ID} introuvable ou non textuel — message non envoye.`);
       return null;
     }
-    await channel.send({ embeds: [buildEmbed(picked)] });
+    await channel.send({ embeds: [buildEmbed(picked, reminder)] });
     return picked;
   } catch (err) {
     console.error(`[security-test] Envoi impossible dans le salon ${CHANNEL_ID} (permissions manquantes ou salon absent ?) : ${err.message}`);
@@ -98,4 +114,4 @@ function start(client) {
   console.log(`[security-test] Rappel programme (${CRON_EXPR}, Europe/Paris) — ${loadActions().length} actions, ${SAMPLE_SIZE} par envoi.`);
 }
 
-module.exports = { start, sendAction, buildEmbed, pickActions, loadActions, CHANNEL_ID, CRON_EXPR, SAMPLE_SIZE };
+module.exports = { start, sendAction, buildEmbed, pickActions, loadConfig, loadActions, CHANNEL_ID, CRON_EXPR, SAMPLE_SIZE };

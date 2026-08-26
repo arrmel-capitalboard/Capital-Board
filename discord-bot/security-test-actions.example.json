@@ -1,0 +1,8 @@
+{
+  "_comment": "Modèle. Le vrai fichier security-test-actions.json est ignoré par git : il vit sur la VM uniquement.",
+  "reminder": "Rappel affiché sous la liste (outillage à lancer avant de commencer).",
+  "actions": [
+    "Une action de test à rejouer sur le site",
+    "Une autre action"
+  ]
+}

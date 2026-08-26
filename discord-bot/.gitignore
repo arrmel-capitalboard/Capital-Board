@@ -12,3 +12,6 @@ data/warns.json
 data/status-monitors.json
 
 *.log
+
+# Checklist de test de sécurité — VM uniquement (repo public)
+security-test-actions.json

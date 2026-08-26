@@ -13,7 +13,7 @@ const securitytest = require('./lib/security-test');
 
 async function main() {
   const args = process.argv.slice(2);
-  const actions = securitytest.loadActions();
+  const { actions, reminder } = securitytest.loadConfig();
 
   if (!actions.length) {
     console.error('[security-test] Aucune action chargée — vérifier security-test-actions.json.');
@@ -30,7 +30,7 @@ async function main() {
   if (args.includes('--dry')) {
     const picked = securitytest.pickActions(actions);
     console.log(`[dry] salon ${securitytest.CHANNEL_ID} (rien envoyé)`);
-    console.log(JSON.stringify(securitytest.buildEmbed(picked).toJSON(), null, 2));
+    console.log(JSON.stringify(securitytest.buildEmbed(picked, reminder).toJSON(), null, 2));
     return;
   }
 
