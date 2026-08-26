@@ -13,11 +13,17 @@
 //     `scanPatches`, exactement comme un scan de code.
 //
 //   burpUploads/{id} = {
-//     statut: 'attente'|'traite'|'erreur',
+//     statut: 'attente'|'encours'|'traite'|'erreur',
 //     fichierUrl,              // URL Discord, effacée dès l'analyse terminée
 //     fichierNom, fichierTaille,
 //     uploadedBy, createdAt, majLe, erreur, runUrl,
+//     messageId, channelId,    // message d'état, réécrit à chaque changement
 //   }
+//
+// Un message d'état est posté dès le dépôt et suit le run : sans lui, entre le
+// « reçu » et le compte rendu, rien ne dit si l'analyse tourne ou si elle a
+// planté. Le workflow passe le document en `encours` avec l'URL du run dès son
+// démarrage, puis en `traite` ou `erreur`.
 //
 // Le bot ne stocke ni ne redacte le fichier : il ne transmet que l'URL de la
 // pièce jointe Discord. Un export non redacté n'atterrit donc jamais sur la VM
@@ -29,7 +35,7 @@
 // de lancer un workflow, avec le même jeton, qui reste sur la VM.
 
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
   ModalBuilder, LabelBuilder, FileUploadBuilder, MessageFlags,
 } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
@@ -37,7 +43,9 @@ const config = require('../config');
 
 const COL = 'burpUploads';
 const WORKFLOW = 'security-scan-burp.yml';
-const SECURITE_CHANNEL = '1541530997005353030';
+// Salon des analyses de trafic. Distinct du salon des scans de code : ces
+// comptes rendus portent sur une session de test manuelle, pas sur un commit.
+const RESULTAT_CHANNEL = '1542258866505388083';
 const FONDATEUR_ROLE   = '1512905140108001391';
 
 // Discord plafonne l'envoi selon le compte et le niveau de boost du serveur
@@ -153,8 +161,75 @@ async function handleModal(interaction) {
 
   console.log(`[burp-audit] ${COL}/${ref.id} déposé par ${interaction.user.id} (${fichier.size} octets), workflow lancé.`);
   await interaction.editReply(
-    `Reçu, analyse en cours. Le résultat arrivera dans <#${SECURITE_CHANNEL}>.\n`
+    `Reçu. Le suivi et le résultat arrivent dans <#${RESULTAT_CHANNEL}>.\n`
     + "L'export est redacté dans le runner avant analyse, et n'est stocké nulle part.",
+  );
+}
+
+// ── Message d'état ─────────────────────────────────────────────────────────
+const ETATS = {
+  attente: { titre: '📥 Export reçu — analyse en attente', couleur: 0x5b8def },
+  encours: { titre: '⏳ Analyse du trafic en cours…', couleur: 0xff9f43 },
+  traite: { titre: '✅ Analyse terminée', couleur: 0x22d98a },
+  erreur: { titre: '🔴 Analyse échouée', couleur: 0xff4d6a },
+};
+
+const enMo = (octets) => `${(Number(octets || 0) / 1048576).toFixed(1)} Mo`;
+
+function etatPayload(data) {
+  const etat = ETATS[data.statut] || ETATS.attente;
+  const embed = new EmbedBuilder()
+    .setColor(etat.couleur)
+    .setTitle(etat.titre)
+    .setTimestamp(data.createdAt || Date.now())
+    .addFields(
+      { name: 'Export', value: `\`${data.fichierNom || 'export'}\` · ${enMo(data.fichierTaille)}`, inline: true },
+      { name: 'Déposé par', value: `<@${data.uploadedBy}>`, inline: true },
+    );
+
+  if (data.statut === 'traite') {
+    embed.setDescription('Le compte rendu arrive juste après ce message.');
+  } else if (data.statut === 'encours') {
+    embed.setDescription("Le trafic est redacté puis relu. Comptez quelques minutes.");
+  } else if (data.statut === 'erreur') {
+    embed.setDescription("L'analyse ne s'est pas terminée. Le lien du run dit à quelle étape.");
+  }
+
+  if (data.runUrl) embed.addFields({ name: 'Run', value: `[Voir l'exécution](${data.runUrl})`, inline: true });
+  if (data.erreur) embed.addFields({ name: 'Erreur', value: String(data.erreur).slice(0, 1000) });
+
+  return { embeds: [embed] };
+}
+
+/** Poste le message d'état, puis le réécrit à chaque changement de statut. */
+function watch(client) {
+  if (!isConfigured()) {
+    console.warn('[burp-audit] Firestore non configuré : écoute désactivée.');
+    return;
+  }
+  col().onSnapshot(
+    (snap) => {
+      for (const change of snap.docChanges()) {
+        const doc = change.doc;
+        const data = doc.data();
+
+        if (change.type === 'added' && !data.messageId) {
+          client.channels.fetch(RESULTAT_CHANNEL)
+            .then((channel) => channel.send(etatPayload(data)))
+            .then((msg) => doc.ref.update({ messageId: msg.id, channelId: msg.channelId }))
+            .catch((e) => console.error('[burp-audit] envoi état :', e.message));
+          continue;
+        }
+
+        if (change.type === 'modified' && data.messageId) {
+          client.channels.fetch(data.channelId || RESULTAT_CHANNEL)
+            .then((channel) => channel.messages.fetch(data.messageId))
+            .then((msg) => msg.edit(etatPayload(data)))
+            .catch((e) => console.error('[burp-audit] maj état :', e.message));
+        }
+      }
+    },
+    (err) => console.error('[burp-audit] listener interrompu :', err.message),
   );
 }
 
@@ -164,4 +239,7 @@ const isBurpModal  = (customId) => customId === 'burpaudit';
 // `depotModal` est exporté pour être validé hors ligne : Discord refuse une
 // description de label au-delà de 100 caractères, et l'erreur ne se voyait
 // qu'au clic, en production.
-module.exports = { bouton, depotModal, handleButton, handleModal, isBurpButton, isBurpModal, SECURITE_CHANNEL };
+module.exports = {
+  bouton, depotModal, handleButton, handleModal, watch, etatPayload,
+  isBurpButton, isBurpModal, RESULTAT_CHANNEL,
+};

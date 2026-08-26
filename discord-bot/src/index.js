@@ -58,6 +58,7 @@ client.once(Events.ClientReady, (c) => {
   bareme.start(c);
   restartmonitor.handleOnReady(c).catch(() => {});
   securitytest.start(c);
+  burpaudit.watch(c);
 });
 
 // Rafraîchit le compteur de tickets dès qu'un salon est créé/supprimé.

@@ -2,7 +2,7 @@
 // Discord (voir discord-bot/src/lib/scan-patches.js).
 //
 // Usage :
-//   node scan-patch.js --set --resume rapport.md --patch fix.patch --base <sha> --run <url>
+//   node scan-patch.js --set --resume rapport.md --patch fix.patch --base <sha> --run <url> [--salon <id>]
 //   node scan-patch.js --get --id <id> --sortie fix.patch
 //   node scan-patch.js --statut --id <id> --valeur applique --commit <sha>
 //   node scan-patch.js --statut --id <id> --valeur erreur --erreur "message"
@@ -47,6 +47,9 @@ if (a('set')) {
     runUrl: opt('run') || null,
     statut: 'attente',
     createdAt: Date.now(),
+    // Sans --salon, le bot poste dans le salon des scans de code. L'analyse de
+    // trafic Burp a le sien : le correctif doit suivre son compte rendu.
+    ...(opt('salon') ? { salon: opt('salon') } : {}),
   });
   console.log(`${COL}/${ref.id} écrit (${fichiers.length} fichiers, ${patch.length} caractères).`);
 

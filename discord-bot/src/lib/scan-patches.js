@@ -99,7 +99,9 @@ function payload(id, data) {
 
 /** Poste la proposition, avec le diff en pièce jointe pour qu'il soit lisible en entier. */
 async function poster(client, id, data) {
-  const channel = await client.channels.fetch(SECURITE_CHANNEL);
+  // `salon` permet à l'émetteur de router sa proposition (une analyse de trafic
+  // a le sien) sans toucher à la config du bot. Absent, c'est le salon des scans.
+  const channel = await client.channels.fetch(data.salon || SECURITE_CHANNEL);
   const base = payload(id, data);
   const fichiersJoints = data.patch
     ? [new AttachmentBuilder(Buffer.from(data.patch, 'utf8'), { name: `correctif-${id}.patch` })]
