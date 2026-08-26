@@ -8,7 +8,8 @@
     "start": "node src/index.js",
     "deploy": "node src/deploy-commands.js",
     "embed": "node src/publish-embed.js",
-    "test": "node --test"
+    "test": "node --test",
+    "security-test": "node src/security-test-send.js"
   },
   "engines": {
     "node": ">=18"
