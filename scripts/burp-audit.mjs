@@ -73,14 +73,43 @@ function redacte(texte) {
 }
 
 const B64 = /^[A-Za-z0-9+/\r\n]+={0,2}$/;
+const CDATA = /^<!\[CDATA\[([\s\S]*)\]\]>$/;
 
-/** Redacte un bloc <request>/<response>, encodé ou non. */
+/**
+ * Redacte un bloc <request>/<response>, encodé ou non.
+ *
+ * Burp enveloppe le base64 dans du CDATA : sans le retirer d'abord, le test
+ * base64 échoue sur les crochets et le bloc repart intact — la redaction ne
+ * faisait alors rien du tout, alors que le digest, lui, décodait bien.
+ */
 function redacteBloc(ouvrant, contenu, fermant) {
-  const encode = /base64="true"/i.test(ouvrant);
-  if (!encode) return ouvrant + redacte(contenu) + fermant;
-  if (!B64.test(contenu.trim())) return ouvrant + contenu + fermant;
-  const clair = Buffer.from(contenu, 'base64').toString('utf8');
-  return ouvrant + Buffer.from(redacte(clair), 'utf8').toString('base64') + fermant;
+  const brut = contenu.trim();
+  const cdata = brut.match(CDATA);
+  const charge = (cdata ? cdata[1] : brut).trim();
+  const remonte = (t) => ouvrant + (cdata ? `<![CDATA[${t}]]>` : t) + fermant;
+
+  if (!/base64="true"/i.test(ouvrant)) return remonte(redacte(charge));
+  if (!B64.test(charge)) return remonte(charge);
+  const clair = Buffer.from(charge, 'base64').toString('utf8');
+  return remonte(Buffer.from(redacte(clair), 'utf8').toString('base64'));
+}
+
+// Garde-fou de sortie : si un jeton survit à la redaction, mieux vaut arrêter
+// que d'envoyer le trafic à l'analyse. C'est exactement ce qui est arrivé au
+// premier run réel — la redaction silencieusement inopérante sur du CDATA.
+const RESIDUS = [
+  [/eyJ[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]{8,}\.[A-Za-z0-9_-]+/, 'un jeton de la forme JWT'],
+  [/\bAuthorization:\s*\w+\s+(?!\[REDACTED\])\S/i, 'un en-tête Authorization non redacté'],
+  [/"(?:idToken|refreshToken|access_token)"\s*:\s*"(?!\[REDACTED\])[^"]/i, 'un jeton dans un corps JSON'],
+];
+
+function verifie(texte, quoi) {
+  for (const [motif, description] of RESIDUS) {
+    if (motif.test(texte)) {
+      console.error(`Redaction incomplète : ${description} subsiste dans ${quoi}. Analyse annulée.`);
+      process.exit(4);
+    }
+  }
 }
 
 const BLOC = /(<(request|response)\b[^>]*>)([\s\S]*?)(<\/\2>)/gi;
@@ -200,6 +229,11 @@ function ecrire(brut, etiquette) {
   writeFileSync(sortie, propre, 'utf8');
 
   const resume = digest(propre);
+  // Vérifié avant écriture : le digest décode le base64, donc c'est lui qui
+  // exposerait un jeton oublié à la session d'analyse.
+  if (resume) verifie(resume.texte, 'le digest');
+  verifie(propre, "l'export redacté");
+
   const cheminDigest = opt('digest');
   if (cheminDigest && resume) {
     mkdirSync(dirname(cheminDigest), { recursive: true });
