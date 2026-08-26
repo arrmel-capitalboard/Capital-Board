@@ -1,9 +1,15 @@
 'use strict';
 
-// Rappel de test de sécurité manuel : toutes les 48h à 10h (heure de Paris),
-// une liste d'actions est tirée au sort dans security-test-actions.json (racine
-// du bot) et postée dans le salon dédié, avec le rappel d'outillage qui
-// l'accompagne.
+// Tests de sécurité récurrents, toutes les 48h à 10h (heure de Paris).
+//
+// Le cron lance désormais un audit AUTOMATISÉ : une action tirée dans
+// security-test-actions.json est rejouée par un navigateur derrière un proxy
+// d'interception, puis la capture part à l'analyse (scripts/run-automated-audit.mjs).
+// Le compte rendu est posté par l'orchestrateur, capture jointe.
+//
+// Le rappel manuel n'a pas disparu : `npm run security-test` poste toujours la
+// liste d'actions à faire à la main, avec le bouton d'export Burp. C'est le
+// parcours interactif, celui que l'automatisation ne remplace pas.
 //
 // Le contenu (actions + rappel) est volontairement hors du dépôt public : il
 // vit sur la VM uniquement, voir security-test-actions.example.json pour le
@@ -12,6 +18,7 @@
 
 const fs = require('fs');
 const path = require('path');
+const { spawn } = require('child_process');
 const cron = require('node-cron');
 const { EmbedBuilder } = require('discord.js');
 const burpaudit = require('./burp-audit');
@@ -169,20 +176,62 @@ async function sendAction(client) {
   }
 }
 
-/** Programme le rappel récurrent. */
+/**
+ * Lance un audit automatisé : une action tirée par la même rotation, rejouée
+ * dans un navigateur derrière le proxy d'interception, puis analysée.
+ *
+ * Le bot choisit l'action et tient l'historique — l'orchestrateur ne fait que
+ * l'exécuter. Le message de compte rendu vient de lui, avec la capture en pièce
+ * jointe ; le bot ne parle ici que pour signaler un échec de lancement.
+ */
+async function runAutomated(client) {
+  const { actions } = loadConfig();
+  if (!actions.length) {
+    console.error('[security-test] Aucune action disponible — audit automatisé ignoré.');
+    return null;
+  }
+
+  const historique = lireHistorique();
+  const [action] = pickActions(actions, historique, 1);
+  console.log(`[security-test] ${new Date().toISOString()} — audit automatisé : ${action}`);
+
+  const script = path.join(__dirname, '..', '..', '..', 'scripts', 'run-automated-audit.mjs');
+  const code = await new Promise((resolve) => {
+    const proc = spawn(process.execPath, [script, '--action', action], { stdio: ['ignore', 'inherit', 'inherit'] });
+    proc.on('error', (err) => { console.error('[security-test] lancement impossible :', err.message); resolve(-1); });
+    proc.on('exit', resolve);
+  });
+
+  if (code !== 0) {
+    // L'action n'est pas consommée : elle repassera au prochain tour.
+    console.error(`[security-test] Audit automatisé en échec (code ${code}).`);
+    try {
+      const channel = await client.channels.fetch(CHANNEL_ID);
+      await channel.send(`🔴 Audit automatisé en échec sur « ${action} ». Voir les logs de la VM (\`pm2 logs capitalboard-bot\`).`);
+    } catch (err) {
+      console.error(`[security-test] Signalement impossible : ${err.message}`);
+    }
+    return null;
+  }
+
+  ecrireHistorique(historique, [action], actions.length);
+  return action;
+}
+
+/** Programme l'audit récurrent. */
 function start(client) {
   cron.schedule(
     CRON_EXPR,
     () => {
-      sendAction(client).catch((err) => console.error('[security-test] erreur :', err.message));
+      runAutomated(client).catch((err) => console.error('[security-test] erreur :', err.message));
     },
     { timezone: 'Europe/Paris' },
   );
   const total = loadActions().length;
-  console.log(`[security-test] Rappel programme (${CRON_EXPR}, Europe/Paris) — ${total} actions, ${SAMPLE_SIZE} par envoi, sans répétition sur ${fenetre(total)}.`);
+  console.log(`[security-test] Audit automatise programme (${CRON_EXPR}, Europe/Paris) — ${total} actions, rotation sur ${fenetre(total)}.`);
 }
 
 module.exports = {
-  start, sendAction, buildEmbed, pickActions, loadConfig, loadActions,
+  start, sendAction, runAutomated, buildEmbed, pickActions, loadConfig, loadActions,
   lireHistorique, fenetre, CHANNEL_ID, CRON_EXPR, SAMPLE_SIZE,
 };
