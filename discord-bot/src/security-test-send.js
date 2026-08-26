@@ -3,7 +3,7 @@
 // Envoi manuel d'une action de test sécurité (voir lib/security-test.js).
 //
 // Usage :
-//   npm run security-test            pioche une action et l'envoie
+//   npm run security-test            tire une liste d'actions et l'envoie
 //   npm run security-test -- --dry   construit l'embed sans rien envoyer
 //   npm run security-test -- --list  liste les actions du fichier
 
@@ -28,9 +28,9 @@ async function main() {
   }
 
   if (args.includes('--dry')) {
-    const action = actions[Math.floor(Math.random() * actions.length)];
+    const picked = securitytest.pickActions(actions);
     console.log(`[dry] salon ${securitytest.CHANNEL_ID} (rien envoyé)`);
-    console.log(JSON.stringify(securitytest.buildEmbed(action).toJSON(), null, 2));
+    console.log(JSON.stringify(securitytest.buildEmbed(picked).toJSON(), null, 2));
     return;
   }
 
@@ -41,7 +41,7 @@ async function main() {
   try {
     const sent = await securitytest.sendAction(client);
     if (sent) {
-      console.log(`[security-test] Envoyé dans le salon ${securitytest.CHANNEL_ID}.`);
+      console.log(`[security-test] ${sent.length} action(s) envoyée(s) dans le salon ${securitytest.CHANNEL_ID}.`);
     } else {
       process.exitCode = 1;
     }
