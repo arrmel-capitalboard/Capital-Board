@@ -10,6 +10,7 @@ firebase-key.json
 data/temp-bans.json
 data/warns.json
 data/status-monitors.json
+security-test-history.json
 
 *.log
 

@@ -23,12 +23,15 @@ async function main() {
 
   if (args.includes('--list') || args.includes('-l')) {
     console.log(`${actions.length} action(s) :`);
-    actions.forEach((a, i) => console.log(`  ${String(i + 1).padStart(2)}. ${a}`));
+    const recentes = new Set(securitytest.lireHistorique().slice(-securitytest.fenetre(actions.length)).map((e) => e.action));
+    actions.forEach((a, i) => console.log(`  ${String(i + 1).padStart(2)}. ${recentes.has(a) ? '·' : ' '} ${a}`));
+    console.log(`
+(· = proposée récemment, écartée du prochain tirage)`);
     return;
   }
 
   if (args.includes('--dry')) {
-    const picked = securitytest.pickActions(actions);
+    const picked = securitytest.pickActions(actions, securitytest.lireHistorique());
     console.log(`[dry] salon ${securitytest.CHANNEL_ID} (rien envoyé)`);
     console.log(JSON.stringify(securitytest.buildEmbed(picked, reminder).toJSON(), null, 2));
     return;

@@ -17,6 +17,9 @@ const { EmbedBuilder } = require('discord.js');
 const burpaudit = require('./burp-audit');
 
 const ACTIONS_FILE = path.join(__dirname, '..', '..', 'security-test-actions.json');
+// Historique des actions déjà proposées, à côté de la liste : même logique,
+// un fichier local sur la VM plutôt qu'une collection Firestore pour ça.
+const HISTORIQUE_FILE = path.join(__dirname, '..', '..', 'security-test-history.json');
 const CHANNEL_ID = '1542226706838978621';
 const CRON_EXPR = '0 10 */2 * *';
 // Nombre d'actions par rappel (tronqué si le fichier en contient moins).
@@ -48,14 +51,71 @@ function loadActions() {
   return loadConfig().actions;
 }
 
-/** Tire au sort `count` actions distinctes (Fisher-Yates sur une copie). */
-function pickActions(actions, count = SAMPLE_SIZE) {
-  const pool = [...actions];
+/** Mélange une copie (Fisher-Yates). */
+function melange(liste) {
+  const pool = [...liste];
   for (let i = pool.length - 1; i > 0; i--) {
     const j = Math.floor(Math.random() * (i + 1));
     [pool[i], pool[j]] = [pool[j], pool[i]];
   }
-  return pool.slice(0, Math.min(count, pool.length));
+  return pool;
+}
+
+/** Historique des actions déjà proposées, [] si le fichier manque. */
+function lireHistorique() {
+  try {
+    const brut = JSON.parse(fs.readFileSync(HISTORIQUE_FILE, 'utf8'));
+    return Array.isArray(brut) ? brut.filter((e) => e && typeof e.action === 'string') : [];
+  } catch (err) {
+    // Premier lancement : le fichier n'existe pas encore, ce n'est pas une erreur.
+    if (err.code !== 'ENOENT') console.error(`[security-test] Historique illisible (${err.message}) — reparti de zéro.`);
+    return [];
+  }
+}
+
+/** Ajoute les actions envoyées et ne garde que la fenêtre récente. */
+function ecrireHistorique(historique, actions, taillePool) {
+  const postedAt = new Date().toISOString();
+  const complet = [...historique, ...actions.map((action) => ({ action, postedAt }))];
+  const garde = complet.slice(-fenetre(taillePool));
+  try {
+    fs.writeFileSync(HISTORIQUE_FILE, `${JSON.stringify(garde, null, 2)}\n`, 'utf8');
+  } catch (err) {
+    // Le rappel est déjà parti : un historique non écrit ne justifie pas une erreur.
+    console.error(`[security-test] Historique non enregistré : ${err.message}`);
+  }
+}
+
+/**
+ * Taille de la fenêtre d'exclusion : tout le pool sauf trois, pour qu'une action
+ * ne revienne pas tant qu'il en reste d'autres non couvertes. Jamais moins
+ * qu'un tirage, sinon la fenêtre ne retiendrait même pas le rappel précédent.
+ */
+function fenetre(taillePool) {
+  return Math.max(SAMPLE_SIZE, taillePool - 3);
+}
+
+/**
+ * Tire `count` actions en écartant celles déjà proposées récemment.
+ *
+ * Le rappel en pose douze à la fois : exclure toute la fenêtre laisserait moins
+ * de candidats que nécessaire. Quand c'est le cas, on prend d'abord tout ce qui
+ * n'a jamais été proposé, puis on complète par les plus anciennes — la rotation
+ * couvre ainsi la liste entière avant de se répéter, sans jamais tomber à court.
+ */
+function pickActions(actions, historique = [], count = SAMPLE_SIZE) {
+  const recentes = new Set(historique.slice(-fenetre(actions.length)).map((e) => e.action));
+  const jamais = melange(actions.filter((a) => !recentes.has(a)));
+  if (jamais.length >= count) return jamais.slice(0, count);
+
+  // Les plus anciennement proposées d'abord ; l'ordre du fichier est chronologique.
+  const parAnciennete = [];
+  for (const entree of historique) {
+    if (actions.includes(entree.action) && !jamais.includes(entree.action) && !parAnciennete.includes(entree.action)) {
+      parAnciennete.push(entree.action);
+    }
+  }
+  return [...jamais, ...parAnciennete].slice(0, count);
 }
 
 /** Embed d'une liste d'actions de test. */
@@ -85,8 +145,9 @@ async function sendAction(client) {
     return null;
   }
 
-  const picked = pickActions(actions);
-  console.log(`[security-test] ${new Date().toISOString()} — ${picked.length} action(s) tiree(s) :`);
+  const historique = lireHistorique();
+  const picked = pickActions(actions, historique);
+  console.log(`[security-test] ${new Date().toISOString()} — ${picked.length} action(s) tiree(s), ${historique.length} en historique :`);
   picked.forEach((a, i) => console.log(`[security-test]   ${i + 1}. ${a}`));
 
   try {
@@ -98,6 +159,9 @@ async function sendAction(client) {
     // Le bouton d'export vit sur ce rappel ; l'analyse, elle, sort dans le
     // salon sécurité (voir lib/burp-audit.js).
     await channel.send({ embeds: [buildEmbed(picked, reminder)], components: [burpaudit.bouton()] });
+    // Après l'envoi seulement : un rappel qui n'est pas parti ne doit pas
+    // consommer des actions dans la rotation.
+    ecrireHistorique(historique, picked, actions.length);
     return picked;
   } catch (err) {
     console.error(`[security-test] Envoi impossible dans le salon ${CHANNEL_ID} (permissions manquantes ou salon absent ?) : ${err.message}`);
@@ -114,7 +178,11 @@ function start(client) {
     },
     { timezone: 'Europe/Paris' },
   );
-  console.log(`[security-test] Rappel programme (${CRON_EXPR}, Europe/Paris) — ${loadActions().length} actions, ${SAMPLE_SIZE} par envoi.`);
+  const total = loadActions().length;
+  console.log(`[security-test] Rappel programme (${CRON_EXPR}, Europe/Paris) — ${total} actions, ${SAMPLE_SIZE} par envoi, sans répétition sur ${fenetre(total)}.`);
 }
 
-module.exports = { start, sendAction, buildEmbed, pickActions, loadConfig, loadActions, CHANNEL_ID, CRON_EXPR, SAMPLE_SIZE };
+module.exports = {
+  start, sendAction, buildEmbed, pickActions, loadConfig, loadActions,
+  lireHistorique, fenetre, CHANNEL_ID, CRON_EXPR, SAMPLE_SIZE,
+};
