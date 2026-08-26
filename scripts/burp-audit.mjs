@@ -99,9 +99,26 @@ function redacteExport(brut) {
 }
 
 // ── Digest ─────────────────────────────────────────────────────────────────
+// Un export de plusieurs dizaines de Mo contient surtout des répétitions : la
+// même requête rejouée à chaque navigation. Le digest regroupe donc par
+// endpoint — méthode, chemin normalisé, code de retour — et n'en détaille que
+// quelques exemples. Sans ce regroupement, la session lit les 2000 premières
+// lignes du fichier et ne voit jamais la fin.
 const STATIQUE = /\.(css|js|mjs|png|jpe?g|gif|svg|webp|ico|woff2?|ttf|map)(\?|$)/i;
-const CORPS_MAX = 800;
-const ENTREES_MAX = 400;
+const CORPS_MAX = 700;
+const GROUPES_MAX = 150;
+const EXEMPLES_PAR_GROUPE = 2;
+
+/** Chemin comparable : identifiants et valeurs de paramètres remplacés. */
+function normalise(url) {
+  const [avant, apres] = url.split('?');
+  const chemin = avant
+    .replace(/\/[0-9a-f]{8}-[0-9a-f-]{27,}/gi, '/{uuid}')
+    .replace(/\/[A-Za-z0-9_-]{20,}/g, '/{id}')
+    .replace(/\/\d+/g, '/{n}');
+  const params = apres ? [...new URLSearchParams(apres).keys()].sort() : [];
+  return chemin + (params.length ? `?${params.join('&')}` : '');
+}
 
 const champ = (bloc, nom) => {
   const m = bloc.match(new RegExp(`<${nom}\\b[^>]*>([\\s\\S]*?)</${nom}>`, 'i'));
@@ -117,19 +134,31 @@ const decodeBloc = (bloc, nom) => {
   return B64.test(contenu) ? Buffer.from(contenu, 'base64').toString('utf8') : '';
 };
 
-/** Une entrée lisible par requête, corps tronqués, statiques écartés. */
+/** Digest groupé par endpoint : quelques exemples détaillés, le reste compté. */
 function digest(xmlRedacte) {
   const items = xmlRedacte.match(/<item\b[\s\S]*?<\/item>/gi);
   if (!items) return null;
 
-  const lignes = [];
-  let ignores = 0;
+  const groupes = new Map();
+  let statiques = 0;
+  let debordement = 0;
+
   for (const item of items) {
     const url = champ(item, 'url');
-    if (STATIQUE.test(url) || lignes.length >= ENTREES_MAX) { ignores += 1; continue; }
+    if (STATIQUE.test(url)) { statiques += 1; continue; }
 
     const methode = champ(item, 'method') || '?';
     const statut = champ(item, 'status') || '?';
+    const cle = `${methode} ${normalise(url)} → ${statut}`;
+
+    if (!groupes.has(cle)) {
+      if (groupes.size >= GROUPES_MAX) { debordement += 1; continue; }
+      groupes.set(cle, { total: 0, exemples: [] });
+    }
+    const groupe = groupes.get(cle);
+    groupe.total += 1;
+    if (groupe.exemples.length >= EXEMPLES_PAR_GROUPE) continue;
+
     const req = decodeBloc(item, 'request');
     const res = decodeBloc(item, 'response');
     // Le corps commence après la ligne vide qui suit les en-têtes.
@@ -137,17 +166,30 @@ function digest(xmlRedacte) {
     const corpsReq = req.split(/\r?\n\r?\n/).slice(1).join('\n\n').trim();
     const corpsRes = res.split(/\r?\n\r?\n/).slice(1).join('\n\n').trim();
 
-    lignes.push(
-      `### ${methode} ${url} → ${statut}\n`
+    groupe.exemples.push(
+      `URL réelle : ${url}\n`
       + '```\n' + enTetesReq.slice(0, CORPS_MAX) + '\n```\n'
       + (corpsReq ? 'Corps envoyé :\n```\n' + corpsReq.slice(0, CORPS_MAX) + '\n```\n' : '')
       + (corpsRes ? 'Réponse :\n```\n' + corpsRes.slice(0, CORPS_MAX) + '\n```\n' : ''),
     );
   }
 
-  const entete = `# Trafic capturé (redacté)\n\n${lignes.length} requêtes retenues, `
-    + `${ignores} écartées (ressources statiques ou au-delà de la limite).\n\n`;
-  return { texte: entete + lignes.join('\n'), retenues: lignes.length, ignores };
+  const blocs = [...groupes.entries()].map(([cle, g]) => {
+    const repetitions = g.total > 1 ? ` — ${g.total} occurrences` : '';
+    return `### ${cle}${repetitions}\n\n${g.exemples.join('\n')}`;
+  });
+
+  const entete = `# Trafic capturé (redacté)\n\n`
+    + `${items.length} requêtes capturées, regroupées en ${groupes.size} endpoints distincts.\n`
+    + `${statiques} ressources statiques écartées`
+    + (debordement ? `, ${debordement} requêtes au-delà de la limite de ${GROUPES_MAX} endpoints` : '')
+    + `.\nLes identifiants sont remplacés par {id} dans les titres ; chaque bloc donne l'URL réelle.\n\n`;
+
+  return {
+    texte: entete + blocs.join('\n'),
+    retenues: groupes.size,
+    ignores: statiques + debordement,
+  };
 }
 
 /** Écrit l'export redacté et son digest, et rend un résumé chiffré. */
@@ -165,7 +207,7 @@ function ecrire(brut, etiquette) {
   }
 
   console.log(`Export « ${etiquette} » : ${brut.length} caractères, ${redactions} valeurs redactées.`);
-  if (resume) console.log(`Digest : ${resume.retenues} requêtes retenues, ${resume.ignores} écartées.`);
+  if (resume) console.log(`Digest : ${resume.retenues} endpoints distincts, ${resume.ignores} requêtes écartées.`);
   else console.log("Digest : format non reconnu comme un export Burp XML, la session lira l'export complet.");
 }
 

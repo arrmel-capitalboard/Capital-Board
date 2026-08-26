@@ -40,10 +40,11 @@ const WORKFLOW = 'security-scan-burp.yml';
 const SECURITE_CHANNEL = '1541530997005353030';
 const FONDATEUR_ROLE   = '1512905140108001391';
 
-// Discord plafonne déjà l'envoi bien plus bas (10 Mo sans Nitro) ; ce garde-fou
-// ne sert qu'à refuser proprement un fichier qu'un boost rendrait acceptable
-// côté Discord mais qui ne passerait pas l'analyse.
-const TAILLE_MAX = 20 * 1024 * 1024;
+// Discord plafonne l'envoi selon le compte et le niveau de boost du serveur
+// (10 Mo, 50 Mo, 100 Mo) : ce garde-fou ne sert qu'à refuser ce que l'analyse
+// ne saurait pas traiter. Le digest est dédupliqué par endpoint, donc un gros
+// export reste exploitable — c'est le téléchargement dans le runner qui borne.
+const TAILLE_MAX = 100 * 1024 * 1024;
 const EXTENSION_OK = /\.(xml|json)$/i;
 
 const col = () => getDb().collection(COL);
@@ -67,7 +68,7 @@ function depotModal() {
   // suivre complète vit dans le rappel de l'embed, pas ici.
   const label = new LabelBuilder()
     .setLabel('Export HTTP history (.xml ou .json)')
-    .setDescription('Burp → HTTP history → Save items. Filtrez capitalboard.fr : 10 Mo max chez Discord.')
+    .setDescription('Burp → HTTP history → Save items. Filtrer sur capitalboard.fr aide, sans être requis.')
     .setFileUploadComponent(upload);
 
   return new ModalBuilder()
