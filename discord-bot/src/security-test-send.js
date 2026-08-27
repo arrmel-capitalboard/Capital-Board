@@ -9,7 +9,7 @@
 
 const { Client, GatewayIntentBits } = require('discord.js');
 const config = require('./config');
-const securitytest = require('./lib/security-test');
+const securitytest = require('./lib/securitytest');
 
 async function main() {
   const args = process.argv.slice(2);

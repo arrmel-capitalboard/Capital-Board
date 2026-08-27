@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260825m';
+const APP_VERSION = '20260825n';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -15452,11 +15452,29 @@ async function _refreshAdminSecurityStats() {
 // (discord-bot/src/lib/vmstatus.js). On l'écoute en direct plutôt que de
 // l'interroger : la mise à jour arrive d'elle-même à chaque écriture, et il n'y
 // a ni port ouvert ni API HTTP à maintenir pour ça.
-let _vmUnsub = null, _vmBattement = null, _vmDernier = null, _vmErreur = null;
+let _vmUnsub = null, _vmBattement = null, _vmDernier = null, _vmErreur = null, _vmDemande = null;
 
-// Deux fois la période de remontée : un relevé manqué ne doit pas crier, deux
-// veulent dire que la VM ou le bot ne répond plus.
-const VM_PERIME_MS = 120000;
+// La VM n'écrit vite que pendant qu'on regarde : écrire chaque seconde en
+// permanence ferait 86 400 écritures par jour, quatre fois le quota gratuit,
+// pour des mesures que personne ne lit. Le panel pose donc une demande à
+// échéance, repoussée tant qu'il est ouvert — un onglet fermé brutalement fait
+// retomber la VM en cadence lente tout seul, sans rien avoir à nettoyer.
+const VM_DEMANDE_MS = 20000;   // on repousse toutes les 20 s…
+const VM_VALIDITE_MS = 45000;  // …une échéance à 45 s, deux battements de marge
+
+/** Péremption jugée sur la cadence annoncée par la VM, pas sur une constante. */
+const _vmSeuilPerime = (d) => Math.max(8000, (Number(d?.cadenceMs) || 60000) * 5);
+
+/** Demande la cadence rapide, et la repousse tant que le panel reste ouvert. */
+function _vmDemander() {
+  const poser = (jusqua) => {
+    try {
+      setFirestoreDoc(firestoreDoc(db, 'ops', 'vmWatch'), { until: jusqua, by: currentUser }, { merge: true });
+    } catch (_) { /* sans effet : la VM reste en cadence lente */ }
+  };
+  poser(Date.now() + VM_VALIDITE_MS);
+  if (!_vmDemande) _vmDemande = setInterval(() => poser(Date.now() + VM_VALIDITE_MS), VM_DEMANDE_MS);
+}
 
 const _vmDuree = (s) => {
   const j = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
@@ -15499,7 +15517,7 @@ function _vmRendre() {
   }
 
   const age = Math.max(0, Date.now() - (d.updatedAt || 0));
-  const perime = age > VM_PERIME_MS;
+  const perime = age > _vmSeuilPerime(d);
 
   _vmJauge('cpu', 'CPU', d.cpu?.pourcent,
     'charge ' + (d.cpu?.charge1 ?? '—') + ' / ' + (d.cpu?.charge5 ?? '—') + ' / ' + (d.cpu?.charge15 ?? '—')
@@ -15543,6 +15561,7 @@ function _vmEcouter() {
   // affiché resterait figé sur sa dernière valeur, et une VM devenue muette
   // passerait pour à jour.
   if (!_vmBattement) _vmBattement = setInterval(_vmRendre, 5000);
+  _vmDemander();
   _vmRendre();
 }
 
@@ -15551,6 +15570,13 @@ function _vmArreter() {
   _vmUnsub = null;
   if (_vmBattement) clearInterval(_vmBattement);
   _vmBattement = null;
+  if (_vmDemande) clearInterval(_vmDemande);
+  _vmDemande = null;
+  // Échéance ramenée à maintenant : la VM ralentit dès le prochain instant, au
+  // lieu d'attendre les 45 s de la dernière demande posée.
+  try {
+    setFirestoreDoc(firestoreDoc(db, 'ops', 'vmWatch'), { until: Date.now() }, { merge: true });
+  } catch (_) {}
 }
 
 async function renderAdminPage() {

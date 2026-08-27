@@ -19,7 +19,7 @@ const bareme = require('./lib/bareme');
 const tickets = require('./lib/tickets');
 const ticketstats = require('./lib/ticketstats');
 const { checkPub } = require('./lib/automod-pub');
-const securitytest = require('./lib/security-test');
+const securitytest = require('./lib/securitytest');
 const burpaudit = require('./lib/burp-audit');
 const vmstatus = require('./lib/vmstatus');
 

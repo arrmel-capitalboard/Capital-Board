@@ -181,6 +181,15 @@ service cloud.firestore {
       allow write: if false;
     }
 
+    // Demande de cadence rapide, posee par le panel admin tant qu'il est
+    // ouvert. Ecrire ici ne fait qu'accelerer une remontee deja autorisee en
+    // lecture : le seul risque serait de faire ecrire la VM plus souvent, et
+    // seul le fondateur peut le demander.
+    match /ops/vmWatch {
+      allow read: if _isAdmin();
+      allow write: if _isAdmin();
+    }
+
     match /auditLog/{id} {
       allow read: if _isAdmin();
       allow create: if _isAdmin();
