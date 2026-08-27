@@ -24,6 +24,7 @@
 // télécharger l'export non redacté.
 
 import { writeFileSync, mkdirSync, readFileSync } from 'fs';
+import { dechiffrer, estChiffre, lireCle } from './capture-chiffre.mjs';
 import { dirname } from 'path';
 
 const args = process.argv.slice(2);
@@ -282,7 +283,24 @@ if (a('get')) {
     console.error(`Téléchargement impossible (HTTP ${res.status}). Le lien Discord expire au bout de ~24 h.`);
     process.exit(3);
   }
-  ecrire(await res.text(), d.fichierNom);
+  // Une capture automatisée arrive chiffrée quand BURP_CAPTURE_KEY est posée
+  // des deux côtés : Discord n'en garde alors qu'un fichier illisible. Un
+  // export Burp déposé à la main reste en clair et passe par le même chemin —
+  // c'est l'en-tête du fichier qui tranche, pas sa provenance.
+  const brut = Buffer.from(await res.arrayBuffer());
+  let texte;
+  if (estChiffre(brut)) {
+    const cle = lireCle(process.env.BURP_CAPTURE_KEY);
+    if (!cle) {
+      console.error('Capture chiffrée reçue mais BURP_CAPTURE_KEY absente de ce run : impossible de la lire.');
+      process.exit(3);
+    }
+    texte = dechiffrer(brut, cle);
+    console.log('Capture chiffrée déchiffrée.');
+  } else {
+    texte = brut.toString('utf8');
+  }
+  ecrire(texte, d.fichierNom);
 
 } else if (a('statut')) {
   // `FieldValue` vient du même module que `getFirestore` : sans cet import, le
