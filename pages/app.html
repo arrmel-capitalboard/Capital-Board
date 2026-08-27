@@ -1283,6 +1283,17 @@
         #page-admin .admin-icon-sq{ width:32px; height:32px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:color-mix(in srgb, var(--acc) 15%, transparent); color:var(--acc) }
         #page-admin .admin-card-title{ font-size:14px; font-weight:700; color:var(--text); margin-bottom:4px }
         #page-admin .admin-card-desc{ font-size:12px; color:var(--text3); line-height:1.6 }
+        #page-admin .vm-jauge{ background:var(--s2); border-radius:10px; padding:12px 14px; min-width:0 }
+        #page-admin .vm-jauge-tete{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px }
+        #page-admin .vm-jauge-nom{ font-size:12px; font-weight:700; color:var(--text2) }
+        #page-admin .vm-jauge-val{ font-size:15px; font-weight:800; font-family:var(--mono); color:var(--text) }
+        #page-admin .vm-barre{ height:6px; border-radius:999px; background:color-mix(in srgb, var(--text3) 22%, transparent); overflow:hidden }
+        #page-admin .vm-barre span{ display:block; height:100%; border-radius:999px; background:var(--positive); transition:width .4s ease, background .4s ease }
+        #page-admin .vm-jauge.tendu .vm-barre span{ background:var(--gold) }
+        #page-admin .vm-jauge.critique .vm-barre span{ background:var(--negative) }
+        #page-admin .vm-jauge-detail{ font-size:11px; color:var(--text3); margin-top:7px; font-family:var(--mono) }
+        #page-admin .vm-perime{ color:var(--gold) }
+        @media (max-width:640px){ #page-admin #vm-jauges{ grid-template-columns:1fr } }
         @media (max-width:640px){
           #page-admin .admin-card{ flex-basis:100%; max-width:100% }
           /* Les deux colonnes « Utilisateurs » et « Diffusion » sont posées en
@@ -1339,7 +1350,7 @@
         <div class="admin-section-head">
           <div class="admin-section-bar"></div>
           <div class="admin-section-title">Accès &amp; disponibilité</div>
-          <div class="admin-section-badge">3</div>
+          <div class="admin-section-badge">4</div>
         </div>
         <div class="admin-section-grid">
 
@@ -1387,6 +1398,22 @@
               <button class="pf-btn ghost" onclick="adminCheckHealth()" style="font-size:11.5px;flex-shrink:0">Actualiser</button>
             </div>
             <div id="admin-health" style="font-size:12.5px;color:var(--text3);font-family:var(--mono);margin-top:10px">—</div>
+          </div>
+
+          <div class="admin-card wide">
+            <div class="admin-card-head">
+              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>
+              <div style="flex:1">
+                <div class="admin-card-title">État serveur</div>
+                <div class="admin-card-desc">VM du bot Discord — charge, mémoire et disque, remontés toutes les 30 s. <span id="vm-fraicheur" style="color:var(--text3)">· en attente</span></div>
+              </div>
+            </div>
+            <div id="vm-jauges" style="display:grid;grid-template-columns:repeat(3,minmax(0,1fr));gap:14px;margin-top:14px">
+              <div class="vm-jauge" data-vm="cpu"></div>
+              <div class="vm-jauge" data-vm="ram"></div>
+              <div class="vm-jauge" data-vm="disque"></div>
+            </div>
+            <div id="vm-pied" style="font-size:12px;color:var(--text3);margin-top:12px">Chargement…</div>
           </div>
 
         </div>
@@ -3769,7 +3796,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260825l"></script>
+<script src="js/app.js?v=20260825m"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
 <script src="js/onboarding.js?v=20260825l"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->

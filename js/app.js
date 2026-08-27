@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260825l';
+const APP_VERSION = '20260825m';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4557,6 +4557,8 @@ function _runPageHook(id) {
   if (id === 'idees')       renderIdeasPage();
   if (id === 'earnings')    renderEarningsCalendar();
   if (id === 'admin')       renderAdminPage();
+  // L'écoute temps réel de l'état VM ne survit pas à la sortie du panel.
+  if (id !== 'admin')       _vmArreter();
   // Ces rendus étaient ajoutés plus bas en enveloppant showPage() et
   // showPageMobile(). Une troisième porte d'entrée est apparue avec les
   // sous-onglets du PEA, qui ne passait pas par ces enveloppes : les pages
@@ -15445,6 +15447,112 @@ async function _refreshAdminSecurityStats() {
 }
 
 // ─── PAGE ADMIN ──────────────────────────────────────────────────
+// ─── ÉTAT SERVEUR (panel admin) ──────────────────────────────────
+// La VM du bot écrit ops/vmStatus toutes les 30 s avec la clé de service
+// (discord-bot/src/lib/vmstatus.js). On l'écoute en direct plutôt que de
+// l'interroger : la mise à jour arrive d'elle-même à chaque écriture, et il n'y
+// a ni port ouvert ni API HTTP à maintenir pour ça.
+let _vmUnsub = null, _vmBattement = null, _vmDernier = null, _vmErreur = null;
+
+// Deux fois la période de remontée : un relevé manqué ne doit pas crier, deux
+// veulent dire que la VM ou le bot ne répond plus.
+const VM_PERIME_MS = 120000;
+
+const _vmDuree = (s) => {
+  const j = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
+  if (j) return j + ' j ' + h + ' h';
+  if (h) return h + ' h ' + m + ' min';
+  return m + ' min';
+};
+
+const _vmGo = (mo) => (mo >= 1024 ? (mo / 1024).toFixed(1) + ' Go' : mo + ' Mo');
+
+function _vmJauge(cle, nom, pourcent, detail) {
+  const el = document.querySelector('#vm-jauges [data-vm="' + cle + '"]');
+  if (!el) return;
+  const p = Math.max(0, Math.min(100, Number(pourcent) || 0));
+  el.classList.toggle('tendu', p >= 70 && p < 90);
+  el.classList.toggle('critique', p >= 90);
+  el.innerHTML =
+    '<div class="vm-jauge-tete"><span class="vm-jauge-nom">' + nom + '</span>'
+    + '<span class="vm-jauge-val">' + p + ' %</span></div>'
+    + '<div class="vm-barre"><span style="width:' + p + '%"></span></div>'
+    + '<div class="vm-jauge-detail">' + detail + '</div>';
+}
+
+function _vmRendre() {
+  const grille = document.getElementById('vm-jauges');
+  if (!grille) return;
+  const pied = document.getElementById('vm-pied');
+  const frais = document.getElementById('vm-fraicheur');
+  const d = _vmDernier;
+
+  if (_vmErreur || !d) {
+    ['cpu', 'ram', 'disque'].forEach((c) => _vmJauge(c, c === 'disque' ? 'Disque' : c.toUpperCase(), 0, '—'));
+    if (frais) { frais.textContent = ''; }
+    if (pied) {
+      pied.innerHTML = '<span class="vm-perime">⚠️ ' + (_vmErreur
+        ? 'Lecture impossible : ' + _vmErreur
+        : "Pas de données — la VM n'a encore rien remonté.") + '</span>';
+    }
+    return;
+  }
+
+  const age = Math.max(0, Date.now() - (d.updatedAt || 0));
+  const perime = age > VM_PERIME_MS;
+
+  _vmJauge('cpu', 'CPU', d.cpu?.pourcent,
+    'charge ' + (d.cpu?.charge1 ?? '—') + ' / ' + (d.cpu?.charge5 ?? '—') + ' / ' + (d.cpu?.charge15 ?? '—')
+    + ' · ' + (d.cpu?.coeurs ?? '?') + ' coeur(s)');
+  _vmJauge('ram', 'RAM', d.ram?.pourcent,
+    _vmGo(d.ram?.utiliseMo || 0) + ' / ' + _vmGo(d.ram?.totalMo || 0));
+  _vmJauge('disque', 'Disque', d.disque?.pourcent,
+    _vmGo(d.disque?.utiliseMo || 0) + ' / ' + _vmGo(d.disque?.totalMo || 0)
+    + ' · ' + _vmGo(d.disque?.libreMo || 0) + ' libres');
+
+  const quand = age < 60000 ? 'il y a ' + Math.round(age / 1000) + ' s' : 'il y a ' + _vmDuree(Math.round(age / 1000));
+  if (frais) {
+    frais.textContent = '· ' + quand;
+    frais.className = perime ? 'vm-perime' : '';
+  }
+  if (pied) {
+    pied.innerHTML = perime
+      ? '<span class="vm-perime">⚠️ Pas de données récentes — dernier relevé ' + quand
+        + '. La VM ou le bot ne remonte plus rien.</span>'
+      : 'Machine ' + (d.hote || 'inconnue') + ' · en service depuis ' + _vmDuree(d.uptimeS || 0)
+        + ' · relevé ' + quand;
+  }
+}
+
+function _vmEcouter() {
+  if (_vmUnsub) { _vmRendre(); return; }
+  _vmErreur = null;
+  try {
+    _vmUnsub = onSnapshot(firestoreDoc(db, 'ops', 'vmStatus'), (snap) => {
+      _vmDernier = snap.exists() ? snap.data() : null;
+      _vmErreur = null;
+      _vmRendre();
+    }, (e) => {
+      _vmErreur = e.code || e.message;
+      _vmRendre();
+    });
+  } catch (e) {
+    _vmErreur = e.message;
+  }
+  // Le document n'est réécrit que toutes les 30 s : sans ce battement, l'âge
+  // affiché resterait figé sur sa dernière valeur, et une VM devenue muette
+  // passerait pour à jour.
+  if (!_vmBattement) _vmBattement = setInterval(_vmRendre, 5000);
+  _vmRendre();
+}
+
+function _vmArreter() {
+  try { if (_vmUnsub) _vmUnsub(); } catch (_) {}
+  _vmUnsub = null;
+  if (_vmBattement) clearInterval(_vmBattement);
+  _vmBattement = null;
+}
+
 async function renderAdminPage() {
   if (!isAdmin()) { showPage('portfolio'); return; }
   let cfg = {};
@@ -15486,6 +15594,8 @@ async function renderAdminPage() {
     (cfg.minVersion ? ' · minimum forcé : <span class="mono">' + cfg.minVersion + '</span>' : '');
 
   // Stats + liste utilisateurs
+  _vmEcouter();
+
   renderAdminStats();
   renderAdminUsers();
   // Les profils ne sont plus lus au rendu de la page : ils vivent dans une

@@ -21,6 +21,7 @@ const ticketstats = require('./lib/ticketstats');
 const { checkPub } = require('./lib/automod-pub');
 const securitytest = require('./lib/security-test');
 const burpaudit = require('./lib/burp-audit');
+const vmstatus = require('./lib/vmstatus');
 
 const LOG_CHANNEL   = '1520208505880187042';
 const ROLE_VISITEUR = '1512906509078495232';
@@ -59,6 +60,7 @@ client.once(Events.ClientReady, (c) => {
   restartmonitor.handleOnReady(c).catch(() => {});
   securitytest.start(c);
   burpaudit.watch(c);
+  vmstatus.start();
 });
 
 // Rafraîchit le compteur de tickets dès qu'un salon est créé/supprimé.

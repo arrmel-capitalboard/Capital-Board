@@ -172,6 +172,15 @@ service cloud.firestore {
       allow write: if _isAdmin();
     }
 
+    // Etat de la VM, remonte toutes les 30 s par le bot (discord-bot/src/lib/
+    // vmstatus.js) avec la cle de service, donc hors de ces regles. Cote
+    // client, lecture par le seul fondateur et aucune ecriture : le panel
+    // admin l'affiche, personne ne le fabrique.
+    match /ops/vmStatus {
+      allow read: if _isAdmin();
+      allow write: if false;
+    }
+
     match /auditLog/{id} {
       allow read: if _isAdmin();
       allow create: if _isAdmin();
