@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260825n';
+const APP_VERSION = '20260825o';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -15452,7 +15452,7 @@ async function _refreshAdminSecurityStats() {
 // (discord-bot/src/lib/vmstatus.js). On l'écoute en direct plutôt que de
 // l'interroger : la mise à jour arrive d'elle-même à chaque écriture, et il n'y
 // a ni port ouvert ni API HTTP à maintenir pour ça.
-let _vmUnsub = null, _vmBattement = null, _vmDernier = null, _vmErreur = null, _vmDemande = null;
+let _vmUnsub = null, _vmBattement = null, _vmDernier = null, _vmErreur = null, _vmDemande = null, _vmReprise = null;
 
 // La VM n'écrit vite que pendant qu'on regarde : écrire chaque seconde en
 // permanence ferait 86 400 écritures par jour, quatre fois le quota gratuit,
@@ -15551,8 +15551,17 @@ function _vmEcouter() {
       _vmErreur = null;
       _vmRendre();
     }, (e) => {
+      // Un listener Firestore en erreur est mort : il ne retente jamais de
+      // lui-meme. Sans ce nettoyage, une regle deployee apres coup ne changeait
+      // rien tant qu'on n'avait pas recharge la page — l'ecouteur suivant
+      // repartait sur l'abonnement defunt.
       _vmErreur = e.code || e.message;
+      try { if (_vmUnsub) _vmUnsub(); } catch (_) {}
+      _vmUnsub = null;
       _vmRendre();
+      if (!_vmReprise) {
+        _vmReprise = setTimeout(() => { _vmReprise = null; if (_vmBattement) _vmEcouter(); }, 15000);
+      }
     });
   } catch (e) {
     _vmErreur = e.message;
@@ -15572,6 +15581,8 @@ function _vmArreter() {
   _vmBattement = null;
   if (_vmDemande) clearInterval(_vmDemande);
   _vmDemande = null;
+  if (_vmReprise) clearTimeout(_vmReprise);
+  _vmReprise = null;
   // Échéance ramenée à maintenant : la VM ralentit dès le prochain instant, au
   // lieu d'attendre les 45 s de la dernière demande posée.
   try {
