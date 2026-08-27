@@ -227,6 +227,20 @@ function watch(client) {
             .then((msg) => msg.edit(etatPayload(data)))
             .catch((e) => console.error('[burp-audit] maj état :', e.message));
         }
+
+        // Analyse finie : la pièce jointe n'a plus de raison d'être, et Discord
+        // en garderait sinon une copie indéfiniment, servie par un lien CDN. On
+        // la détache plutôt que de supprimer le message, qui porte aussi le
+        // bouton d'export manuel. Le champ est vidé ensuite, sans quoi chaque
+        // écriture suivante rejouerait le détachement.
+        if (change.type === 'modified' && data.pieceMessageId
+            && (data.statut === 'traite' || data.statut === 'erreur')) {
+          client.channels.fetch(data.pieceChannelId || RESULTAT_CHANNEL)
+            .then((channel) => channel.messages.fetch(data.pieceMessageId))
+            .then((msg) => msg.edit({ attachments: [] }))
+            .then(() => doc.ref.update({ pieceMessageId: null, pieceDetacheeLe: Date.now() }))
+            .catch((e) => console.error('[burp-audit] détachement de la capture :', e.message));
+        }
       }
     },
     (err) => console.error('[burp-audit] listener interrompu :', err.message),

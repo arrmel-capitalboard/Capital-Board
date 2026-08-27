@@ -37,6 +37,12 @@ jobs:
           node --check capital-board-worker/src/index.js
           node --check discord-bot/src/index.js
 
+      # Ces regles sont la seule chose qui separe une capture d'audit d'une fuite
+      # d'identifiants. Voir l'en-tete de scripts/caviardage.mjs.
+      - name: Caviardage des captures d'audit
+        working-directory: scripts
+        run: node --test caviardage.test.mjs
+
       - name: Calcul des livrets
         run: node scripts/t-livrets.cjs
 
