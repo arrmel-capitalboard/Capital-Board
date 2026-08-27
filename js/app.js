@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260825o';
+const APP_VERSION = '20260828a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -15485,17 +15485,70 @@ const _vmDuree = (s) => {
 
 const _vmGo = (mo) => (mo >= 1024 ? (mo / 1024).toFixed(1) + ' Go' : mo + ' Mo');
 
+// Historique local des relevés, une minute glissante par mesure. Rien n'est
+// stocké côté serveur : le document Firestore ne porte que l'instant présent,
+// et garder une série en base coûterait une écriture par seconde pour une
+// information dont personne n'a besoin une fois la page fermée.
+const VM_POINTS = 60;
+const _vmHisto = { cpu: [], ram: [], disque: [] };
+
+const VM_COULEUR = (p) => (p >= 90 ? 'var(--negative)' : p >= 70 ? 'var(--gold)' : 'var(--positive)');
+
+/** Courbe d'aire sur la série, avec le dernier point marqué. */
+function _vmCourbe(cle, serie, couleur) {
+  const L = 200, H = 44;
+  if (serie.length < 2) {
+    // Un seul relevé ne fait pas une courbe : une ligne au niveau mesuré dit
+    // la vérité, là où un tracé vide laisserait croire à une panne.
+    const y = H - ((serie[0] || 0) / 100) * H;
+    return '<svg viewBox="0 0 ' + L + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">'
+      + '<path d="M0,' + y + ' L' + L + ',' + y + '" fill="none" stroke="' + couleur
+      + '" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-dasharray="3 4" opacity="0.5"/></svg>';
+  }
+  const pas = L / (serie.length - 1);
+  const pts = serie.map((v, i) => (i * pas).toFixed(1) + ',' + (H - (v / 100) * H).toFixed(1)).join(' L');
+  const fin = H - (serie[serie.length - 1] / 100) * H;
+  const id = 'vm-grad-' + cle;
+  return '<svg viewBox="0 0 ' + L + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">'
+    + '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1">'
+    + '<stop offset="0%" stop-color="' + couleur + '" stop-opacity="0.30"/>'
+    + '<stop offset="100%" stop-color="' + couleur + '" stop-opacity="0"/></linearGradient></defs>'
+    + '<path d="M' + pts + ' L' + L + ',' + H + ' L0,' + H + ' Z" fill="url(#' + id + ')"/>'
+    + '<path d="M' + pts + '" fill="none" stroke="' + couleur + '" stroke-width="1.5"'
+    + ' vector-effect="non-scaling-stroke" stroke-linejoin="round"/>'
+    + '<circle cx="' + L + '" cy="' + fin.toFixed(1) + '" r="2.5" fill="' + couleur + '"/></svg>';
+}
+
 function _vmJauge(cle, nom, pourcent, detail) {
   const el = document.querySelector('#vm-jauges [data-vm="' + cle + '"]');
   if (!el) return;
   const p = Math.max(0, Math.min(100, Number(pourcent) || 0));
-  el.classList.toggle('tendu', p >= 70 && p < 90);
-  el.classList.toggle('critique', p >= 90);
+  const couleur = VM_COULEUR(p);
   el.innerHTML =
     '<div class="vm-jauge-tete"><span class="vm-jauge-nom">' + nom + '</span>'
-    + '<span class="vm-jauge-val">' + p + ' %</span></div>'
-    + '<div class="vm-barre"><span style="width:' + p + '%"></span></div>'
-    + '<div class="vm-jauge-detail">' + detail + '</div>';
+    + '<span class="vm-jauge-val" style="color:' + couleur + '">' + p + ' %</span></div>'
+    + '<div class="vm-jauge-detail">' + detail + '</div>'
+    + _vmCourbe(cle, _vmHisto[cle] || [], couleur);
+}
+
+/**
+ * Ajoute un relevé à la minute glissante.
+ *
+ * Un même horodatage n'est compté qu'une fois : Firestore rejoue le document
+ * au moindre changement de métadonnée, et un relevé compté deux fois ferait
+ * un palier sur la courbe là où la machine n'a rien fait.
+ */
+let _vmDernierHorodatage = 0;
+function _vmNoter(d) {
+  if (!d || !d.updatedAt || d.updatedAt === _vmDernierHorodatage) return;
+  _vmDernierHorodatage = d.updatedAt;
+  const valeurs = { cpu: d.cpu?.pourcent, ram: d.ram?.pourcent, disque: d.disque?.pourcent };
+  for (const cle of Object.keys(_vmHisto)) {
+    const v = Number(valeurs[cle]);
+    if (!Number.isFinite(v)) continue;
+    _vmHisto[cle].push(Math.max(0, Math.min(100, v)));
+    if (_vmHisto[cle].length > VM_POINTS) _vmHisto[cle].shift();
+  }
 }
 
 function _vmRendre() {
@@ -15549,6 +15602,7 @@ function _vmEcouter() {
     _vmUnsub = onSnapshot(firestoreDoc(db, 'ops', 'vmStatus'), (snap) => {
       _vmDernier = snap.exists() ? snap.data() : null;
       _vmErreur = null;
+      _vmNoter(_vmDernier);
       _vmRendre();
     }, (e) => {
       // Un listener Firestore en erreur est mort : il ne retente jamais de
@@ -15583,6 +15637,10 @@ function _vmArreter() {
   _vmDemande = null;
   if (_vmReprise) clearTimeout(_vmReprise);
   _vmReprise = null;
+  // La série est jetée : en rouvrant le panel dans une heure, recoller les
+  // relevés d'avant à ceux d'après dessinerait une continuité qui n'existe pas.
+  for (const cle of Object.keys(_vmHisto)) _vmHisto[cle].length = 0;
+  _vmDernierHorodatage = 0;
   // Échéance ramenée à maintenant : la VM ralentit dès le prochain instant, au
   // lieu d'attendre les 45 s de la dernière demande posée.
   try {

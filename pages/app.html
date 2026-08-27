@@ -1283,17 +1283,19 @@
         #page-admin .admin-icon-sq{ width:32px; height:32px; border-radius:9px; display:flex; align-items:center; justify-content:center; flex-shrink:0; background:color-mix(in srgb, var(--acc) 15%, transparent); color:var(--acc) }
         #page-admin .admin-card-title{ font-size:14px; font-weight:700; color:var(--text); margin-bottom:4px }
         #page-admin .admin-card-desc{ font-size:12px; color:var(--text3); line-height:1.6 }
-        #page-admin .vm-jauge{ background:var(--s2); border-radius:10px; padding:12px 14px; min-width:0 }
-        #page-admin .vm-jauge-tete{ display:flex; align-items:baseline; justify-content:space-between; gap:8px; margin-bottom:8px }
-        #page-admin .vm-jauge-nom{ font-size:12px; font-weight:700; color:var(--text2) }
-        #page-admin .vm-jauge-val{ font-size:15px; font-weight:800; font-family:var(--mono); color:var(--text) }
-        #page-admin .vm-barre{ height:6px; border-radius:999px; background:color-mix(in srgb, var(--text3) 22%, transparent); overflow:hidden }
-        #page-admin .vm-barre span{ display:block; height:100%; border-radius:999px; background:var(--positive); transition:width .4s ease, background .4s ease }
-        #page-admin .vm-jauge.tendu .vm-barre span{ background:var(--gold) }
-        #page-admin .vm-jauge.critique .vm-barre span{ background:var(--negative) }
-        #page-admin .vm-jauge-detail{ font-size:11px; color:var(--text3); margin-top:7px; font-family:var(--mono) }
+        #page-admin .vm-jauge{ background:var(--s2); border-radius:10px; padding:12px 12px 6px; min-width:0 }
+        #page-admin .vm-jauge-tete{ display:flex; align-items:baseline; justify-content:space-between; gap:8px }
+        #page-admin .vm-jauge-nom{ font-size:11px; font-weight:700; color:var(--text3); text-transform:uppercase; letter-spacing:0.08em }
+        #page-admin .vm-jauge-val{ font-size:20px; font-weight:700; font-family:var(--mono); color:var(--text); font-variant-numeric:tabular-nums }
+        #page-admin .vm-jauge-detail{ font-size:10px; color:var(--text3); font-family:var(--mono); margin-top:-2px }
+        /* Hauteur fixe : la courbe ne doit pas faire respirer la carte au fil
+           des relevés, sinon toute la page bouge une fois par seconde. */
+        #page-admin .vm-jauge svg{ display:block; width:100%; height:44px; margin-top:6px }
         #page-admin .vm-perime{ color:var(--gold) }
-        @media (max-width:640px){ #page-admin #vm-jauges{ grid-template-columns:1fr } }
+        @media (max-width:640px){
+          #page-admin #vm-jauges{ grid-template-columns:1fr }
+          #page-admin .vm-jauge svg{ height:52px }
+        }
         @media (max-width:640px){
           #page-admin .admin-card{ flex-basis:100%; max-width:100% }
           /* Les deux colonnes « Utilisateurs » et « Diffusion » sont posées en
@@ -3796,7 +3798,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260825o"></script>
+<script src="js/app.js?v=20260828a"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
 <script src="js/onboarding.js?v=20260825l"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
