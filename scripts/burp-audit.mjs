@@ -285,6 +285,9 @@ if (a('get')) {
   ecrire(await res.text(), d.fichierNom);
 
 } else if (a('statut')) {
+  // `FieldValue` vient du même module que `getFirestore` : sans cet import, le
+  // passage en `traite` levait une ReferenceError et le lien restait en base.
+  const { FieldValue } = await import('firebase-admin/firestore');
   const valeur = opt('valeur');
   const maj = { statut: valeur, majLe: Date.now() };
   if (opt('erreur')) maj.erreur = String(opt('erreur')).slice(0, 500);
