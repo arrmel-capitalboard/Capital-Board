@@ -62,6 +62,13 @@ const VERIFICATION_PERIODIQUE = 15 * 60 * 1000;
 // expire. Deux minutes de calme les laissent se reconstituer.
 const REPOS_ENTRE_SCENARIOS = 2 * 60 * 1000;
 
+// Combien de temps un message reste dans le salon avant d'etre efface. Les
+// comptes rendus, eux, vivent dans Firestore : « Consulter les dernieres
+// analyses » les relit, et c'est la leur vraie place. Le salon ne sert qu'a
+// suivre ce qui se passe maintenant.
+const RETENTION_SALON = 60 * 60 * 1000;
+const CADENCE_MENAGE = 10 * 60 * 1000;
+
 // Durée de vie d'un tirage. Assez large pour laisser le temps de préparer la
 // VM, assez courte pour qu'un scénario oublié ne traîne pas.
 const SCENARIO_TTL = 30 * 60 * 1000;
@@ -102,7 +109,8 @@ function panelPayload() {
       + `**1.** Générez de 1 à ${MAX_SCENARIOS} scénarios — tirés dans la rotation, sans être consommés.\n`
       + "**2.** Réalisez-les : un navigateur les rejoue derrière le proxy, la capture est caviardée sur la VM, puis analysée.\n"
       + "Un seul à la fois, avec deux minutes de repos entre chacun — la VM ne tient pas la charge autrement.\n"
-      + "**3.** Consultez les dernières analyses — ce qui n'allait pas, et ce qui a été corrigé.",
+      + "**3.** Consultez les dernières analyses — ce qui n'allait pas, et ce qui a été corrigé.\n\n"
+      + "_Le salon se vide de lui-même : passé une heure, les messages disparaissent. Les comptes rendus, eux, restent consultables ici._",
     )
     .setFooter({ text: 'Capital Board — réservé au rôle fondateur' });
 
@@ -600,6 +608,32 @@ async function poserPanneau(client) {
 }
 
 /**
+ * Efface les messages du salon passe une heure, sauf le panneau.
+ *
+ * Rien n'est perdu : les comptes rendus vivent dans `opsAlerts` et
+ * `scanPatches`, que « Consulter les dernieres analyses » relit. Ce qui
+ * disparait ici, ce sont les messages d'avancement et les etats de capture,
+ * dont l'interet est passe.
+ */
+async function menage(client) {
+  if (!isConfigured()) return;
+
+  const channel = await client.channels.fetch(SALON);
+  const panneau = (await getDb().doc(DOC_PANNEAU).get()).data()?.messageId;
+  const limite = Date.now() - RETENTION_SALON;
+
+  const messages = await channel.messages.fetch({ limit: 100 });
+  const vieux = messages.filter((m) => m.id !== panneau && m.createdTimestamp < limite);
+  if (!vieux.size) return;
+
+  // Le second argument ecarte ce que Discord refuse de supprimer en lot : rien
+  // au-dela de quatorze jours. Sans lui, un seul vieux message ferait echouer
+  // toute la fournee.
+  const effaces = await channel.bulkDelete(vieux, true);
+  console.log(`[securitypanel] \u{1F9F9} ${effaces.size} message(s) effacé(s) — plus vieux qu'une heure.`);
+}
+
+/**
  * Garde le panneau en place : au demarrage, apres chaque suppression dans le
  * salon, et par verification periodique.
  *
@@ -620,7 +654,13 @@ function surveiller(client) {
   });
 
   setInterval(verifier, VERIFICATION_PERIODIQUE).unref();
-  return verifier();
+
+  const nettoyer = () => menage(client)
+    .catch((err) => console.error('[securitypanel] ménage :', err.message));
+  setInterval(nettoyer, CADENCE_MENAGE).unref();
+
+  // Le panneau d'abord : le menage a besoin de son identifiant pour l'epargner.
+  return verifier().then(nettoyer);
 }
 
 // ── Routage ────────────────────────────────────────────────────────────────
