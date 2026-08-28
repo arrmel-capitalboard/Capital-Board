@@ -21,6 +21,7 @@ const ticketstats = require('./lib/ticketstats');
 const { checkPub } = require('./lib/automod-pub');
 const securitytest = require('./lib/securitytest');
 const burpaudit = require('./lib/burp-audit');
+const securitypanel = require('./lib/securitypanel');
 const vmstatus = require('./lib/vmstatus');
 
 const LOG_CHANNEL   = '1520208505880187042';
@@ -209,6 +210,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (suggestions.isSuggestionButton(interaction.customId)) { await suggestions.handleButton(interaction); return; }
       if (scanPatches.isScanPatchButton(interaction.customId)) { await scanPatches.handleButton(interaction); return; }
       if (burpaudit.isBurpButton(interaction.customId)) { await burpaudit.handleButton(interaction); return; }
+      if (securitypanel.isSecurityButton(interaction.customId)) { await securitypanel.handleButton(interaction); return; }
 
       if (interaction.customId.startsWith('role_')) {
         const roleId = interaction.customId.slice(5);

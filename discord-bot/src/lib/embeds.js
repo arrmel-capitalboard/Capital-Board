@@ -15,6 +15,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('
 const config = require('../config');
 const E = require('./emojis');
 const { panelPayload: suggestionPanel } = require('./suggestions');
+const { panelPayload: securitePanel } = require('./securitypanel');
 
 const ASSETS = 'https://raw.githubusercontent.com/arrmel-capitalboard/Capital-Board/main/discord-bot/assets';
 const FOOTER = { text: 'CapitalBoard - https://capitalboard.fr' };
@@ -138,6 +139,12 @@ const EMBEDS = {
     channelId: '1512909101942833202', // #💡・suggestions
     description: 'Panneau « Proposez vos suggestions » (le contenu vit dans lib/suggestions.js).',
     build: () => suggestionPanel(),
+  },
+
+  securite: {
+    channelId: '1542258866505388083', // salon des analyses de trafic
+    description: "Panneau d'audit de sécurité : générer un scénario, le jouer, relire les analyses.",
+    build: () => securitePanel(),
   },
 
   role: {

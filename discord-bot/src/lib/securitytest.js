@@ -1,6 +1,6 @@
 'use strict';
 
-// Tests de sécurité récurrents, toutes les 48h à 10h (heure de Paris).
+// Tests de sécurité récurrents, chaque jour à 8h (heure de Paris).
 //
 // Le cron lance désormais un audit AUTOMATISÉ : une action tirée dans
 // security-test-actions.json est rejouée par un navigateur derrière un proxy
@@ -30,7 +30,7 @@ const ACTIONS_FILE = path.join(__dirname, '..', '..', 'security-test-actions.jso
 // un fichier local sur la VM plutôt qu'une collection Firestore pour ça.
 const HISTORIQUE_FILE = path.join(__dirname, '..', '..', 'security-test-history.json');
 const CHANNEL_ID = '1542226706838978621';
-const CRON_EXPR = '0 10 */2 * *';
+const CRON_EXPR = '0 8 * * *';
 // Nombre d'actions par rappel (tronqué si le fichier en contient moins).
 const SAMPLE_SIZE = 12;
 const ORANGE = 0xf97316;
@@ -185,8 +185,11 @@ async function sendAction(client) {
  * Le bot choisit l'action et tient l'historique — l'orchestrateur ne fait que
  * l'exécuter. Le message de compte rendu vient de lui, avec la capture en pièce
  * jointe ; le bot ne parle ici que pour signaler un échec de lancement.
+ *
+ * `action` impose le scénario au lieu de le tirer : c'est ce que fait le
+ * panneau du salon sécurité, où le scénario a été montré avant d'être joué.
  */
-async function runAutomated(client) {
+async function runAutomated(client, { action: impose } = {}) {
   const { actions } = loadConfig();
   if (!actions.length) {
     console.error('[security-test] Aucune action disponible — audit automatisé ignoré.');
@@ -194,7 +197,7 @@ async function runAutomated(client) {
   }
 
   const historique = lireHistorique();
-  const [action] = pickActions(actions, historique, 1);
+  const action = impose || pickActions(actions, historique, 1)[0];
   console.log(`[security-test] ${new Date().toISOString()} — audit automatisé : ${action}`);
 
   // Le parcours d'audit a rejoint le depot prive de securite : il decrit le
