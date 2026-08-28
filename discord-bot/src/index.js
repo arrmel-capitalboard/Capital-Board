@@ -61,6 +61,7 @@ client.once(Events.ClientReady, (c) => {
   restartmonitor.handleOnReady(c).catch(() => {});
   securitytest.start(c);
   burpaudit.watch(c);
+  securitypanel.assurerPanneau(c).catch((err) => console.error('[securitypanel] panneau :', err.message));
   vmstatus.start();
 });
 

@@ -23,6 +23,10 @@
 // Les scénarios en attente vivent en mémoire, pas dans Firestore. Ils ne
 // survivent donc pas à un redémarrage du bot — c'est assumé : le geste dure
 // quelques secondes, et un scénario perdu se régénère d'un clic.
+//
+// Le panneau se pose tout seul au démarrage du bot, et se met à jour si son
+// texte a changé : rien à publier à la main, rien à supprimer avant de
+// republier. Son identifiant de message vit dans `config/panneauSecurite`.
 
 const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags,
@@ -473,6 +477,48 @@ async function ouvrirDetail(interaction) {
   await interaction.editReply({ embeds: [embed] });
 }
 
+// ── Le panneau se pose seul ────────────────────────────────────────────────
+
+// Le message du panneau, retenu dans Firestore. Sans lui, retrouver l'embed
+// demanderait de remonter l'historique du salon — que les comptes rendus font
+// defiler — et un panneau introuvable serait repose en double.
+const DOC_PANNEAU = 'config/panneauSecurite';
+
+/**
+ * Pose le panneau au demarrage, ou remet a jour celui qui existe.
+ *
+ * Publier a la main depuis le poste de dev supposait d'avoir le jeton Discord
+ * en local, de supprimer l'ancien message, et de penser a le refaire a chaque
+ * changement de texte. Le bot sait le faire lui-meme : il connait l'etat voulu,
+ * et il redemarre a chaque deploiement.
+ */
+async function assurerPanneau(client) {
+  if (!isConfigured()) {
+    console.warn('[securitypanel] Firestore non configuré : panneau non posé.');
+    return;
+  }
+
+  const ref = getDb().doc(DOC_PANNEAU);
+  const connu = (await ref.get()).data() || {};
+  const channel = await client.channels.fetch(SALON);
+
+  if (connu.messageId) {
+    try {
+      const message = await channel.messages.fetch(connu.messageId);
+      await message.edit(panelPayload());
+      console.log(`[securitypanel] \u{1F4CC} panneau à jour — message ${message.id}`);
+      return;
+    } catch (err) {
+      // Supprime a la main, ou salon change : on en repose un.
+      console.warn(`[securitypanel] panneau introuvable (${err.message}) — nouveau message.`);
+    }
+  }
+
+  const message = await channel.send(panelPayload());
+  await ref.set({ messageId: message.id, channelId: message.channelId, majLe: Date.now() }, { merge: true });
+  console.log(`[securitypanel] \u{1F4CC} panneau posé — message ${message.id}`);
+}
+
 // ── Routage ────────────────────────────────────────────────────────────────
 
 /** Boutons et menus `sec:*`. */
@@ -492,4 +538,4 @@ async function handleComponent(interaction) {
 
 const isSecurityComponent = (customId) => customId.startsWith('sec:');
 
-module.exports = { panelPayload, handleComponent, isSecurityComponent, SALON, MAX_SCENARIOS };
+module.exports = { panelPayload, assurerPanneau, handleComponent, isSecurityComponent, SALON, MAX_SCENARIOS };
