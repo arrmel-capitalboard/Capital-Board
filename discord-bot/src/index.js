@@ -1,6 +1,6 @@
 ﻿'use strict';
 
-const { Client, GatewayIntentBits, Events, MessageFlags, ActivityType, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, Events, MessageFlags, ActivityType, EmbedBuilder } = require('discord.js');
 const config = require('./config');
 const { loadCommands } = require('./loadCommands');
 const tempbans = require('./lib/tempbans');
@@ -35,6 +35,10 @@ const client = new Client({
     GatewayIntentBits.GuildMessages,
     GatewayIntentBits.MessageContent,
   ],
+  // Sans ce partiel, la suppression d'un message absent du cache n'est pas
+  // signalée — or c'est justement ce qui arrive au panneau de sécurité quand on
+  // vide son salon (voir lib/securitypanel.js).
+  partials: [Partials.Message],
 });
 
 const commands = loadCommands();
@@ -61,7 +65,7 @@ client.once(Events.ClientReady, (c) => {
   restartmonitor.handleOnReady(c).catch(() => {});
   securitytest.start(c);
   burpaudit.watch(c);
-  securitypanel.assurerPanneau(c).catch((err) => console.error('[securitypanel] panneau :', err.message));
+  securitypanel.surveiller(c);
   vmstatus.start();
 });
 

@@ -27,9 +27,10 @@
 // Le panneau se pose tout seul au démarrage du bot, et se met à jour si son
 // texte a changé : rien à publier à la main, rien à supprimer avant de
 // republier. Son identifiant de message vit dans `config/panneauSecurite`.
+// Supprimé ou noyé dans un vidage de salon, il revient de lui-même.
 
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, MessageFlags,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events, MessageFlags,
   StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
 } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
@@ -50,6 +51,10 @@ const SALONS_SECURITE = new Set([
 ]);
 
 const MAX_SCENARIOS = 10;
+
+// Filet de sécurité du panneau : un message effacé pendant que le bot était
+// éteint, ou évincé du cache avant sa suppression, revient au plus tard ici.
+const VERIFICATION_PERIODIQUE = 15 * 60 * 1000;
 
 // Durée de vie d'un tirage. Assez large pour laisser le temps de préparer la
 // VM, assez courte pour qu'un scénario oublié ne traîne pas.
@@ -530,7 +535,20 @@ async function assurerPanneau(client) {
     console.warn('[securitypanel] Firestore non configuré : panneau non posé.');
     return;
   }
+  // Un vidage de salon declenche une rafale de suppressions : sans ce verrou,
+  // chacune reposerait son panneau et le salon se remplirait de doublons.
+  if (poseEnCours) return;
+  poseEnCours = true;
+  try {
+    await poserPanneau(client);
+  } finally {
+    poseEnCours = false;
+  }
+}
 
+let poseEnCours = false;
+
+async function poserPanneau(client) {
   const ref = getDb().doc(DOC_PANNEAU);
   const connu = (await ref.get()).data() || {};
   const channel = await client.channels.fetch(SALON);
@@ -550,6 +568,30 @@ async function assurerPanneau(client) {
   const message = await channel.send(panelPayload());
   await ref.set({ messageId: message.id, channelId: message.channelId, majLe: Date.now() }, { merge: true });
   console.log(`[securitypanel] \u{1F4CC} panneau posé — message ${message.id}`);
+}
+
+/**
+ * Garde le panneau en place : au demarrage, apres chaque suppression dans le
+ * salon, et par verification periodique.
+ *
+ * Les trois se completent. L'evenement de suppression ne porte que sur les
+ * messages en cache, et un vidage de salon peut evincer le panneau du cache
+ * avant sa propre suppression ; la verification periodique rattrape ce cas,
+ * comme elle rattrape un message efface pendant que le bot etait eteint.
+ */
+function surveiller(client) {
+  const verifier = () => assurerPanneau(client)
+    .catch((err) => console.error('[securitypanel] panneau :', err.message));
+
+  client.on(Events.MessageDelete, (message) => {
+    if (message.channelId === SALON) verifier();
+  });
+  client.on(Events.MessageBulkDelete, (messages, channel) => {
+    if (channel?.id === SALON) verifier();
+  });
+
+  setInterval(verifier, VERIFICATION_PERIODIQUE).unref();
+  return verifier();
 }
 
 // ── Routage ────────────────────────────────────────────────────────────────
@@ -572,4 +614,4 @@ async function handleComponent(interaction) {
 
 const isSecurityComponent = (customId) => customId.startsWith('sec:');
 
-module.exports = { panelPayload, assurerPanneau, handleComponent, isSecurityComponent, SALON, MAX_SCENARIOS };
+module.exports = { panelPayload, assurerPanneau, surveiller, handleComponent, isSecurityComponent, SALON, MAX_SCENARIOS };
