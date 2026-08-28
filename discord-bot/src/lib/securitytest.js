@@ -184,7 +184,9 @@ async function sendAction(client) {
  *
  * Le bot choisit l'action et tient l'historique — l'orchestrateur ne fait que
  * l'exécuter. Le message de compte rendu vient de lui, avec la capture en pièce
- * jointe ; le bot ne parle ici que pour signaler un échec de lancement.
+ * jointe ; le bot ne parle ici que pour signaler un échec de lancement — dans le
+ * salon des analyses, celui du panneau, et non dans celui du rappel manuel : un
+ * audit raté doit se voir là où on l'a déclenché.
  *
  * `action` impose le scénario au lieu de le tirer : c'est ce que fait le
  * panneau du salon sécurité, où le scénario a été montré avant d'être joué.
@@ -213,7 +215,7 @@ async function runAutomated(client, { action: impose } = {}) {
     console.error(`[security-test] Parcours d'audit introuvable : ${script}`);
     console.error('[security-test] Clonez arrmel-capitalboard/capitalboard-securite a cote du depot public, ou posez DEPOT_SECURITE.');
     try {
-      const channel = await client.channels.fetch(CHANNEL_ID);
+      const channel = await client.channels.fetch(burpaudit.RESULTAT_CHANNEL);
       await channel.send([
         "🔴 Audit automatisé impossible : le dépôt de sécurité n'est pas cloné sur la VM.",
         `Attendu dans \`${depot}\` — ou posez \`DEPOT_SECURITE\` dans le .env.`,
@@ -234,7 +236,7 @@ async function runAutomated(client, { action: impose } = {}) {
     // L'action n'est pas consommée : elle repassera au prochain tour.
     console.error(`[security-test] Audit automatisé en échec (code ${code}).`);
     try {
-      const channel = await client.channels.fetch(CHANNEL_ID);
+      const channel = await client.channels.fetch(burpaudit.RESULTAT_CHANNEL);
       await channel.send(`🔴 Audit automatisé en échec sur « ${action} ». Voir les logs de la VM (\`pm2 logs capitalboard-bot\`).`);
     } catch (err) {
       console.error(`[security-test] Signalement impossible : ${err.message}`);
