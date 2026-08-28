@@ -65,6 +65,10 @@ const scenarios = new Map();
 // donc en série, jamais en parallèle.
 let enCours = null;
 
+// Arret demande depuis le panneau : coupe le parcours courant et annule ceux
+// qui suivent, plutot que d'enchainer sur un lot dont on ne veut plus.
+let arretDemande = false;
+
 function purger() {
   const limite = Date.now() - SCENARIO_TTL;
   for (const [id, s] of scenarios) if (s.creeLe < limite) scenarios.delete(id);
@@ -224,7 +228,7 @@ async function lancerScenarios(interaction, id) {
 const LIEN_RUNS = `https://github.com/${config.githubSecurityRepo}/actions/workflows/security-scan-burp.yml`;
 
 // État de chaque scénario du lot, tel qu'affiché dans le message d'avancement.
-const PUCES = { attente: '⚪', encours: '🔵', fait: '✅', rate: '🔴' };
+const PUCES = { attente: '\u{26AA}', encours: '\u{1F535}', fait: '\u{2705}', rate: '\u{1F534}', annule: '\u{23F9}' };
 
 function avancementPayload(actions, etats, fini, depuis) {
   const traites = etats.filter((e) => e === 'fait' || e === 'rate').length;
@@ -269,7 +273,17 @@ function avancementPayload(actions, etats, fini, depuis) {
       : "Navigation, capture, caviardage, puis analyse. Le run GitHub n'apparaît qu'à la fin du parcours.",
   });
 
-  return { embeds: [embed] };
+  // Le bouton disparait a la fin : un lot termine n'a plus rien a arreter, et
+  // un bouton mort invite a cliquer pour rien.
+  const composants = fini ? [] : [new ActionRowBuilder().addComponents(
+    new ButtonBuilder()
+      .setCustomId('sec:stop')
+      .setLabel("Arrêter l'audit")
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('\u{23F9}'),
+  )];
+
+  return { embeds: [embed], components: composants };
 }
 
 /**
@@ -300,6 +314,7 @@ async function enchainer(client, actions) {
 
   try {
     for (let i = 0; i < actions.length; i++) {
+      if (arretDemande) { etats[i] = 'annule'; continue; }
       enCours = actions[i];
       etats[i] = 'encours';
       depuis = Date.now();
@@ -310,12 +325,30 @@ async function enchainer(client, actions) {
       const ok = await securitytest.runAutomated(client, { action: actions[i] })
         .catch((err) => { console.error(`[securitypanel] « ${actions[i]} » :`, err.message); return null; });
 
-      etats[i] = ok ? 'fait' : 'rate';
+      etats[i] = ok ? 'fait' : (arretDemande ? 'annule' : 'rate');
     }
   } finally {
     enCours = null;
+    arretDemande = false;
     await rafraichir(true);
   }
+}
+
+/** Coupe le parcours en cours et annule la suite du lot. */
+async function arreterAudit(interaction) {
+  if (!enCours) {
+    await interaction.reply({ content: 'Aucun audit en cours.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const vise = enCours;
+  arretDemande = true;
+  const tue = securitytest.tuerParcours(true);
+  await interaction.reply({
+    content: tue
+      ? `Arrêt demandé sur \u00ab ${vise} \u00bb. Le navigateur et le proxy sont coupés, la suite du lot est annulée.`
+      : "Le parcours ne répondait plus : il est considéré comme arrêté, la suite du lot est annulée.",
+    flags: MessageFlags.Ephemeral,
+  });
 }
 
 // ── Relecture des analyses ─────────────────────────────────────────────────
@@ -532,6 +565,7 @@ async function handleComponent(interaction) {
   if (geste === 'scenario') { await demanderCombien(interaction); return; }
   if (geste === 'nb') { await genererScenarios(interaction); return; }
   if (geste === 'run') { await lancerScenarios(interaction, arg); return; }
+  if (geste === 'stop') { await arreterAudit(interaction); return; }
   if (geste === 'analyses') { await listerAnalyses(interaction); return; }
   if (geste === 'detail') { await ouvrirDetail(interaction); return; }
 }

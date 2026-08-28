@@ -139,6 +139,10 @@ function pickActions(actions, historique = [], count = SAMPLE_SIZE) {
 
 let groupeParcours = null;
 
+// Un arret demande n'est pas un echec : sans ce drapeau, couper un audit depuis
+// Discord y postait une alerte rouge, comme si le parcours avait casse.
+let interruptionVoulue = false;
+
 function suivreParcours(proc) {
   groupeParcours = proc.pid;
 }
@@ -147,16 +151,26 @@ function oublierParcours() {
   groupeParcours = null;
 }
 
-function tuerParcours() {
-  if (!groupeParcours) return;
+/**
+ * Tue le parcours et tout ce qu'il a lance.
+ *
+ * @param {boolean} voulue vrai quand l'arret vient d'une demande explicite, et
+ *   non de l'extinction du bot : le compte rendu le dira autrement.
+ * @returns {boolean} vrai si un parcours tournait.
+ */
+function tuerParcours(voulue = false) {
+  if (!groupeParcours) return false;
   const pid = groupeParcours;
   groupeParcours = null;
+  interruptionVoulue = voulue;
   try {
-    // Le negatif vise le groupe, donc le parcours et tout ce qu'il a lance.
+    // Le negatif vise le groupe, donc le parcours, le navigateur et le proxy.
     process.kill(-pid, 'SIGTERM');
-    console.log(`[security-test] parcours ${pid} interrompu avec le bot.`);
+    console.log(`[security-test] \u{23F9} parcours ${pid} arrêté${voulue ? ' à la demande' : ' avec le bot'}.`);
+    return true;
   } catch (err) {
-    if (err.code !== 'ESRCH') console.error(`[security-test] arret du parcours : ${err.message}`);
+    if (err.code !== 'ESRCH') console.error(`[security-test] arrêt du parcours : ${err.message}`);
+    return false;
   }
 }
 
@@ -311,6 +325,13 @@ async function runAutomated(client, { action: impose } = {}) {
     proc.on('error', (err) => { console.error('[security-test] lancement impossible :', err.message); oublierParcours(); resolve(-1); });
     proc.on('exit', (code2) => { oublierParcours(); resolve(code2); });
   });
+
+  if (interruptionVoulue) {
+    // Arret demande : rien a signaler en rouge, le panneau a deja repondu.
+    interruptionVoulue = false;
+    console.log(`[security-test] \u{23F9} audit interrompu sur « ${action} » — action non consommée.`);
+    return null;
+  }
 
   if (code !== 0) {
     // L'action n'est pas consommée : elle repassera au prochain tour.
