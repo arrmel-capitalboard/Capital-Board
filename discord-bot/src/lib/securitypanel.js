@@ -101,6 +101,7 @@ function panelPayload() {
       "Déclenchez un audit quand vous voulez, en plus de celui qui tourne chaque matin à 8h.\n\n"
       + `**1.** Générez de 1 à ${MAX_SCENARIOS} scénarios — tirés dans la rotation, sans être consommés.\n`
       + "**2.** Réalisez-les : un navigateur les rejoue derrière le proxy, la capture est caviardée sur la VM, puis analysée.\n"
+      + "Un seul à la fois, avec deux minutes de repos entre chacun — la VM ne tient pas la charge autrement.\n"
       + "**3.** Consultez les dernières analyses — ce qui n'allait pas, et ce qui a été corrigé.",
     )
     .setFooter({ text: 'Capital Board — réservé au rôle fondateur' });
