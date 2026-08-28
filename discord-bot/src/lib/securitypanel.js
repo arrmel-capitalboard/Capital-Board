@@ -219,23 +219,37 @@ async function lancerScenarios(interaction, id) {
 // État de chaque scénario du lot, tel qu'affiché dans le message d'avancement.
 const PUCES = { attente: '⚪', encours: '🔵', fait: '✅', rate: '🔴' };
 
-function avancementPayload(actions, etats, fini) {
+function avancementPayload(actions, etats, fini, depuis) {
   const traites = etats.filter((e) => e === 'fait' || e === 'rate').length;
+  const rates = etats.filter((e) => e === 'rate').length;
 
   const embed = new EmbedBuilder()
-    .setColor(fini ? 0x22d98a : 0x5b8def)
+    .setColor(fini ? (rates ? 0xff9f43 : 0x22d98a) : 0x5b8def)
     .setTitle(fini
-      ? `🧪 Audit à la demande — terminé (${traites}/${actions.length})`
-      : `🧪 Audit à la demande — ${Math.min(traites + 1, actions.length)}/${actions.length}`)
+      ? `\u{1F9EA} Audit à la demande — terminé (${traites - rates}/${actions.length})`
+      : `\u{1F9EA} Audit à la demande — ${Math.min(traites + 1, actions.length)}/${actions.length}`)
     .setDescription(actions.map((a, i) => `${PUCES[etats[i]]} ${a}`).join('\n').slice(0, 4000))
     .setTimestamp();
 
-  // Sans cette ligne, rien ne distingue « ça travaille » de « c'est planté » :
-  // le message d'état de la capture n'arrive qu'au dépôt, en fin de parcours.
+  // Horodatage relatif : Discord le fait vieillir tout seul. C'est ce qui rend
+  // un lot mort reconnaissable — figé sur « en cours depuis 40 minutes », il ne
+  // trompe personne, là où un texte fixe laisserait croire que ça travaille
+  // encore. Le bot ne réécrit rien entre deux scénarios, et plus rien du tout
+  // s'il redémarre en cours de lot.
+  const quand = `<t:${Math.round(depuis / 1000)}:R>`;
+  embed.addFields({
+    name: fini ? 'Terminé' : 'Scénario en cours depuis',
+    value: fini ? `${quand}${rates ? ` · ${rates} raté${rates > 1 ? 's' : ''}` : ''}` : quand,
+    inline: true,
+  });
+
+  // Sans ces deux repères, rien ne distingue « ça travaille » de « c'est
+  // planté » : le message d'état de la capture n'arrive qu'au dépôt, en fin de
+  // parcours.
   embed.setFooter({
     text: fini
       ? "Le compte rendu de chaque analyse arrive séparément."
-      : "Navigation, capture, caviardage, puis analyse. Comptez quelques minutes par scénario.",
+      : "Navigation, capture, caviardage, puis analyse. Comptez 3 à 5 minutes par scénario.",
   });
 
   return { embeds: [embed] };
@@ -251,10 +265,11 @@ function avancementPayload(actions, etats, fini) {
 async function enchainer(client, actions) {
   const etats = actions.map(() => 'attente');
   let message = null;
+  let depuis = Date.now();
 
   try {
     const channel = await client.channels.fetch(SALON);
-    message = await channel.send(avancementPayload(actions, etats, false));
+    message = await channel.send(avancementPayload(actions, etats, false, depuis));
   } catch (err) {
     // L'avancement est un confort : son absence ne doit pas empêcher l'audit.
     console.error("[securitypanel] message d'avancement :", err.message);
@@ -262,7 +277,7 @@ async function enchainer(client, actions) {
 
   const rafraichir = (fini) => {
     if (!message) return Promise.resolve();
-    return message.edit(avancementPayload(actions, etats, fini))
+    return message.edit(avancementPayload(actions, etats, fini, depuis))
       .catch((err) => console.error('[securitypanel] maj avancement :', err.message));
   };
 
@@ -270,6 +285,7 @@ async function enchainer(client, actions) {
     for (let i = 0; i < actions.length; i++) {
       enCours = actions[i];
       etats[i] = 'encours';
+      depuis = Date.now();
       await rafraichir(false);
 
       // Une action ratée n'arrête pas le lot : runAutomated signale l'échec
