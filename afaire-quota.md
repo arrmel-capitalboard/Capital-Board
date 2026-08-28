@@ -139,6 +139,33 @@ if (quota.estEpuise()) return;                 // avant d'écrire
 if (quota.signaler(client, e, 'monmodule')) return;  // dans le catch
 ```
 
+## Ce n'est pas que le développeur qui consomme
+
+Question posée le 28/08, et la réponse compte pour la suite : **chaque membre
+connecté écrit.** Le client compte 39 endroits qui écrivent, répartis sur
+`presence`, `users`, `roles`, `supportThreads`, `ideas`, `earningsSubscribers`
+et quelques autres.
+
+La présence est un plancher que personne ne peut éviter : 30 écritures par heure
+d'onglet visible. S'y ajoutent les actions — une ligne de portefeuille modifiée,
+une watchlist, un ticket, une idée, un vote.
+
+Ordre de grandeur, pour un membre actif deux heures par jour :
+
+| | |
+|---|---|
+| Présence | ~60 écritures |
+| Ses actions | quelques dizaines |
+| **Total** | **100 à 200 par jour et par membre** |
+
+**Le plafond réel se situe donc autour de 100 à 200 membres actifs**, avant que
+l'application ne se coupe d'elle-même, sans qu'aucun développement ne soit en
+cours. À vérifier avant d'ouvrir les inscriptions largement.
+
+Et le quota de **lectures** (50 000/jour) sera vraisemblablement atteint plus
+tôt encore : un tableau de bord lit bien plus qu'il n'écrit. Le 28/08 il était
+déjà à 45 % avec une poignée de comptes.
+
 ## Ce qui reste à faire
 
 - [ ] **Une estimation préventive** : le bot projette la consommation du jour à
@@ -148,6 +175,23 @@ if (quota.signaler(client, e, 'monmodule')) return;  // dans le catch
       positions créées puis supprimées, idées en attente. Chaque audit en laisse.
 - [ ] **Brancher la sentinelle sur les écrivains restants** : `scan-patches`,
       `opsAlerts`, `burpUploads`, `leaderboard`.
+- [ ] **Un écran d'indisponibilité digne de ce nom.** Aujourd'hui, quota épuisé,
+      le membre voit « Vérification indisponible — HTTP 500 (étape : compteur) »
+      sur le pavé numérique. Un code d'erreur et un nom d'étape interne : il ne
+      comprend rien, réessaie, et consomme encore.
+
+      Ce qu'il faut à la place : le client détecte l'échec d'écriture, affiche
+      un écran plein — logo, « Capital Board est momentanément indisponible »,
+      l'heure de retour, et rien à cliquer qui puisse aggraver la situation.
+      Le CSS existe déjà pour la modale de verrou, il y a de quoi partir.
+
+      Trois exigences. Ne pas laisser croire que le code saisi est faux. Ne pas
+      inviter à réessayer en boucle. Dire quand ça revient, puisqu'on le sait —
+      minuit heure du Pacifique, calculable côté client comme le fait
+      `discord-bot/src/lib/quota.js`.
+
+      À faire aussi en mobile : le pavé PIN et la modale ont leurs propres
+      règles aux points de rupture, l'écran doit suivre.
 
 ## En cas de nouvelle coupure
 
