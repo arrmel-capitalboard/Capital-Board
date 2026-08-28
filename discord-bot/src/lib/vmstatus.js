@@ -34,6 +34,7 @@
 const os = require('node:os');
 const { execFile } = require('node:child_process');
 const { getDb, isConfigured } = require('../firebase');
+const quota = require('./quota');
 
 // Chaque cycle écrit un document. Sur le forfait Spark, le projet dispose de
 // 20 000 écritures par jour, tous services confondus : une cadence d'une
@@ -48,11 +49,8 @@ const { getDb, isConfigured } = require('../firebase');
 const PERIODE_LENTE_MS = 120_000;
 const PERIODE_RAPIDE_MS = 5_000;
 
-// Durée pendant laquelle on cesse d'écrire après un refus de quota. Retenter
-// n'y changerait rien avant la remise à zéro, à minuit heure du Pacifique, et
-// chaque tentative traîne dix minutes avant d'abandonner.
-const PAUSE_QUOTA_MS = 30 * 60 * 1000;
-let museleJusqua = 0;
+// Le client Discord, gardé pour pouvoir alerter en cas de refus de quota.
+let bot = null;
 const DISQUE_CACHE_MS = 30_000;
 const MO = 1024 * 1024;
 
@@ -151,18 +149,13 @@ async function mesurer() {
 
 /** Un cycle : mesure et écriture. N'échoue jamais bruyamment. */
 async function pousser() {
-  if (Date.now() < museleJusqua) return;
+  // Un relevé de machine n'est pas essentiel : quand le quota est épuisé, il se
+  // tait pour laisser passer ce qui l'est — la connexion, d'abord.
+  if (quota.estEpuise()) return;
   try {
     await getDb().collection('ops').doc('vmStatus').set(await mesurer());
   } catch (e) {
-    // Un quota epuise ne se repare pas en reessayant : le client gRPC retente
-    // deja dix minutes avant d'abandonner, et chaque cycle en relance un. On se
-    // tait une demi-heure plutot que d'empiler des appels sans issue.
-    if (/RESOURCE_EXHAUSTED|Quota exceeded/i.test(e.message || '')) {
-      museleJusqua = Date.now() + PAUSE_QUOTA_MS;
-      console.error(`[vmstatus] quota Firestore épuisé — relevés suspendus ${PAUSE_QUOTA_MS / 60000} min.`);
-      return;
-    }
+    if (quota.signaler(bot, e, 'vmstatus')) return;
     console.error('[vmstatus] relevé non écrit :', e.message);
   }
 }
@@ -193,7 +186,8 @@ function ecouterDemande() {
 }
 
 /** Démarre la remontée. Appelé au ready du bot. */
-function start() {
+function start(client) {
+  bot = client;
   if (!isConfigured()) {
     console.warn('[vmstatus] Firestore non configuré : remontée désactivée.');
     return;

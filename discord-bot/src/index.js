@@ -66,7 +66,7 @@ client.once(Events.ClientReady, (c) => {
   securitytest.start(c);
   burpaudit.watch(c);
   securitypanel.surveiller(c);
-  vmstatus.start();
+  vmstatus.start(c);
 });
 
 // Rafraîchit le compteur de tickets dès qu'un salon est créé/supprimé.

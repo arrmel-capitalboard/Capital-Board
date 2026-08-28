@@ -6,6 +6,7 @@
 
 const { ChannelType } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
+const quota = require('./quota');
 
 const TICKET_CATEGORY = '1520204780751028385';
 // Salon où l'on demande aux utilisateurs d'ouvrir leur ticket. Le site en
@@ -36,6 +37,8 @@ function ticketChannelName(client) {
 
 async function push(client) {
   if (!isConfigured()) return;
+  // Un compteur de tickets n'est pas essentiel : quota épuisé, il se tait.
+  if (quota.estEpuise()) return;
   try {
     const openTickets = countOpenTickets(client);
     const name = ticketChannelName(client);
@@ -44,6 +47,7 @@ async function push(client) {
     if (name) payload.ticketChannelName = name;
     await getDb().collection('config').doc('discordStats').set(payload, { merge: true });
   } catch (e) {
+    if (quota.signaler(client, e, 'ticketstats')) return;
     console.error('[ticketstats] push:', e.message);
   }
 }
@@ -51,7 +55,9 @@ async function push(client) {
 function start(client) {
   push(client);
   if (_timer) clearInterval(_timer);
-  _timer = setInterval(() => push(client), 60000);
+  // Cinq minutes plutôt qu'une : 288 écritures par jour au lieu de 1 440, pour
+  // un compteur qui ne bouge qu'à l'ouverture ou la fermeture d'un ticket.
+  _timer = setInterval(() => push(client), 5 * 60_000);
 }
 
 module.exports = { start, push, countOpenTickets, ticketChannelName, TICKET_CATEGORY, TICKET_CHANNEL };

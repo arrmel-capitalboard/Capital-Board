@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260828b';
+const APP_VERSION = '20260828c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -15396,6 +15396,24 @@ function _startPresenceHeartbeat() {
   };
   ping();
   _presenceHeartbeat = setInterval(ping, PRESENCE_BATTEMENT_MS);
+
+  // Un onglet en arrière-plan n'a personne devant lui, et continuait pourtant
+  // d'écrire toutes les deux minutes. Sur le forfait Spark le quota d'écritures
+  // est partagé par tout le projet : un onglet oublié consommait 720 écritures
+  // par jour pour informer que personne ne regarde. Le battement s'arrête donc
+  // quand l'onglet passe en arrière-plan, et repart avec un relevé immédiat
+  // quand il revient — la présence est donc juste dès la première seconde.
+  document.addEventListener('visibilitychange', () => {
+    if (!currentUser) return;
+    if (document.hidden) {
+      if (_presenceHeartbeat) { clearInterval(_presenceHeartbeat); _presenceHeartbeat = null; }
+      return;
+    }
+    if (!_presenceHeartbeat) {
+      ping();
+      _presenceHeartbeat = setInterval(ping, PRESENCE_BATTEMENT_MS);
+    }
+  });
   window.addEventListener("beforeunload", () => {
     if (!currentUser) return;
     setFirestoreDoc(firestoreDoc(db, "presence", currentUser),
