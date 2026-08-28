@@ -17,8 +17,10 @@
 //   rendus, correctifs et alertes confondus ; le menu déroulant en ouvre un en
 //   entier — ce qui n'allait pas, et ce qui a été fait pour le corriger.
 //
-// Les réponses sont éphémères : le salon reste lisible, et les messages d'état
-// qui comptent y sont déjà postés par lib/burp-audit.js et lib/scan-patches.js.
+// Rien n'est éphémère : tout est posté en clair, puis retiré par le ménage au
+// bout d'une heure. Un message que seul son auteur voit ne se relit pas, ne se
+// montre pas, et disparaît au rechargement — c'est le salon lui-même qui doit
+// porter la trace de ce qui a été fait, le temps que ça compte.
 //
 // Les scénarios en attente vivent en mémoire, pas dans Firestore. Ils ne
 // survivent donc pas à un redémarrage du bot — c'est assumé : le geste dure
@@ -30,7 +32,7 @@
 // Supprimé ou noyé dans un vidage de salon, il revient de lui-même.
 
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events, MessageFlags,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events,
   StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
 } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
@@ -138,7 +140,6 @@ async function demanderCombien(interaction) {
   if (!actions.length) {
     await interaction.reply({
       content: "Aucune action disponible : `security-test-actions.json` est absent ou vide sur la VM.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -162,7 +163,6 @@ async function demanderCombien(interaction) {
   await interaction.reply({
     content: `Combien de scénarios voulez-vous jouer ? (1 à ${plafond})`,
     components: [new ActionRowBuilder().addComponents(menu)],
-    flags: MessageFlags.Ephemeral,
   });
 }
 
@@ -215,14 +215,12 @@ async function lancerScenarios(interaction, id) {
   if (!lot) {
     await interaction.reply({
       content: "Ce tirage a expiré, ou le bot a redémarré depuis. Générez-en un nouveau.",
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
   if (enCours) {
     await interaction.reply({
       content: `Un audit tourne déjà : « ${enCours} ». Le proxy n'accepte qu'un parcours à la fois.`,
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
@@ -234,7 +232,6 @@ async function lancerScenarios(interaction, id) {
     content: actions.length === 1
       ? 'Audit lancé. Le suivi arrive dans ce salon.'
       : `${actions.length} audits lancés, joués un par un. Le suivi arrive dans ce salon.`,
-    flags: MessageFlags.Ephemeral,
   });
 
   // Un parcours dure plusieurs minutes, bien au-delà de la fenêtre d'une
@@ -378,7 +375,7 @@ let couperRepos = () => {};
 /** Coupe le parcours en cours et annule la suite du lot. */
 async function arreterAudit(interaction) {
   if (!enCours && !arretDemande) {
-    await interaction.reply({ content: 'Aucun audit en cours.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'Aucun audit en cours.' });
     return;
   }
   const vise = enCours;
@@ -389,7 +386,6 @@ async function arreterAudit(interaction) {
     content: tue
       ? `Arrêt demandé sur \u00ab ${vise} \u00bb. Le navigateur et le proxy sont coupés, la suite du lot est annulée.`
       : "Le parcours ne répondait plus : il est considéré comme arrêté, la suite du lot est annulée.",
-    flags: MessageFlags.Ephemeral,
   });
 }
 
@@ -462,12 +458,11 @@ async function listerAnalyses(interaction) {
   if (!isConfigured()) {
     await interaction.reply({
       content: 'Firestore non configuré sur la VM : rien à relire.',
-      flags: MessageFlags.Ephemeral,
     });
     return;
   }
 
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply();
 
   const entrees = await derniersComptesRendus();
   if (!entrees.length) {
@@ -497,7 +492,7 @@ async function listerAnalyses(interaction) {
 
 /** Un compte rendu en entier : le problème, et ce qui a été fait. */
 async function ouvrirDetail(interaction) {
-  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  await interaction.deferReply();
 
   const [source, id] = String(interaction.values[0]).split(':');
   const col = source === 'patch' ? 'scanPatches' : 'opsAlerts';
@@ -668,7 +663,7 @@ function surveiller(client) {
 /** Boutons et menus `sec:*`. */
 async function handleComponent(interaction) {
   if (!interaction.member?.roles.cache.has(FONDATEUR_ROLE)) {
-    await interaction.reply({ content: 'Réservé au rôle fondateur.', flags: MessageFlags.Ephemeral });
+    await interaction.reply({ content: 'Réservé au rôle fondateur.' });
     return;
   }
 
