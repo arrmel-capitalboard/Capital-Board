@@ -190,6 +190,11 @@ client.on(Events.InteractionCreate, async (interaction) => {
       return;
     }
 
+    if (interaction.isStringSelectMenu()) {
+      if (securitypanel.isSecurityComponent(interaction.customId)) { await securitypanel.handleComponent(interaction); return; }
+      return;
+    }
+
     if (interaction.isButton()) {
       if (interaction.customId === 'open_ticket') { await tickets.promptTicketReason(interaction); return; }
       if (interaction.customId === 'close_ticket') { await tickets.closeTicket(interaction); return; }
@@ -210,7 +215,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (suggestions.isSuggestionButton(interaction.customId)) { await suggestions.handleButton(interaction); return; }
       if (scanPatches.isScanPatchButton(interaction.customId)) { await scanPatches.handleButton(interaction); return; }
       if (burpaudit.isBurpButton(interaction.customId)) { await burpaudit.handleButton(interaction); return; }
-      if (securitypanel.isSecurityButton(interaction.customId)) { await securitypanel.handleButton(interaction); return; }
+      if (securitypanel.isSecurityComponent(interaction.customId)) { await securitypanel.handleComponent(interaction); return; }
 
       if (interaction.customId.startsWith('role_')) {
         const roleId = interaction.customId.slice(5);
