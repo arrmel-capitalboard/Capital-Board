@@ -34,6 +34,8 @@ const CRON_EXPR = '0 8 * * *';
 // Nombre d'actions par rappel (tronqué si le fichier en contient moins).
 const SAMPLE_SIZE = 12;
 const ORANGE = 0xf97316;
+// Motif d'échec relayé par l'orchestrateur sur sa sortie d'erreur.
+const LIGNE_ECHEC = /\[audit-auto\] Échec\s*:\s*(.+)/;
 // Utilisé si le fichier n'en fournit pas : rien de spécifique au dépôt public.
 const DEFAULT_REMINDER = "Vérifie que ton proxy d'interception est actif avant de commencer.";
 
@@ -226,8 +228,20 @@ async function runAutomated(client, { action: impose } = {}) {
     return null;
   }
 
+  // stderr est tuyauté plutôt qu'hérité : le motif de l'échec est écrit là, et
+  // sans lui Discord ne pouvait qu'inviter à ouvrir les logs de la VM. Tout est
+  // réémis tel quel, la sortie de pm2 ne change pas.
+  let motif = null;
   const code = await new Promise((resolve) => {
-    const proc = spawn(process.execPath, [script, '--action', action], { stdio: ['ignore', 'inherit', 'inherit'] });
+    const proc = spawn(process.execPath, [script, '--action', action], { stdio: ['ignore', 'inherit', 'pipe'] });
+    proc.stderr.setEncoding('utf8');
+    proc.stderr.on('data', (bloc) => {
+      process.stderr.write(bloc);
+      for (const ligne of bloc.split(/\r?\n/)) {
+        const trouve = ligne.match(LIGNE_ECHEC);
+        if (trouve) motif = trouve[1].trim();
+      }
+    });
     proc.on('error', (err) => { console.error('[security-test] lancement impossible :', err.message); resolve(-1); });
     proc.on('exit', resolve);
   });
@@ -237,7 +251,9 @@ async function runAutomated(client, { action: impose } = {}) {
     console.error(`[security-test] Audit automatisé en échec (code ${code}).`);
     try {
       const channel = await client.channels.fetch(burpaudit.RESULTAT_CHANNEL);
-      await channel.send(`🔴 Audit automatisé en échec sur « ${action} ». Voir les logs de la VM (\`pm2 logs capitalboard-bot\`).`);
+      await channel.send(motif
+        ? `🔴 Audit automatisé en échec sur « ${action} ».\n> ${motif}`
+        : `🔴 Audit automatisé en échec sur « ${action} ». Voir les logs de la VM (\`pm2 logs capitalboard-bot\`).`);
     } catch (err) {
       console.error(`[security-test] Signalement impossible : ${err.message}`);
     }
