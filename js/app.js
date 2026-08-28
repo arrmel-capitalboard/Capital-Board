@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260828a';
+const APP_VERSION = '20260828b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -15344,7 +15344,22 @@ function _isStandaloneDisplay() {
   } catch (e) { return false; }
 }
 
-// Heartbeat presence : écrit online + lastSeen toutes les 30s.
+// Cadence du battement de présence, et fraîcheur au-delà de laquelle on cesse
+// de considérer quelqu'un en ligne.
+//
+// Chaque battement est une écriture Firestore, par onglet ouvert. À 30 s cela
+// faisait 120 écritures par heure et par onglet : dix membres laissant l'app
+// ouverte une journée consommaient la moitié des 20 000 écritures quotidiennes
+// du forfait Spark — avant que personne n'ait rien fait. Le 28/08, le quota
+// épuisé a fait tomber le compteur du code PIN et fermé l'app à tout le monde.
+//
+// Deux minutes suffisent : « en ligne » n'a pas besoin de la seconde près ici.
+// La fraîcheur reste à 2,5 fois le battement, pour qu'un battement manqué ne
+// fasse pas disparaître quelqu'un.
+const PRESENCE_BATTEMENT_MS = 120_000;
+const PRESENCE_FRAICHEUR_MS = 300_000;
+
+// Heartbeat presence : écrit online + lastSeen à chaque battement.
 // Compteurs d'activité, posés sur le doc de présence — le seul que l'admin
 // puisse lire pour tous les comptes (users/{uid}/data reste privé, y compris
 // pour lui). Deux mesures : le nombre de sessions ouvertes, et le nombre de
@@ -15380,7 +15395,7 @@ function _startPresenceHeartbeat() {
     setFirestoreDoc(firestoreDoc(db, "presence", currentUser), data, { merge: true }).catch(() => {});
   };
   ping();
-  _presenceHeartbeat = setInterval(ping, 30000);
+  _presenceHeartbeat = setInterval(ping, PRESENCE_BATTEMENT_MS);
   window.addEventListener("beforeunload", () => {
     if (!currentUser) return;
     setFirestoreDoc(firestoreDoc(db, "presence", currentUser),
@@ -16024,10 +16039,10 @@ async function renderAdminUsers() {
     const users = {};
     const get = uid => (users[uid] = users[uid] || { uid });
     rolesSnap.forEach(d => { const u = get(d.id), r = d.data(); u.role = r.role || 'user'; u.firstName = r.firstName; u.lastName = r.lastName; u.username = r.username; });
-    // Online fiable : basé sur la fraîcheur de lastSeen (< 70s = ~2× le
-    // heartbeat de 30s), PAS sur le booléen p.online qui reste figé à true si
-    // l'onglet meurt sans déclencher beforeunload (fréquent sur mobile/PWA).
-    presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; u.online = !!(u.lastSeen && (Date.now() - u.lastSeen.getTime()) < 70000);
+    // Online fiable : basé sur la fraîcheur de lastSeen, PAS sur le booléen
+    // p.online qui reste figé à true si l'onglet meurt sans déclencher
+    // beforeunload (fréquent sur mobile/PWA).
+    presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; u.online = !!(u.lastSeen && (Date.now() - u.lastSeen.getTime()) < PRESENCE_FRAICHEUR_MS);
       u.pwaNow = p.pwa === true; u.pwaEver = p.pwaEver === true; u.pwaKnown = Object.prototype.hasOwnProperty.call(p, 'pwa');
       u.pwaAt = p.pwaAt && p.pwaAt.toDate ? p.pwaAt.toDate() : null; });
     threadsSnap.forEach(d => { const u = get(d.id), t = d.data(); u.name = t.userName; u.email = t.userEmail; });
@@ -17497,7 +17512,7 @@ function _renderPresenceBadge(p) {
   if (!el) return;
   if (!p) { el.textContent = ""; return; }
   const lastSeenMs = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate().getTime() : 0;
-  const isOnline = p.online === true && lastSeenMs > 0 && (Date.now() - lastSeenMs) < 60000;
+  const isOnline = p.online === true && lastSeenMs > 0 && (Date.now() - lastSeenMs) < PRESENCE_FRAICHEUR_MS;
   if (isOnline) {
     el.innerHTML = '<span style="display:inline-block;width:8px;height:8px;background:#00e09e;border-radius:50%;margin-right:5px;vertical-align:middle"></span>En ligne';
   } else {
