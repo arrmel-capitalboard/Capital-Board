@@ -18,6 +18,7 @@
 // démarrer — le rappel se désactive en le signalant dans les logs.
 
 const fs = require('fs');
+const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const cron = require('node-cron');
@@ -129,6 +130,41 @@ function pickActions(actions, historique = [], count = SAMPLE_SIZE) {
   return [...jamais, ...parAnciennete].slice(0, count);
 }
 
+// ── Parcours en cours, et sa mise a mort ──────────────────────────────────
+//
+// Le parcours d'audit tourne dans son propre groupe de processus, avec ses
+// petits-enfants : le navigateur et le proxy d'interception. Tant que le bot
+// vit, il en garde la trace pour pouvoir tuer l'arbre entier quand il s'arrete.
+// Sans cela, chaque redemarrage du bot en laisse un derriere lui.
+
+let groupeParcours = null;
+
+function suivreParcours(proc) {
+  groupeParcours = proc.pid;
+}
+
+function oublierParcours() {
+  groupeParcours = null;
+}
+
+function tuerParcours() {
+  if (!groupeParcours) return;
+  const pid = groupeParcours;
+  groupeParcours = null;
+  try {
+    // Le negatif vise le groupe, donc le parcours et tout ce qu'il a lance.
+    process.kill(-pid, 'SIGTERM');
+    console.log(`[security-test] parcours ${pid} interrompu avec le bot.`);
+  } catch (err) {
+    if (err.code !== 'ESRCH') console.error(`[security-test] arret du parcours : ${err.message}`);
+  }
+}
+
+for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
+  process.on(signal, () => { tuerParcours(); process.exit(0); });
+}
+process.on('exit', tuerParcours);
+
 /** Embed d'une liste d'actions de test. */
 function buildEmbed(actions, reminder = DEFAULT_REMINDER) {
   const list = actions.map((a, i) => `**${i + 1}.** ${a}`).join('\n');
@@ -200,6 +236,26 @@ async function runAutomated(client, { action: impose } = {}) {
     return null;
   }
 
+  // La VM est une e2-micro : Chromium, mitmproxy et le bot y tiennent tout
+  // juste. Lancer un parcours sur une machine deja chargee ne le fait pas
+  // echouer franchement, il expire partout a la fois — vu le 28/08, ou meme les
+  // ecritures Firestore du bot ont depasse neuf minutes. Mieux vaut refuser.
+  const charge = os.loadavg()[0];
+  const coeurs = os.cpus().length || 1;
+  if (charge > coeurs * 2) {
+    console.error(`[security-test] VM trop chargee (${charge.toFixed(1)} sur ${coeurs} coeurs) — audit refuse.`);
+    try {
+      const channel = await client.channels.fetch(burpaudit.RESULTAT_CHANNEL);
+      await channel.send(
+        `\u{1F7E0} Audit refusé : la VM est saturée (charge ${charge.toFixed(1)} sur ${coeurs} cœurs).`
+        + '\nLancer un parcours maintenant le ferait expirer. Réessayez dans quelques minutes.',
+      );
+    } catch (err) {
+      console.error(`[security-test] Signalement impossible : ${err.message}`);
+    }
+    return null;
+  }
+
   const historique = lireHistorique();
   const action = impose || pickActions(actions, historique, 1)[0];
   console.log(`[security-test] ${new Date().toISOString()} — audit automatisé : ${action}`);
@@ -233,7 +289,17 @@ async function runAutomated(client, { action: impose } = {}) {
   // réémis tel quel, la sortie de pm2 ne change pas.
   let motif = null;
   const code = await new Promise((resolve) => {
-    const proc = spawn(process.execPath, [script, '--action', action], { stdio: ['ignore', 'inherit', 'pipe'] });
+    // `detached` place le parcours dans son propre groupe de processus. Sans
+    // lui, un `pm2 restart` tue le bot et laisse derriere Chromium et mitmproxy,
+    // qui continuent de manger la VM : quatre deploiements dans la soiree du
+    // 28/08 ont suffi a monter la charge a 23 sur 2 vCPU, et tout ce qui touche
+    // au reseau expirait, y compris les ecritures Firestore du bot. Le groupe
+    // permet de tuer l'arbre entier d'un coup, a l'arret.
+    const proc = spawn(process.execPath, [script, '--action', action], {
+      stdio: ['ignore', 'inherit', 'pipe'],
+      detached: true,
+    });
+    suivreParcours(proc);
     proc.stderr.setEncoding('utf8');
     proc.stderr.on('data', (bloc) => {
       process.stderr.write(bloc);
@@ -242,8 +308,8 @@ async function runAutomated(client, { action: impose } = {}) {
         if (trouve) motif = trouve[1].trim();
       }
     });
-    proc.on('error', (err) => { console.error('[security-test] lancement impossible :', err.message); resolve(-1); });
-    proc.on('exit', resolve);
+    proc.on('error', (err) => { console.error('[security-test] lancement impossible :', err.message); oublierParcours(); resolve(-1); });
+    proc.on('exit', (code2) => { oublierParcours(); resolve(code2); });
   });
 
   if (code !== 0) {
@@ -279,5 +345,5 @@ function start(client) {
 
 module.exports = {
   start, sendAction, runAutomated, buildEmbed, pickActions, loadConfig, loadActions,
-  lireHistorique, fenetre, CHANNEL_ID, CRON_EXPR, SAMPLE_SIZE,
+  lireHistorique, fenetre, tuerParcours, CHANNEL_ID, CRON_EXPR, SAMPLE_SIZE,
 };
