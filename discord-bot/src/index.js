@@ -187,7 +187,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
     if (interaction.isModalSubmit()) {
       if (newsqueue.isNewsTextModal(interaction.customId)) { await newsqueue.handleTextModal(interaction); return; }
       if (suggestions.isSuggestionModal(interaction.customId)) { await suggestions.handleModal(interaction); return; }
-      if (burpaudit.isBurpModal(interaction.customId)) { await burpaudit.handleModal(interaction); return; }
       if (interaction.customId === 'ticket_modal') {
         const reason = interaction.fields.getTextInputValue('ticket_reason');
         await tickets.openTicket(interaction, reason);
@@ -219,7 +218,6 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (newsqueue.isNewsButton(interaction.customId)) { await newsqueue.handleButton(interaction); return; }
       if (suggestions.isSuggestionButton(interaction.customId)) { await suggestions.handleButton(interaction); return; }
       if (scanPatches.isScanPatchButton(interaction.customId)) { await scanPatches.handleButton(interaction); return; }
-      if (burpaudit.isBurpButton(interaction.customId)) { await burpaudit.handleButton(interaction); return; }
       if (securitypanel.isSecurityComponent(interaction.customId)) { await securitypanel.handleComponent(interaction); return; }
 
       if (interaction.customId.startsWith('role_')) {

@@ -8,9 +8,9 @@
 // dans le dépôt privé capitalboard-securite, cloné à côté sur la VM.
 // Le compte rendu est posté par l'orchestrateur, capture jointe.
 //
-// Le rappel manuel n'a pas disparu : `npm run security-test` poste toujours la
-// liste d'actions à faire à la main, avec le bouton d'export Burp. C'est le
-// parcours interactif, celui que l'automatisation ne remplace pas.
+// Le rappel manuel a été retiré le 28/08 : il vivait dans son propre salon, avec
+// un bouton de dépôt d'export Burp que personne n'utilisait. Tout passe
+// désormais par le panneau du salon des analyses.
 //
 // Le contenu (actions + rappel) est volontairement hors du dépôt public : il
 // vit sur la VM uniquement, voir security-test-actions.example.json pour le
@@ -22,7 +22,6 @@ const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
 const cron = require('node-cron');
-const { EmbedBuilder } = require('discord.js');
 const burpaudit = require('./burp-audit');
 const config = require('../config');
 
@@ -30,31 +29,29 @@ const ACTIONS_FILE = path.join(__dirname, '..', '..', 'security-test-actions.jso
 // Historique des actions déjà proposées, à côté de la liste : même logique,
 // un fichier local sur la VM plutôt qu'une collection Firestore pour ça.
 const HISTORIQUE_FILE = path.join(__dirname, '..', '..', 'security-test-history.json');
-const CHANNEL_ID = '1542226706838978621';
-const CRON_EXPR = '0 8 * * *';
-// Nombre d'actions par rappel (tronqué si le fichier en contient moins).
+// Largeur de la fenêtre d'exclusion de la rotation. Héritée du rappel manuel,
+// qui posait douze actions à la fois ; elle ne sert plus qu'à décider combien
+// d'actions doivent défiler avant qu'une puisse revenir.
 const SAMPLE_SIZE = 12;
-const ORANGE = 0xf97316;
+const CRON_EXPR = '0 8 * * *';
 // Motif d'échec relayé par l'orchestrateur sur sa sortie d'erreur.
 const LIGNE_ECHEC = /\[audit-auto\] Échec\s*:\s*(.+)/;
-// Utilisé si le fichier n'en fournit pas : rien de spécifique au dépôt public.
-const DEFAULT_REMINDER = "Vérifie que ton proxy d'interception est actif avant de commencer.";
 
 /**
- * Contenu du fichier : { actions, reminder }. Accepte aussi un simple tableau
- * d'actions (ancien format). Retourne une liste vide si le fichier est absent
- * ou invalide.
+ * Actions du fichier. Accepte le format { actions } comme un simple tableau
+ * (ancien format). Retourne une liste vide si le fichier est absent ou invalide.
+ *
+ * Le champ `reminder` qu'il peut porter n'est plus lu : il n'habillait que le
+ * rappel manuel, retiré le 28/08. Le laisser dans le fichier ne gêne pas.
  */
 function loadConfig() {
   try {
     const raw = JSON.parse(fs.readFileSync(ACTIONS_FILE, 'utf8'));
     const list = Array.isArray(raw) ? raw : raw?.actions;
-    const actions = Array.isArray(list) ? list.filter((a) => typeof a === 'string' && a.trim()) : [];
-    const reminder = typeof raw?.reminder === 'string' && raw.reminder.trim() ? raw.reminder : DEFAULT_REMINDER;
-    return { actions, reminder };
+    return { actions: Array.isArray(list) ? list.filter((a) => typeof a === 'string' && a.trim()) : [] };
   } catch (err) {
     console.error(`[security-test] Lecture de ${ACTIONS_FILE} impossible : ${err.message}`);
-    return { actions: [], reminder: DEFAULT_REMINDER };
+    return { actions: [] };
   }
 }
 
@@ -178,57 +175,6 @@ for (const signal of ['SIGINT', 'SIGTERM', 'SIGHUP']) {
   process.on(signal, () => { tuerParcours(); process.exit(0); });
 }
 process.on('exit', tuerParcours);
-
-/** Embed d'une liste d'actions de test. */
-function buildEmbed(actions, reminder = DEFAULT_REMINDER) {
-  const list = actions.map((a, i) => `**${i + 1}.** ${a}`).join('\n');
-  return new EmbedBuilder()
-    .setColor(ORANGE)
-    .setTitle(`🎯 Actions de test sécurité (${actions.length})`)
-    .setDescription(list)
-    .addFields({
-      name: '⚠️ Rappel',
-      value: reminder,
-    })
-    .setFooter({ text: 'Capital Board — test de sécurité manuel' })
-    .setTimestamp();
-}
-
-/**
- * Tire une liste d'actions et la poste. Retourne les actions envoyées, ou null
- * si rien n'a pu être envoyé (fichier vide, salon inaccessible) : jamais de
- * throw, le process ne doit pas tomber sur un rappel raté.
- */
-async function sendAction(client) {
-  const { actions, reminder } = loadConfig();
-  if (!actions.length) {
-    console.error('[security-test] Aucune action disponible — rappel ignoré.');
-    return null;
-  }
-
-  const historique = lireHistorique();
-  const picked = pickActions(actions, historique);
-  console.log(`[security-test] ${new Date().toISOString()} — ${picked.length} action(s) tiree(s), ${historique.length} en historique :`);
-  picked.forEach((a, i) => console.log(`[security-test]   ${i + 1}. ${a}`));
-
-  try {
-    const channel = await client.channels.fetch(CHANNEL_ID);
-    if (!channel?.isTextBased()) {
-      console.error(`[security-test] Salon ${CHANNEL_ID} introuvable ou non textuel — message non envoye.`);
-      return null;
-    }
-    // Le bouton d'export vit sur ce rappel ; l'analyse, elle, sort dans le
-    // salon sécurité (voir lib/burp-audit.js).
-    await channel.send({ embeds: [buildEmbed(picked, reminder)], components: [burpaudit.bouton()] });
-    // Après l'envoi seulement : un rappel qui n'est pas parti ne doit pas
-    // consommer des actions dans la rotation.
-    ecrireHistorique(historique, picked, actions.length);
-    return picked;
-  } catch (err) {
-    console.error(`[security-test] Envoi impossible dans le salon ${CHANNEL_ID} (permissions manquantes ou salon absent ?) : ${err.message}`);
-    return null;
-  }
-}
 
 /**
  * Lance un audit automatisé : une action tirée par la même rotation, rejouée
@@ -365,6 +311,6 @@ function start(client) {
 }
 
 module.exports = {
-  start, sendAction, runAutomated, buildEmbed, pickActions, loadConfig, loadActions,
-  lireHistorique, fenetre, tuerParcours, CHANNEL_ID, CRON_EXPR, SAMPLE_SIZE,
+  start, runAutomated, pickActions, loadConfig, loadActions,
+  lireHistorique, fenetre, tuerParcours, CRON_EXPR, SAMPLE_SIZE,
 };

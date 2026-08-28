@@ -949,6 +949,27 @@ async function firestoreIncrement(path, field, env) {
   return Number(data.writeResults?.[0]?.transformResults?.[0]?.integerValue ?? 0);
 }
 
+// Même incrément, mais un hoquet passager ne doit pas sortir quelqu'un de son
+// application. Un 500 sur l'étape « compteur » suffisait à refuser un code
+// pourtant bon, et l'écran de déverrouillage n'offre alors rien d'autre que de
+// réessayer à l'aveugle.
+//
+// Réessayer sur-compte au pire : si la première écriture a abouti sans que sa
+// réponse revienne, l'essai est décompté deux fois. C'est le bon sens de
+// l'erreur pour un compteur de sécurité — jamais l'inverse.
+async function firestoreIncrementResilient(path, field, env, essais = 2) {
+  let dernier = null;
+  for (let i = 1; i <= essais; i++) {
+    try {
+      return await firestoreIncrement(path, field, env);
+    } catch (err) {
+      dernier = err;
+      if (i < essais) await new Promise((r) => setTimeout(r, 150 * i));
+    }
+  }
+  throw dernier;
+}
+
 // Déclare un appareil de confiance après vérification du code. Écrit par le
 // Worker et non par le client : sinon il suffirait d'écrire soi-même dans
 // users/{uid}/data/trustedDevices pour ne jamais voir la 2FA.
@@ -2348,7 +2369,7 @@ export default {
         // `lire puis ecrire` laisse passer la force brute par requetes
         // parallele, qui lisent toutes le meme compteur.
         stage = 'compteur';
-        const attempts = await firestoreIncrement(secretPath, 'attempts', env);
+        const attempts = await firestoreIncrementResilient(secretPath, 'attempts', env);
         if (attempts > PIN_MAX_TRIES) {
           stage = 'verrou';
           await firestoreUpdate(secretPath, {
