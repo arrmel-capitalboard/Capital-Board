@@ -4,7 +4,8 @@
 //
 // Le cron lance désormais un audit AUTOMATISÉ : une action tirée dans
 // security-test-actions.json est rejouée par un navigateur derrière un proxy
-// d'interception, puis la capture part à l'analyse (scripts/run-automated-audit.mjs).
+// d'interception, puis la capture part à l'analyse. Le parcours lui-même vit
+// dans le dépôt privé capitalboard-securite, cloné à côté sur la VM.
 // Le compte rendu est posté par l'orchestrateur, capture jointe.
 //
 // Le rappel manuel n'a pas disparu : `npm run security-test` poste toujours la
@@ -22,6 +23,7 @@ const { spawn } = require('child_process');
 const cron = require('node-cron');
 const { EmbedBuilder } = require('discord.js');
 const burpaudit = require('./burp-audit');
+const config = require('../config');
 
 const ACTIONS_FILE = path.join(__dirname, '..', '..', 'security-test-actions.json');
 // Historique des actions déjà proposées, à côté de la liste : même logique,
@@ -195,7 +197,30 @@ async function runAutomated(client) {
   const [action] = pickActions(actions, historique, 1);
   console.log(`[security-test] ${new Date().toISOString()} — audit automatisé : ${action}`);
 
-  const script = path.join(__dirname, '..', '..', '..', 'scripts', 'run-automated-audit.mjs');
+  // Le parcours d'audit a rejoint le depot prive de securite : il decrit le
+  // contournement de Turnstile et d'App Check, ce qui ne pouvait pas rester
+  // dans un depot public. Sur la VM, les deux clones sont voisins.
+  const racine = path.join(__dirname, '..', '..', '..');
+  const depot = config.depotSecurite || path.join(racine, '..', 'capitalboard-securite');
+  const script = path.join(depot, 'scripts', 'run-automated-audit.mjs');
+
+  // Verifie avant de lancer : sans ce clone, spawn echouerait avec un ENOENT
+  // qui ne dit pas ce qui manque, et l'action serait consommee pour rien.
+  if (!fs.existsSync(script)) {
+    console.error(`[security-test] Parcours d'audit introuvable : ${script}`);
+    console.error('[security-test] Clonez arrmel-capitalboard/capitalboard-securite a cote du depot public, ou posez DEPOT_SECURITE.');
+    try {
+      const channel = await client.channels.fetch(CHANNEL_ID);
+      await channel.send([
+        "🔴 Audit automatisé impossible : le dépôt de sécurité n'est pas cloné sur la VM.",
+        `Attendu dans \`${depot}\` — ou posez \`DEPOT_SECURITE\` dans le .env.`,
+      ].join('\n'));
+    } catch (err) {
+      console.error(`[security-test] Signalement impossible : ${err.message}`);
+    }
+    return null;
+  }
+
   const code = await new Promise((resolve) => {
     const proc = spawn(process.execPath, [script, '--action', action], { stdio: ['ignore', 'inherit', 'inherit'] });
     proc.on('error', (err) => { console.error('[security-test] lancement impossible :', err.message); resolve(-1); });

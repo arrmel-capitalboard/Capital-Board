@@ -91,7 +91,9 @@ function depotModal() {
  */
 async function lancerWorkflow(docId) {
   if (!config.githubToken) throw new Error('GITHUB_DISPATCH_TOKEN absent sur la VM');
-  const url = `https://api.github.com/repos/${config.githubRepo}/actions/workflows/${WORKFLOW}/dispatches`;
+  // Depuis la separation des depots, ce workflow vit dans le depot prive de
+  // securite : c'est la qu'il faut le declencher.
+  const url = `https://api.github.com/repos/${config.githubSecurityRepo}/actions/workflows/${WORKFLOW}/dispatches`;
   const res = await fetch(url, {
     method: 'POST',
     headers: {
