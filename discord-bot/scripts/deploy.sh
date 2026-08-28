@@ -33,6 +33,11 @@ npm install --no-audit --no-fund
 npm run deploy
 
 # Redémarrage du bot.
-pm2 restart capitalboard-bot --update-env
+#
+# Service utilisateur systemd : `systemctl --user` a besoin de savoir à quel bus
+# s'adresser, et une session SSH non interactive ne le pose pas. Sans cette
+# ligne, le déploiement échouerait sur « Failed to connect to bus ».
+export XDG_RUNTIME_DIR="/run/user/$(id -u)"
+systemctl --user restart capitalboard-bot
 
 echo ">> Déployé : $(git rev-parse HEAD)"

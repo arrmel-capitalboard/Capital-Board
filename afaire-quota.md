@@ -193,6 +193,30 @@ déjà à 45 % avec une poignée de comptes.
       À faire aussi en mobile : le pavé PIN et la modale ont leurs propres
       règles aux points de rupture, l'écran doit suivre.
 
+## pm2 remplacé par systemd
+
+Décidé le 28/08. pm2 n'écrit rien dans Firestore, il n'a donc aucun rapport avec
+le quota — mais `PM2 God` et l'agent `PM2+` occupent une cinquantaine de
+mégaoctets sur les 964 de la VM, pour un travail que systemd fait déjà.
+
+L'unité vit dans `discord-bot/scripts/capitalboard-bot.service`. Service
+*utilisateur* : pas de sudo au déploiement, et le processus tourne sous le
+compte qui possède le clone et le `.env`.
+
+Trois choses qu'elle apporte au passage :
+
+- **`KillMode=mixed`** — SIGTERM au seul processus principal, qui a le temps de
+  tuer le groupe de son parcours d'audit, puis SIGKILL au reste. C'est ce qui
+  empêche un navigateur orphelin de survivre à un redémarrage, comme c'est
+  arrivé quatre fois le 28/08 avec pm2.
+- **`MemoryMax=400M`** — un bot qui fuit n'emporte pas la machine.
+- **Pas de boucle de redémarrage** : cinq échecs en deux minutes et le service
+  reste arrêté, pour qu'une erreur de configuration se voie.
+
+Le journal passe de `~/.pm2/logs/*.log` à `journalctl --user -u
+capitalboard-bot`. Les fonctions `audit`, `log`, `suivi` et `nolog` du
+`.bashrc` sont à réécrire en conséquence.
+
 ## En cas de nouvelle coupure
 
 1. Vérifier : console Firebase → *Usage et facturation* → **Quotas de projet**.

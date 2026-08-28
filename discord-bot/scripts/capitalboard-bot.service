@@ -1,0 +1,58 @@
+[Unit]
+# Service utilisateur du bot Discord, en remplacement de pm2.
+#
+# Service *utilisateur* et non système : pas de sudo pour le redéployer, et le
+# processus tourne sous le compte qui possède le clone et le .env. Il faut en
+# contrepartie autoriser le compte à garder des services en vie sans session
+# ouverte, une fois pour toutes :
+#
+#   loginctl enable-linger $USER
+#
+# Installation :
+#   mkdir -p ~/.config/systemd/user
+#   cp ~/Capital-Board/discord-bot/scripts/capitalboard-bot.service ~/.config/systemd/user/
+#   systemctl --user daemon-reload
+#   systemctl --user enable --now capitalboard-bot
+#
+# Journal :
+#   journalctl --user -u capitalboard-bot -f        # en direct
+#   journalctl --user -u capitalboard-bot -n 100    # les cent dernières lignes
+Description=Bot Discord Capital Board
+Documentation=https://github.com/arrmel-capitalboard/Capital-Board
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/Capital-Board/discord-bot
+ExecStart=/usr/bin/env node src/index.js
+
+# Le bot lit son .env lui-même (dotenv) : rien à déclarer ici, et aucun secret
+# ne transite par une unité systemd, qui est lisible par tout le compte.
+Environment=NODE_ENV=production
+
+# Redémarrage sur arrêt inattendu, mais pas en boucle : cinq échecs en deux
+# minutes et le service reste arrêté, pour qu'une erreur de configuration se
+# voie au lieu de tourner en rond.
+Restart=on-failure
+RestartSec=5
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
+# Le parcours d'audit est lancé en processus enfant et gère son propre arrêt
+# (voir lib/securitytest.js). `mixed` envoie SIGTERM au seul processus
+# principal, qui a le temps de tuer son groupe, puis SIGKILL au reste s'il
+# traîne — sans quoi un navigateur orphelin survivrait au redémarrage, comme
+# c'est arrivé le 28/08 avec pm2.
+KillMode=mixed
+TimeoutStopSec=20
+
+# Sur une e2-micro, un bot qui fuit ne doit pas emporter la machine.
+MemoryMax=400M
+
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=capitalboard-bot
+
+[Install]
+WantedBy=default.target
