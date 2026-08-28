@@ -204,30 +204,84 @@ async function lancerScenarios(interaction, id) {
 
   await interaction.reply({
     content: actions.length === 1
-      ? `Audit lancé sur « ${actions[0]} ». Le suivi arrive dans ce salon, comptez quelques minutes.`
-      : `${actions.length} audits lancés, joués un par un. Le suivi de chacun arrive dans ce salon.`,
+      ? 'Audit lancé. Le suivi arrive dans ce salon.'
+      : `${actions.length} audits lancés, joués un par un. Le suivi arrive dans ce salon.`,
     flags: MessageFlags.Ephemeral,
   });
 
   // Un parcours dure plusieurs minutes, bien au-delà de la fenêtre d'une
-  // interaction : on rend la main tout de suite. L'orchestrateur poste son
-  // propre message d'état, réécrit à chaque changement (lib/burp-audit.js).
+  // interaction : on rend la main tout de suite.
   enchainer(interaction.client, actions).catch((err) => {
-    console.error('[securitypanel] lot d\'audits :', err.message);
+    console.error("[securitypanel] lot d'audits :", err.message);
   });
 }
 
+// État de chaque scénario du lot, tel qu'affiché dans le message d'avancement.
+const PUCES = { attente: '⚪', encours: '🔵', fait: '✅', rate: '🔴' };
+
+function avancementPayload(actions, etats, fini) {
+  const traites = etats.filter((e) => e === 'fait' || e === 'rate').length;
+
+  const embed = new EmbedBuilder()
+    .setColor(fini ? 0x22d98a : 0x5b8def)
+    .setTitle(fini
+      ? `🧪 Audit à la demande — terminé (${traites}/${actions.length})`
+      : `🧪 Audit à la demande — ${Math.min(traites + 1, actions.length)}/${actions.length}`)
+    .setDescription(actions.map((a, i) => `${PUCES[etats[i]]} ${a}`).join('\n').slice(0, 4000))
+    .setTimestamp();
+
+  // Sans cette ligne, rien ne distingue « ça travaille » de « c'est planté » :
+  // le message d'état de la capture n'arrive qu'au dépôt, en fin de parcours.
+  embed.setFooter({
+    text: fini
+      ? "Le compte rendu de chaque analyse arrive séparément."
+      : "Navigation, capture, caviardage, puis analyse. Comptez quelques minutes par scénario.",
+  });
+
+  return { embeds: [embed] };
+}
+
+/**
+ * Joue le lot en série et tient un message d'avancement.
+ *
+ * Le message d'état posté par lib/burp-audit.js n'apparaît qu'au dépôt de la
+ * capture, donc après tout le parcours : sans celui-ci, un lot de trois
+ * scénarios laisse le salon muet une dizaine de minutes.
+ */
 async function enchainer(client, actions) {
+  const etats = actions.map(() => 'attente');
+  let message = null;
+
   try {
-    for (const action of actions) {
-      enCours = action;
+    const channel = await client.channels.fetch(SALON);
+    message = await channel.send(avancementPayload(actions, etats, false));
+  } catch (err) {
+    // L'avancement est un confort : son absence ne doit pas empêcher l'audit.
+    console.error("[securitypanel] message d'avancement :", err.message);
+  }
+
+  const rafraichir = (fini) => {
+    if (!message) return Promise.resolve();
+    return message.edit(avancementPayload(actions, etats, fini))
+      .catch((err) => console.error('[securitypanel] maj avancement :', err.message));
+  };
+
+  try {
+    for (let i = 0; i < actions.length; i++) {
+      enCours = actions[i];
+      etats[i] = 'encours';
+      await rafraichir(false);
+
       // Une action ratée n'arrête pas le lot : runAutomated signale l'échec
-      // dans Discord et rend la main sans lever.
-      await securitytest.runAutomated(client, { action })
-        .catch((err) => console.error(`[securitypanel] « ${action} » :`, err.message));
+      // dans Discord et rend la main sans lever — elle retourne null en ce cas.
+      const ok = await securitytest.runAutomated(client, { action: actions[i] })
+        .catch((err) => { console.error(`[securitypanel] « ${actions[i]} » :`, err.message); return null; });
+
+      etats[i] = ok ? 'fait' : 'rate';
     }
   } finally {
     enCours = null;
+    await rafraichir(true);
   }
 }
 
