@@ -22,6 +22,11 @@ Documentation=https://github.com/arrmel-capitalboard/Capital-Board
 After=network-online.target
 Wants=network-online.target
 
+# Cinq échecs en deux minutes et le service reste arrêté, pour qu'une erreur de
+# configuration se voie au lieu de tourner en rond.
+StartLimitBurst=5
+StartLimitIntervalSec=120
+
 [Service]
 Type=simple
 WorkingDirectory=%h/Capital-Board/discord-bot
@@ -31,13 +36,11 @@ ExecStart=/usr/bin/env node src/index.js
 # ne transite par une unité systemd, qui est lisible par tout le compte.
 Environment=NODE_ENV=production
 
-# Redémarrage sur arrêt inattendu, mais pas en boucle : cinq échecs en deux
-# minutes et le service reste arrêté, pour qu'une erreur de configuration se
-# voie au lieu de tourner en rond.
+# Redémarrage sur arrêt inattendu. Le garde-fou anti-boucle vit dans [Unit],
+# pas ici : systemd ignore silencieusement StartLimitIntervalSec placé dans
+# [Service], et la limite ne s'applique alors jamais.
 Restart=on-failure
 RestartSec=5
-StartLimitBurst=5
-StartLimitIntervalSec=120
 
 # Le parcours d'audit est lancé en processus enfant et gère son propre arrêt
 # (voir lib/securitytest.js). `mixed` envoie SIGTERM au seul processus
