@@ -56,6 +56,12 @@ const MAX_SCENARIOS = 10;
 // éteint, ou évincé du cache avant sa suppression, revient au plus tard ici.
 const VERIFICATION_PERIODIQUE = 15 * 60 * 1000;
 
+// Repos entre deux scénarios d'un même lot. La VM tourne sur des cœurs
+// partagés : quatre minutes de navigateur et de proxy épuisent ses crédits de
+// rafale, et le parcours suivant démarre alors sur une machine bridée, où tout
+// expire. Deux minutes de calme les laissent se reconstituer.
+const REPOS_ENTRE_SCENARIOS = 2 * 60 * 1000;
+
 // Durée de vie d'un tirage. Assez large pour laisser le temps de préparer la
 // VM, assez courte pour qu'un scénario oublié ne traîne pas.
 const SCENARIO_TTL = 30 * 60 * 1000;
@@ -233,10 +239,11 @@ async function lancerScenarios(interaction, id) {
 const LIEN_RUNS = `https://github.com/${config.githubSecurityRepo}/actions/workflows/security-scan-burp.yml`;
 
 // État de chaque scénario du lot, tel qu'affiché dans le message d'avancement.
-const PUCES = { attente: '\u{26AA}', encours: '\u{1F535}', fait: '\u{2705}', rate: '\u{1F534}', annule: '\u{23F9}' };
+const PUCES = { attente: '\u{26AA}', repos: '\u{1F634}', encours: '\u{1F535}', fait: '\u{2705}', rate: '\u{1F534}', annule: '\u{23F9}' };
 
 function avancementPayload(actions, etats, fini, depuis) {
   const traites = etats.filter((e) => e === 'fait' || e === 'rate').length;
+  const auRepos = etats.includes('repos');
   const rates = etats.filter((e) => e === 'rate').length;
 
   const embed = new EmbedBuilder()
@@ -254,7 +261,7 @@ function avancementPayload(actions, etats, fini, depuis) {
   // s'il redémarre en cours de lot.
   const quand = `<t:${Math.round(depuis / 1000)}:R>`;
   embed.addFields({
-    name: fini ? 'Terminé' : 'Scénario en cours depuis',
+    name: fini ? 'Terminé' : (auRepos ? 'En repos depuis' : 'Scénario en cours depuis'),
     value: fini ? `${quand}${rates ? ` · ${rates} raté${rates > 1 ? 's' : ''}` : ''}` : quand,
     inline: true,
   });
@@ -302,6 +309,7 @@ async function enchainer(client, actions) {
   const etats = actions.map(() => 'attente');
   let message = null;
   let depuis = Date.now();
+  let minuterieRepos = null;
 
   try {
     const channel = await client.channels.fetch(SALON);
@@ -331,6 +339,21 @@ async function enchainer(client, actions) {
         .catch((err) => { console.error(`[securitypanel] « ${actions[i]} » :`, err.message); return null; });
 
       etats[i] = ok ? 'fait' : (arretDemande ? 'annule' : 'rate');
+
+      // Repos avant le suivant, jamais apres le dernier : la machine doit
+      // reprendre son souffle, pas nous faire attendre pour rien.
+      if (i < actions.length - 1 && !arretDemande) {
+        enCours = null;
+        etats[i + 1] = 'repos';
+        depuis = Date.now();
+        await rafraichir(false);
+        await new Promise((resolve) => {
+          minuterieRepos = setTimeout(resolve, REPOS_ENTRE_SCENARIOS);
+          couperRepos = () => { clearTimeout(minuterieRepos); resolve(); };
+        });
+        minuterieRepos = null;
+        couperRepos = () => {};
+      }
     }
   } finally {
     enCours = null;
@@ -339,15 +362,20 @@ async function enchainer(client, actions) {
   }
 }
 
+// Interrompt le repos en cours, s'il y en a un : sans cela, un arret demande
+// pendant la pause ne prendrait effet que deux minutes plus tard.
+let couperRepos = () => {};
+
 /** Coupe le parcours en cours et annule la suite du lot. */
 async function arreterAudit(interaction) {
-  if (!enCours) {
+  if (!enCours && !arretDemande) {
     await interaction.reply({ content: 'Aucun audit en cours.', flags: MessageFlags.Ephemeral });
     return;
   }
   const vise = enCours;
   arretDemande = true;
   const tue = securitytest.tuerParcours(true);
+  couperRepos();
   await interaction.reply({
     content: tue
       ? `Arrêt demandé sur \u00ab ${vise} \u00bb. Le navigateur et le proxy sont coupés, la suite du lot est annulée.`
