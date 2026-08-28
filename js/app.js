@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260828c';
+const APP_VERSION = '20260828d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -15388,6 +15388,16 @@ function _startPresenceHeartbeat() {
   const pwa = _isStandaloneDisplay();
   const ping = () => {
     if (!currentUser) { if (_presenceHeartbeat) { clearInterval(_presenceHeartbeat); _presenceHeartbeat = null; } return; }
+    // Verrou d'inactivité posé : la session reste ouverte et `currentUser` reste
+    // renseigné, mais personne n'est devant. Continuer à battre écrivait toutes
+    // les deux minutes pour signaler une présence qui n'existe pas — un onglet
+    // verrouillé pour la nuit consommait à lui seul 720 écritures.
+    //
+    // On ne marque pas « hors ligne » : ce serait une écriture de plus. La
+    // fraîcheur de `lastSeen` s'en charge, et cinq minutes plus tard le membre
+    // apparaît hors ligne, ce qui est exact.
+    const verrou = document.getElementById('pin-lock-view');
+    if (verrou && verrou.style.display !== 'none' && verrou.offsetParent !== null) return;
     // `pwa` décrit la session en cours ; `pwaEver` ne retombe jamais à faux,
     // sans quoi une simple visite depuis un onglet effacerait l'information.
     const data = { online: true, lastSeen: serverTimestamp(), pwa };
