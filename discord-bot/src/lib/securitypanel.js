@@ -216,6 +216,9 @@ async function lancerScenarios(interaction, id) {
   });
 }
 
+// Liste des exécutions de l'analyse de trafic, dans le dépôt privé de sécurité.
+const LIEN_RUNS = `https://github.com/${config.githubSecurityRepo}/actions/workflows/security-scan-burp.yml`;
+
 // État de chaque scénario du lot, tel qu'affiché dans le message d'avancement.
 const PUCES = { attente: '⚪', encours: '🔵', fait: '✅', rate: '🔴' };
 
@@ -246,10 +249,20 @@ function avancementPayload(actions, etats, fini, depuis) {
   // Sans ces deux repères, rien ne distingue « ça travaille » de « c'est
   // planté » : le message d'état de la capture n'arrive qu'au dépôt, en fin de
   // parcours.
+  // Le run GitHub n'existe qu'une fois la capture déposée, donc en fin de
+  // parcours : on pointe la liste des exécutions du workflow, valable avant
+  // comme après. Le lien direct vers un run précis, lui, arrive sur le message
+  // d'état de la capture (lib/burp-audit.js).
+  embed.addFields({
+    name: 'Analyse',
+    value: `[Exécutions du workflow](${LIEN_RUNS})`,
+    inline: true,
+  });
+
   embed.setFooter({
     text: fini
       ? "Le compte rendu de chaque analyse arrive séparément."
-      : "Navigation, capture, caviardage, puis analyse. Comptez 3 à 5 minutes par scénario.",
+      : "Navigation, capture, caviardage, puis analyse. Le run GitHub n'apparaît qu'à la fin du parcours.",
   });
 
   return { embeds: [embed] };
