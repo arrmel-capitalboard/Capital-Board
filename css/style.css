@@ -167,6 +167,26 @@ html { overflow-x: clip; }
 }
 @keyframes card-up { from { opacity: 0; transform: translateY(40px) scale(0.92) rotateX(8deg); } to { opacity: 1; transform: none; } }
 
+/* Bandeau d'indisponibilité, pour un membre déjà entré. Posé en bas et non en
+   haut : le haut porte déjà la barre de navigation mobile, et une bande qui
+   pousse la mise en page ferait sauter la lecture en cours. */
+.indispo-bar {
+  position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
+  z-index: 9000; max-width: min(560px, calc(100vw - 32px));
+  display: flex; align-items: flex-start; gap: 10px;
+  padding: 12px 16px;
+  background: var(--s2); border: 1px solid var(--border2); border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.35);
+  font-size: 12.5px; line-height: 1.5; color: var(--text2);
+  animation: indispo-in 0.4s cubic-bezier(0.16,1,0.3,1) both;
+}
+.indispo-bar strong { color: var(--text); font-family: var(--mono); }
+.indispo-bar-dot {
+  flex-shrink: 0; width: 8px; height: 8px; margin-top: 5px;
+  border-radius: 50%; background: var(--gold);
+}
+@keyframes indispo-in { from { opacity: 0; transform: translate(-50%, 12px); } to { opacity: 1; transform: translate(-50%, 0); } }
+
 /* Service indisponible (quota Firestore épuisé). Volontairement sobre : pas de
    rouge d'alerte — rien n'est cassé et rien n'est perdu, le service revient
    seul à heure connue. Le bouton reste caché tant que cette heure n'est pas
@@ -2467,6 +2487,17 @@ body.sb-collapsed .main { margin-left: 58px; }
 
   /* Login */
   .login-card { width: 92vw; padding: 32px 20px; }
+
+  /* Bandeau : au ras des bords, au-dessus de la barre de navigation du bas. */
+  .indispo-bar {
+    left: 12px; right: 12px;
+    /* La barre de navigation ajoute la safe-area de l'appareil a sa hauteur :
+       sans le meme calcul ici, le bandeau la chevauche sur un iPhone a encoche. */
+    bottom: calc(76px + env(safe-area-inset-bottom, 0px));
+    transform: none; max-width: none;
+    padding: 11px 13px; font-size: 12px;
+  }
+  @keyframes indispo-in { from { opacity: 0; transform: translateY(12px); } to { opacity: 1; transform: none; } }
 
   /* Service indisponible : l'heure de retour reste l'élément le plus lisible,
      mais 30px déborde sur les petits écrans une fois la carte rétrécie. */

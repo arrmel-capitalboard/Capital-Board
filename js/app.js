@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260829b';
+const APP_VERSION = '20260829c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1476,6 +1476,66 @@ function _prochaineRemiseAZero() {
 }
 
 let _indispoTimer = null;
+let _bandeauPose = false;
+
+/**
+ * Bandeau d'indisponibilité pour un membre déjà entré dans l'application.
+ *
+ * L'écran plein ne vaut que pour le verrou : quelqu'un qui travaille déjà ne
+ * doit pas en être éjecté — la lecture continue de fonctionner, seules les
+ * écritures sont refusées. Le bandeau dit ce qui ne marche pas et quand ça
+ * revient, sans rien interrompre.
+ */
+function _bandeauIndisponible() {
+  if (_bandeauPose) return;
+  _bandeauPose = true;
+
+  const remise = _prochaineRemiseAZero();
+  const heure = remise ? remise.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : null;
+
+  const barre = document.createElement('div');
+  barre.className = 'indispo-bar';
+  barre.setAttribute('role', 'status');
+  barre.innerHTML = '<span class="indispo-bar-dot"></span>'
+    + '<span>Vos modifications ne peuvent pas être enregistrées pour le moment. '
+    + 'La consultation reste possible'
+    + (heure ? ', et l\'enregistrement revient vers <strong>' + heure + '</strong>.' : '.')
+    + '</span>';
+  document.body.appendChild(barre);
+
+  // Le bandeau se retire de lui-même à la remise à zéro : le laisser après
+  // coup ferait croire à une panne qui n'existe plus.
+  if (remise) {
+    const attente = Math.max(0, remise.getTime() - Date.now()) + 5000;
+    if (attente < 2147483647) {
+      setTimeout(() => { barre.remove(); _bandeauPose = false; }, attente);
+    }
+  }
+}
+
+// Le Worker répond 503 avec `indisponible: 'quota'` sur toute route qui écrit,
+// depuis n'importe laquelle de ses quarante-cinq portes d'entrée. Les intercepter
+// une par une aurait demandé de les toucher toutes, et d'y penser à chaque
+// nouvelle. Un seul point d'écoute suffit — la réponse est rendue intacte à
+// l'appelant, qui garde son propre traitement d'erreur.
+(function _ecouterIndisponibilite() {
+  const original = window.fetch.bind(window);
+  window.fetch = async function(entree, options) {
+    const res = await original(entree, options);
+    // Le clone n'a lieu que sur un 503 du Worker : sur le chemin normal, rien
+    // n'est lu deux fois. Sans lui, le corps serait consommé ici et l'appelant
+    // recevrait un flux déjà vidé.
+    if (res.status === 503) {
+      const url = typeof entree === 'string' ? entree : (entree && entree.url) || '';
+      if (typeof WORKER_URL === 'string' && url.startsWith(WORKER_URL)) {
+        res.clone().json()
+          .then((d) => { if (d && d.indisponible === 'quota') _bandeauIndisponible(); })
+          .catch(() => {});
+      }
+    }
+    return res;
+  };
+})();
 
 /**
  * Bascule sur l'écran d'indisponibilité, et y tient le compte à rebours.

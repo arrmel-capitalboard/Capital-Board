@@ -4095,6 +4095,15 @@ export default {
       // des messages internes : codes d'API Google, chemins Firestore, etat du
       // projet. Un jeton refuse est par ailleurs un 401, pas un 500.
       console.error(e.message);
+      // Un quota Firestore epuise n'est ni une panne ni la faute du client : le
+      // service revient seul a heure connue, et rien ne l'avance. Le distinguer
+      // ici couvre d'un coup toutes les routes qui ecrivent — le client peut
+      // alors dire quand ca revient, au lieu d'une erreur technique qui invite
+      // a reessayer et donc a consommer encore. /verify-pin garde son propre
+      // traitement : elle attrape avant d'arriver jusqu'ici.
+      if (estRefusDeQuota(e)) {
+        return json({ error: 'Service momentanement indisponible', indisponible: 'quota' }, 503);
+      }
       const authFailed = /Token|Signature|jwk|audience|emetteur|Cle publique/i.test(e.message || '');
       return authFailed
         ? json({ error: 'Authentification invalide' }, 401)
