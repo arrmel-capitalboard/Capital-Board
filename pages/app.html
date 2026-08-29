@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260829j">
+<link rel="stylesheet" href="css/style.css?v=20260829k">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -329,18 +329,16 @@
     </div>
     <div class="unavail-body">
       <p class="unavail-lead">
-        Le service ne peut plus enregistrer de données pour le moment. Votre code
-        était correct : ce n'est pas votre saisie qui est en cause, et rien n'est
-        perdu.
+        Toutes nos excuses : le service est momentanément indisponible. Vos
+        données sont intactes et votre code était bon — rien à faire de votre côté.
       </p>
-      <div class="unavail-when">
-        <div class="unavail-when-label">Retour prévu</div>
+      <div class="unavail-clock">
+        <div class="unavail-clock-label">Retour prévu à</div>
         <div class="unavail-when-value" id="unavail-heure">—</div>
         <div class="unavail-when-sub" id="unavail-restant">—</div>
       </div>
       <p class="unavail-note">
-        Inutile de recharger la page ou de ressaisir votre code : le service
-        revient de lui-même à l'heure indiquée.
+        Le service revient de lui-même à l'heure indiquée. Inutile de recharger.
       </p>
       <button class="btn-login" id="unavail-retry" style="display:none" onclick="location.reload()">Réessayer</button>
     </div>
@@ -3801,11 +3799,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260829j"></script>
+<script src="js/app.js?v=20260829k"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260829j"></script>
+<script src="js/onboarding.js?v=20260829k"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260829j"></script>
+<script src="js/import.js?v=20260829k"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

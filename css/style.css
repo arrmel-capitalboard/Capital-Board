@@ -191,29 +191,29 @@ html { overflow-x: clip; }
    rouge d'alerte — rien n'est cassé et rien n'est perdu, le service revient
    seul à heure connue. Le bouton reste caché tant que cette heure n'est pas
    passée, pour ne pas inviter à réessayer dans le vide. */
-.unavail-body { animation: stagger-in 0.5s 0.3s cubic-bezier(0.16,1,0.3,1) both; }
+.unavail-body { text-align: center; animation: stagger-in 0.5s 0.3s cubic-bezier(0.16,1,0.3,1) both; }
 .unavail-lead {
-  margin: 0 0 18px; text-align: center;
-  font-size: 13px; line-height: 1.6; color: var(--text2);
+  margin: 0 auto 24px; max-width: 34ch;
+  font-size: 13.5px; line-height: 1.6; color: var(--text2);
 }
-.unavail-when {
-  text-align: center; padding: 18px 14px; margin-bottom: 16px;
-  background: var(--s2); border: 1px solid var(--border2); border-radius: 12px;
-}
-.unavail-when-label {
-  font-size: 11px; font-weight: 600; letter-spacing: 0.08em; text-transform: uppercase;
-  color: var(--text3); margin-bottom: 8px;
+/* Horloge géante : l'heure de retour est ce qui compte, tout le reste s'efface
+   autour. Halo violet discret, comme l'écran de connexion. */
+.unavail-clock { margin: 0 0 22px; }
+.unavail-clock-label {
+  font-size: 10.5px; font-weight: 600; letter-spacing: 0.1em; text-transform: uppercase;
+  color: var(--text3); margin-bottom: 12px;
 }
 .unavail-when-value {
-  font-family: var(--mono); font-size: 30px; font-weight: 700; line-height: 1.1;
-  color: var(--text);
+  font-family: var(--mono); font-size: 62px; font-weight: 700; line-height: 1;
+  letter-spacing: -0.02em; color: var(--text); font-variant-numeric: tabular-nums;
+  text-shadow: 0 0 34px rgba(124,109,245,0.38);
 }
-.unavail-when-sub { margin-top: 6px; font-size: 12px; color: var(--text3); }
+.unavail-when-sub { margin-top: 12px; font-size: 13px; color: var(--accent); font-family: var(--mono); }
 .unavail-note {
   margin: 0; text-align: center;
   font-size: 12px; line-height: 1.55; color: var(--text3);
 }
-#unavail-retry { margin-top: 18px; }
+#unavail-retry { margin-top: 22px; }
 
 .login-logo { text-align: center; margin-bottom: 32px; animation: stagger-in 0.6s 0.2s cubic-bezier(0.16,1,0.3,1) both; }
 .login-card .form-group:nth-child(1) { animation: stagger-in 0.5s 0.3s cubic-bezier(0.16,1,0.3,1) both; }
@@ -2501,8 +2501,7 @@ body.sb-collapsed .main { margin-left: 58px; }
 
   /* Service indisponible : l'heure de retour reste l'élément le plus lisible,
      mais 30px déborde sur les petits écrans une fois la carte rétrécie. */
-  .unavail-when { padding: 15px 12px; }
-  .unavail-when-value { font-size: 25px; }
+  .unavail-when-value { font-size: 50px; }
   .unavail-lead { font-size: 12.5px; }
 
   /* Tables */
