@@ -122,19 +122,25 @@ async function handleButton(interaction) {
     await interaction.reply({ content: 'Réservé au rôle fondateur.', flags: MessageFlags.Ephemeral });
     return;
   }
+  // Discord invalide le jeton d'interaction au bout de 3 s. Les deux appels
+  // Firestore qui suivent depassent ce delai des que la base ralentit — d'ou
+  // les « Unknown interaction » (10062). On accuse reception d'abord : le
+  // message reste tel quel a l'ecran jusqu'au editReply.
+  await interaction.deferUpdate();
+
   const snap = await col().doc(id).get();
   if (!snap.exists) {
-    await interaction.reply({ content: 'Nouveauté introuvable (déjà supprimée ?).', flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: 'Nouveauté introuvable (déjà supprimée ?).', flags: MessageFlags.Ephemeral });
     return;
   }
   if (snap.data().sentAt) {
-    await interaction.reply({ content: 'Déjà publiée aux membres — non modifiable.', flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: 'Déjà publiée aux membres — non modifiable.', flags: MessageFlags.Ephemeral });
     return;
   }
 
   const status = action === 'ok' ? 'approved' : 'rejected';
   await snap.ref.update({ status, decidedBy: interaction.user.id, decidedAt: Date.now() });
-  await interaction.update(payloadFromDoc(id, { ...snap.data(), status, decidedBy: interaction.user.id }));
+  await interaction.editReply(payloadFromDoc(id, { ...snap.data(), status, decidedBy: interaction.user.id }));
 }
 
 /** Bouton « Modifier le texte » → modal pré-rempli avec le texte courant. */
@@ -143,20 +149,16 @@ async function showTextModal(interaction, id) {
     await interaction.reply({ content: 'Réservé au rôle fondateur.', flags: MessageFlags.Ephemeral });
     return;
   }
-  const snap = await col().doc(id).get();
-  if (!snap.exists) {
-    await interaction.reply({ content: 'Nouveauté introuvable (déjà supprimée ?).', flags: MessageFlags.Ephemeral });
-    return;
-  }
-  if (snap.data().sentAt) {
-    await interaction.reply({ content: 'Déjà publiée aux membres — non modifiable.', flags: MessageFlags.Ephemeral });
-    return;
-  }
+  // Un modal doit etre la premiere reponse a l'interaction : impossible de
+  // deferer, et le jeton meurt en 3 s. Le texte courant est deja dans l'embed
+  // du message, on evite donc la lecture Firestore ; l'existence du doc et le
+  // fait qu'il ne soit pas deja publie sont reverifies a la soumission.
+  const courant = interaction.message?.embeds?.[0]?.description || '';
 
   const input = new TextInputBuilder()
     .setCustomId('text')
     .setStyle(TextInputStyle.Paragraph)
-    .setValue((snap.data().text || '').slice(0, 500))
+    .setValue(courant.slice(0, 500))
     .setRequired(true)
     .setMaxLength(500);
   const label = new LabelBuilder()
@@ -185,14 +187,17 @@ async function handleTextModal(interaction) {
     return;
   }
 
+  // Trois appels distants suivent, pour 3 s de jeton : on accuse reception.
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+
   const ref = col().doc(id);
   const snap = await ref.get();
   if (!snap.exists) {
-    await interaction.reply({ content: 'Nouveauté introuvable.', flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: 'Nouveauté introuvable.' });
     return;
   }
   if (snap.data().sentAt) {
-    await interaction.reply({ content: 'Déjà publiée — non modifiable.', flags: MessageFlags.Ephemeral });
+    await interaction.editReply({ content: 'Déjà publiée — non modifiable.' });
     return;
   }
 
@@ -210,7 +215,7 @@ async function handleTextModal(interaction) {
     console.error('[newsqueue] edit texte validation :', e.message);
   }
 
-  await interaction.reply({ content: 'Texte mis à jour.', flags: MessageFlags.Ephemeral });
+  await interaction.editReply({ content: 'Texte mis à jour.' });
 }
 
 function startWatch(client) {
