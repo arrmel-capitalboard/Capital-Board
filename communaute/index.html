@@ -3,12 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <!-- Durcissement navigateur. GitHub Pages ne permet pas d'en-tetes HTTP, donc
-     tout passe par cette balise. Page statique, aucun hote externe requis en
-     script-src/connect-src. -->
+     tout passe par cette balise. Page statique : le seul hote externe est
+     celui de Cloudflare Web Analytics, dont Cloudflare injecte le beacon
+     dans la reponse HTML. -->
 <meta http-equiv="Content-Security-Policy"
       content="object-src 'none'; base-uri 'self'; form-action 'self'; worker-src 'self';
-      script-src 'self' 'unsafe-inline';
-      connect-src 'self'">
+      script-src 'self' 'unsafe-inline' https://static.cloudflareinsights.com;
+      connect-src 'self' https://cloudflareinsights.com">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Communauté Capital Board — Discord, Instagram, YouTube, TikTok</title>
 <meta name="description" content="Rejoignez la communauté Capital Board : serveur Discord, Instagram, YouTube, TikTok, Facebook, LinkedIn et GitHub. Investisseurs particuliers français, bienvenue.">
