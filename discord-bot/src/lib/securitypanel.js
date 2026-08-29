@@ -468,12 +468,39 @@ function ligneResume(entree) {
  * rien à interpréter côté bot.
  */
 async function lancerPentest(interaction) {
-  await interaction.reply({
-    content: '🛡️ **Pentest en cours** — attaques réelles jouées contre la production, périmètre sûr.\n'
-      + 'Lectures croisées, élévation de privilège, jeton trafiqué, entrées malformées. Quelques minutes.',
-  });
+  const enTete = '🛡️ **Pentest en cours** — attaques réelles, production, périmètre sûr.\n\n';
+  await interaction.reply({ content: enTete + '_Démarrage…_' });
 
-  const { code, rapport, motif } = await securitytest.runPentest();
+  // Chaque étape franchie coche la précédente et affiche celle en cours. Le
+  // message s'édite au fil de l'eau ; on limite la cadence pour ne pas se faire
+  // gronder par Discord (une édition à la seconde au plus).
+  const faites = [];
+  let enCours = null;
+  let derniereEdition = 0;
+  let editionEnVol = false;
+
+  const peindre = async (force = false) => {
+    if (editionEnVol) return;
+    const maintenant = Date.now();
+    if (!force && maintenant - derniereEdition < 1100) return;
+    editionEnVol = true;
+    derniereEdition = maintenant;
+    const lignes = faites.map((e) => `✅ ${e}`);
+    if (enCours) lignes.push(`⏳ ${enCours}`);
+    try {
+      await interaction.editReply({ content: enTete + lignes.join('\n') });
+    } catch (_) { /* une édition ratée n'arrête pas le pentest */ }
+    editionEnVol = false;
+  };
+
+  const onEtape = (nom) => {
+    if (enCours) faites.push(enCours);
+    enCours = nom;
+    peindre();
+  };
+
+  const { code, rapport, motif } = await securitytest.runPentest(onEtape);
+  if (enCours) { faites.push(enCours); enCours = null; }
 
   if (code !== 0 || !rapport) {
     await interaction.editReply(

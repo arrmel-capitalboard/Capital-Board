@@ -306,7 +306,7 @@ async function runAutomated(client, { action: impose } = {}) {
  *
  * @returns {Promise<{code:number, rapport:string, motif:string|null}>}
  */
-async function runPentest() {
+async function runPentest(onEtape = () => {}) {
   // Même garde de charge que l'audit : le pentest lance un navigateur pour
   // obtenir le jeton, et une e2-micro saturée le ferait expirer.
   const charge = os.loadavg()[0];
@@ -332,8 +332,11 @@ async function runPentest() {
     proc.stderr.setEncoding('utf8');
     proc.stderr.on('data', (bloc2) => {
       process.stderr.write(bloc2);
-      // Le script écrit « échec — <motif> » sur stderr en cas d'arrêt net.
       for (const ligne of bloc2.split(/\r?\n/)) {
+        // Étape en cours : le script la marque « [[ETAPE]] … », affichée en direct.
+        const e = ligne.match(/\[\[ETAPE\]\]\s*(.+)/);
+        if (e) { try { onEtape(e[1].trim()); } catch (_) { /* l'affichage ne casse rien */ } }
+        // Le script écrit « échec — <motif> » sur stderr en cas d'arrêt net.
         const t = ligne.match(/pentest[^\]]*\]\s*échec\s*—\s*(.+)/i);
         if (t) motif = t[1].trim();
       }
