@@ -286,7 +286,7 @@ test('ideas : une idée publiée est visible de tout compte connecté', async ()
 // Le test ci-dessous garde sa valeur : il verifie qu'aucun document de `ops/`
 // n'est lisible, ce qui vaut maintenant pour vmStatus et vmWatch comme pour
 // les autres.
-test('ops : aucun document de la collection n'est lisible', async () => {
+test('ops : aucun document de la collection ne reste accessible', async () => {
   // Plus aucun `match` sous ops/ : ni les anciens documents de la VM, ni un
   // futur voisin ne doivent devenir lisibles par inadvertance.
   await seedAsAdmin(`roles/${ADMIN_UID}`, { role: 'superadmin' });
