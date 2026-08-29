@@ -18,6 +18,25 @@ permissions:
   contents: read
 
 jobs:
+  # Garde anti-secrets, BLOQUANTE : scanne l'arbre reellement deploye (fichiers
+  # sur disque, pas seulement l'historique git) avec la meme config que le
+  # workflow Gitleaks. Un secret present ici fait echouer le job, et le
+  # deploiement qui en depend ne part pas.
+  garde-secrets:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan secrets (bloquant)
+        run: |
+          set -euo pipefail
+          V=8.18.4
+          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_x64.tar.gz" -o gl.tgz
+          tar -xzf gl.tgz gitleaks
+          if ! ./gitleaks detect --source . --no-git --config .gitleaks.toml --redact --exit-code 1; then
+            echo "::error::Secret detecte dans l'arbre a deployer — deploiement bloque."
+            exit 1
+          fi
+
   # Le corpus de test tourne avant le déploiement : une régression du filtre pub
   # bloque la mise en production au lieu d'atterrir sur la VM.
   test:
@@ -31,7 +50,7 @@ jobs:
         run: npm test
 
   deploy:
-    needs: test
+    needs: [test, garde-secrets]
     runs-on: ubuntu-latest
     steps:
       - name: Déploiement SSH sur la VM
