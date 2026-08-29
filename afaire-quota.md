@@ -168,30 +168,138 @@ déjà à 45 % avec une poignée de comptes.
 
 ## Ce qui reste à faire
 
-- [ ] **Une estimation préventive** : le bot projette la consommation du jour à
-      partir des cadences connues et du nombre de comptes en ligne, et prévient
-      au-delà de 70 %. La sentinelle est réactive ; ceci serait préventif.
-- [ ] **Recompter les écritures du parcours d'audit** : appareils de confiance,
-      positions créées puis supprimées, idées en attente. Chaque audit en laisse.
-- [ ] **Brancher la sentinelle sur les écrivains restants** : `scan-patches`,
-      `opsAlerts`, `burpUploads`, `leaderboard`.
-- [ ] **Un écran d'indisponibilité digne de ce nom.** Aujourd'hui, quota épuisé,
-      le membre voit « Vérification indisponible — HTTP 500 (étape : compteur) »
-      sur le pavé numérique. Un code d'erreur et un nom d'étape interne : il ne
-      comprend rien, réessaie, et consomme encore.
+Les quatre points ouverts ont été traités le 29/08. Ce qui suit dit ce qui a
+été posé et ce qu'il faut savoir avant d'y toucher.
 
-      Ce qu'il faut à la place : le client détecte l'échec d'écriture, affiche
-      un écran plein — logo, « Capital Board est momentanément indisponible »,
-      l'heure de retour, et rien à cliquer qui puisse aggraver la situation.
-      Le CSS existe déjà pour la modale de verrou, il y a de quoi partir.
+- [x] **Une estimation préventive** — `2d96e18`.
+- [x] **Recompter les écritures du parcours d'audit** — mesuré, voir plus bas.
+- [x] **Brancher la sentinelle sur les écrivains restants** — `e5fad94`.
+- [x] **Un écran d'indisponibilité digne de ce nom** — `f53d7c6`.
 
-      Trois exigences. Ne pas laisser croire que le code saisi est faux. Ne pas
-      inviter à réessayer en boucle. Dire quand ça revient, puisqu'on le sait —
-      minuit heure du Pacifique, calculable côté client comme le fait
-      `discord-bot/src/lib/quota.js`.
+---
 
-      À faire aussi en mobile : le pavé PIN et la modale ont leurs propres
-      règles aux points de rupture, l'écran doit suivre.
+# Fait le 29 août
+
+## L'estimation préventive
+
+La sentinelle ne parlait qu'une fois le quota épuisé, c'est-à-dire une fois
+l'application fermée à tout le monde. Elle projette maintenant la journée
+**chaque heure**, et prévient au-delà de **70 %** — une seule fois par jour,
+dans le salon de sécurité, avec le détail par poste et ce qui fait baisser la
+projection tout de suite.
+
+Ce n'est pas une mesure : l'API de métriques Firestore demande des droits que la
+clé de service n'a pas. C'est la somme de ce que chaque écrivain **déclare**,
+plus la part des sessions lues dans `presence`.
+
+```js
+quota.declarer('compteur de tickets', 288);            // cadence fixe
+quota.declarer('relevés VM', () => ecrites.parJour()); // cadence variable
+```
+
+### Le piège évité : la cadence instantanée ment
+
+Projeter `86 400 000 / cadence` donnait 17 280 écritures dès qu'un panneau
+d'administration s'ouvrait — alors qu'un panneau ouvert dix minutes n'en coûte
+que cent vingt. Une alerte à chaque ouverture, donc plus aucune alerte lue.
+
+`vmstatus` déclare donc **ce qu'il a réellement écrit dans la dernière heure**,
+extrapolé sur vingt-quatre (`quota.compteurHoraire()`, réutilisable par tout
+écrivain irrégulier). Vérifié :
+
+| Situation | Projection | Alerte |
+|---|---|---|
+| Au repos, aucune session | 1 008 (5 %) | non |
+| Panneau ouvert 10 min, 3 sessions | 5 328 (27 %) | non |
+| Panneau ouvert 1 h pleine, 3 sessions | 19 728 (99 %) | **oui** |
+
+L'alerte ne part que si le rythme dure. C'est la propriété qu'on cherchait.
+
+### Ce qu'un nouvel écrivain doit faire
+
+Trois lignes, dans cet ordre :
+
+```js
+if (quota.estEpuise()) return;                        // avant d'écrire, si non essentiel
+quota.declarer('mon poste', 86_400_000 / CADENCE_MS); // au démarrage
+if (quota.signaler(client, e, 'monmodule')) return;   // dans le catch
+```
+
+## La sentinelle branchée sur les écrivains restants
+
+`scan-patches`, `opsAlerts`, `burpUploads` et `leaderboard` partaient dans le
+vide une fois le quota épuisé, chaque tentative traînant dix minutes.
+
+**La garde `estEpuise()` n'est posée que sur le classement.** C'est le seul qui
+n'est essentiel à personne, et son calcul lit en plus le portefeuille de chaque
+membre. Les autres gardent leurs écritures :
+
+- `opsAlerts` et `burpUploads` : c'est `posteLe` / `messageId` qui empêche de
+  reposter la même alerte au démarrage suivant. Se taire ferait **doublonner**,
+  pas économiser.
+- `scan-patches` : une décision du fondateur ne se rejoue pas plus tard.
+  L'écriture est toujours tentée, et un échec se dit maintenant à l'écran avec
+  l'heure de retour — sans quoi le bouton changeait d'état pendant que le
+  document restait en attente.
+
+**La règle qui s'en dégage** : `estEpuise()` en garde seulement pour ce qui ne
+porte aucune décision. Partout ailleurs, `signaler()` dans le catch, et dire à
+l'utilisateur que ça n'a pas été enregistré.
+
+## L'écran d'indisponibilité
+
+Le Worker distingue désormais un refus de quota d'une panne — Firestore répond
+**429 `RESOURCE_EXHAUSTED`** — et `/verify-pin` renvoie `503` avec
+`{ indisponible: 'quota' }` au lieu d'un `500` portant un nom d'étape interne.
+
+Le client bascule alors sur `#unavailable-view`, qui tient les trois exigences
+tirées de l'incident :
+
+- **Le code saisi n'est pas mis en cause** — l'écran le dit explicitement.
+- **Rien n'invite à réessayer.** Le bouton « Réessayer » reste caché tant que
+  l'heure de remise à zéro n'est pas passée.
+- **L'heure de retour est affichée**, avec un compte à rebours à la minute.
+
+L'heure est **calculée, pas écrite en dur** : minuit heure du Pacifique, lu
+depuis le fuseau `America/Los_Angeles`. Coder 9h00 serait faux la moitié de
+l'année. Même logique que `discord-bot/src/lib/quota.js`, volontairement.
+
+Habillage sobre, sans rouge d'alerte : rien n'est cassé et rien n'est perdu,
+seules les écritures sont refusées. Règles mobiles posées en même temps que les
+règles desktop, la carte se rétrécissant à 92vw sous 768 px.
+
+**Reste non couvert** : seule la route `/verify-pin` distingue le quota. Les
+autres routes du Worker renvoient toujours un 500 générique. C'est le bon ordre
+de priorité — `/verify-pin` est celle qui ferme l'application — mais un membre
+déjà entré qui tente d'écrire verra encore une erreur brute.
+
+## Le parcours d'audit, recompté
+
+Demandé après l'incident. Verdict : **ce n'est pas un poste de consommation.**
+
+| Étape | Qui écrit | Écritures |
+|---|---|---|
+| Appareil de confiance semé | orchestrateur (VM) | 1 |
+| `users/{uid}` — email au chargement de l'app | navigateur | 1 |
+| Présence : ping initial, battements, `beforeunload` | navigateur | 3-4 |
+| Gestes du scénario (watchlist, récap…) | navigateur | 0-4 |
+| `burpUploads` créé | orchestrateur (VM) | 1 |
+| `burpUploads` → `messageId` | bot | 1 |
+| `burpUploads` → `encours` | workflow | 1 |
+| `opsAlerts` ou `scanPatches` créé | workflow | 1 |
+| Alerte → `posteLe` / `messageId` | bot | 1 |
+| `burpUploads` → `traite` | workflow | 1 |
+| Pièce jointe détachée | bot | 1 |
+
+**Un run coûte 11 à 16 écritures.** Le cron quotidien d'un scénario : ~13 par
+jour, soit 0,07 % du quota. Un lot de dix depuis le panneau : ~150, soit 0,8 %.
+
+Les six parcours ajoutés le 29/08 (Benchmark, Projections, Patrimoine, Activité,
+Actualités, page Admin) sont **tous en lecture**, précisément pour que cette
+ligne ne bouge pas.
+
+Ce qui coûte reste le panneau d'administration ouvert : 900 écritures par heure,
+tout compris. C'est le seul poste capable de vider le quota à lui seul.
 
 ## pm2 remplacé par systemd
 
