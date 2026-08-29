@@ -8,8 +8,12 @@ const { ChannelType } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
 const quota = require('./quota');
 
-// Cinq minutes plutôt qu'une : 288 écritures par jour au lieu de 1 440, pour un
-// compteur qui ne bouge qu'à l'ouverture ou la fermeture d'un ticket.
+// Cadence du contrôle, pas des écritures : `push` compare avant d'écrire, et ne
+// touche Firestore que si le nombre de tickets ouverts ou le nom du salon a
+// change. Quelques ecritures par jour, contre 288 quand chaque cycle ecrivait.
+//
+// Le controle reste frequent parce qu'il est gratuit : il ne fait que lire le
+// cache Discord deja en memoire.
 const CADENCE_MS = 5 * 60_000;
 
 const TICKET_CATEGORY = '1520204780751028385';
@@ -39,6 +43,11 @@ function ticketChannelName(client) {
   return null;
 }
 
+// Dernière valeur publiée. C'est elle qui décide s'il faut écrire : un compteur
+// qui ne bouge pas n'a rien à dire, et le réécrire coûte autant qu'une vraie
+// nouvelle.
+let publie = null;
+
 async function push(client) {
   if (!isConfigured()) return;
   // Un compteur de tickets n'est pas essentiel : quota épuisé, il se tait.
@@ -46,10 +55,19 @@ async function push(client) {
   try {
     const openTickets = countOpenTickets(client);
     const name = ticketChannelName(client);
+
+    // Rien de neuf : on n'écrit pas. Un ticket s'ouvre ou se ferme quelques
+    // fois par jour, et le salon se renomme encore moins souvent ; écrire
+    // toutes les cinq minutes faisait 288 écritures quotidiennes pour publier
+    // 286 fois la même chose. `updatedAt` ne compte pas comme un changement,
+    // sinon il n'y aurait jamais rien d'identique.
+    if (publie && publie.openTickets === openTickets && publie.name === (name || publie.name)) return;
+
     const payload = { openTickets, ticketChannelId: TICKET_CHANNEL, updatedAt: Date.now() };
     // Un salon absent du cache ne doit pas écraser le nom déjà publié.
     if (name) payload.ticketChannelName = name;
     await getDb().collection('config').doc('discordStats').set(payload, { merge: true });
+    publie = { openTickets, name: name || (publie && publie.name) || null };
   } catch (e) {
     if (quota.signaler(client, e, 'ticketstats')) return;
     console.error('[ticketstats] push:', e.message);
@@ -57,7 +75,9 @@ async function push(client) {
 }
 
 function start(client) {
-  quota.declarer('compteur de tickets', Math.round(86_400_000 / CADENCE_MS));
+  // Quelques écritures par jour, pas une par cycle : le contrôle tourne toutes
+  // les cinq minutes mais n'écrit que si le compte a bougé.
+  quota.declarer('compteur de tickets', 10);
   push(client);
   if (_timer) clearInterval(_timer);
   _timer = setInterval(() => push(client), CADENCE_MS);
