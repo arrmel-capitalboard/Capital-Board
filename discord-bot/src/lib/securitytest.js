@@ -298,6 +298,55 @@ async function runAutomated(client, { action: impose } = {}) {
 }
 
 /** Programme l'audit récurrent. */
+/**
+ * Lance le pentest ACTIF, une fois, à la demande depuis le panneau.
+ *
+ * Contrairement à l'audit de trafic, il n'a besoin ni de mitmproxy ni de
+ * scénario : le script forge une session, joue les attaques, se nettoie et écrit
+ * son compte rendu sur sa sortie standard. On le lit et on le rend à l'appelant,
+ * qui le poste.
+ *
+ * @returns {Promise<{code:number, rapport:string, motif:string|null}>}
+ */
+async function runPentest() {
+  // Même garde de charge que l'audit : le pentest lance un navigateur pour
+  // obtenir le jeton, et une e2-micro saturée le ferait expirer.
+  const charge = os.loadavg()[0];
+  const coeurs = os.cpus().length || 1;
+  if (charge > coeurs * 2) {
+    return { code: -1, rapport: '', motif: `VM saturée (charge ${charge.toFixed(1)} sur ${coeurs} cœurs), pentest refusé.` };
+  }
+
+  const racine = path.join(__dirname, '..', '..', '..');
+  const depot = config.depotSecurite || path.join(racine, '..', 'capitalboard-securite');
+  const script = path.join(depot, 'scripts', 'pentest.mjs');
+  if (!fs.existsSync(script)) {
+    return { code: -1, rapport: '', motif: `pentest.mjs introuvable dans ${depot} — clone du dépôt de sécurité manquant.` };
+  }
+
+  let rapport = '';
+  let motif = null;
+  const code = await new Promise((resolve) => {
+    const proc = spawn(process.execPath, [script], { stdio: ['ignore', 'pipe', 'pipe'], detached: true });
+    suivreParcours(proc);
+    proc.stdout.setEncoding('utf8');
+    proc.stdout.on('data', (bloc2) => { rapport += bloc2; });
+    proc.stderr.setEncoding('utf8');
+    proc.stderr.on('data', (bloc2) => {
+      process.stderr.write(bloc2);
+      // Le script écrit « échec — <motif> » sur stderr en cas d'arrêt net.
+      for (const ligne of bloc2.split(/\r?\n/)) {
+        const t = ligne.match(/pentest[^\]]*\]\s*échec\s*—\s*(.+)/i);
+        if (t) motif = t[1].trim();
+      }
+    });
+    proc.on('error', (err) => { oublierParcours(); motif = motif || err.message; resolve(-1); });
+    proc.on('exit', (c) => { oublierParcours(); resolve(c); });
+  });
+
+  return { code, rapport: rapport.trim(), motif };
+}
+
 function start(client) {
   cron.schedule(
     CRON_EXPR,
@@ -311,6 +360,6 @@ function start(client) {
 }
 
 module.exports = {
-  start, runAutomated, pickActions, loadConfig, loadActions,
+  start, runAutomated, runPentest, pickActions, loadConfig, loadActions,
   lireHistorique, fenetre, tuerParcours, CRON_EXPR, SAMPLE_SIZE,
 };

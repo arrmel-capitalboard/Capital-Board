@@ -111,7 +111,8 @@ function panelPayload() {
       + `**1.** Générez de 1 à ${MAX_SCENARIOS} scénarios — tirés dans la rotation, sans être consommés.\n`
       + "**2.** Réalisez-les : un navigateur les rejoue derrière le proxy, la capture est caviardée sur la VM, puis analysée.\n"
       + "Un seul à la fois, avec deux minutes de repos entre chacun — la VM ne tient pas la charge autrement.\n"
-      + "**3.** Consultez les dernières analyses — ce qui n'allait pas, et ce qui a été corrigé.\n\n"
+      + "**3.** Lancez un pentest — les attaques d'un intrus jouées pour de vrai, pas seulement déduites.\n"
+      + "**4.** Consultez les dernières analyses — ce qui n'allait pas, et ce qui a été corrigé.\n\n"
       + "_Le salon se vide de lui-même : passé une heure, les messages disparaissent. Les comptes rendus, eux, restent consultables ici._",
     )
     .setFooter({ text: 'Capital Board — réservé au rôle fondateur' });
@@ -122,6 +123,11 @@ function panelPayload() {
       .setLabel('Générer un scénario de test')
       .setStyle(ButtonStyle.Primary)
       .setEmoji('🎯'),
+    new ButtonBuilder()
+      .setCustomId('sec:pentest')
+      .setLabel('Lancer un pentest')
+      .setStyle(ButtonStyle.Danger)
+      .setEmoji('🛡️'),
     new ButtonBuilder()
       .setCustomId('sec:analyses')
       .setLabel('Consulter les dernières analyses')
@@ -453,6 +459,44 @@ function ligneResume(entree) {
   return `📄 compte rendu · ${quand}\n${accroche(data.texte)}`;
 }
 
+/**
+ * Lance le pentest actif et poste son compte rendu.
+ *
+ * Le run prend plusieurs minutes — un navigateur, puis la batterie d'attaques.
+ * On defère aussitôt, on annonce, puis on remplace par le résultat. Le compte
+ * rendu vient tel quel de la sortie du script : classification déterministe,
+ * rien à interpréter côté bot.
+ */
+async function lancerPentest(interaction) {
+  await interaction.reply({
+    content: '🛡️ **Pentest en cours** — attaques réelles jouées contre la production, périmètre sûr.\n'
+      + 'Lectures croisées, élévation de privilège, jeton trafiqué, entrées malformées. Quelques minutes.',
+  });
+
+  const { code, rapport, motif } = await securitytest.runPentest();
+
+  if (code !== 0 || !rapport) {
+    await interaction.editReply(
+      '🔴 **Pentest en échec.**' + (motif ? `\n> ${motif}` : ' Voir les logs de la VM (`journalctl --user -u capitalboard-bot`).'),
+    );
+    return;
+  }
+
+  const rate = !rapport.startsWith('AUCUN_FINDING');
+  const entete = rate
+    ? `<@&${FONDATEUR_ROLE}> 🔴 **Le pentest a trouvé des failles**`
+    : '🟢 **Pentest terminé — aucune faille**';
+
+  // Le rapport peut depasser la limite d'un message : on tronque proprement,
+  // le detail complet reste dans les logs de la VM.
+  const corps = rapport.length > 1800 ? rapport.slice(0, 1800) + '\n… (tronqué, voir les logs de la VM)' : rapport;
+
+  await interaction.editReply({
+    content: `${entete}\n\n${corps}`,
+    allowedMentions: { roles: rate ? [FONDATEUR_ROLE] : [], parse: [] },
+  });
+}
+
 /** Liste + menu pour ouvrir un compte rendu en entier. */
 async function listerAnalyses(interaction) {
   if (!isConfigured()) {
@@ -678,6 +722,7 @@ async function handleComponent(interaction) {
   if (geste === 'nb') { await genererScenarios(interaction); return; }
   if (geste === 'run') { await lancerScenarios(interaction, arg); return; }
   if (geste === 'stop') { await arreterAudit(interaction); return; }
+  if (geste === 'pentest') { await lancerPentest(interaction); return; }
   if (geste === 'analyses') { await listerAnalyses(interaction); return; }
   if (geste === 'detail') { await ouvrirDetail(interaction); return; }
 }
