@@ -63,3 +63,9 @@ audit-securite-*.md
 # ouvertes, les procédures d'accès à la VM et les secrets à régénérer. Le dépôt
 # est public — il reste en local, comme les deux fichiers ci-dessus.
 afaire-securite.md
+
+# Meme raison. Ce fichier chiffre le plafond d'ecritures quotidien et le
+# nombre de membres actifs au-dela duquel l'application se coupe d'elle-meme :
+# publie, il donne la mesure exacte du deni de service le moins couteux contre
+# le service. Les correctifs, eux, sont dans le code et peuvent rester publics.
+afaire-quota.md
