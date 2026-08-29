@@ -540,11 +540,17 @@ async function lancerPentest(interaction) {
   if (pistesIA.length) {
     // En clair : ce que la piste concerne, pas le chemin technique. Le chemin
     // reste en petit derriere, pour qui veut verifier.
-    const l = pistesIA.slice(0, 12).map((x) => {
-      const quoi = x.pourquoi || x.chemin;
-      return `${x.bloque ? '✅' : '🔴'} ${quoi}`;
-    }).join('\n');
-    embed.addFields({ name: `🤖 Pistes générées par l'IA (${pistesIA.length})`, value: l.slice(0, 1024) });
+    // On montre autant de pistes que 1024 caracteres le permettent, le reste
+    // est resume. Toutes ont ete jouees ; l'affichage seul est plafonne.
+    const lignesIA = pistesIA.map((x) => `${x.bloque ? '✅' : '🔴'} ${x.pourquoi || x.chemin}`);
+    const NL = String.fromCharCode(10);
+    let val = ''; let montrees = 0;
+    for (const ln of lignesIA) {
+      if ((val + ln).length > 950) break;
+      val += (val ? NL : '') + ln; montrees++;
+    }
+    if (montrees < lignesIA.length) val += NL + `… et ${lignesIA.length - montrees} autres`;
+    embed.addFields({ name: `🤖 Pistes générées par l'IA (${pistesIA.length})`, value: val });
   }
 
   if (notes.length) {
