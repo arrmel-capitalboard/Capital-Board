@@ -914,6 +914,33 @@ async function firestoreDelete(path, env) {
   if (!res.ok && res.status !== 404) throw new Error(`Firestore delete ${res.status}`);
 }
 
+// Vrai si ce jeton d'acces est celui du compte de service du projet.
+//
+// Sert a laisser le bot Discord interroger /admin/health pour sa supervision.
+// Il ne peut pas presenter d'idToken : l'echange d'un jeton personnalise passe
+// par Identity Toolkit, ou App Check est exige — et un bot n'a pas de jeton
+// App Check, c'est precisement ce que cette protection ecarte.
+//
+// Le compte de service, lui, s'authentifie sans App Check. On demande a Google
+// a qui appartient le jeton, et on exige que ce soit le meme compte que celui
+// du Worker. Aucune escalade possible : ce compte peut deja tout faire sur le
+// projet, et le Worker porte sa cle privee complete.
+async function estCompteDeService(accessToken, env) {
+  if (!accessToken || typeof accessToken !== 'string') return false;
+  try {
+    const r = await fetch(
+      'https://oauth2.googleapis.com/tokeninfo?access_token=' + encodeURIComponent(accessToken),
+      { signal: AbortSignal.timeout(8000) },
+    );
+    if (!r.ok) return false;
+    const d = await r.json();
+    const attendu = JSON.parse(env.FIREBASE_SERVICE_ACCOUNT).client_email;
+    return Boolean(attendu) && d.email === attendu;
+  } catch (_) {
+    return false;
+  }
+}
+
 // Vrai si l'échec est un refus de quota Firestore, et non une panne.
 //
 // Le forfait Spark plafonne à 20 000 écritures par jour pour tout le projet,
@@ -2482,9 +2509,14 @@ export default {
 
       // ── POST /admin/health ──────────────────────────────────────────────
       if (url.pathname === '/admin/health' && request.method === 'POST') {
-        const { idToken } = await request.json();
-        const user = await verifyIdToken(idToken, env);
-        if (!user || user.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
+        // Deux appelants : le fondateur depuis un navigateur (idToken), et le
+        // bot Discord depuis la VM, qui publie cette sonde dans le salon de
+        // supervision et ne peut presenter qu'un jeton de compte de service.
+        const { idToken, serviceToken } = await request.json();
+        const autorise = serviceToken
+          ? await estCompteDeService(serviceToken, env)
+          : await verifyIdToken(idToken, env).then((u) => Boolean(u) && u.localId === env.ADMIN_UID).catch(() => false);
+        if (!autorise) return json({ error: 'forbidden' }, 403);
         const out = {};
         try { await firestoreGet('config/app', env); out.firestore = 'ok'; } catch (_) { out.firestore = 'ko'; }
         try { await getAccessToken(env); out.google = 'ok'; } catch (_) { out.google = 'ko'; }

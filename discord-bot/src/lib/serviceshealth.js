@@ -14,11 +14,15 @@
 // au rouge. Discord fait ça mieux, et sans rien facturer.
 //
 // ── L'authentification ────────────────────────────────────────────────────
-// `/admin/health` exige un jeton d'identité du compte fondateur. Le bot en
-// forge un avec la clé de service : elle a déjà tous les pouvoirs sur le
-// projet, cette route n'en ajoute aucun. Le jeton est demandé à chaque cycle
-// et jeté aussitôt — un jeton d'une heure gardé en mémoire ne vaudrait pas les
-// quelques millisecondes économisées.
+// `/admin/health` acceptait un seul appelant : le fondateur, par un jeton
+// d'identité. Le bot ne peut pas en produire — l'échange d'un jeton
+// personnalisé passe par Identity Toolkit, où App Check est exigé, et un bot
+// n'a pas de jeton App Check. C'est précisément ce que cette protection écarte,
+// et la contourner par un jeton de débogage aurait ouvert une porte permanente.
+//
+// Il présente donc un jeton d'accès de son compte de service, que le Worker
+// vérifie auprès de Google. Aucune escalade : ce compte peut déjà tout faire
+// sur le projet, et le Worker porte sa clé privée complète.
 //
 // Rien ici ne doit pouvoir arrêter le bot : une sonde ou une édition qui
 // échoue est journalisée, et le cycle suivant retentera.
@@ -38,18 +42,7 @@ const FICHIER = path.join(__dirname, '..', '..', 'data', 'services-health-messag
 // éditer un message plus souvent n'apprendrait rien de plus.
 const PERIODE_MS = 5 * 60_000;
 
-// Compte fondateur, seul autorisé par la route. Même valeur que côté client
-// (`ADMIN_UID` dans js/app.js) : c'est un identifiant, pas un secret.
-const ADMIN_UID = 'A6nZQ8PcxdURytSesA17xK81I9T2';
-
 const WORKER = process.env.WORKER_URL || 'https://api.capitalboard.fr';
-
-// Clé Web de l'application Firebase. Ce n'est pas un secret : elle est servie
-// en clair dans js/app.js à chaque visiteur du site, et elle n'ouvre rien par
-// elle-même — c'est un identifiant de projet, les règles Firestore et
-// l'authentification font le travail. La mettre ici évite une variable
-// d'environnement de plus sur la VM.
-const CLE_WEB = 'AIzaSyBnHkOTwFoJNMvYOgG7Ne-AFKgE3GBRiNU';
 
 // Ordre d'affichage, et libellés. La clé est celle que renvoie le Worker.
 const SERVICES = [
@@ -65,38 +58,27 @@ let bot = null;
 let minuterie = null;
 
 /**
- * Jeton d'identité du compte fondateur, forgé avec la clé de service.
+ * Jeton d'accès du compte de service, celui que le Worker sait reconnaître.
  *
- * Deux temps, comme le fait le parcours d'audit : la clé signe un jeton
- * personnalisé, que l'API Identity Toolkit échange contre un jeton d'identité —
- * le seul format que `verifyIdToken` accepte côté Worker.
+ * Google le renouvelle de lui-même quand il approche de son terme : la
+ * bibliothèque garde le sien en cache une heure, il n'y a rien à gérer ici.
  */
-async function jetonAdmin() {
-  const { getAuth } = require('firebase-admin/auth');
+async function jetonService() {
+  const { getApp } = require('firebase-admin/app');
   const { getDb } = require('../firebase');
   getDb();   // force l'initialisation de l'app admin, si ce n'est pas déjà fait
-  const custom = await getAuth().createCustomToken(ADMIN_UID);
-
-  const res = await fetch(
-    `https://identitytoolkit.googleapis.com/v1/accounts:signInWithCustomToken?key=${CLE_WEB}`,
-    {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ token: custom, returnSecureToken: true }),
-    },
-  );
-  const d = await res.json();
-  if (!res.ok || !d.idToken) throw new Error(`echange refuse : ${d.error?.message || res.status}`);
-  return d.idToken;
+  const { access_token: jeton } = await getApp().options.credential.getAccessToken();
+  if (!jeton) throw new Error('jeton de compte de service indisponible');
+  return jeton;
 }
 
 /** Interroge le Worker. Retourne le bilan, ou lève. */
 async function sonder() {
-  const idToken = await jetonAdmin();
+  const serviceToken = await jetonService();
   const res = await fetch(`${WORKER}/admin/health`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ idToken }),
+    body: JSON.stringify({ serviceToken }),
     signal: AbortSignal.timeout(20000),
   });
   const d = await res.json();
@@ -110,7 +92,7 @@ function construireEmbed(s, erreur) {
       .setColor(0xff4d6a)
       .setTitle('🔴 État des services — bilan indisponible')
       .setDescription(
-        'Le Worker n\'a pas répondu, ou le jeton d\'administration a été refusé.\n'
+        'Le Worker n\'a pas répondu, ou le jeton du compte de service a été refusé.\n'
         + '```' + String(erreur).slice(0, 300) + '```\n'
         + 'Le Worker lui-même est peut-être en cause : c\'est lui qui porte cette sonde.',
       )
