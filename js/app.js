@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260828d';
+const APP_VERSION = '20260829a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -8243,13 +8243,20 @@ function _ecRenderBuilderResults() {
 function _ecCustomRow(sym, it, inList) {
   const name = (it && it.name) || sym;
   const when = (it && it.date) ? _ecFmtDateFr(it.date) : '';
-  const s = sym.replace(/'/g, '');
-  const n = (name || sym).replace(/'/g, '');
-  const btn = '<button class="ec-add-btn' + (inList ? ' ec-add-on' : '') + '" onclick="ecToggleCustom(\'' + s + '\',\'' + n + '\')" aria-pressed="' + (inList ? 'true' : 'false') + '" aria-label="' + (inList ? 'Retirer ' : 'Ajouter ') + s + '">'
+  // Symbole et nom viennent de FMP, puis sont persistes dans la liste perso :
+  // ils passent par data-* plutot que par l'interieur du onclick. Une valeur
+  // interpolee dans du code JS n'est plus protegee par _attr, le parseur
+  // decodant les entites avant que le script ne soit lu ; lue par dataset,
+  // elle reste du texte.
+  const btn = '<button class="ec-add-btn' + (inList ? ' ec-add-on' : '') + '"'
+    + ' data-sym="' + _attr(sym) + '" data-name="' + _attr(name) + '"'
+    + ' onclick="ecToggleCustom(this.dataset.sym, this.dataset.name)"'
+    + ' aria-pressed="' + (inList ? 'true' : 'false') + '"'
+    + ' aria-label="' + (inList ? 'Retirer ' : 'Ajouter ') + _attr(sym) + '">'
     + (inList ? '✓' : '+') + '</button>';
   return '<div class="ec-subrow">' + _ecLogoHtml(it || { symbol: sym, name })
-    + '<div class="ec-subrow-info"><span class="ec-subrow-sym">' + name + '</span>'
-    + '<span class="ec-subrow-when">' + sym + (when ? ' · ' + when : '') + '</span></div>' + btn + '</div>';
+    + '<div class="ec-subrow-info"><span class="ec-subrow-sym">' + _escapeHtmlChat(name) + '</span>'
+    + '<span class="ec-subrow-when">' + _escapeHtmlChat(sym) + (when ? ' · ' + when : '') + '</span></div>' + btn + '</div>';
 }
 
 window.ecBuilderSearch = async function(v) {
