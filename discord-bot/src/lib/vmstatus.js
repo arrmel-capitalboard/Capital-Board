@@ -1,67 +1,67 @@
 'use strict';
 
-// Remontée de l'état de la VM (CPU, RAM, disque) dans Firestore, pour le panel
-// admin de l'app.
+// Remontée de l'état de la VM (CPU, RAM, disque) dans un message Discord,
+// réécrit en place toutes les minutes.
 //
-// Pourquoi Firestore plutôt qu'une petite API sur la VM : aucun port à ouvrir,
-// aucun secret de plus, et le panel admin lit déjà Firestore. Le document est
-// écrit par la clé de service, donc hors des règles ; celles-ci n'autorisent
-// que la lecture, et seulement au compte fondateur (firestore.rules).
+// ── Pourquoi plus par Firestore ───────────────────────────────────────────
+// Le relevé passait par `ops/vmStatus`, lu en direct par le panneau admin de
+// l'application. Firestore servait de boîte aux lettres, faute de pouvoir
+// parler à la VM depuis un navigateur : elle n'a qu'une IP nue, sans HTTPS.
+//
+// Ça marchait, mais le prix était le mauvais. Le forfait Spark accorde 20 000
+// écritures par jour à TOUT le projet, et ce module en consommait 720 par jour
+// au repos, 900 par heure de panneau ouvert. Le 28/08, quatre heures de panneau
+// ont épuisé le quota : Firestore a refusé toute écriture, le compteur du code
+// PIN compris, et l'application s'est fermée à tout le monde.
+//
+// Discord ne facture rien et sait éditer un message en place. Le relevé y vit
+// donc désormais, et son coût Firestore est exactement zéro — ni le relevé, ni
+// la demande de cadence que le panneau posait toutes les vingt secondes.
+//
+// L'identifiant du message est gardé dans un fichier local, comme le fait
+// `statusmonitor.js` : le mémoriser dans Firestore aurait réintroduit ce qu'on
+// vient d'en sortir.
 //
 // ── Cadence ───────────────────────────────────────────────────────────────
-// Une seconde en continu ferait 86 400 écritures par jour, quatre fois le
-// quota gratuit — donc facturé, pour des mesures que personne ne regarde la
-// plupart du temps. La VM écrit donc vite seulement quand le panel est ouvert.
-//
-// Le panel pose `ops/vmWatch { until }` tant qu'il est affiché ; ce module
-// l'écoute (un seul listener, une lecture par changement) et bascule entre
-// 1 s et 60 s. Dix minutes de consultation par jour coûtent 600 écritures.
+// Une minute, en continu. Plus de bascule rapide/lente : elle n'existait que
+// pour ménager le quota, et il n'y en a plus. Discord tolère très largement une
+// édition par minute sur un même message.
 //
 // ── Poids sur la machine ──────────────────────────────────────────────────
-// À 1 s, lancer `df` à chaque tour ferait un processus par seconde sur une
-// e2-micro. Le disque ne bouge pas à cette échelle : sa lecture est gardée en
-// cache 30 s. Le reste est natif — `os.cpus()`, `os.totalmem()` — donc sans
-// processus fils.
+// Le disque est lu par `df`, un processus fils : sa valeur est gardée en cache
+// 30 s. Le reste est natif — `os.cpus()`, `os.totalmem()`.
 //
 // Le pourcentage CPU vient de la différence entre deux relevés de `os.cpus()`,
-// pas de `loadavg()` : une moyenne sur une minute ne bouge pas à la seconde,
-// elle afficherait une valeur figée. Les trois charges restent remontées à
-// côté, elles disent autre chose — la file d'attente, pas l'occupation.
+// pas de `loadavg()` : une moyenne sur une minute dirait autre chose — la file
+// d'attente, pas l'occupation. Les trois charges restent affichées à côté.
 //
-// Rien ici ne doit pouvoir arrêter le bot : une lecture système ou une
-// écriture qui échoue est journalisée, et le cycle suivant retentera.
+// Rien ici ne doit pouvoir arrêter le bot : une lecture système ou une édition
+// qui échoue est journalisée, et le cycle suivant retentera.
 
 const os = require('node:os');
+const fs = require('node:fs');
+const path = require('node:path');
 const { execFile } = require('node:child_process');
-const { getDb, isConfigured } = require('../firebase');
-const quota = require('./quota');
+const { EmbedBuilder } = require('discord.js');
 
-// Ce que ce module a réellement écrit dans la dernière heure, pour la
-// projection préventive du quota.
-const ecrites = quota.compteurHoraire();
+// Salon où le relevé est affiché : celui de la sécurité, qui ne se vide pas
+// tout seul — contrairement au salon des analyses, dont le ménage horaire
+// emporterait le message.
+const SALON = '1541530997005353030';
 
-// Chaque cycle écrit un document. Sur le forfait Spark, le projet dispose de
-// 20 000 écritures par jour, tous services confondus : une cadence d'une
-// seconde en consomme 3 600 par heure, et le 28/08 quatre heures de panneau
-// ouvert ont suffi à épuiser le quota. Firestore a alors refusé toute écriture
-// pendant des heures — compteur du code PIN compris, ce qui a sorti le
-// fondateur de sa propre application.
-//
-// Cinq secondes suffisent à des sparklines : la courbe reste lisible, et le
-// coût tombe à 720 écritures par heure. La cadence lente passe à deux minutes,
-// soit 720 par jour au repos.
-const PERIODE_LENTE_MS = 120_000;
-const PERIODE_RAPIDE_MS = 5_000;
+// Identifiant du message à réécrire. Fichier local et non Firestore : c'est
+// précisément ce qu'on vient d'en sortir.
+const FICHIER = path.join(__dirname, '..', '..', 'data', 'vm-status-message.json');
 
-// Le client Discord, gardé pour pouvoir alerter en cas de refus de quota.
+// Une minute : un relevé de machine n'a pas besoin de la seconde près, et rien
+// ne pousse à aller plus vite maintenant que ça ne coûte plus rien.
+const PERIODE_MS = 60_000;
+
 let bot = null;
 const DISQUE_CACHE_MS = 30_000;
 const MO = 1024 * 1024;
 
 let minuterie = null;
-let cadence = PERIODE_LENTE_MS;
-let arretEcoute = null;
-let rapideJusqua = 0;
 let dernierCpu = null;
 let disqueCache = { valeur: null, le: 0 };
 
@@ -144,81 +144,119 @@ async function mesurer() {
     disque: await disque(),
     uptimeS: Math.round(os.uptime()),
     hote: os.hostname(),
-    // Le panel s'en sert pour juger de la fraîcheur : sans elle, il ne saurait
-    // pas si un relevé de 20 s est normal ou inquiétant.
-    cadenceMs: cadence,
     updatedAt: Date.now(),
   };
 }
 
-/** Un cycle : mesure et écriture. N'échoue jamais bruyamment. */
-async function pousser() {
-  // Un relevé de machine n'est pas essentiel : quand le quota est épuisé, il se
-  // tait pour laisser passer ce qui l'est — la connexion, d'abord.
-  if (quota.estEpuise()) return;
+// ── Affichage ─────────────────────────────────────────────────────────────
+
+const enGo = (mo) => (mo >= 1024 ? (mo / 1024).toFixed(1) + ' Go' : mo + ' Mo');
+
+/** Barre de progression en caractères, plus lisible qu'un pourcentage seul. */
+function jauge(pourcent) {
+  const plein = Math.max(0, Math.min(10, Math.round((pourcent || 0) / 10)));
+  return '`' + '█'.repeat(plein) + '░'.repeat(10 - plein) + '` ' + (pourcent || 0) + ' %';
+}
+
+function duree(secondes) {
+  const j = Math.floor(secondes / 86400);
+  const h = Math.floor((secondes % 86400) / 3600);
+  const m = Math.floor((secondes % 3600) / 60);
+  if (j) return `${j} j ${h} h`;
+  if (h) return `${h} h ${m} min`;
+  return `${m} min`;
+}
+
+/** Couleur du bandeau : ce qui saute aux yeux avant même de lire les chiffres. */
+function couleur(m) {
+  const pire = Math.max(m.cpu.pourcent || 0, m.ram.pourcent || 0, m.disque?.pourcent || 0);
+  if (pire >= 90) return 0xff4d6a;
+  if (pire >= 75) return 0xff9f43;
+  return 0x22d98a;
+}
+
+function construireEmbed(m) {
+  const e = new EmbedBuilder()
+    .setColor(couleur(m))
+    .setTitle('🖥️ État de la machine')
+    .addFields(
+      {
+        name: `Processeur · ${m.cpu.coeurs} cœur(s)`,
+        value: jauge(m.cpu.pourcent)
+          + `\ncharge ${m.cpu.charge1} / ${m.cpu.charge5} / ${m.cpu.charge15}`,
+      },
+      {
+        name: 'Mémoire',
+        value: jauge(m.ram.pourcent) + `\n${enGo(m.ram.utiliseMo)} sur ${enGo(m.ram.totalMo)}`,
+      },
+    )
+    .setFooter({ text: `${m.hote} · en service depuis ${duree(m.uptimeS)} · ↻ chaque minute` })
+    .setTimestamp(m.updatedAt);
+
+  if (m.disque) {
+    e.addFields({
+      name: 'Disque',
+      value: jauge(m.disque.pourcent) + `\n${enGo(m.disque.libreMo)} libres sur ${enGo(m.disque.totalMo)}`,
+    });
+  }
+  return e;
+}
+
+// ── Le message, retenu d'un redémarrage à l'autre ──────────────────────────
+
+function lireId() {
   try {
-    await getDb().collection('ops').doc('vmStatus').set(await mesurer());
-    ecrites.enregistrer();
-  } catch (e) {
-    if (quota.signaler(bot, e, 'vmstatus')) return;
-    console.error('[vmstatus] relevé non écrit :', e.message);
+    return JSON.parse(fs.readFileSync(FICHIER, 'utf8')).messageId || null;
+  } catch {
+    return null;
   }
 }
 
-/** (Re)programme la minuterie sur la cadence voulue. */
-function programmer(periode) {
-  if (minuterie && cadence === periode) return;
-  if (minuterie) clearInterval(minuterie);
-  cadence = periode;
-  minuterie = setInterval(pousser, periode);
-  console.log(`[vmstatus] cadence ${periode / 1000} s`);
-  pousser();
+function ecrireId(messageId) {
+  try {
+    fs.mkdirSync(path.dirname(FICHIER), { recursive: true });
+    fs.writeFileSync(FICHIER, JSON.stringify({ messageId, salon: SALON }, null, 2));
+  } catch (e) {
+    // Sans le fichier, un redémarrage reposera un message : gênant, pas grave.
+    console.error('[vmstatus] identifiant non mémorisé :', e.message);
+  }
 }
 
-/**
- * Écoute la demande du panel. `until` est une date : tant qu'elle est dans le
- * futur, quelqu'un regarde. Le panel la repousse régulièrement, donc un onglet
- * fermé brutalement retombe tout seul en cadence lente.
- */
-function ecouterDemande() {
-  arretEcoute = getDb().collection('ops').doc('vmWatch').onSnapshot(
-    (snap) => {
-      rapideJusqua = (snap.exists ? snap.data().until : 0) || 0;
-      programmer(Date.now() < rapideJusqua ? PERIODE_RAPIDE_MS : PERIODE_LENTE_MS);
-    },
-    (e) => console.error('[vmstatus] écoute de la demande interrompue :', e.message),
-  );
+/** Un cycle : mesure, puis édition du message. N'échoue jamais bruyamment. */
+async function pousser() {
+  if (!bot) return;
+  try {
+    const embed = construireEmbed(await mesurer());
+    const salon = await bot.channels.fetch(SALON);
+    const id = lireId();
+    if (id) {
+      try {
+        const msg = await salon.messages.fetch(id);
+        await msg.edit({ embeds: [embed] });
+        return;
+      } catch {
+        // Message supprimé à la main : on en repose un plutôt que d'abandonner.
+      }
+    }
+    const msg = await salon.send({ embeds: [embed] });
+    ecrireId(msg.id);
+  } catch (e) {
+    console.error('[vmstatus] relevé non publié :', e.message);
+  }
 }
 
 /** Démarre la remontée. Appelé au ready du bot. */
 function start(client) {
   bot = client;
-  if (!isConfigured()) {
-    console.warn('[vmstatus] Firestore non configuré : remontée désactivée.');
-    return;
-  }
   if (minuterie) return;
-  // Le poste le plus lourd du projet, et le seul dont la cadence change en
-  // cours de journée. Il déclare donc ce qu'il a réellement écrit dans la
-  // dernière heure, pas sa cadence du moment : un panneau ouvert dix minutes
-  // ne doit pas se projeter comme un panneau ouvert toute la journée.
-  quota.declarer('relevés VM', () => ecrites.parJour());
-  programmer(PERIODE_LENTE_MS);
-  ecouterDemande();
-
-  // La demande peut expirer sans qu'aucun changement de document ne survienne :
-  // sans ce contrôle, une cadence rapide durerait jusqu'à la prochaine écriture
-  // du panel — c'est-à-dire indéfiniment si l'onglet a été fermé.
-  setInterval(() => {
-    if (cadence === PERIODE_RAPIDE_MS && Date.now() >= rapideJusqua) programmer(PERIODE_LENTE_MS);
-  }, 5_000);
+  pousser();
+  minuterie = setInterval(pousser, PERIODE_MS);
+  console.log(`[vmstatus] relevé Discord toutes les ${PERIODE_MS / 1000} s`);
 }
 
 function stop() {
   if (minuterie) clearInterval(minuterie);
   minuterie = null;
-  if (arretEcoute) arretEcoute();
-  arretEcoute = null;
 }
 
-module.exports = { start, stop, mesurer, PERIODE_LENTE_MS, PERIODE_RAPIDE_MS };
+module.exports = { start, stop, mesurer, construireEmbed, PERIODE_MS };

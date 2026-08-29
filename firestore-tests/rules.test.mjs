@@ -276,34 +276,23 @@ test('ideas : une idée publiée est visible de tout compte connecté', async ()
   await assertSucceeds(getDoc(doc(asVerified(BOB), 'ideas/i1')));
 });
 
-// ops/ — état de la VM remonté par le bot, et demande de cadence du panel.
-// L'écriture de vmStatus vient de la clé de service, donc hors règles : côté
-// client elle doit rester fermée, y compris au fondateur.
-test('ops/vmStatus : lecture réservée au fondateur', async () => {
-  await seedAsAdmin('ops/vmStatus', { cpu: { pourcent: 3 }, updatedAt: Date.now() });
-  await assertFails(getDoc(doc(anon(), 'ops/vmStatus')));
-  await assertFails(getDoc(doc(asVerified(ALICE), 'ops/vmStatus')));
+// ops/ — plus rien n'y est ouvert. L'etat de la VM passait par `ops/vmStatus`,
+// lu en direct par le panneau admin, et `ops/vmWatch` portait sa demande de
+// cadence. Le releve vit desormais dans un message Discord (voir
+// discord-bot/src/lib/vmstatus.js) : il coutait 720 ecritures Firestore par
+// jour au repos et 900 par heure de panneau ouvert, et c'est ce poste qui a
+// epuise le quota le 28/08 en fermant l'application a tout le monde.
+//
+// Le test ci-dessous garde sa valeur : il verifie qu'aucun document de `ops/`
+// n'est lisible, ce qui vaut maintenant pour vmStatus et vmWatch comme pour
+// les autres.
+test('ops : aucun document de la collection n'est lisible', async () => {
+  // Plus aucun `match` sous ops/ : ni les anciens documents de la VM, ni un
+  // futur voisin ne doivent devenir lisibles par inadvertance.
   await seedAsAdmin(`roles/${ADMIN_UID}`, { role: 'superadmin' });
-  await assertSucceeds(getDoc(doc(asAdmin(), 'ops/vmStatus')));
-});
-
-test('ops/vmStatus : aucune écriture cliente, pas même du fondateur', async () => {
-  await seedAsAdmin(`roles/${ADMIN_UID}`, { role: 'superadmin' });
-  await assertFails(setDoc(doc(asAdmin(), 'ops/vmStatus'), { cpu: { pourcent: 99 } }));
-  await assertFails(setDoc(doc(asVerified(ALICE), 'ops/vmStatus'), { cpu: { pourcent: 99 } }));
-});
-
-test('ops/vmWatch : le fondateur seul peut demander la cadence rapide', async () => {
-  await seedAsAdmin(`roles/${ADMIN_UID}`, { role: 'superadmin' });
-  await assertSucceeds(setDoc(doc(asAdmin(), 'ops/vmWatch'), { until: Date.now() + 45000 }));
-  await assertFails(setDoc(doc(asVerified(ALICE), 'ops/vmWatch'), { until: Date.now() + 45000 }));
-  await assertFails(setDoc(doc(anon(), 'ops/vmWatch'), { until: Date.now() + 45000 }));
-});
-
-test('ops : un autre document de la collection reste ferme', async () => {
-  // Les deux `match` sont nominatifs : rien d'autre sous ops/ n'est ouvert,
-  // pour qu'un futur document ne le devienne pas par inadvertance.
-  await seedAsAdmin('ops/autre', { x: 1 });
-  await seedAsAdmin(`roles/${ADMIN_UID}`, { role: 'superadmin' });
-  await assertFails(getDoc(doc(asAdmin(), 'ops/autre')));
+  for (const chemin of ['ops/autre', 'ops/vmStatus', 'ops/vmWatch']) {
+    await seedAsAdmin(chemin, { x: 1 });
+    await assertFails(getDoc(doc(asAdmin(), chemin)));
+    await assertFails(setDoc(doc(asAdmin(), chemin), { x: 2 }));
+  }
 });

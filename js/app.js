@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260829h';
+const APP_VERSION = '20260829i';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4901,8 +4901,6 @@ async function _runPageHook(id) {
   if (id === 'idees')       renderIdeasPage();
   if (id === 'earnings')    renderEarningsCalendar();
   if (id === 'admin')       renderAdminPage();
-  // L'écoute temps réel de l'état VM ne survit pas à la sortie du panel.
-  if (id !== 'admin')       _vmArreter();
   // Ces rendus étaient ajoutés plus bas en enveloppant showPage() et
   // showPageMobile(). Une troisième porte d'entrée est apparue avec les
   // sous-onglets du PEA, qui ne passait pas par ces enveloppes : les pages
@@ -15845,214 +15843,23 @@ async function _refreshAdminSecurityStats() {
 }
 
 // ─── PAGE ADMIN ──────────────────────────────────────────────────
-// ─── ÉTAT SERVEUR (panel admin) ──────────────────────────────────
-// La VM du bot écrit ops/vmStatus toutes les 30 s avec la clé de service
-// (discord-bot/src/lib/vmstatus.js). On l'écoute en direct plutôt que de
-// l'interroger : la mise à jour arrive d'elle-même à chaque écriture, et il n'y
-// a ni port ouvert ni API HTTP à maintenir pour ça.
-let _vmUnsub = null, _vmBattement = null, _vmDernier = null, _vmErreur = null, _vmDemande = null, _vmReprise = null;
-
-// La VM n'écrit vite que pendant qu'on regarde : écrire chaque seconde en
-// permanence ferait 86 400 écritures par jour, quatre fois le quota gratuit,
-// pour des mesures que personne ne lit. Le panel pose donc une demande à
-// échéance, repoussée tant qu'il est ouvert — un onglet fermé brutalement fait
-// retomber la VM en cadence lente tout seul, sans rien avoir à nettoyer.
-// Même principe que le bail de présence : une échéance longue, repoussée bien
-// avant son terme. À 20 s de cadence pour 45 s d'échéance, la demande coûtait à
-// elle seule 180 écritures par heure de panneau ouvert — pour dire une chose
-// qui ne change pas tant qu'on regarde. À 4 min pour 10 min d'échéance, c'est
-// 15 par heure, et un panneau fermé brutalement retombe en cadence lente au
-// bout de dix minutes au lieu de quarante-cinq secondes. Le seul effet visible
-// de ce délai : la VM continue d'écrire vite un moment après la fermeture,
-// ce que le contrôle de péremption côté VM borne déjà.
-const VM_DEMANDE_MS = 240000;   // on repousse toutes les 4 min…
-const VM_VALIDITE_MS = 600000;  // …une échéance à 10 min, deux battements de marge
-
-/** Péremption jugée sur la cadence annoncée par la VM, pas sur une constante. */
-const _vmSeuilPerime = (d) => Math.max(8000, (Number(d?.cadenceMs) || 60000) * 5);
-
-/** Demande la cadence rapide, et la repousse tant que le panel reste ouvert. */
-function _vmDemander() {
-  const poser = (jusqua) => {
-    try {
-      setFirestoreDoc(firestoreDoc(db, 'ops', 'vmWatch'), { until: jusqua, by: currentUser }, { merge: true });
-    } catch (_) { /* sans effet : la VM reste en cadence lente */ }
-  };
-  poser(Date.now() + VM_VALIDITE_MS);
-  if (!_vmDemande) _vmDemande = setInterval(() => poser(Date.now() + VM_VALIDITE_MS), VM_DEMANDE_MS);
-}
-
-const _vmDuree = (s) => {
-  const j = Math.floor(s / 86400), h = Math.floor((s % 86400) / 3600), m = Math.floor((s % 3600) / 60);
-  if (j) return j + ' j ' + h + ' h';
-  if (h) return h + ' h ' + m + ' min';
-  return m + ' min';
-};
-
-const _vmGo = (mo) => (mo >= 1024 ? (mo / 1024).toFixed(1) + ' Go' : mo + ' Mo');
-
-// Historique local des relevés, une minute glissante par mesure. Rien n'est
-// stocké côté serveur : le document Firestore ne porte que l'instant présent,
-// et garder une série en base coûterait une écriture par seconde pour une
-// information dont personne n'a besoin une fois la page fermée.
-const VM_POINTS = 60;
-const _vmHisto = { cpu: [], ram: [], disque: [] };
-
-const VM_COULEUR = (p) => (p >= 90 ? 'var(--negative)' : p >= 70 ? 'var(--gold)' : 'var(--positive)');
-
-/** Courbe d'aire sur la série, avec le dernier point marqué. */
-function _vmCourbe(cle, serie, couleur) {
-  const L = 200, H = 44;
-  if (serie.length < 2) {
-    // Un seul relevé ne fait pas une courbe : une ligne au niveau mesuré dit
-    // la vérité, là où un tracé vide laisserait croire à une panne.
-    const y = H - ((serie[0] || 0) / 100) * H;
-    return '<svg viewBox="0 0 ' + L + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">'
-      + '<path d="M0,' + y + ' L' + L + ',' + y + '" fill="none" stroke="' + couleur
-      + '" stroke-width="1.5" vector-effect="non-scaling-stroke" stroke-dasharray="3 4" opacity="0.5"/></svg>';
-  }
-  const pas = L / (serie.length - 1);
-  const pts = serie.map((v, i) => (i * pas).toFixed(1) + ',' + (H - (v / 100) * H).toFixed(1)).join(' L');
-  const fin = H - (serie[serie.length - 1] / 100) * H;
-  const id = 'vm-grad-' + cle;
-  return '<svg viewBox="0 0 ' + L + ' ' + H + '" preserveAspectRatio="none" aria-hidden="true">'
-    + '<defs><linearGradient id="' + id + '" x1="0" y1="0" x2="0" y2="1">'
-    + '<stop offset="0%" stop-color="' + couleur + '" stop-opacity="0.30"/>'
-    + '<stop offset="100%" stop-color="' + couleur + '" stop-opacity="0"/></linearGradient></defs>'
-    + '<path d="M' + pts + ' L' + L + ',' + H + ' L0,' + H + ' Z" fill="url(#' + id + ')"/>'
-    + '<path d="M' + pts + '" fill="none" stroke="' + couleur + '" stroke-width="1.5"'
-    + ' vector-effect="non-scaling-stroke" stroke-linejoin="round"/>'
-    + '<circle cx="' + L + '" cy="' + fin.toFixed(1) + '" r="2.5" fill="' + couleur + '"/></svg>';
-}
-
-function _vmJauge(cle, nom, pourcent, detail) {
-  const el = document.querySelector('#vm-jauges [data-vm="' + cle + '"]');
-  if (!el) return;
-  const p = Math.max(0, Math.min(100, Number(pourcent) || 0));
-  const couleur = VM_COULEUR(p);
-  el.innerHTML =
-    '<div class="vm-jauge-tete"><span class="vm-jauge-nom">' + nom + '</span>'
-    + '<span class="vm-jauge-val" style="color:' + couleur + '">' + p + ' %</span></div>'
-    + '<div class="vm-jauge-detail">' + detail + '</div>'
-    + _vmCourbe(cle, _vmHisto[cle] || [], couleur);
-}
-
-/**
- * Ajoute un relevé à la minute glissante.
- *
- * Un même horodatage n'est compté qu'une fois : Firestore rejoue le document
- * au moindre changement de métadonnée, et un relevé compté deux fois ferait
- * un palier sur la courbe là où la machine n'a rien fait.
- */
-let _vmDernierHorodatage = 0;
-function _vmNoter(d) {
-  if (!d || !d.updatedAt || d.updatedAt === _vmDernierHorodatage) return;
-  _vmDernierHorodatage = d.updatedAt;
-  const valeurs = { cpu: d.cpu?.pourcent, ram: d.ram?.pourcent, disque: d.disque?.pourcent };
-  for (const cle of Object.keys(_vmHisto)) {
-    const v = Number(valeurs[cle]);
-    if (!Number.isFinite(v)) continue;
-    _vmHisto[cle].push(Math.max(0, Math.min(100, v)));
-    if (_vmHisto[cle].length > VM_POINTS) _vmHisto[cle].shift();
-  }
-}
-
-function _vmRendre() {
-  const grille = document.getElementById('vm-jauges');
-  if (!grille) return;
-  const pied = document.getElementById('vm-pied');
-  const frais = document.getElementById('vm-fraicheur');
-  const d = _vmDernier;
-
-  if (_vmErreur || !d) {
-    ['cpu', 'ram', 'disque'].forEach((c) => _vmJauge(c, c === 'disque' ? 'Disque' : c.toUpperCase(), 0, '—'));
-    if (frais) { frais.textContent = ''; }
-    if (pied) {
-      pied.innerHTML = '<span class="vm-perime">⚠️ ' + (_vmErreur
-        ? 'Lecture impossible : ' + _vmErreur
-        : "Pas de données — la VM n'a encore rien remonté.") + '</span>';
-    }
-    return;
-  }
-
-  const age = Math.max(0, Date.now() - (d.updatedAt || 0));
-  const perime = age > _vmSeuilPerime(d);
-
-  _vmJauge('cpu', 'CPU', d.cpu?.pourcent,
-    'charge ' + (d.cpu?.charge1 ?? '—') + ' / ' + (d.cpu?.charge5 ?? '—') + ' / ' + (d.cpu?.charge15 ?? '—')
-    + ' · ' + (d.cpu?.coeurs ?? '?') + ' coeur(s)');
-  _vmJauge('ram', 'RAM', d.ram?.pourcent,
-    _vmGo(d.ram?.utiliseMo || 0) + ' / ' + _vmGo(d.ram?.totalMo || 0));
-  _vmJauge('disque', 'Disque', d.disque?.pourcent,
-    _vmGo(d.disque?.utiliseMo || 0) + ' / ' + _vmGo(d.disque?.totalMo || 0)
-    + ' · ' + _vmGo(d.disque?.libreMo || 0) + ' libres');
-
-  const quand = age < 60000 ? 'il y a ' + Math.round(age / 1000) + ' s' : 'il y a ' + _vmDuree(Math.round(age / 1000));
-  if (frais) {
-    frais.textContent = '· ' + quand;
-    frais.className = perime ? 'vm-perime' : '';
-  }
-  if (pied) {
-    pied.innerHTML = perime
-      ? '<span class="vm-perime">⚠️ Pas de données récentes — dernier relevé ' + quand
-        + '. La VM ou le bot ne remonte plus rien.</span>'
-      : 'Machine ' + (d.hote || 'inconnue') + ' · en service depuis ' + _vmDuree(d.uptimeS || 0)
-        + ' · relevé ' + quand;
-  }
-}
-
-function _vmEcouter() {
-  if (_vmUnsub) { _vmRendre(); return; }
-  _vmErreur = null;
-  try {
-    _vmUnsub = onSnapshot(firestoreDoc(db, 'ops', 'vmStatus'), (snap) => {
-      _vmDernier = snap.exists() ? snap.data() : null;
-      _vmErreur = null;
-      _vmNoter(_vmDernier);
-      _vmRendre();
-    }, (e) => {
-      // Un listener Firestore en erreur est mort : il ne retente jamais de
-      // lui-meme. Sans ce nettoyage, une regle deployee apres coup ne changeait
-      // rien tant qu'on n'avait pas recharge la page — l'ecouteur suivant
-      // repartait sur l'abonnement defunt.
-      _vmErreur = e.code || e.message;
-      try { if (_vmUnsub) _vmUnsub(); } catch (_) {}
-      _vmUnsub = null;
-      _vmRendre();
-      if (!_vmReprise) {
-        _vmReprise = setTimeout(() => { _vmReprise = null; if (_vmBattement) _vmEcouter(); }, 15000);
-      }
-    });
-  } catch (e) {
-    _vmErreur = e.message;
-  }
-  // Le document n'est réécrit que toutes les 30 s : sans ce battement, l'âge
-  // affiché resterait figé sur sa dernière valeur, et une VM devenue muette
-  // passerait pour à jour.
-  if (!_vmBattement) _vmBattement = setInterval(_vmRendre, 5000);
-  _vmDemander();
-  _vmRendre();
-}
-
-function _vmArreter() {
-  try { if (_vmUnsub) _vmUnsub(); } catch (_) {}
-  _vmUnsub = null;
-  if (_vmBattement) clearInterval(_vmBattement);
-  _vmBattement = null;
-  if (_vmDemande) clearInterval(_vmDemande);
-  _vmDemande = null;
-  if (_vmReprise) clearTimeout(_vmReprise);
-  _vmReprise = null;
-  // La série est jetée : en rouvrant le panel dans une heure, recoller les
-  // relevés d'avant à ceux d'après dessinerait une continuité qui n'existe pas.
-  for (const cle of Object.keys(_vmHisto)) _vmHisto[cle].length = 0;
-  _vmDernierHorodatage = 0;
-  // Échéance ramenée à maintenant : la VM ralentit dès le prochain instant, au
-  // lieu d'attendre les 45 s de la dernière demande posée.
-  try {
-    setFirestoreDoc(firestoreDoc(db, 'ops', 'vmWatch'), { until: Date.now() }, { merge: true });
-  } catch (_) {}
-}
+// ─── ÉTAT SERVEUR ────────────────────────────────────────────────
+// Le relevé de la VM s'affichait ici, en direct, alimenté par `ops/vmStatus`
+// que la machine écrivait avec la clé de service. Firestore servait de boîte
+// aux lettres : un navigateur ne peut pas parler à une IP nue sans HTTPS.
+//
+// Ça marchait, mais au mauvais prix. 720 écritures par jour au repos, 900 par
+// heure de panneau ouvert — le premier poste du projet, sur les 20 000 que le
+// forfait Spark accorde à TOUT le projet. Le 28/08, quatre heures de panneau
+// ouvert ont épuisé le quota : Firestore a refusé toute écriture, le compteur
+// du code PIN compris, et l'application s'est fermée à tout le monde.
+//
+// Le relevé est passé sur Discord, où le bot édite un message en place toutes
+// les minutes (`discord-bot/src/lib/vmstatus.js`). Coût Firestore : zéro, pour
+// le relevé comme pour la demande de cadence que ce panneau posait.
+//
+// Ce qu'on perd : les sparklines sur une minute glissante, et le direct. Ce
+// qu'on gagne : le poste le plus lourd du projet, ramené à rien.
 
 async function renderAdminPage() {
   if (!isAdmin()) { showPage('portfolio'); return; }
@@ -16095,8 +15902,6 @@ async function renderAdminPage() {
     (cfg.minVersion ? ' · minimum forcé : <span class="mono">' + cfg.minVersion + '</span>' : '');
 
   // Stats + liste utilisateurs
-  _vmEcouter();
-
   renderAdminStats();
   renderAdminUsers();
   // Les profils ne sont plus lus au rendu de la page : ils vivent dans une

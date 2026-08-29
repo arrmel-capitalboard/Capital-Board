@@ -172,23 +172,15 @@ service cloud.firestore {
       allow write: if _isAdmin();
     }
 
-    // Etat de la VM, remonte toutes les 30 s par le bot (discord-bot/src/lib/
-    // vmstatus.js) avec la cle de service, donc hors de ces regles. Cote
-    // client, lecture par le seul fondateur et aucune ecriture : le panel
-    // admin l'affiche, personne ne le fabrique.
-    match /ops/vmStatus {
-      allow read: if _isAdmin();
-      allow write: if false;
-    }
-
-    // Demande de cadence rapide, posee par le panel admin tant qu'il est
-    // ouvert. Ecrire ici ne fait qu'accelerer une remontee deja autorisee en
-    // lecture : le seul risque serait de faire ecrire la VM plus souvent, et
-    // seul le fondateur peut le demander.
-    match /ops/vmWatch {
-      allow read: if _isAdmin();
-      allow write: if _isAdmin();
-    }
+    // L'etat de la VM ne passe plus par Firestore : le bot edite un message
+    // Discord toutes les minutes (discord-bot/src/lib/vmstatus.js). Le relevé
+    // coutait 720 ecritures par jour au repos et 900 par heure de panneau
+    // ouvert — le premier poste du projet, celui qui a epuise le quota le
+    // 28/08 et ferme l'application a tout le monde.
+    //
+    // Les deux documents `ops/vmStatus` et `ops/vmWatch` ne sont plus ni lus
+    // ni ecrits. Leurs regles sont retirees : ce qui ne sert plus ne doit pas
+    // rester ouvert, et les documents restants seront purges a la main.
 
     match /auditLog/{id} {
       allow read: if _isAdmin();
