@@ -345,7 +345,13 @@ async function runPentest(onEtape = () => {}) {
     proc.on('exit', (c) => { oublierParcours(); resolve(c); });
   });
 
-  return { code, rapport: rapport.trim(), motif };
+  // Le script emet un bloc « [[RESULTAT]]{json} » : on le detache du reste.
+  let data = null;
+  const m = rapport.match(/\[\[RESULTAT\]\](\{.*\})/s);
+  if (m) { try { data = JSON.parse(m[1]); } catch (_) { /* embed indisponible, on garde le texte */ } }
+  const texte = rapport.replace(/\[\[RESULTAT\]\]\{.*\}/s, '').trim();
+
+  return { code, rapport: texte, data, motif };
 }
 
 function start() {

@@ -32,7 +32,7 @@
 // Supprimé ou noyé dans un vidage de salon, il revient de lui-même.
 
 const {
-  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events,
+  ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder, Events, MessageFlags,
   StringSelectMenuBuilder, StringSelectMenuOptionBuilder,
 } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
@@ -499,29 +499,111 @@ async function lancerPentest(interaction) {
     peindre();
   };
 
-  const { code, rapport, motif } = await securitytest.runPentest(onEtape);
+  const { code, rapport, data, motif } = await securitytest.runPentest(onEtape);
   if (enCours) { faites.push(enCours); enCours = null; }
 
-  if (code !== 0 || !rapport) {
-    await interaction.editReply(
-      '🔴 **Pentest en échec.**' + (motif ? `\n> ${motif}` : ' Voir les logs de la VM (`journalctl --user -u capitalboard-bot`).'),
-    );
+  if (code !== 0) {
+    await interaction.editReply({
+      content: '🔴 **Pentest en échec.**' + (motif ? `\n> ${motif}` : ' Voir les logs de la VM (`journalctl --user -u capitalboard-bot`).'),
+    });
     return;
   }
 
-  const rate = !rapport.startsWith('AUCUN_FINDING');
-  const entete = rate
-    ? `<@&${FONDATEUR_ROLE}> 🔴 **Le pentest a trouvé des failles**`
-    : '🟢 **Pentest terminé — aucune faille**';
+  const findings = (data && data.findings) || [];
+  const notes = (data && data.notes) || [];
+  const pistesIA = (data && data.pistesIA) || [];
+  const testes = (data && data.testes) || faites.length;
+  const rate = findings.length > 0;
 
-  // Le rapport peut depasser la limite d'un message : on tronque proprement,
-  // le detail complet reste dans les logs de la VM.
-  const corps = rapport.length > 1800 ? rapport.slice(0, 1800) + '\n… (tronqué, voir les logs de la VM)' : rapport;
+  const embed = new EmbedBuilder()
+    .setColor(rate ? 0xff4d6a : 0x22d98a)
+    .setTitle(rate ? `🔴 ${findings.length} faille(s) trouvée(s)` : '🟢 Aucune faille')
+    .setDescription(`Pentest actif — **${testes}** attaques jouées contre la production, périmètre sûr.`)
+    .setTimestamp();
+
+  const PASTILLE = { 5: '🔴', 4: '🔴', 3: '🟠', 2: '🟡', 1: '⚪' };
+  for (const f of findings.slice(0, 8)) {
+    embed.addFields({
+      name: `${PASTILLE[f.gravite] || '⚪'} ${f.gravite}/5 — ${f.titre}`.slice(0, 256),
+      value: `${f.famille} · ${f.detail}\n\`${f.chemin}\``.slice(0, 1024),
+    });
+  }
+
+  // La liste que l'IA a décidé de tester — réussies ou non, c'est ce que le
+  // fondateur veut voir : de quoi le modèle a eu l'idée.
+  if (pistesIA.length) {
+    const l = pistesIA.slice(0, 12).map((x) => `${x.bloque ? '✅' : '🔴'} \`${x.chemin}\``).join('\n');
+    embed.addFields({ name: `🤖 Pistes générées par l'IA (${pistesIA.length})`, value: l.slice(0, 1024) });
+  }
+
+  if (notes.length) {
+    embed.addFields({
+      name: 'Notes de robustesse',
+      value: notes.slice(0, 5).map((n) => `⚪ ${n.titre} — ${n.detail}`).join('\n').slice(0, 1024),
+    });
+  }
+
+  // Bouton Corriger : n'apparaît que s'il y a des failles. Les familles trouvées
+  // sont retenues en mémoire (TTL 30 min) pour que le bouton affiche les étapes
+  // de correction ciblées.
+  const composants = [];
+  if (rate) {
+    const id = Math.random().toString(36).slice(2, 8);
+    const familles = [...new Set(findings.map((f) => f.famille))];
+    correctifsEnAttente.set(id, { familles, le: Date.now() });
+    composants.push(new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId(`sec:fix:${id}`).setLabel('Corriger').setStyle(ButtonStyle.Success).setEmoji('🔧'),
+    ));
+  }
 
   await interaction.editReply({
-    content: `${entete}\n\n${corps}`,
+    content: rate ? `<@&${FONDATEUR_ROLE}>` : '',
+    embeds: [embed],
+    components: composants,
     allowedMentions: { roles: rate ? [FONDATEUR_ROLE] : [], parse: [] },
   });
+}
+
+// Familles trouvées par le dernier pentest, le temps d'appuyer sur « Corriger ».
+// En mémoire, comme les scénarios : on ne persiste pas un état d'affichage.
+const correctifsEnAttente = new Map();
+
+// Comment corriger, par famille. Deterministe : chaque famille a un remede
+// connu. Pas d'auto-application — Cloudflare, npm, regles Firestore et code ne
+// se corrigent pas de la meme facon, et appliquer a l'aveugle serait pire.
+const REMEDES = {
+  'En-têtes': 'Poser les en-têtes manquants du **site** par une règle Cloudflare :\n'
+    + 'Rules → Transform Rules → *Modify Response Header* → Add :\n'
+    + '`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`.\n'
+    + '_(L\'API est déjà corrigée côté Worker.)_',
+  'Dépendances': 'Dans le dossier cité : `npm audit fix` (ou `npm audit` pour le détail).\n'
+    + 'Relancer les tests avant de déployer.',
+  'Résistance du login': 'Vérifier `LOGIN_RL_MAX` et `LOGIN_IP_RL_MAX` dans le Worker.',
+  'XSS stocké': 'Échapper la sortie dans la fonction citée (`_escapeHtmlChat` / `_attr`, js/app.js).',
+  'Lecture croisée (IDOR)': 'Renforcer `firestore.rules` sur le chemin cité (exiger `_isSelf(uid)`),\n'
+    + 'puis `npx firebase deploy --only firestore:rules`.',
+  'Pistes IA (lecture croisée)': 'Renforcer `firestore.rules` sur le chemin cité (exiger `_isSelf(uid)`),\n'
+    + 'puis `npx firebase deploy --only firestore:rules`.',
+  'Élévation de privilège': 'Remettre le contrôle admin en tête de la route du Worker :\n'
+    + '`verifyIdToken` puis `localId === ADMIN_UID`, avant toute action.',
+  'Jeton trafiqué': 'Vérifier que `verifyIdToken` contrôle bien la signature (JWKS) — un `alg:none` doit être rejeté.',
+  'Contrôle d\'accès': 'Exiger une preuve de connexion en tête de route (`verifyIdToken`).',
+};
+
+async function afficherCorrectifs(interaction, id) {
+  const entree = correctifsEnAttente.get(id);
+  if (!entree) {
+    await interaction.reply({ content: 'Ce pentest a expiré. Relancez-en un pour obtenir les correctifs.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  const embed = new EmbedBuilder()
+    .setColor(config.brandColor)
+    .setTitle('🔧 Comment corriger')
+    .setDescription('Étapes ciblées par famille de faille. À appliquer à la main : Cloudflare, npm, règles et code ne se corrigent pas pareil.');
+  for (const fam of entree.familles) {
+    embed.addFields({ name: fam, value: (REMEDES[fam] || 'Voir le détail du finding.').slice(0, 1024) });
+  }
+  await interaction.reply({ embeds: [embed], flags: MessageFlags.Ephemeral });
 }
 
 /** Liste + menu pour ouvrir un compte rendu en entier. */
@@ -750,6 +832,7 @@ async function handleComponent(interaction) {
   if (geste === 'run') { await lancerScenarios(interaction, arg); return; }
   if (geste === 'stop') { await arreterAudit(interaction); return; }
   if (geste === 'pentest') { await lancerPentest(interaction); return; }
+  if (geste === 'fix') { await afficherCorrectifs(interaction, arg); return; }
   if (geste === 'analyses') { await listerAnalyses(interaction); return; }
   if (geste === 'detail') { await ouvrirDetail(interaction); return; }
 }
