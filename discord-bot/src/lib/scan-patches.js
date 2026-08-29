@@ -30,6 +30,7 @@ const {
 } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
 const config = require('../config');
+const quota = require('./quota');
 
 const SECURITE_CHANNEL = '1541530997005353030';
 const FONDATEUR_ROLE   = '1512905140108001391';
@@ -156,17 +157,22 @@ async function handleButton(interaction) {
     return;
   }
 
+  // Discord invalide le jeton d'interaction au bout de 3 s, et ce qui suit fait
+  // deux appels Firestore avant de repondre. On accuse reception d'abord : le
+  // message reste tel quel a l'ecran jusqu'au editReply.
+  await interaction.deferUpdate();
+
   const snap = await col().doc(id).get();
   if (!snap.exists) {
-    await interaction.reply({ content: 'Correctif introuvable.', flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: 'Correctif introuvable.', flags: MessageFlags.Ephemeral });
     return;
   }
   const data = snap.data();
 
   if (action === 'no') {
     const maj = { statut: 'refuse', decidePar: interaction.user.id, decideLe: Date.now() };
-    await snap.ref.update(maj);
-    await interaction.update(payload(id, { ...data, ...maj }));
+    if (!(await enregistrer(interaction, snap.ref, maj))) return;
+    await interaction.editReply(payload(id, { ...data, ...maj }));
     return;
   }
 
@@ -180,7 +186,7 @@ async function handleButton(interaction) {
     const message = action === 'rev'
       ? 'Rien à annuler : ce correctif n\'est pas appliqué.'
       : `Déjà traité (${data.statut}).`;
-    await interaction.reply({ content: message, flags: MessageFlags.Ephemeral });
+    await interaction.followUp({ content: message, flags: MessageFlags.Ephemeral });
     return;
   }
 
@@ -191,14 +197,41 @@ async function handleButton(interaction) {
     erreur: null,
     revertDemande: revert,
   };
-  await snap.ref.update(maj);
-  await interaction.update(payload(id, { ...data, ...maj }));
+  if (!(await enregistrer(interaction, snap.ref, maj))) return;
+  await interaction.editReply(payload(id, { ...data, ...maj }));
 
   try {
     await lancerWorkflow(id, { revert });
   } catch (e) {
-    await snap.ref.update({ statut: 'erreur', erreur: e.message });
+    await enregistrer(interaction, snap.ref, { statut: 'erreur', erreur: e.message });
     console.error('[scan-patches] dispatch :', e.message);
+  }
+}
+
+/**
+ * Écrit la décision, et dit au fondateur si elle n'a pas pu être enregistrée.
+ *
+ * Contrairement à un relevé de machine, une décision ne se tait pas quand le
+ * quota est épuisé : on ne peut pas la rejouer plus tard, personne ne saura
+ * qu'elle a été prise. On tente donc toujours l'écriture — mais un échec doit
+ * se voir, sinon le bouton change de couleur et le correctif reste en attente.
+ *
+ * @returns {boolean} vrai si l'écriture a abouti.
+ */
+async function enregistrer(interaction, ref, maj) {
+  try {
+    await ref.update(maj);
+    return true;
+  } catch (e) {
+    const cause = quota.signaler(interaction.client, e, 'scan-patches')
+      ? `le quota Firestore est épuisé jusqu'à ${quota.prochaineRemiseAZero()?.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) || 'la remise à zéro'}`
+      : e.message;
+    console.error('[scan-patches] décision non enregistrée :', e.message);
+    await interaction.followUp({
+      content: `⚠️ Votre décision n'a **pas** été enregistrée : ${cause}. Le correctif reste dans son état précédent — reprenez le bouton plus tard.`,
+      flags: MessageFlags.Ephemeral,
+    }).catch(() => {});
+    return false;
   }
 }
 
@@ -216,7 +249,9 @@ function watch(client) {
         const doc = change.doc;
         const data = doc.data();
         if (change.type === 'added' && !data.messageId) {
-          poster(client, doc.id, data).catch((e) => console.error('[scan-patches] post :', e.message));
+          poster(client, doc.id, data).catch((e) => {
+            if (!quota.signaler(client, e, 'scan-patches')) console.error('[scan-patches] post :', e.message);
+          });
         } else if (change.type === 'modified' && data.messageId) {
           rafraichir(client, doc.id, data).catch((e) => console.error('[scan-patches] maj :', e.message));
         }
