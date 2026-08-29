@@ -366,7 +366,68 @@ function start() {
   console.log(`[security-test] Audit a la demande uniquement — ${total} actions disponibles, rotation sur ${fenetre(total)}.`);
 }
 
+/**
+ * Scan des secrets du depot, a la demande depuis le panneau.
+ *
+ * Mode git (pas --no-git) : on scanne le contenu COMMITE, pas les fichiers de
+ * la VM. Le .env et la cle Firebase vivent en clair sur la VM pour faire
+ * tourner le bot — c'est normal, ils sont gitignores. Les scanner ici les
+ * ferait remonter a chaque fois. La question posee est « un secret est-il dans
+ * le depot ? », donc dans git.
+ *
+ * gitleaks est telecharge une fois dans /tmp s'il n'est pas la. Le rapport JSON
+ * est lu puis rendu a l'appelant, secrets caviardes.
+ *
+ * @returns {Promise<{ok:boolean, findings:Array, motif:string|null}>}
+ */
+async function runScanRepo() {
+  const racine = path.join(__dirname, '..', '..', '..');   // clone public
+  const rapport = path.join(os.tmpdir(), `gitleaks-${Date.now()}.json`);
+  const GL = '8.18.4';
+  const script = [
+    'set -euo pipefail',
+    'BIN=/tmp/gitleaks',
+    'if [ ! -x "$BIN" ]; then',
+    `  curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${GL}/gitleaks_${GL}_linux_x64.tar.gz" -o /tmp/gl.tgz`,
+    '  tar -xzf /tmp/gl.tgz -C /tmp gitleaks',
+    '  chmod +x "$BIN"',
+    'fi',
+    // --exit-code 0 : on ne veut pas que gitleaks fasse echouer le job, on lit
+    // le rapport nous-memes. Mode git par defaut, source = le clone public.
+    `"$BIN" detect --source "${racine}" --config "${racine}/.gitleaks.toml" --report-format json --report-path "${rapport}" --redact --exit-code 0`,
+  ].join('\n');
+
+  const code = await new Promise((resolve) => {
+    const proc = spawn('/bin/bash', ['-c', script], { stdio: ['ignore', 'inherit', 'inherit'] });
+    proc.on('error', () => resolve(-1));
+    proc.on('exit', (c) => resolve(c));
+  });
+
+  if (code !== 0) {
+    return { ok: false, findings: [], motif: `gitleaks n'a pas pu s'executer (code ${code}).` };
+  }
+
+  let findings = [];
+  try {
+    const brut = fs.readFileSync(rapport, 'utf8');
+    findings = JSON.parse(brut || '[]');
+  } catch (e) {
+    return { ok: false, findings: [], motif: `rapport illisible : ${e.message}` };
+  } finally {
+    try { fs.unlinkSync(rapport); } catch (_) { /* deja parti */ }
+  }
+
+  // On ne garde que ce qui sert a l'affichage. Le secret est deja caviarde par
+  // gitleaks (--redact) ; on ne le renvoie meme pas.
+  const clair = findings.map((f) => ({
+    fichier: String(f.File || '').replace(racine, '').replace(/^[/\\]+/, ''),
+    regle: f.RuleID || f.Description || 'secret',
+    ligne: f.StartLine || f.Line || 0,
+  }));
+  return { ok: true, findings: clair, motif: null };
+}
+
 module.exports = {
-  start, runAutomated, runPentest, pickActions, loadConfig, loadActions,
+  start, runAutomated, runPentest, runScanRepo, pickActions, loadConfig, loadActions,
   lireHistorique, fenetre, tuerParcours, SAMPLE_SIZE,
 };

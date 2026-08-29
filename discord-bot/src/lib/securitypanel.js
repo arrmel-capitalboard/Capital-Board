@@ -105,15 +105,14 @@ function retenirScenarios(actions, userId) {
 function panelPayload() {
   const embed = new EmbedBuilder()
     .setColor(ORANGE)
-    .setTitle(`${E.ARROW}  Audit de sécurité`)
+    .setTitle('🔒  Sécurité')
     .setDescription(
-      "Déclenchez un audit quand vous voulez, en plus de celui qui tourne chaque matin à 8h.\n\n"
-      + `**1.** Générez de 1 à ${MAX_SCENARIOS} scénarios — tirés dans la rotation, sans être consommés.\n`
-      + "**2.** Réalisez-les : un navigateur les rejoue derrière le proxy, la capture est caviardée sur la VM, puis analysée.\n"
-      + "Un seul à la fois, avec deux minutes de repos entre chacun — la VM ne tient pas la charge autrement.\n"
-      + "**3.** Lancez un pentest — les attaques d'un intrus jouées pour de vrai, pas seulement déduites.\n"
-      + "**4.** Consultez les dernières analyses — ce qui n'allait pas, et ce qui a été corrigé.\n\n"
-      + "_Le salon se vide de lui-même : passé une heure, les messages disparaissent. Les comptes rendus, eux, restent consultables ici._",
+      'Outils de sécurité, à la demande.\n\n'
+      + '🎯 **Générer un scénario** — rejoue une action et analyse le trafic.\n'
+      + '🛡️ **Lancer un pentest** — joue les attaques d\'un intrus pour de vrai.\n'
+      + '🔎 **Scanner le repo** — cherche un secret en clair dans le code.\n'
+      + '📊 **Consulter les dernières analyses** — ce qui a été trouvé, et corrigé.\n\n'
+      + '_Le salon se vide seul après une heure ; les analyses restent consultables ici._',
     )
     .setFooter({ text: 'Capital Board — réservé au rôle fondateur' });
 
@@ -128,6 +127,11 @@ function panelPayload() {
       .setLabel('Lancer un pentest')
       .setStyle(ButtonStyle.Danger)
       .setEmoji('🛡️'),
+    new ButtonBuilder()
+      .setCustomId('sec:scan')
+      .setLabel('Scanner le repo')
+      .setStyle(ButtonStyle.Secondary)
+      .setEmoji('🔎'),
     new ButtonBuilder()
       .setCustomId('sec:analyses')
       .setLabel('Consulter les dernières analyses')
@@ -467,6 +471,48 @@ function ligneResume(entree) {
  * rendu vient tel quel de la sortie du script : classification déterministe,
  * rien à interpréter côté bot.
  */
+/**
+ * Scanne le dépôt à la demande et affiche le résultat en embed.
+ *
+ * Mode git : le contenu commité, pas les secrets qui vivent legitimement sur la
+ * VM (.env, clé Firebase, gitignorés). Répond « rien » quand c'est propre.
+ */
+async function lancerScanRepo(interaction) {
+  await interaction.reply({
+    embeds: [new EmbedBuilder().setColor(0x5b8def).setTitle('🔎 Scan du dépôt en cours')
+      .setDescription('Recherche de secrets en clair dans le code commité…')],
+  });
+
+  const { ok, findings, motif } = await securitytest.runScanRepo();
+
+  if (!ok) {
+    await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0xff4d6a)
+      .setTitle('🔴 Scan impossible').setDescription(motif || 'Erreur inconnue.')] });
+    return;
+  }
+
+  if (!findings.length) {
+    await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0x22d98a)
+      .setTitle('🟢 Aucun secret dans le dépôt')
+      .setDescription('Rien en clair dans le code commité. Les secrets réels vivent sur la VM, hors du dépôt.')] });
+    return;
+  }
+
+  const NL = String.fromCharCode(10);
+  const lignes = findings.slice(0, 20)
+    .map((f) => `🔴 \`${f.fichier}\`:${f.ligne} — ${f.regle}`).join(NL);
+  const embed = new EmbedBuilder()
+    .setColor(0xff4d6a)
+    .setTitle(`🔴 ${findings.length} secret(s) trouvé(s) dans le dépôt`)
+    .setDescription((lignes + (findings.length > 20 ? NL + `… et ${findings.length - 20} autres` : '')).slice(0, 4000))
+    .setFooter({ text: 'À retirer du code, régénérer, et purger l\'historique.' });
+  await interaction.editReply({
+    content: `<@&${FONDATEUR_ROLE}>`,
+    embeds: [embed],
+    allowedMentions: { roles: [FONDATEUR_ROLE], parse: [] },
+  });
+}
+
 async function lancerPentest(interaction) {
   // Tout en embed, progression comprise. Chaque étape franchie se coche,
   // celle en cours est en attente. Édition limitée à ~1/s pour ne pas heurter
@@ -922,6 +968,7 @@ async function handleComponent(interaction) {
   if (geste === 'run') { await lancerScenarios(interaction, arg); return; }
   if (geste === 'stop') { await arreterAudit(interaction); return; }
   if (geste === 'pentest') { await lancerPentest(interaction); return; }
+  if (geste === 'scan') { await lancerScanRepo(interaction); return; }
   if (geste === 'fix') { await afficherCorrectifs(interaction, arg); return; }
   if (geste === 'analyses') { await listerAnalyses(interaction); return; }
   if (geste === 'detail') { await ouvrirDetail(interaction); return; }
