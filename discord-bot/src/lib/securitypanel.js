@@ -583,22 +583,95 @@ const correctifsEnAttente = new Map();
 // connu. Pas d'auto-application — Cloudflare, npm, regles Firestore et code ne
 // se corrigent pas de la meme facon, et appliquer a l'aveugle serait pire.
 const REMEDES = {
-  'En-têtes': 'Poser les en-têtes manquants du **site** par une règle Cloudflare :\n'
-    + 'Rules → Transform Rules → *Modify Response Header* → Add :\n'
-    + '`X-Content-Type-Options: nosniff`, `X-Frame-Options: DENY`, `Referrer-Policy: strict-origin-when-cross-origin`.\n'
-    + '_(L\'API est déjà corrigée côté Worker.)_',
-  'Dépendances': 'Dans le dossier cité : `npm audit fix` (ou `npm audit` pour le détail).\n'
-    + 'Relancer les tests avant de déployer.',
-  'Résistance du login': 'Vérifier `LOGIN_RL_MAX` et `LOGIN_IP_RL_MAX` dans le Worker.',
-  'XSS stocké': 'Échapper la sortie dans la fonction citée (`_escapeHtmlChat` / `_attr`, js/app.js).',
-  'Lecture croisée (IDOR)': 'Renforcer `firestore.rules` sur le chemin cité (exiger `_isSelf(uid)`),\n'
-    + 'puis `npx firebase deploy --only firestore:rules`.',
-  'Pistes IA (lecture croisée)': 'Renforcer `firestore.rules` sur le chemin cité (exiger `_isSelf(uid)`),\n'
-    + 'puis `npx firebase deploy --only firestore:rules`.',
-  'Élévation de privilège': 'Remettre le contrôle admin en tête de la route du Worker :\n'
-    + '`verifyIdToken` puis `localId === ADMIN_UID`, avant toute action.',
-  'Jeton trafiqué': 'Vérifier que `verifyIdToken` contrôle bien la signature (JWKS) — un `alg:none` doit être rejeté.',
-  'Contrôle d\'accès': 'Exiger une preuve de connexion en tête de route (`verifyIdToken`).',
+  'En-têtes': [
+    '**Ce que c\'est.** Trois consignes de prudence que le site ne peut pas poser',
+    'lui-même (GitHub Pages) : on les ajoute via Cloudflare, devant le site.',
+    '',
+    '**Étapes (2 min) :**',
+    '1. Va sur `dash.cloudflare.com`, connecte-toi avec **admin.capitalboard@gmail.com**.',
+    '2. Clique le domaine **capitalboard.fr**.',
+    '3. Menu de gauche : **Rules** → **Overview**, bouton **Create rule** → **Modify Response Header**.',
+    '4. Nom de la règle : `En-têtes sécurité`.',
+    '5. *When incoming requests match* : choisis **All incoming requests**.',
+    '6. *Then... Set static*, ajoute ces trois en-têtes (un par ligne, bouton **+ Set another**) :',
+    '   • `X-Content-Type-Options` = `nosniff`',
+    '   • `X-Frame-Options` = `SAMEORIGIN`',
+    '   • `Referrer-Policy` = `strict-origin-when-cross-origin`',
+    '7. **Deploy**.',
+    '',
+    '⚠️ **SAMEORIGIN**, pas DENY : la home affiche la démo dans un cadre du même',
+    'site, DENY la casserait.',
+    '',
+    '**Vérifier :** relance le pentest. _(L\'API est déjà corrigée côté Worker.)_',
+  ].join('\n'),
+
+  'Dépendances': [
+    '**Ce que c\'est.** Une librairie tierce du projet a une faille connue.',
+    '',
+    '**Étapes :**',
+    '1. Sur la VM (ou en local), va dans le dossier cité dans le finding.',
+    '2. Lance `npm audit` pour voir le détail, puis `npm audit fix`.',
+    '3. Si ça ne suffit pas : `npm audit fix --force` (attention, peut monter une',
+    '   version majeure — teste ensuite).',
+    '4. `npm test`, puis commit et déploie.',
+  ].join('\n'),
+
+  'Résistance du login': [
+    '**Ce que c\'est.** Le nombre d\'essais de mot de passe autorisés avant blocage.',
+    '',
+    '**Étapes :** dans `capital-board-worker/src/index.js`, baisse `LOGIN_RL_MAX`',
+    '(par compte) ou `LOGIN_IP_RL_MAX` (par adresse), puis redéploie le Worker.',
+    'Un finding ici veut souvent dire que la limite est trop haute ou absente.',
+  ].join('\n'),
+
+  'XSS stocké': [
+    '**Ce que c\'est.** Du texte d\'utilisateur affiché sans être neutralisé — un',
+    'pirate pourrait y glisser du code qui s\'exécute chez les autres.',
+    '',
+    '**Étapes :** dans `js/app.js`, à l\'endroit cité, entoure la valeur affichée',
+    'de `_escapeHtmlChat(...)` (pour du texte) ou `_attr(...)` (dans un attribut).',
+    'Bump la version (3 fichiers), commit, déploie.',
+  ].join('\n'),
+
+  'Lecture croisée (IDOR)': [
+    '**Ce que c\'est.** Un membre arrive à lire les données d\'un autre.',
+    '',
+    '**Étapes :** dans `firestore.rules`, sur le chemin cité, exige que le lecteur',
+    'soit le propriétaire — `allow read: if _isSelf(uid);` — puis déploie :',
+    '`npx -y firebase-tools deploy --only firestore:rules --project capitalboard`.',
+  ].join('\n'),
+
+  'Pistes IA (lecture croisée)': [
+    '**Ce que c\'est.** Une piste trouvée par l\'IA où un membre lit ce qu\'il ne',
+    'devrait pas.',
+    '',
+    '**Étapes :** même correctif qu\'un IDOR — dans `firestore.rules`, verrouille le',
+    'chemin cité (`allow read: if _isSelf(uid);` ou `_isAdmin()`), puis',
+    '`npx -y firebase-tools deploy --only firestore:rules --project capitalboard`.',
+  ].join('\n'),
+
+  'Élévation de privilège': [
+    '**Ce que c\'est.** Un compte ordinaire atteint une action réservée à l\'admin.',
+    '',
+    '**Étapes :** dans le Worker, en TÊTE de la route citée, remets le contrôle',
+    'AVANT toute action : vérifier le jeton (`verifyIdToken`) puis',
+    '`user.localId === env.ADMIN_UID`, sinon renvoyer 403. Redéploie le Worker.',
+  ].join('\n'),
+
+  'Jeton trafiqué': [
+    '**Ce que c\'est.** Un faux jeton (signature bidon) qui se fait passer pour',
+    'l\'admin.',
+    '',
+    '**Étapes :** s\'assurer que `verifyIdToken` vérifie bien la signature (JWKS) et',
+    'rejette un jeton `alg:none`. Un finding ici est grave — à corriger en priorité.',
+  ].join('\n'),
+
+  'Contrôle d\'accès': [
+    '**Ce que c\'est.** Une route sensible répond sans exiger de connexion.',
+    '',
+    '**Étapes :** en tête de la route du Worker, exiger `verifyIdToken` (et le rôle',
+    'quand il faut) avant tout traitement. Redéploie.',
+  ].join('\n'),
 };
 
 async function afficherCorrectifs(interaction, id) {
