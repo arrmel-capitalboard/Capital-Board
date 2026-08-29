@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260829d';
+const APP_VERSION = '20260829e';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -15310,6 +15310,12 @@ let _activeSupportThread = null;
 let _currentThreadMeta = null;
 let _supportAdminTab = "active"; // 'active' | 'archived'
 let _presenceHeartbeat = null;
+// Échéance du bail de présence en cours, telle qu'elle a été écrite. En mémoire
+// seulement : la relire coûterait une lecture, et un onglet qui redémarre pose
+// un bail neuf de toute façon. Déclarée ici, avec les autres variables de
+// présence, parce que `_detachUserListeners` la remet à zéro bien plus haut
+// dans le fichier que la fonction qui l'entretient.
+let _presenceBailJusqua = 0;
 let _typingTimer = null;
 let _typingClearTimer = null;
 let _supportThreadDocUnsub = null;
@@ -15327,6 +15333,10 @@ function _detachUserListeners() {
   try { if (_supportThreadDocUnsub) { _supportThreadDocUnsub(); _supportThreadDocUnsub = null; } } catch(_) {}
   try { if (_supportBadgeUnsub) { _supportBadgeUnsub(); _supportBadgeUnsub = null; } } catch(_) {}
   try { if (_presenceHeartbeat) { clearInterval(_presenceHeartbeat); _presenceHeartbeat = null; } } catch(_) {}
+  // Le bail en cours ne vaut plus rien : sans cette remise a zero, une
+  // reconnexion dans la meme page croirait son bail encore valide et
+  // n'annoncerait la presence qu'a l'echeance de l'ancien.
+  _presenceBailJusqua = 0;
 }
 
 // Sons chat via Web Audio API (pas de fichier externe).
@@ -15502,27 +15512,55 @@ function _isStandaloneDisplay() {
 // Cadence du battement de présence, et fraîcheur au-delà de laquelle on cesse
 // de considérer quelqu'un en ligne.
 //
-// Chaque battement est une écriture Firestore, par onglet ouvert. À 30 s cela
-// faisait 120 écritures par heure et par onglet : dix membres laissant l'app
-// ouverte une journée consommaient la moitié des 20 000 écritures quotidiennes
-// du forfait Spark — avant que personne n'ait rien fait. Le 28/08, le quota
-// épuisé a fait tomber le compteur du code PIN et fermé l'app à tout le monde.
+// Chaque écriture de présence compte, par onglet ouvert, sur les 20 000 par
+// jour que le forfait Spark accorde à tout le projet. Le 28/08, le quota épuisé
+// a fait tomber le compteur du code PIN et fermé l'application à tout le monde :
+// c'est le poste qui décide combien de membres on peut porter.
 //
-// Cinq minutes désormais, et non plus deux : c'est le poste qui décide combien
-// de membres l'application peut porter. À 2 min, 200 personnes connectées en
-// même temps consommaient 6 000 écritures par heure — le quota du jour partait
-// en 3 h 10. À 5 min, il tient 7 h 50, et le plafond passe de 200 à 400 membres
-// actifs par jour. Aucune autre ligne du projet n'offre ce rapport.
+// L'historique de ce seul chiffre : 30 s (120 écritures/heure), puis 2 min (30),
+// puis 5 min (12). Chaque palier doublait ou triplait le plafond de membres, et
+// chacun restait un battement — une écriture à intervalle fixe, que quelqu'un
+// regarde ou non.
 //
-// Ce qu'on paie en échange : quelqu'un qui ferme son onglet reste affiché « en
-// ligne » une douzaine de minutes au lieu de cinq. « En ligne » n'a jamais eu
-// besoin de la seconde près ici, et la présence n'ouvre aucun droit — elle
-// s'affiche, c'est tout.
+// Ce n'est plus un battement, c'est un BAIL. L'onglet annonce « je suis là
+// jusqu'à telle heure » et ne réécrit qu'en approchant de l'échéance. Une
+// session de deux heures coûte 6 écritures au lieu de 24 : l'ouverture, quatre
+// renouvellements, le départ. Trois écritures par heure au lieu de douze, soit
+// quatre fois plus de monde à quota constant — de l'ordre de 3 100 sessions
+// simultanées sur deux heures, contre 800.
 //
-// La fraîcheur reste à 2,5 fois le battement, pour qu'un battement manqué ne
-// fasse pas disparaître quelqu'un.
-const PRESENCE_BATTEMENT_MS = 300_000;
+// Pourquoi pas zéro écriture. « En ligne » ne peut pas se déduire des seules
+// actions : l'immense majorité des membres consultent sans rien écrire, et ils
+// n'apparaîtraient jamais. Et sans échéance, un onglet qui plante — ou un
+// mobile que le système tue sans prévenir, où `beforeunload` ne part pas —
+// resterait en ligne pour toujours. Le bail répond aux deux : il se renouvelle
+// tant que quelqu'un est devant, et il expire tout seul sinon.
+//
+// Ce qu'on paie en échange : quelqu'un qui ferme son onglet brutalement reste
+// affiché « en ligne » jusqu'à une demi-heure. Un départ propre l'efface tout
+// de suite. « En ligne » n'ouvre aucun droit — ça s'affiche, c'est tout.
+const PRESENCE_BAIL_MS = 1_800_000;      // 30 min : durée annoncée par l'onglet
+const PRESENCE_MARGE_MS = 120_000;       // on renouvelle dans les 2 dernières minutes
+const PRESENCE_CONTROLE_MS = 60_000;     // cadence de vérification — n'écrit rien
+
+// Repli pour les documents écrits avant le bail, qui n'ont pas d'`expiresAt` :
+// on juge alors sur la fraîcheur de `lastSeen`, comme avant. À retirer quand
+// plus aucune session ancienne ne traîne.
 const PRESENCE_FRAICHEUR_MS = 750_000;
+
+/**
+ * Quelqu'un est-il en ligne, vu depuis son document de présence ?
+ *
+ * Le bail fait foi quand il existe. Sinon on retombe sur `lastSeen`, pour ne
+ * pas faire disparaître les sessions ouvertes avant ce changement.
+ */
+function _presenceEnLigne(p) {
+  if (!p || p.online !== true) return false;
+  const bail = Number(p.expiresAt) || 0;
+  if (bail) return bail > Date.now();
+  const vu = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate().getTime() : Number(p.lastSeen) || 0;
+  return vu > 0 && (Date.now() - vu) < PRESENCE_FRAICHEUR_MS;
+}
 
 // Heartbeat presence : écrit online + lastSeen à chaque battement.
 // Compteurs d'activité, posés sur le doc de présence — le seul que l'admin
@@ -15551,48 +15589,54 @@ function _startPresenceHeartbeat() {
   if (window.IS_DEMO || !db || !currentUser) return;
   if (_presenceHeartbeat) clearInterval(_presenceHeartbeat);
   const pwa = _isStandaloneDisplay();
-  const ping = () => {
+
+  /** Pose ou repousse le bail. La seule fonction qui écrive dans `presence`. */
+  const poser = () => {
     if (!currentUser) { if (_presenceHeartbeat) { clearInterval(_presenceHeartbeat); _presenceHeartbeat = null; } return; }
-    // Verrou d'inactivité posé : la session reste ouverte et `currentUser` reste
-    // renseigné, mais personne n'est devant. Continuer à battre signalerait une
-    // présence qui n'existe pas — un onglet verrouillé pour la nuit consommait
-    // à lui seul 720 écritures quand le battement était à 30 s.
-    //
-    // On ne marque pas « hors ligne » : ce serait une écriture de plus. La
-    // fraîcheur de `lastSeen` s'en charge, et le membre apparaît hors ligne un
-    // peu plus tard, ce qui est exact.
-    const verrou = document.getElementById('pin-lock-view');
-    if (verrou && verrou.style.display !== 'none' && verrou.offsetParent !== null) return;
+    const jusqua = Date.now() + PRESENCE_BAIL_MS;
     // `pwa` décrit la session en cours ; `pwaEver` ne retombe jamais à faux,
     // sans quoi une simple visite depuis un onglet effacerait l'information.
-    const data = { online: true, lastSeen: serverTimestamp(), pwa };
+    const data = { online: true, lastSeen: serverTimestamp(), expiresAt: jusqua, pwa };
     if (pwa) { data.pwaEver = true; data.pwaAt = serverTimestamp(); }
     setFirestoreDoc(firestoreDoc(db, "presence", currentUser), data, { merge: true }).catch(() => {});
+    _presenceBailJusqua = jusqua;
   };
-  ping();
-  _presenceHeartbeat = setInterval(ping, PRESENCE_BATTEMENT_MS);
 
-  // Un onglet en arrière-plan n'a personne devant lui, et continuait pourtant
-  // d'écrire à chaque battement. Sur le forfait Spark le quota d'écritures est
-  // partagé par tout le projet : un onglet oublié consommait 720 écritures par
-  // jour pour informer que personne ne regarde. Le battement s'arrête donc
-  // quand l'onglet passe en arrière-plan, et repart avec un relevé immédiat
-  // quand il revient — la présence est donc juste dès la première seconde.
+  /**
+   * Contrôle sans écriture, une fois par minute. N'écrit que si le bail arrive
+   * à son terme — c'est là toute la différence avec un battement.
+   */
+  const controler = () => {
+    if (!currentUser) { if (_presenceHeartbeat) { clearInterval(_presenceHeartbeat); _presenceHeartbeat = null; } return; }
+    // Verrou d'inactivité posé : la session reste ouverte et `currentUser` reste
+    // renseigné, mais personne n'est devant. On laisse le bail courir jusqu'à
+    // son terme sans le renouveler, et le membre passe hors ligne tout seul.
+    const verrou = document.getElementById('pin-lock-view');
+    if (verrou && verrou.style.display !== 'none' && verrou.offsetParent !== null) return;
+    if (document.hidden) return;
+    if (Date.now() < _presenceBailJusqua - PRESENCE_MARGE_MS) return;
+    poser();
+  };
+
+  poser();
+  _presenceHeartbeat = setInterval(controler, PRESENCE_CONTROLE_MS);
+
+  // Retour au premier plan : on ne repose un bail que s'il a expiré pendant
+  // l'absence. Revenir d'un aller-retour de trente secondes n'écrit donc rien,
+  // là où l'ancien battement relevait systématiquement.
   document.addEventListener('visibilitychange', () => {
-    if (!currentUser) return;
-    if (document.hidden) {
-      if (_presenceHeartbeat) { clearInterval(_presenceHeartbeat); _presenceHeartbeat = null; }
-      return;
-    }
-    if (!_presenceHeartbeat) {
-      ping();
-      _presenceHeartbeat = setInterval(ping, PRESENCE_BATTEMENT_MS);
-    }
+    if (!currentUser || document.hidden) return;
+    if (Date.now() >= _presenceBailJusqua - PRESENCE_MARGE_MS) poser();
   });
+
+  // Départ propre : le bail est rendu tout de suite, sans attendre son terme.
+  // Ce n'est pas garanti — un mobile que le système tue ne l'exécute pas — et
+  // c'est précisément pour ce cas que le bail a une échéance.
   window.addEventListener("beforeunload", () => {
     if (!currentUser) return;
+    _presenceBailJusqua = 0;
     setFirestoreDoc(firestoreDoc(db, "presence", currentUser),
-      { online: false, lastSeen: serverTimestamp() }, { merge: true }).catch(() => {});
+      { online: false, lastSeen: serverTimestamp(), expiresAt: 0 }, { merge: true }).catch(() => {});
   });
 }
 
@@ -16235,7 +16279,7 @@ async function renderAdminUsers() {
     // Online fiable : basé sur la fraîcheur de lastSeen, PAS sur le booléen
     // p.online qui reste figé à true si l'onglet meurt sans déclencher
     // beforeunload (fréquent sur mobile/PWA).
-    presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; u.online = !!(u.lastSeen && (Date.now() - u.lastSeen.getTime()) < PRESENCE_FRAICHEUR_MS);
+    presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; u.online = _presenceEnLigne(p);
       u.pwaNow = p.pwa === true; u.pwaEver = p.pwaEver === true; u.pwaKnown = Object.prototype.hasOwnProperty.call(p, 'pwa');
       u.pwaAt = p.pwaAt && p.pwaAt.toDate ? p.pwaAt.toDate() : null; });
     threadsSnap.forEach(d => { const u = get(d.id), t = d.data(); u.name = t.userName; u.email = t.userEmail; });
@@ -17704,8 +17748,7 @@ function _renderPresenceBadge(p) {
   const el = document.getElementById("presence-badge");
   if (!el) return;
   if (!p) { el.textContent = ""; return; }
-  const lastSeenMs = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate().getTime() : 0;
-  const isOnline = p.online === true && lastSeenMs > 0 && (Date.now() - lastSeenMs) < PRESENCE_FRAICHEUR_MS;
+  const isOnline = _presenceEnLigne(p);
   if (isOnline) {
     el.innerHTML = '<span style="display:inline-block;width:8px;height:8px;background:#00e09e;border-radius:50%;margin-right:5px;vertical-align:middle"></span>En ligne';
   } else {

@@ -29,13 +29,14 @@ const PLAFOND_ECRITURES = 20000;
 // Au-delà, on prévient. 70 % laisse le temps de fermer un panneau ou de
 // repousser un lot d'audits ; 90 % arriverait trop tard pour agir.
 const SEUIL_ALERTE = 0.70;
-// Une écriture de présence toutes les cinq minutes, par onglet visible. À tenir
-// aligné sur PRESENCE_BATTEMENT_MS (js/app.js) : c'est le client qui écrit, le
-// bot ne fait qu'en compter le coût.
-const PRESENCE_PAR_HEURE = 12;
-// Un onglet dont le dernier signe de vie remonte à plus de ça n'est plus là.
-// Même valeur que PRESENCE_FRAICHEUR_MS côté client, pour compter les mêmes
-// sessions que celles que l'application affiche en ligne.
+// La présence n'est plus un battement mais un bail de 30 min (voir
+// PRESENCE_BAIL_MS dans js/app.js) : l'onglet annonce jusqu'à quand il est là et
+// ne réécrit qu'en approchant du terme. Trois écritures par heure, contre douze
+// quand c'était un battement de cinq minutes. À tenir aligné sur le client :
+// c'est lui qui écrit, le bot ne fait qu'en compter le coût.
+const PRESENCE_PAR_HEURE = 3;
+// Repli pour les documents antérieurs au bail, sans `expiresAt` : on juge alors
+// sur la fraîcheur, comme le client le fait de son côté.
 const PRESENCE_FRAICHEUR_MS = 12.5 * 60_000;
 // Contrôle horaire : l'estimation bouge en heures, pas en minutes.
 const CADENCE_ESTIMATION_MS = 60 * 60_000;
@@ -120,14 +121,17 @@ function estimation(sessions = 0) {
 /** Nombre d'onglets qui écrivent en ce moment, lu dans `presence`. */
 async function sessionsActives(db) {
   const snap = await db.collection('presence').where('online', '==', true).get();
-  const limite = Date.now() - PRESENCE_FRAICHEUR_MS;
+  const maintenant = Date.now();
   let n = 0;
   for (const doc of snap.docs) {
-    // `lastSeen` est un timestamp serveur ; un onglet fermé brutalement laisse
-    // `online: true` derrière lui, seule la fraîcheur fait foi.
-    const vu = doc.data().lastSeen;
+    const d = doc.data();
+    // Le bail fait foi quand il existe : un onglet fermé brutalement laisse
+    // `online: true` derrière lui, c'est l'échéance qui le fait disparaître.
+    const bail = Number(d.expiresAt) || 0;
+    if (bail) { if (bail > maintenant) n++; continue; }
+    const vu = d.lastSeen;
     const ms = vu?.toMillis ? vu.toMillis() : Number(vu) || 0;
-    if (ms >= limite) n++;
+    if (ms >= maintenant - PRESENCE_FRAICHEUR_MS) n++;
   }
   return n;
 }
