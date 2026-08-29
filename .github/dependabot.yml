@@ -1,0 +1,45 @@
+# Dependabot : ouvre des PR quand une dépendance a une faille connue ou une mise
+# à jour. Complète `npm audit` (manuel, dans le pentest) par une surveillance
+# continue. Groupé pour ne pas noyer sous les PR, hebdomadaire.
+#
+# `capital-board-worker` n'a pas de package.json (pas de dépendances npm à
+# suivre) : il n'est donc pas listé. Les GitHub Actions, elles, valent d'être
+# suivies — une action figée sur une version vulnérable est une porte d'entrée.
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /discord-bot
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      deps-discord-bot:
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: /scripts
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      deps-scripts:
+        patterns: ['*']
+
+  - package-ecosystem: npm
+    directory: /firestore-tests
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      deps-firestore-tests:
+        patterns: ['*']
+
+  # Les versions des actions dans .github/workflows/*.yml.
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 5
+    groups:
+      deps-actions:
+        patterns: ['*']

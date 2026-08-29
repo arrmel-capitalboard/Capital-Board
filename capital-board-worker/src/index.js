@@ -810,6 +810,41 @@ async function rateLimit(env, key, max, windowSeconds) {
   return true;
 }
 
+// ── Detection d'anomalies globales ──────────────────────────────────────────
+// Le rate-limit protege compte par compte et IP par IP. Il ne voit pas une
+// attaque DISTRIBUEE : mille IP qui tentent chacune un seul mot de passe passent
+// sous tous les seuils individuels, mais forment un pic global. On compte donc
+// aussi au global, dans KV (gratuit, aucune ecriture Firestore pour compter), et
+// on alerte UNE fois quand le seuil est franchi dans la fenetre.
+//
+// Salon securite et role fondateur en dur : des identifiants Discord, pas des
+// secrets. L'alerte passe par opsAlerts, que le bot ecoute et poste.
+const SALON_SECURITE = '1541530997005353030';
+const FONDATEUR_ROLE = '1512905140108001391';
+
+async function noterAnomalie(env, type, seuil, fenetreS, titre, message) {
+  try {
+    const bucket = Math.floor(Date.now() / (fenetreS * 1000));
+    const key = `anom:${type}:${bucket}`;
+    const n = parseInt((await env.EARNINGS.get(key)) || '0', 10) + 1;
+    await env.EARNINGS.put(key, String(n), { expirationTtl: fenetreS * 2 });
+    // Pile au franchissement : au-dela on ne re-alerte pas dans la meme fenetre.
+    if (n !== seuil) return;
+    const id = `anom-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    await firestoreCreate('opsAlerts', id, {
+      type: { stringValue: 'anomalie' },
+      titre: { stringValue: titre },
+      texte: { stringValue: message },
+      salon: { stringValue: SALON_SECURITE },
+      mention: { stringValue: FONDATEUR_ROLE },
+      couleur: { integerValue: '16729710' },  // rouge 0xff4d6a
+      createdAt: { integerValue: String(Date.now()) },
+    }, env);
+  } catch (e) {
+    console.error(`noterAnomalie ${type}: ${e.message}`);
+  }
+}
+
 // ── Firestore REST ─────────────────────────────────────────────────────────
 
 async function firestoreGet(path, env) {
@@ -2158,7 +2193,7 @@ async function probeAbuseIpdb(env) {
 // ── Main handler ───────────────────────────────────────────────────────────
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const origin = request.headers.get('Origin') || '';
     const allowed = env.ALLOWED_ORIGIN || 'https://capitalboard.fr';
     const corsHeaders = { ...CORS, 'Access-Control-Allow-Origin': origin === allowed ? origin : allowed };
@@ -2961,6 +2996,9 @@ export default {
         const reputation = await checkIpReputation(clientIp, env);
         if (reputation.blocked) {
           audit('ip-blocked', `score=${reputation.score} ip=${clientIp}`, null, request, env).catch(() => {});
+          ctx.waitUntil(noterAnomalie(env, 'ip-block', 20, 600,
+            '🚨 Pic de blocages IP',
+            'Plus de 20 connexions refusées depuis des IP à mauvaise réputation en 10 min. Possible attaque distribuée. Rien à faire dans l\'immédiat — le filtrage tient — mais à surveiller.'));
           return json({ ok: false, error: 'Connexion refusée depuis cette adresse.' }, 403);
         }
 
@@ -2992,6 +3030,9 @@ export default {
           if (code === 'TOO_MANY_ATTEMPTS_TRY_LATER') msg = 'Trop de tentatives. Réessayez plus tard.';
           else if (code === 'EMAIL_NOT_FOUND' || code === 'INVALID_PASSWORD' || code === 'INVALID_LOGIN_CREDENTIALS') {
             msg = 'Email ou mot de passe incorrect.';
+            ctx.waitUntil(noterAnomalie(env, 'login-fail', 40, 600,
+              '🚨 Pic de connexions ratées',
+              'Plus de 40 échecs de mot de passe en 10 min. Possible force brute ou credential stuffing. Le rate-limit par compte et par IP tient ; surveiller si ça persiste.'));
           } else {
             console.error('login: signInWithPassword ' + authRes.status + ': ' + code);
             msg = 'Service de connexion temporairement indisponible. Réessayez.';
