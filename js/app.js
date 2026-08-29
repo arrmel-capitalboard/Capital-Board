@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260829c';
+const APP_VERSION = '20260829d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -15508,11 +15508,21 @@ function _isStandaloneDisplay() {
 // du forfait Spark — avant que personne n'ait rien fait. Le 28/08, le quota
 // épuisé a fait tomber le compteur du code PIN et fermé l'app à tout le monde.
 //
-// Deux minutes suffisent : « en ligne » n'a pas besoin de la seconde près ici.
+// Cinq minutes désormais, et non plus deux : c'est le poste qui décide combien
+// de membres l'application peut porter. À 2 min, 200 personnes connectées en
+// même temps consommaient 6 000 écritures par heure — le quota du jour partait
+// en 3 h 10. À 5 min, il tient 7 h 50, et le plafond passe de 200 à 400 membres
+// actifs par jour. Aucune autre ligne du projet n'offre ce rapport.
+//
+// Ce qu'on paie en échange : quelqu'un qui ferme son onglet reste affiché « en
+// ligne » une douzaine de minutes au lieu de cinq. « En ligne » n'a jamais eu
+// besoin de la seconde près ici, et la présence n'ouvre aucun droit — elle
+// s'affiche, c'est tout.
+//
 // La fraîcheur reste à 2,5 fois le battement, pour qu'un battement manqué ne
 // fasse pas disparaître quelqu'un.
-const PRESENCE_BATTEMENT_MS = 120_000;
-const PRESENCE_FRAICHEUR_MS = 300_000;
+const PRESENCE_BATTEMENT_MS = 300_000;
+const PRESENCE_FRAICHEUR_MS = 750_000;
 
 // Heartbeat presence : écrit online + lastSeen à chaque battement.
 // Compteurs d'activité, posés sur le doc de présence — le seul que l'admin
@@ -15544,13 +15554,13 @@ function _startPresenceHeartbeat() {
   const ping = () => {
     if (!currentUser) { if (_presenceHeartbeat) { clearInterval(_presenceHeartbeat); _presenceHeartbeat = null; } return; }
     // Verrou d'inactivité posé : la session reste ouverte et `currentUser` reste
-    // renseigné, mais personne n'est devant. Continuer à battre écrivait toutes
-    // les deux minutes pour signaler une présence qui n'existe pas — un onglet
-    // verrouillé pour la nuit consommait à lui seul 720 écritures.
+    // renseigné, mais personne n'est devant. Continuer à battre signalerait une
+    // présence qui n'existe pas — un onglet verrouillé pour la nuit consommait
+    // à lui seul 720 écritures quand le battement était à 30 s.
     //
     // On ne marque pas « hors ligne » : ce serait une écriture de plus. La
-    // fraîcheur de `lastSeen` s'en charge, et cinq minutes plus tard le membre
-    // apparaît hors ligne, ce qui est exact.
+    // fraîcheur de `lastSeen` s'en charge, et le membre apparaît hors ligne un
+    // peu plus tard, ce qui est exact.
     const verrou = document.getElementById('pin-lock-view');
     if (verrou && verrou.style.display !== 'none' && verrou.offsetParent !== null) return;
     // `pwa` décrit la session en cours ; `pwaEver` ne retombe jamais à faux,
@@ -15563,9 +15573,9 @@ function _startPresenceHeartbeat() {
   _presenceHeartbeat = setInterval(ping, PRESENCE_BATTEMENT_MS);
 
   // Un onglet en arrière-plan n'a personne devant lui, et continuait pourtant
-  // d'écrire toutes les deux minutes. Sur le forfait Spark le quota d'écritures
-  // est partagé par tout le projet : un onglet oublié consommait 720 écritures
-  // par jour pour informer que personne ne regarde. Le battement s'arrête donc
+  // d'écrire à chaque battement. Sur le forfait Spark le quota d'écritures est
+  // partagé par tout le projet : un onglet oublié consommait 720 écritures par
+  // jour pour informer que personne ne regarde. Le battement s'arrête donc
   // quand l'onglet passe en arrière-plan, et repart avec un relevé immédiat
   // quand il revient — la présence est donc juste dès la première seconde.
   document.addEventListener('visibilitychange', () => {
