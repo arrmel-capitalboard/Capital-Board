@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260829g';
+const APP_VERSION = '20260829h';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -513,23 +513,11 @@ async function loadAllUserData(uid) {
     return;
   }
   if (!db) return;
-  // Seules les collections que le tableau de bord affiche d'emblée sont lues
-  // ici. Les autres arrivent à l'ouverture de leur page — voir `_DONNEES_PAGE`.
-  // Cinq lectures au démarrage au lieu de quatorze : un membre qui consulte son
-  // PEA et repart ne paie plus les dépenses, les livrets ni le nominatif.
-  //
-  // `alerts` fait partie des essentielles bien qu'elle ait sa propre page : le
-  // tableau principal affiche le nombre d'alertes par ligne (l'icône de cloche).
+  // Trois documents lourds, plus un pour tout le reste. Les autres collections
+  // arrivent à l'ouverture de leur page — voir `_DONNEES_PAGE`.
   await Promise.all([
-    ..._COLS_ESSENTIELLES.map(col => _chargerCol(uid, col)),
-    (async () => {
-      try {
-        const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', 'settings'));
-        _localCache[uid + '_settings'] = snap.exists() ? snap.data() : { pushRecap: true };
-      } catch (e) {
-        _localCache[uid + '_settings'] = { pushRecap: true };
-      }
-    })(),
+    ..._COLS_LOURDES.map(col => _chargerCol(uid, col)),
+    _chargerAnnexes(uid),
   ]);
   // Appliquer préférence en attente (premier compte)
   if (window._pendingRecapPref !== undefined) {
@@ -553,21 +541,101 @@ async function loadAllUserData(uid) {
 // parcourent (`checkPriceAlerts`), le calendrier des resultats en tire ses
 // symboles, et les logos sont prechauffes avec ceux du portefeuille. La rendre
 // paresseuse ferait taire des alertes sans que rien ne le signale.
-const _COLS_ESSENTIELLES = ['portfolio', 'transactions', 'versements', 'alerts', 'watchlist'];
+// Les trois collections qui grossissent avec le temps gardent chacune leur
+// document : une position, une transaction, un versement s'ajoutent sans fin, et
+// Firestore plafonne un document à 1 Mio.
+const _COLS_LOURDES = ['portfolio', 'transactions', 'versements'];
+
+// Tout le reste tient dans un seul document, `users/{uid}/data/annexes`. Six
+// documents pour quelques dizaines de lignes chacun, c'était six lectures à
+// chaque ouverture de l'application — le prix d'un document se paie au document,
+// pas à l'octet.
+//
+// `watchlist` et `alerts` en font partie bien qu'elles aient leur page : les
+// alertes de prix parcourent la watchlist, le calendrier des résultats en tire
+// ses symboles, et le tableau principal affiche le nombre d'alertes par ligne.
+// `divIgnored`, `nominatif` et `trCohort` y sont pour rien — elles arrivent
+// gratuitement, puisque le document est lu de toute façon.
+const _COLS_ANNEXES = ['watchlist', 'alerts', 'divIgnored', 'nominatif', 'trCohort'];
+
+// Réglages personnels. Traités à part des listes ci-dessus : c'est un objet, pas
+// un tableau, et il vit sous la même clé dans le document d'annexes.
+const _ANNEXE_SETTINGS = 'settings';
+
+// Vrai une fois le document d'annexes lu ou reconstruit : c'est ce qui autorise
+// les écritures à n'y toucher qu'un champ.
+let _annexesPretes = false;
+
+/**
+ * Lit le document d'annexes, ou le reconstruit à partir des anciens.
+ *
+ * Aucune migration de masse : un compte créé avant ce changement n'a pas
+ * d'`annexes`, on lit alors ses six documents comme avant et on écrit le
+ * document unique dans la foulée. La session suivante ne coûte plus qu'une
+ * lecture. Les anciens documents sont laissés en place — ils ne coûtent rien
+ * tant qu'on ne les lit pas, et ils sont le filet si quelque chose cloche ici.
+ */
+async function _chargerAnnexes(uid) {
+  // Remis a zero a chaque compte : sans ca, un second compte connecte dans le
+  // meme onglet heriterait du drapeau du premier et ecrirait dans un document
+  // qu'il n'a pas encore lu.
+  _annexesPretes = false;
+  const defauts = () => {
+    _COLS_ANNEXES.forEach(col => { if (_localCache[uid + '_' + col] === undefined) _localCache[uid + '_' + col] = []; });
+    if (_localCache[uid + '_settings'] === undefined) _localCache[uid + '_settings'] = { pushRecap: true };
+  };
+
+  try {
+    const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', 'annexes'));
+    if (snap.exists()) {
+      const d = snap.data() || {};
+      _COLS_ANNEXES.forEach(col => { _localCache[uid + '_' + col] = Array.isArray(d[col]) ? d[col] : []; });
+      _localCache[uid + '_settings'] = (d[_ANNEXE_SETTINGS] && typeof d[_ANNEXE_SETTINGS] === 'object')
+        ? d[_ANNEXE_SETTINGS] : { pushRecap: true };
+      _annexesPretes = true;
+      return;
+    }
+  } catch (e) {
+    // Lecture impossible : on tente les anciens documents plutôt que de partir
+    // avec des listes vides, qu'une sauvegarde figerait ensuite.
+    console.warn('[annexes] lecture échouée, repli sur les anciens documents :', e && e.message);
+  }
+
+  // Premier passage sur ce compte : reconstruction depuis l'ancien découpage.
+  await Promise.all([
+    ..._COLS_ANNEXES.map(col => _chargerCol(uid, col)),
+    (async () => {
+      try {
+        const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', 'settings'));
+        _localCache[uid + '_settings'] = snap.exists() ? snap.data() : { pushRecap: true };
+      } catch (e) {
+        _localCache[uid + '_settings'] = { pushRecap: true };
+      }
+    })(),
+  ]);
+  defauts();
+
+  const doc = { [_ANNEXE_SETTINGS]: _localCache[uid + '_settings'] };
+  _COLS_ANNEXES.forEach(col => { doc[col] = _localCache[uid + '_' + col]; });
+  try {
+    await setFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', 'annexes'), doc);
+    _annexesPretes = true;
+  } catch (e) {
+    // L'écriture a échoué : on reste sur l'ancien découpage pour cette session,
+    // et les sauvegardes continueront d'écrire les documents séparés.
+    console.warn('[annexes] regroupement non écrit :', e && e.message);
+  }
+}
 
 // Ce dont chaque page a besoin, en plus des essentielles. Une page absente de
 // cette table n'a besoin de rien de plus. **Toute page qui lit une collection
 // paresseuse doit figurer ici** — sans quoi elle s'affichera vide, sans erreur.
 const _DONNEES_PAGE = {
-  // L'Activite permet de supprimer un dividende, ce qui pose une pierre
-  // tombale dans `divIgnored` : sans la liste existante, la sauvegarde
-  // l'ecraserait et les suppressions precedentes reviendraient.
-  activite:    ['divIgnored'],
   benchmark:   ['dailyValues'],
   graphiques:  ['dailyValues'],
-  bilan:       ['dailyValues', 'trCohort'],
-  dividendes:  ['divIgnored', 'nominatif'],
-  avantages:   ['nominatif'],
+  bilan:       ['dailyValues'],
+  // `divIgnored`, `nominatif` et `trCohort` ne figurent plus ici : le document
+  // d'annexes les apporte au chargement, sans lecture supplémentaire.
   depenses:    ['depenses'],
   // La page Livrets projette l'epargne a partir des depenses mensuelles
   // (`_livDepenseMensuelle`) : les deux collections lui sont necessaires.
@@ -616,11 +684,7 @@ async function assurerDonnees(...cols) {
 
 /** Charge tout, sans exception. Pour l'export : il doit être complet. */
 async function assurerToutesLesDonnees() {
-  await assurerDonnees(
-    ..._COLS_ESSENTIELLES,
-    'watchlist', 'dailyValues', 'trCohort', 'divIgnored', 'nominatif',
-    'depenses', 'livrets', '@recap', '@weeklyRecap',
-  );
+  await assurerDonnees('dailyValues', 'depenses', 'livrets', '@recap', '@weeklyRecap');
 }
 
 function getUserSettings(uid) {
@@ -638,10 +702,15 @@ function getWeeklyRecap(uid) {
 async function saveUserSettings(uid, settings) {
   const current = getUserSettings(uid);
   const merged  = { ...current, ...settings };
-  _localCache[(uid||currentUser) + '_settings'] = merged;
+  const u = uid || currentUser;
+  _localCache[u + '_settings'] = merged;
   if (window.IS_DEMO) return;
   if (!db) return;
-  await setFirestoreDoc(firestoreDoc(db, 'users', uid||currentUser, 'data', 'settings'), merged);
+  if (_annexesPretes) {
+    await setFirestoreDoc(firestoreDoc(db, 'users', u, 'data', 'annexes'), { settings: merged }, { merge: true });
+    return;
+  }
+  await setFirestoreDoc(firestoreDoc(db, 'users', u, 'data', 'settings'), merged);
 }
 
 // Lecture synchrone depuis le cache
@@ -877,6 +946,17 @@ function _fsWrite(uid, col, data) {
   _localCache[uid + '_' + col] = data;
   if (window.IS_DEMO) return;
   if (!db) return;
+  // Une annexe ne touche qu'un champ du document commun. `merge` est
+  // indispensable : sans lui, sauvegarder la watchlist effacerait les alertes.
+  //
+  // Tant que le regroupement n'a pas abouti (première session d'un compte, ou
+  // écriture refusée), on continue d'écrire l'ancien document séparé — sans
+  // quoi la donnée partirait dans un document que personne ne relit.
+  if (_annexesPretes && _COLS_ANNEXES.includes(col)) {
+    setFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', 'annexes'), { [col]: data }, { merge: true })
+      .catch(e => console.warn('Firestore write error:', col, e));
+    return;
+  }
   setFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', col), { items: data })
     .catch(e => console.warn('Firestore write error:', col, e));
 }
