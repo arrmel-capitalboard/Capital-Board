@@ -23,6 +23,7 @@ const securitytest = require('./lib/securitytest');
 const burpaudit = require('./lib/burp-audit');
 const securitypanel = require('./lib/securitypanel');
 const vmstatus = require('./lib/vmstatus');
+const serviceshealth = require('./lib/serviceshealth');
 const quota = require('./lib/quota');
 const { getDb, isConfigured } = require('./firebase');
 
@@ -69,6 +70,7 @@ client.once(Events.ClientReady, (c) => {
   burpaudit.watch(c);
   securitypanel.surveiller(c);
   vmstatus.start(c);
+  serviceshealth.start(c);
   // Après les autres : chacun déclare son coût au démarrage, la projection
   // n'a de sens qu'une fois toutes les déclarations posées.
   if (isConfigured()) quota.surveiller(c, getDb());

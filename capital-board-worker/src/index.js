@@ -2645,68 +2645,6 @@ export default {
         return json({ ok: true, sent, failed, total: tokens.length });
       }
 
-      // ── POST /admin/security-stats ──────────────────────────────────────
-      // Chiffres agrégés pour la page « Posture sécurité » de l'admin.
-      // Se limite volontairement aux collections top-level (roles, totpSecrets,
-      // auditLog) : users/{uid}/data/{docId} est une sous-collection par
-      // utilisateur, sans requête de groupe côté firestoreList — l'agréger
-      // (options 2FA par PIN, appareils de confiance…) demanderait une vraie
-      // requête de groupe de collection, pas ajoutée ici pour rester sur du
-      // code déjà éprouvé ailleurs dans ce fichier.
-      if (url.pathname === '/admin/security-stats' && request.method === 'POST') {
-        const { idToken } = await request.json();
-        const user = await verifyIdToken(idToken, env);
-        if (!user || user.localId !== env.ADMIN_UID) return json({ error: 'forbidden' }, 403);
-
-        const last7Dates = Array.from({ length: 7 }, (_, i) =>
-          new Date(Date.now() - i * 24 * 60 * 60 * 1000).toISOString().slice(0, 10));
-
-        const [roles, totpSecrets, auditDocs, apiUsageDocs] = await Promise.all([
-          firestoreList('roles', env),
-          firestoreList('totpSecrets', env).catch(() => []),
-          firestoreList('auditLog', env).catch(() => []),
-          Promise.all(last7Dates.map((date) =>
-            firestoreGet(`apiUsage/${date}`, env).then((d) => ({
-              date,
-              tavilyCalls: fsNum(d, 'tavilyCalls') || 0,
-              mistralCalls: fsNum(d, 'mistralCalls') || 0,
-            })).catch(() => ({ date, tavilyCalls: 0, mistralCalls: 0 })))),
-        ]);
-
-        const totalUsers = roles.length;
-        const totpEnrolled = totpSecrets.length;
-
-        const now = Date.now();
-        const DAY = 24 * 60 * 60 * 1000;
-        const byAction7d = {};
-        let last24h = 0, last7d = 0;
-        const recent = [];
-        for (const d of auditDocs) {
-          const atStr = d.fields?.at?.timestampValue;
-          const at = atStr ? Date.parse(atStr) : NaN;
-          const action = fsStr(d, 'action') || '?';
-          if (!Number.isNaN(at) && now - at <= 7 * DAY) {
-            last7d++;
-            byAction7d[action] = (byAction7d[action] || 0) + 1;
-            if (now - at <= DAY) last24h++;
-          }
-          recent.push({ action, details: fsStr(d, 'details') || '', by: fsStr(d, 'by') || '', ip: fsStr(d, 'ip') || '', at: atStr || null });
-        }
-        recent.sort((a, b) => (b.at || '').localeCompare(a.at || ''));
-
-        return json({
-          ok: true,
-          totalUsers,
-          totpEnrolled,
-          totpAdoptionPct: totalUsers ? Math.round((totpEnrolled / totalUsers) * 100) : 0,
-          auditLast24h: last24h,
-          auditLast7d: last7d,
-          auditByAction7d: byAction7d,
-          auditRecent: recent.slice(0, 30),
-          apiUsage7d: apiUsageDocs.reverse(), // du plus ancien au plus récent
-        });
-      }
-
       // ── POST /admin/test-push ───────────────────────────────────────────
       // Envoie une push FCM (PWA) à UN SEUL utilisateur, ciblé par email.
       // Sert à vérifier que la diffusion arrive bien en notification système.

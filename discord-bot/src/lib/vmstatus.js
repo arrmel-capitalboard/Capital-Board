@@ -44,10 +44,10 @@ const path = require('node:path');
 const { execFile } = require('node:child_process');
 const { EmbedBuilder } = require('discord.js');
 
-// Salon où le relevé est affiché : celui de la sécurité, qui ne se vide pas
-// tout seul — contrairement au salon des analyses, dont le ménage horaire
-// emporterait le message.
-const SALON = '1541530997005353030';
+// Salon de supervision, avec l'état des services : c'est là qu'on regarde
+// quand on se demande si quelque chose est tombé. Pas le salon des analyses,
+// dont le ménage horaire emporterait le message.
+const SALON = '1543303590486089809';
 
 // Identifiant du message à réécrire. Fichier local et non Firestore : c'est
 // précisément ce qu'on vient d'en sortir.

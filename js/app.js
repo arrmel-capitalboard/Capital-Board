@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260829i';
+const APP_VERSION = '20260829j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -15786,62 +15786,6 @@ async function _bumpActivity(uid) {
 
 function isAdmin() { return currentUser === ADMIN_UID; }
 
-// Chiffres agrégés (adoption 2FA, activité auditLog) : POST /admin/security-stats,
-// gardé côté Worker (Admin SDK) parce que les collections agrégées (roles,
-// totpSecrets, auditLog en entier) ne sont pas lisibles en liste par un client,
-// même admin, sous les règles Firestore actuelles.
-async function _refreshAdminSecurityStats() {
-  const box = document.getElementById('admin-security-stats');
-  if (!box) return;
-  try {
-    const idToken = await fbAuth.currentUser.getIdToken();
-    const res = await fetch(`${WORKER_URL}/admin/security-stats`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken }),
-    });
-    const d = await res.json();
-    if (!res.ok || !d.ok) { box.textContent = d.error || 'Erreur de chargement.'; return; }
-    const actions = Object.entries(d.auditByAction7d || {})
-      .sort((a, b) => b[1] - a[1])
-      .map(([action, n]) => `<span style="display:inline-block;background:var(--s3);border-radius:6px;padding:3px 8px;margin:0 6px 6px 0;font-family:var(--mono)">${_escapeHtmlChat(action)} · ${n}</span>`)
-      .join('') || '<span style="font-style:italic">Aucune activité.</span>';
-    // Seuils d'alerte Discord côté Worker (TAVILY_ALERT_THRESHOLD / MISTRAL_ALERT_THRESHOLD
-    // dans scripts/daily-recap.js) — repris ici juste pour colorer, pas pour décider quoi que ce soit.
-    const TAVILY_THRESHOLD = 200, MISTRAL_THRESHOLD = 100;
-    const usageRows = (d.apiUsage7d || []).map((u) => {
-      const tColor = u.tavilyCalls > TAVILY_THRESHOLD ? '#ff4d6a' : 'var(--text2)';
-      const mColor = u.mistralCalls > MISTRAL_THRESHOLD ? '#ff4d6a' : 'var(--text2)';
-      return `<tr><td style="padding:4px 10px 4px 0;color:var(--text3)">${_escapeHtmlChat(u.date)}</td>` +
-        `<td style="padding:4px 10px;color:${tColor};font-family:var(--mono)">${u.tavilyCalls}</td>` +
-        `<td style="padding:4px 0;color:${mColor};font-family:var(--mono)">${u.mistralCalls}</td></tr>`;
-    }).join('') || '<tr><td style="font-style:italic;color:var(--text3)">Aucune donnée.</td></tr>';
-
-    box.innerHTML =
-      `<div style="display:flex;gap:32px;flex-wrap:wrap">` +
-        `<div style="flex:1 1 260px;min-width:0">` +
-          `<div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(120px,1fr));gap:10px;margin-bottom:16px">` +
-            `<div><div style="font-size:20px;font-weight:800;color:var(--text)">${d.totalUsers}</div><div>Comptes</div></div>` +
-            `<div><div style="font-size:20px;font-weight:800;color:var(--text)">${d.totpAdoptionPct}%</div><div>2FA (TOTP) — ${d.totpEnrolled}/${d.totalUsers}</div></div>` +
-            `<div><div style="font-size:20px;font-weight:800;color:var(--text)">${d.auditLast24h}</div><div>Événements auditLog (24h)</div></div>` +
-          `</div>` +
-          `<div style="margin-bottom:6px;font-weight:600;color:var(--text2)">Activité par type (7 j) :</div>` +
-          `<div>${actions}</div>` +
-        `</div>` +
-        `<div style="flex:1 1 280px;min-width:0">` +
-          `<div style="margin-bottom:6px;font-weight:600;color:var(--text2)">Quota API — récap quotidien (7 j) :</div>` +
-          `<table style="width:100%;font-size:11px;border-collapse:collapse"><thead><tr>` +
-            `<th style="text-align:left;padding:4px 10px 4px 0;color:var(--text3)">Date</th>` +
-            `<th style="text-align:left;padding:4px 10px;color:var(--text3)">Tavily</th>` +
-            `<th style="text-align:left;padding:4px 0;color:var(--text3)">Mistral</th>` +
-          `</tr></thead><tbody>${usageRows}</tbody></table>` +
-        `</div>` +
-      `</div>`;
-  } catch (e) {
-    box.textContent = 'Erreur réseau.';
-  }
-}
-
 // ─── PAGE ADMIN ──────────────────────────────────────────────────
 // ─── ÉTAT SERVEUR ────────────────────────────────────────────────
 // Le relevé de la VM s'affichait ici, en direct, alimenté par `ops/vmStatus`
@@ -15865,8 +15809,6 @@ async function renderAdminPage() {
   if (!isAdmin()) { showPage('portfolio'); return; }
   let cfg = {};
   try { cfg = await _getAppConfig(); } catch (_) {}
-
-  _refreshAdminSecurityStats();
 
   // PIN
   const pinT = document.getElementById('admin-pin-toggle');
@@ -15914,7 +15856,6 @@ async function renderAdminPage() {
   if (tourT)   tourT.checked   = cfg.onboardingTour === true;
   _adminOnboardingStatus();
   adminLoadScheduled();
-  _startHealthAuto();
 }
 
 async function adminToggleFeature(key, el) {
@@ -16949,65 +16890,20 @@ async function _adminAuthPost(path, payload) {
   });
   return res.json();
 }
-// Lance l'affichage temps réel de l'état des services : charge tout de suite
-// puis rafraîchit tant que la page Admin est visible (auto-stop sinon).
-function _startHealthAuto() {
-  adminCheckHealth(true);
-  if (window._healthTimer) { clearInterval(window._healthTimer); window._healthTimer = null; }
-  window._healthTimer = setInterval(() => {
-    const p = document.getElementById('page-admin');
-    if (!p || !p.classList.contains('active') || !isAdmin()) {
-      clearInterval(window._healthTimer); window._healthTimer = null; return;
-    }
-    adminCheckHealth(true);
-  }, 20000);
-}
-async function adminCheckHealth(silent) {
-  const box = document.getElementById('admin-health');
-  if (!box) return;
-  if (!silent || box.textContent === '—' || !box.textContent) box.innerHTML = 'Vérification…';
-  try {
-    const [r, discordSnap] = await Promise.all([
-      _adminAuthPost('/admin/health', {}),
-      getFirestoreDoc(firestoreDoc(db, 'config', 'discordStats')).catch(() => null),
-    ]);
-    if (!r || !r.services) { box.textContent = r && r.error ? r.error : 'Erreur.'; return; }
-    const dot = s => s === 'ok' ? '<span style="color:var(--positive)">● OK</span>' : '<span style="color:var(--negative)">● KO</span>';
-    const s = r.services;
-    // Heartbeat écrit par le bot toutes les 60s (discord-bot/src/lib/ticketstats.js) :
-    // pas de vraie sonde, mais une absence de mise à jour récente veut dire
-    // que le process est down (ou n'a jamais tourné).
-    const dUpdated = discordSnap && discordSnap.exists() ? discordSnap.data().updatedAt : null;
-    const discordOk = typeof dUpdated === 'number' && (Date.now() - dUpdated) < 3 * 60000;
-    const discordLabel = dUpdated ? dot(discordOk ? 'ok' : 'ko') : '<span style="color:var(--text3)">● Inconnu</span>';
-    box.innerHTML = [
-      'Worker (API) ' + dot('ok'),
-      'Firestore ' + dot(s.firestore),
-      'Google / FCM ' + dot(s.google),
-      'Email (Resend) ' + dot(s.email),
-      'Cours (Yahoo) ' + dot(s.yahoo),
-      'Favoris (Instagram) ' + dot(s.instagram),
-      // Filtrage des IP douteuses sur /login. Fail-open par conception : un KO
-      // ne casse pas la connexion, il veut dire qu'elle n'est plus filtrée.
-      'Filtrage IP (AbuseIPDB) ' + dot(s.abuseipdb),
-      'Bot Discord ' + discordLabel,
-    ].map(x => '<div style="display:flex;justify-content:space-between;padding:7px 0;border-bottom:1px solid var(--border)"><span>' + x.split(' <')[0] + '</span><span>' + x.slice(x.indexOf('<')) + '</span></div>').join('');
-    // Le motif de l'échec Meta vaut mieux qu'un point rouge : c'est lui qui dit
-    // s'il faut régénérer le jeton ou retirer un compte de la liste.
-    if (s.instagram !== 'ok' && s.instagramError) {
-      box.innerHTML += '<div style="padding:7px 0;font-size:12px;color:var(--text3)">'
-        + _escapeHtmlChat(s.instagramError) + '</div>';
-    }
-    // Même logique pour AbuseIPDB : « clé révoquée » et « quota du jour épuisé »
-    // ne se soignent pas pareil, un point rouge seul ne suffit pas à trancher.
-    if (s.abuseipdb !== 'ok' && s.abuseipdbError) {
-      box.innerHTML += '<div style="padding:7px 0;font-size:12px;color:var(--text3)">'
-        + 'AbuseIPDB : ' + _escapeHtmlChat(s.abuseipdbError) + '</div>';
-    }
-    const auto = document.getElementById('admin-health-auto');
-    if (auto) auto.textContent = '· mis à jour à ' + new Date().toLocaleTimeString('fr-FR');
-  } catch (e) { box.textContent = 'Worker injoignable.'; }
-}
+// ─── ÉTAT DES SERVICES ───────────────────────────────────────────
+// Le bilan (Worker, Firestore, Google/FCM, email, cours, favoris, filtrage IP,
+// bot) s'affichait ici, rafraîchi toutes les vingt secondes tant que la page
+// restait ouverte. Chaque passage lisait `config/discordStats` : 180 lectures
+// Firestore par heure de panneau ouvert, pour savoir si le bot répond encore.
+//
+// Il est passé dans le salon de supervision de Discord, où le bot le réécrit
+// toutes les cinq minutes (`discord-bot/src/lib/serviceshealth.js`). Une
+// supervision qu'il faut penser à ouvrir ne sert à rien : ce qu'on attend d'un
+// état de service, c'est qu'il vienne à nous quand il vire au rouge.
+//
+// La route `/admin/health` du Worker n'a pas bougé : c'est le bot qui l'appelle
+// désormais, avec un jeton forgé par la clé de service.
+
 function adminBroadcastPush() {
   if (!isAdmin()) return;
   const body = (document.getElementById('bc-push-body').value || '').trim();

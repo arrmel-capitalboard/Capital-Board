@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260829i">
+<link rel="stylesheet" href="css/style.css?v=20260829j">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -1331,20 +1331,9 @@
         <div class="admin-section-head">
           <div class="admin-section-bar"></div>
           <div class="admin-section-title">Sécurité</div>
-          <div class="admin-section-badge">2</div>
+          <div class="admin-section-badge">1</div>
         </div>
         <div class="admin-section-grid">
-
-          <div class="admin-card wide">
-            <div class="admin-card-head">
-              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"/></svg></div>
-              <div>
-                <div class="admin-card-title">Posture sécurité</div>
-                <div class="admin-card-desc">Adoption de la 2FA, activité récente (auditLog) et quota API (Tavily/Mistral) — 7 derniers jours.</div>
-              </div>
-            </div>
-            <div id="admin-security-stats" style="font-size:12px;color:var(--text3);margin-top:10px">Chargement…</div>
-          </div>
 
           <div class="admin-card">
             <div class="admin-card-head">
@@ -1369,7 +1358,7 @@
         <div class="admin-section-head">
           <div class="admin-section-bar"></div>
           <div class="admin-section-title">Accès &amp; disponibilité</div>
-          <div class="admin-section-badge">4</div>
+          <div class="admin-section-badge">3</div>
         </div>
         <div class="admin-section-grid">
 
@@ -1405,18 +1394,6 @@
               </label>
             </div>
             <div id="admin-signup-status" style="margin-top:14px;font-size:12px;color:var(--text3)">Chargement…</div>
-          </div>
-
-          <div class="admin-card">
-            <div class="admin-card-head">
-              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg></div>
-              <div style="flex:1">
-                <div class="admin-card-title">État des services</div>
-                <div class="admin-card-desc">Firestore, Google/FCM, email, cours. <span id="admin-health-auto" style="color:var(--text3)">· actualisation auto</span></div>
-              </div>
-              <button class="pf-btn ghost" onclick="adminCheckHealth()" style="font-size:11.5px;flex-shrink:0">Actualiser</button>
-            </div>
-            <div id="admin-health" style="font-size:12.5px;color:var(--text3);font-family:var(--mono);margin-top:10px">—</div>
           </div>
 
           <div class="admin-card wide">
@@ -3824,11 +3801,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260829i"></script>
+<script src="js/app.js?v=20260829j"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260829i"></script>
+<script src="js/onboarding.js?v=20260829j"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260829i"></script>
+<script src="js/import.js?v=20260829j"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
