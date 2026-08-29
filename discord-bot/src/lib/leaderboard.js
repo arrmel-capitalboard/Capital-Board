@@ -23,6 +23,7 @@ const crypto = require('node:crypto');
 const { EmbedBuilder } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
 const { fetchPrice } = require('./prices');
+const quota = require('./quota');
 
 const CHANNEL = '1529424510640455781';
 // Le proxy média de Discord refuse les gifs trop lourds (l'original de 8,9 Mio
@@ -239,6 +240,9 @@ async function publish(client, embed) {
 
 /** Recalcule et met à jour l'embed. Retourne le nombre de participants. */
 async function refresh(client) {
+  // Un classement n'est essentiel a personne, et son calcul lit le portefeuille
+  // de chaque membre : quota epuise, c'est le premier a devoir se taire.
+  if (quota.estEpuise()) return 0;
   const rows = await collect();
   await publish(client, buildEmbed(rows));
   console.log(`[leaderboard] ${rows.length} participant(s)`);
@@ -250,7 +254,9 @@ function start(client) {
     console.log('[leaderboard] désactivé (Firestore non configuré)');
     return;
   }
-  const run = () => refresh(client).catch((e) => console.error('[leaderboard] erreur :', e.message));
+  const run = () => refresh(client).catch((e) => {
+    if (!quota.signaler(client, e, 'leaderboard')) console.error('[leaderboard] erreur :', e.message);
+  });
   run();
   setInterval(run, REFRESH_INTERVAL);
 }

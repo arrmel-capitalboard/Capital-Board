@@ -15,6 +15,7 @@
 const { EmbedBuilder } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
 const config = require('../config');
+const quota = require('./quota');
 
 const COL = 'opsAlerts';
 const col = () => getDb().collection(COL);
@@ -61,8 +62,13 @@ function start(client) {
         if (change.type !== 'added') continue;
         const doc = change.doc;
         if (doc.data().posteLe) continue;
+        // Pas de garde `estEpuise()` ici : `posteLe` est ce qui empeche de
+        // reposter la meme alerte au prochain demarrage. Se taire ferait
+        // doublonner l'alerte plutot que d'economiser une ecriture.
         poster(client, doc.id, doc.data())
-          .catch((e) => console.error('[ops-alerts] envoi :', e.message));
+          .catch((e) => {
+            if (!quota.signaler(client, e, 'ops-alerts')) console.error('[ops-alerts] envoi :', e.message);
+          });
       }
     },
     (err) => console.error('[ops-alerts] listener interrompu :', err.message),

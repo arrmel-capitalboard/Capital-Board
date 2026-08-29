@@ -36,6 +36,7 @@
 
 const { EmbedBuilder } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
+const quota = require('./quota');
 
 const COL = 'burpUploads';
 // Salon des analyses de trafic. Distinct du salon des scans de code : ces
@@ -96,7 +97,9 @@ function watch(client) {
           client.channels.fetch(RESULTAT_CHANNEL)
             .then((channel) => channel.send(etatPayload(data)))
             .then((msg) => doc.ref.update({ messageId: msg.id, channelId: msg.channelId }))
-            .catch((e) => console.error('[burp-audit] envoi état :', e.message));
+            .catch((e) => {
+              if (!quota.signaler(client, e, 'burp-audit')) console.error('[burp-audit] envoi état :', e.message);
+            });
           continue;
         }
 
@@ -118,7 +121,9 @@ function watch(client) {
             .then((channel) => channel.messages.fetch(data.pieceMessageId))
             .then((msg) => msg.edit({ attachments: [] }))
             .then(() => doc.ref.update({ pieceMessageId: null, pieceDetacheeLe: Date.now() }))
-            .catch((e) => console.error('[burp-audit] détachement de la capture :', e.message));
+            .catch((e) => {
+              if (!quota.signaler(client, e, 'burp-audit')) console.error('[burp-audit] détachement de la capture :', e.message);
+            });
         }
       }
     },
