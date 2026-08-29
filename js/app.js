@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260829f';
+const APP_VERSION = '20260829g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -513,43 +513,114 @@ async function loadAllUserData(uid) {
     return;
   }
   if (!db) return;
-  // Enregistrer l'email pour la recherche par email (gestion des rôles)
-  const _u = fbAuth.currentUser;
-  if (_u) setFirestoreDoc(firestoreDoc(db, 'users', uid), { email: _u.email }, { merge: true }).catch(() => {});
-  const cols = ['portfolio', 'transactions', 'versements', 'watchlist', 'dailyValues', 'alerts', 'trCohort', 'divIgnored', 'nominatif', 'depenses', 'livrets'];
-  await Promise.all(cols.map(async col => {
-    try {
-      const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', col));
-      _localCache[uid + '_' + col] = snap.exists() ? (snap.data().items || []) : [];
-    } catch(e) {
-      _localCache[uid + '_' + col] = [];
-    }
-  }));
-  // Charger les settings
-  try {
-    const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', 'settings'));
-    _localCache[uid + '_settings'] = snap.exists() ? snap.data() : { pushRecap: true };
-  } catch(e) {
-    _localCache[uid + '_settings'] = { pushRecap: true };
-  }
+  // Seules les collections que le tableau de bord affiche d'emblée sont lues
+  // ici. Les autres arrivent à l'ouverture de leur page — voir `_DONNEES_PAGE`.
+  // Cinq lectures au démarrage au lieu de quatorze : un membre qui consulte son
+  // PEA et repart ne paie plus les dépenses, les livrets ni le nominatif.
+  //
+  // `alerts` fait partie des essentielles bien qu'elle ait sa propre page : le
+  // tableau principal affiche le nombre d'alertes par ligne (l'icône de cloche).
+  await Promise.all([
+    ..._COLS_ESSENTIELLES.map(col => _chargerCol(uid, col)),
+    (async () => {
+      try {
+        const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', 'settings'));
+        _localCache[uid + '_settings'] = snap.exists() ? snap.data() : { pushRecap: true };
+      } catch (e) {
+        _localCache[uid + '_settings'] = { pushRecap: true };
+      }
+    })(),
+  ]);
   // Appliquer préférence en attente (premier compte)
   if (window._pendingRecapPref !== undefined) {
     await saveUserSettings(uid, { pushRecap: window._pendingRecapPref });
     window._pendingRecapPref = undefined;
   }
-  // Charger le dernier récap quotidien + rapport hebdo (générés serveur)
-  try {
-    const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', 'recap'));
-    _localCache[uid + '_recap'] = snap.exists() ? snap.data() : null;
-  } catch(e) {
-    _localCache[uid + '_recap'] = null;
-  }
-  try {
-    const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', 'weeklyRecap'));
-    _localCache[uid + '_weeklyRecap'] = snap.exists() ? snap.data() : null;
-  } catch(e) {
-    _localCache[uid + '_weeklyRecap'] = null;
-  }
+}
+
+// ─── Chargement à la demande ───────────────────────────────────────────────
+//
+// Le forfait Spark accorde 50 000 lectures par jour à tout le projet. Charger
+// quatorze documents à chaque ouverture de l'application plafonnait le service
+// à environ 800 membres actifs — la moitié de ces documents pour des pages que
+// la plupart n'ouvrent jamais.
+//
+// Chaque collection n'est donc lue qu'au moment où une page en a besoin, et une
+// seule fois par session. Les accesseurs (`getLivrets`, `getDepenses`…) restent
+// synchrones : c'est `_runPageHook` qui garantit que la donnée est là avant que
+// le rendu ne commence.
+// `watchlist` en fait partie bien qu'elle ait sa page : les alertes de prix la
+// parcourent (`checkPriceAlerts`), le calendrier des resultats en tire ses
+// symboles, et les logos sont prechauffes avec ceux du portefeuille. La rendre
+// paresseuse ferait taire des alertes sans que rien ne le signale.
+const _COLS_ESSENTIELLES = ['portfolio', 'transactions', 'versements', 'alerts', 'watchlist'];
+
+// Ce dont chaque page a besoin, en plus des essentielles. Une page absente de
+// cette table n'a besoin de rien de plus. **Toute page qui lit une collection
+// paresseuse doit figurer ici** — sans quoi elle s'affichera vide, sans erreur.
+const _DONNEES_PAGE = {
+  // L'Activite permet de supprimer un dividende, ce qui pose une pierre
+  // tombale dans `divIgnored` : sans la liste existante, la sauvegarde
+  // l'ecraserait et les suppressions precedentes reviendraient.
+  activite:    ['divIgnored'],
+  benchmark:   ['dailyValues'],
+  graphiques:  ['dailyValues'],
+  bilan:       ['dailyValues', 'trCohort'],
+  dividendes:  ['divIgnored', 'nominatif'],
+  avantages:   ['nominatif'],
+  depenses:    ['depenses'],
+  // La page Livrets projette l'epargne a partir des depenses mensuelles
+  // (`_livDepenseMensuelle`) : les deux collections lui sont necessaires.
+  livrets:     ['livrets', 'depenses'],
+  patrimoine:  ['livrets', 'depenses'],
+  // `recap` n'y figure pas : `renderRecapPage` relit deja les deux documents
+  // a chaque ouverture (`_refreshRecap`), les declarer ici doublerait la note.
+};
+
+// Lectures en cours, pour qu'un double clic ne lise pas deux fois le même
+// document. La promesse est partagée, puis oubliée une fois résolue.
+const _colEnCours = {};
+
+/**
+ * Lit une collection de l'utilisateur, une seule fois par session.
+ *
+ * Le préfixe `@` désigne un document simple (récap) plutôt qu'une liste : les
+ * deux vivent au même endroit dans Firestore, seul le contenu diffère.
+ */
+function _chargerCol(uid, col) {
+  const doc = col.startsWith('@');
+  const nom = doc ? col.slice(1) : col;
+  const cle = uid + '_' + nom;
+  if (_localCache[cle] !== undefined) return Promise.resolve(_localCache[cle]);
+  if (_colEnCours[cle]) return _colEnCours[cle];
+  _colEnCours[cle] = (async () => {
+    try {
+      const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', nom));
+      _localCache[cle] = doc
+        ? (snap.exists() ? snap.data() : null)
+        : (snap.exists() ? (snap.data().items || []) : []);
+    } catch (e) {
+      _localCache[cle] = doc ? null : [];
+    }
+    delete _colEnCours[cle];
+    return _localCache[cle];
+  })();
+  return _colEnCours[cle];
+}
+
+/** Garantit que les collections nommées sont en mémoire avant de rendre. */
+async function assurerDonnees(...cols) {
+  if (window.IS_DEMO || !db || !currentUser || !cols.length) return;
+  await Promise.all(cols.map(col => _chargerCol(currentUser, col)));
+}
+
+/** Charge tout, sans exception. Pour l'export : il doit être complet. */
+async function assurerToutesLesDonnees() {
+  await assurerDonnees(
+    ..._COLS_ESSENTIELLES,
+    'watchlist', 'dailyValues', 'trCohort', 'divIgnored', 'nominatif',
+    'depenses', 'livrets', '@recap', '@weeklyRecap',
+  );
 }
 
 function getUserSettings(uid) {
@@ -689,9 +760,13 @@ async function _processDiscordLink(user) {
 //  Inclut : portfolio, transactions, versements, watchlist, dailyValues, settings.
 //  N'inclut PAS : email ni mot de passe (gérés par Firebase Auth).
 // ─────────────────────────────────────────────────────────────────
-function exportAllUserData() {
+async function exportAllUserData() {
   const uid = currentUser;
   if (!uid) { alert('Vous devez être connecté.'); return; }
+
+  // Un export doit être complet : avec le chargement à la demande, la watchlist
+  // et les valeurs quotidiennes peuvent ne jamais avoir été lues de la session.
+  await assurerToutesLesDonnees();
 
   const payload = {
     _meta: {
@@ -2117,12 +2192,32 @@ window.totpDisable = async function() {
 // Stockage: users/{uid}/data/security = { pinHash, pinSalt, enabled, createdAt }
 // Hash: SHA-256(salt + pin) via SubtleCrypto.
 
+// Trois documents décident si le verrou doit s'afficher : le drapeau global
+// (`config/app`), la dérogation admin et l'activation du code, tous deux dans
+// `users/{uid}/data/security`. Ils étaient relus à chaque contrôle — trois
+// lectures au démarrage, puis trois de plus à chaque re-verrouillage. Le verrou
+// tombe après cinq minutes d'inactivité : dix retours dans la journée, trente
+// lectures, pour des valeurs qui ne changent jamais en cours de session.
+//
+// Elles sont donc lues une fois et gardées en mémoire. Le cache est vidé quand
+// l'utilisateur change lui-même l'un de ces réglages, et à la déconnexion —
+// c'est-à-dire aux seuls moments où ils peuvent bouger.
+let _secCache = null;      // { uid, data } — `users/{uid}/data/security`
+let _cfgAppCache = null;   // `config/app`
+
+function _viderCacheSecurite() {
+  _secCache = null;
+  _cfgAppCache = null;
+}
+
 async function _loadSecurity(uid) {
+  if (_secCache && _secCache.uid === uid) return _secCache.data;
   try {
     const ref = firestoreDoc(db, 'users', uid, 'data', 'security');
     const snap = await getFirestoreDoc(ref);
-    if (!snap.exists()) return null;
-    return snap.data();
+    const data = snap.exists() ? snap.data() : null;
+    _secCache = { uid, data };
+    return data;
   } catch(_) { return null; }
 }
 
@@ -2151,14 +2246,16 @@ async function _setPinOptOut(uid, optOut) {
     adminOptOut: !!optOut,
     adminOptOutAt: optOut ? Date.now() : null,
   }, { merge: true });
+  _viderCacheSecurite();
 }
 
 // ─── Kill-switch PIN global (admin) ──────────────────────────────
 // Doc Firestore config/app { pinDisabled: bool }. Lu par tous, écrit par admin.
 async function _isPinGloballyDisabled() {
+  // Passe par `_getAppConfig`, donc par son cache : ce contrôle est refait a
+  // chaque re-verrouillage, toutes les cinq minutes d'inactivite.
   try {
-    const snap = await getFirestoreDoc(firestoreDoc(db, 'config', 'app'));
-    return !!(snap.exists() && snap.data().pinDisabled);
+    return !!(await _getAppConfig()).pinDisabled;
   } catch (e) {
     console.warn('[pin] lecture config globale échouée:', e);
     return false; // fail-safe : PIN reste actif
@@ -2170,14 +2267,28 @@ async function _setPinGloballyDisabled(disabled) {
 }
 
 // ─── Config globale app (config/app) — lu par tous, écrit par admin ────
+// Neuf appelants pour un seul document — maintenance, inscriptions ouvertes,
+// verrou global, sections activées, textes d'accueil — dont plusieurs au
+// démarrage. C'était autant de lectures pour la même valeur. Une par session
+// suffit : ce document ne change que quand l'admin le modifie, et il vide le
+// cache en le faisant.
+let _cfgAppEnCours = null;
+
 async function _getAppConfig() {
-  try {
-    const snap = await getFirestoreDoc(firestoreDoc(db, 'config', 'app'));
-    return snap.exists() ? (snap.data() || {}) : {};
-  } catch (e) {
-    console.warn('[config] lecture échouée:', e);
-    return {};
-  }
+  if (_cfgAppCache) return _cfgAppCache;
+  if (_cfgAppEnCours) return _cfgAppEnCours;
+  _cfgAppEnCours = (async () => {
+    try {
+      const snap = await getFirestoreDoc(firestoreDoc(db, 'config', 'app'));
+      _cfgAppCache = snap.exists() ? (snap.data() || {}) : {};
+    } catch (e) {
+      console.warn('[config] lecture échouée:', e);
+      _cfgAppCache = {};
+    }
+    _cfgAppEnCours = null;
+    return _cfgAppCache;
+  })();
+  return _cfgAppEnCours;
 }
 async function _setAppConfig(fields) {
   const ref = firestoreDoc(db, 'config', 'app');
@@ -2185,6 +2296,7 @@ async function _setAppConfig(fields) {
     updatedAt: Date.now(),
     updatedBy: currentUser || null,
   }, fields), { merge: true });
+  _cfgAppCache = null;
 }
 // Maintenance : bloque tout le monde sauf admin. Défaut : off.
 async function _isMaintenance() { const c = await _getAppConfig(); return !!c.maintenance; }
@@ -4693,7 +4805,12 @@ const PEA_TAB_ICONS = {
 
 // Rendu différé propre à une page. Extrait des trois fonctions de navigation
 // qui en avaient chacune une copie.
-function _runPageHook(id) {
+async function _runPageHook(id) {
+  // La page ne peut pas se rendre avant que ses données soient là : depuis le
+  // chargement à la demande, la moitié des collections n'est lue qu'ici.
+  const besoins = _DONNEES_PAGE[id];
+  if (besoins) await assurerDonnees(...besoins);
+
   if (id === 'activite')    renderActivite();
   if (id === 'graphiques')  initCharts();
   if (id === 'recap')       renderRecapPage();
@@ -12702,6 +12819,9 @@ function _dedupeDividendTxs(user) {
 // Détection + enregistrement automatique des dividendes versés (date passée),
 // indépendant de l'ouverture de la page Dividendes. Appelé au démarrage de l'app.
 async function _autoLogDividends() {
+  // Consulte `divIgnored` (via `isDivIgnored`) : sans cette liste, les
+  // dividendes supprimes a la main seraient recrees au chargement suivant.
+  await assurerDonnees('divIgnored');
   if (window.IS_DEMO || !currentUser) return;
   try {
     const removed = _dedupeDividendTxs(currentUser);
@@ -15325,6 +15445,9 @@ function _detachUserListeners() {
   try { if (_supportPresenceUnsub) { _supportPresenceUnsub(); _supportPresenceUnsub = null; } } catch(_) {}
   try { if (_supportThreadDocUnsub) { _supportThreadDocUnsub(); _supportThreadDocUnsub = null; } } catch(_) {}
   try { if (_supportBadgeUnsub) { _supportBadgeUnsub(); _supportBadgeUnsub = null; } } catch(_) {}
+  // Les reglages du verrou et la config globale sont mis en cache pour la
+  // session : un autre compte ne doit pas heriter de ceux du precedent.
+  try { _viderCacheSecurite(); } catch(_) {}
 }
 
 // Sons chat via Web Audio API (pas de fichier externe).
@@ -15654,8 +15777,16 @@ let _vmUnsub = null, _vmBattement = null, _vmDernier = null, _vmErreur = null, _
 // pour des mesures que personne ne lit. Le panel pose donc une demande à
 // échéance, repoussée tant qu'il est ouvert — un onglet fermé brutalement fait
 // retomber la VM en cadence lente tout seul, sans rien avoir à nettoyer.
-const VM_DEMANDE_MS = 20000;   // on repousse toutes les 20 s…
-const VM_VALIDITE_MS = 45000;  // …une échéance à 45 s, deux battements de marge
+// Même principe que le bail de présence : une échéance longue, repoussée bien
+// avant son terme. À 20 s de cadence pour 45 s d'échéance, la demande coûtait à
+// elle seule 180 écritures par heure de panneau ouvert — pour dire une chose
+// qui ne change pas tant qu'on regarde. À 4 min pour 10 min d'échéance, c'est
+// 15 par heure, et un panneau fermé brutalement retombe en cadence lente au
+// bout de dix minutes au lieu de quarante-cinq secondes. Le seul effet visible
+// de ce délai : la VM continue d'écrire vite un moment après la fermeture,
+// ce que le contrôle de péremption côté VM borne déjà.
+const VM_DEMANDE_MS = 240000;   // on repousse toutes les 4 min…
+const VM_VALIDITE_MS = 600000;  // …une échéance à 10 min, deux battements de marge
 
 /** Péremption jugée sur la cadence annoncée par la VM, pas sur une constante. */
 const _vmSeuilPerime = (d) => Math.max(8000, (Number(d?.cadenceMs) || 60000) * 5);
@@ -16204,10 +16335,26 @@ function _renderAdminUsersModal() {
   box.innerHTML = html;
 }
 
-async function renderAdminUsers() {
+// Trois collections lues en entier — `roles`, `presence`, `supportThreads` —
+// plus un appel au Worker. C'est trois lectures Firestore par membre inscrit, à
+// chaque ouverture du panneau : à mille membres, trois mille lectures pour
+// afficher une liste qu'on ne regarde pas toujours. On ne les paie donc qu'à la
+// demande, et le résultat sert jusqu'à la fin de la session.
+//
+// `force` distingue les deux appelants : le bouton (qui veut charger) et les
+// rafraîchissements après une action, qui ne doivent recharger que si la liste
+// était déjà à l'écran.
+async function renderAdminUsers(force = false) {
   if (!isAdmin()) return;
   const box = document.getElementById('admin-users-list');
   if (!box) return;
+  if (!force && !_adminUsersCache) {
+    box.innerHTML = '<button class="btn-outline" onclick="renderAdminUsers(true)"'
+      + ' style="font-size:12px;padding:8px 14px">Afficher les membres</button>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:8px">'
+      + 'Lit trois collections entières : chargé à la demande pour ménager le quota.</div>';
+    return;
+  }
   box.innerHTML = 'Chargement…';
   const empty = { forEach() {} };
   try {
@@ -16683,9 +16830,24 @@ async function renderAdminProfiles() {
 }
 
 // ─── Tableau de stats ───
-async function renderAdminStats() {
+// Une seule fois par session : recalculer a chaque ouverture du panneau
+// coutait trois collections entieres pour des chiffres qui bougent lentement.
+let _adminStatsFait = false;
+
+async function renderAdminStats(force = false) {
   const box = document.getElementById('admin-stats');
   if (!box) return;
+  // Mêmes trois collections entières que la liste des membres, pour en tirer
+  // quatre chiffres. La bonne réponse serait un compteur tenu par le bot, qui
+  // ne coûterait qu'une lecture ; en attendant, c'est à la demande.
+  if (!force && !_adminStatsFait) {
+    box.innerHTML = '<button class="btn-outline" onclick="renderAdminStats(true)"'
+      + ' style="font-size:12px;padding:8px 14px">Calculer les statistiques</button>'
+      + '<div style="font-size:11px;color:var(--text3);margin-top:8px">'
+      + 'Compte les membres un par un : chargé à la demande pour ménager le quota.</div>';
+    return;
+  }
+  _adminStatsFait = true;
   const empty = { forEach() {} };
   try {
     const [roles, pres, threads, dstats] = await Promise.all([
