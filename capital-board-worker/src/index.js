@@ -914,6 +914,21 @@ async function firestoreDelete(path, env) {
   if (!res.ok && res.status !== 404) throw new Error(`Firestore delete ${res.status}`);
 }
 
+// Vrai si l'échec est un refus de quota Firestore, et non une panne.
+//
+// Le forfait Spark plafonne à 20 000 écritures par jour pour tout le projet,
+// remise à zéro à minuit heure du Pacifique. Le 28/08, une jauge du panneau
+// d'administration l'a épuisé : le compteur d'essais du code PIN n'a plus pu
+// s'incrémenter, et personne n'a pu entrer dans l'application. Le client
+// affichait « Vérification indisponible — HTTP 500 (étape : compteur) », un
+// message qui invite à ressaisir son code — donc à consommer encore.
+//
+// Firestore répond 429 RESOURCE_EXHAUSTED : les deux marqueurs sont testés,
+// le corps de la réponse étant recopié dans le message de l'erreur.
+function estRefusDeQuota(err) {
+  return /\b429\b|RESOURCE_EXHAUSTED|Quota exceeded/i.test(String(err?.message || err || ''));
+}
+
 // Incrémente un compteur côté serveur et renvoie la NOUVELLE valeur, en une
 // seule opération atomique (fieldTransform Firestore).
 //
@@ -2431,6 +2446,10 @@ export default {
         return json({ valid: true });
         } catch (e) {
           console.error(`verify-pin [${stage}]: ${e.message}`);
+          // Un quota épuisé n'est pas une panne : le service reviendra tout
+          // seul à heure connue, et rien ne l'avance. Le client a besoin de la
+          // distinction pour arrêter d'inviter à ressaisir un code qui est bon.
+          if (estRefusDeQuota(e)) return json({ valid: false, indisponible: 'quota' }, 503);
           return json({ valid: false, stage }, 500);
         }
       }

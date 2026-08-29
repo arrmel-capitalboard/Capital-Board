@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260829a';
+const APP_VERSION = '20260829b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1446,6 +1446,87 @@ function _clearPinEntry() {
   if (inp) setTimeout(() => inp.focus(), 50);
 }
 
+// ─── SERVICE INDISPONIBLE (quota Firestore épuisé) ─────────────────────────
+//
+// Le forfait Spark plafonne à 20 000 écritures par jour pour tout le projet.
+// Épuisé, Firestore refuse toute écriture — le compteur d'essais du code PIN
+// compris, ce qui ferme l'application à tout le monde. C'est arrivé le 28/08.
+//
+// Trois exigences, apprises de cet incident :
+//   • ne pas laisser croire que le code saisi est faux — il ne l'est pas ;
+//   • ne pas inviter à réessayer en boucle — chaque essai consomme ;
+//   • dire quand ça revient, puisqu'on le sait.
+//
+// La remise à zéro tombe à minuit heure du Pacifique. On interroge le fuseau
+// plutôt que de coder 9h00, qui serait faux la moitié de l'année.
+const _FUSEAU_QUOTA = 'America/Los_Angeles';
+
+/** Instant de la prochaine remise à zéro, exprimé dans l'heure d'ici. */
+function _prochaineRemiseAZero() {
+  const maintenant = new Date();
+  for (let jour = 0; jour <= 1; jour++) {
+    const cible = new Date(maintenant.getTime() + jour * 86400000);
+    const laBas = new Date(cible.toLocaleString('en-US', { timeZone: _FUSEAU_QUOTA }));
+    const minuitLaBas = new Date(laBas);
+    minuitLaBas.setHours(24, 0, 0, 0);
+    const instant = new Date(minuitLaBas.getTime() + (cible.getTime() - laBas.getTime()));
+    if (instant > maintenant) return instant;
+  }
+  return null;
+}
+
+let _indispoTimer = null;
+
+/**
+ * Bascule sur l'écran d'indisponibilité, et y tient le compte à rebours.
+ *
+ * Le bouton « Réessayer » n'apparaît qu'une fois l'heure passée : avant, il ne
+ * ferait que relancer une requête qui sera refusée, et donner l'impression que
+ * la panne vient de l'appareil.
+ */
+function _montrerIndisponible() {
+  ['login-view', 'register-view', 'verify-view', 'device-verify-view', 'pin-lock-view'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) el.style.display = 'none';
+  });
+  const ecran = document.getElementById('login-screen');
+  if (ecran) ecran.style.display = 'flex';
+  const app = document.getElementById('app');
+  if (app) app.style.display = 'none';
+  const vue = document.getElementById('unavailable-view');
+  if (!vue) return;
+  vue.style.display = 'block';
+  _hideSplash();
+
+  const remise = _prochaineRemiseAZero();
+  const elHeure = document.getElementById('unavail-heure');
+  const elReste = document.getElementById('unavail-restant');
+  const elBouton = document.getElementById('unavail-retry');
+  if (elHeure) {
+    elHeure.textContent = remise
+      ? remise.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })
+      : '—';
+  }
+
+  const battre = () => {
+    if (!remise || !elReste) return;
+    const reste = remise.getTime() - Date.now();
+    if (reste <= 0) {
+      elReste.textContent = 'Le service devrait être rétabli.';
+      if (elBouton) elBouton.style.display = 'block';
+      if (_indispoTimer) { clearInterval(_indispoTimer); _indispoTimer = null; }
+      return;
+    }
+    const h = Math.floor(reste / 3600000);
+    const m = Math.floor((reste % 3600000) / 60000);
+    elReste.textContent = h > 0 ? `dans ${h} h ${String(m).padStart(2, '0')}` : `dans ${m} minute(s)`;
+  };
+  battre();
+  if (_indispoTimer) clearInterval(_indispoTimer);
+  // Une minute suffit : l'attente se compte en heures, pas en secondes.
+  _indispoTimer = setInterval(battre, 60000);
+}
+
 window.pinLockSubmit = async function() {
   const inp = document.getElementById('pin-lock-input');
   const err = document.getElementById('pin-lock-error');
@@ -1462,6 +1543,9 @@ window.pinLockSubmit = async function() {
     const r = await _verifyPin(user.uid, val);
     if (r.valid) {
           _pinUnlockSuccess(user);
+    } else if (r.indisponible) {
+      _clearPinEntry();
+      _montrerIndisponible();
     } else if (r.serverError) {
       _clearPinEntry();
       if (err) { err.textContent = 'Vérification indisponible — ' + r.serverError + '. Ressaisissez votre code.'; err.style.display = 'block'; }
@@ -2264,6 +2348,10 @@ async function _verifyPin(uid, pin) {
     const data = await res.json().catch(() => ({}));
     // Une panne du Worker ne doit pas se lire « Code incorrect » : sans ce test,
     // une réponse d'erreur n'a pas de `valid` et passait pour un mauvais code.
+    // Le serveur distingue un quota épuisé d'une panne : le premier revient de
+    // lui-même à heure connue, le second appelle une ressaisie. Confondre les
+    // deux, c'est inviter à ressaisir un code correct — et à consommer encore.
+    if (data.indisponible) return { valid: false, indisponible: data.indisponible };
     if (!res.ok) return { valid: false, serverError: `HTTP ${res.status}` + (data.stage ? ` (étape : ${data.stage})` : '') };
     return data;
   } catch (e) {
