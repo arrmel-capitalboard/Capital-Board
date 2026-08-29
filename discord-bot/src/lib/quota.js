@@ -24,6 +24,18 @@
 //      tentative traîne dix minutes avant d'abandonner, ce qui sature les
 //      journaux et retarde le reste.
 
+// Plafond quotidien du forfait Spark, pour tout le projet.
+const PLAFOND_ECRITURES = 20000;
+// Au-delà, on prévient. 70 % laisse le temps de fermer un panneau ou de
+// repousser un lot d'audits ; 90 % arriverait trop tard pour agir.
+const SEUIL_ALERTE = 0.70;
+// Une écriture de présence toutes les deux minutes, par onglet visible.
+const PRESENCE_PAR_HEURE = 30;
+// Un onglet dont le dernier signe de vie remonte à plus de ça n'est plus là.
+const PRESENCE_FRAICHEUR_MS = 5 * 60_000;
+// Contrôle horaire : l'estimation bouge en heures, pas en minutes.
+const CADENCE_ESTIMATION_MS = 60 * 60_000;
+
 const SALON_SECURITE = '1541530997005353030';
 const PROJET = 'capitalboard';
 const FONDATEUR_ROLE = '1512905140108001391';
@@ -35,6 +47,138 @@ const FUSEAU_QUOTA = 'America/Los_Angeles';
 
 let epuiseDepuis = null;
 let signale = false;
+// Postes déclarés, et jour où l'alerte préventive est déjà partie.
+const postes = new Map();
+let previenuLe = null;
+
+/**
+ * Déclare un écrivain périodique et son coût quotidien.
+ *
+ * `parJour` peut être un nombre, ou une fonction quand la cadence change en
+ * cours de route — `vmstatus` passe de 120 s à 5 s dès qu'un panneau
+ * d'administration s'ouvre, et c'est justement ce cas-là qui a vidé le quota
+ * le 28/08. Une constante ne l'aurait pas vu venir.
+ */
+function declarer(nom, parJour) {
+  postes.set(nom, parJour);
+}
+
+/**
+ * Compteur d'écritures sur une heure glissante, à déclarer tel quel.
+ *
+ * Une cadence instantanée ment sur les écrivains qui changent de rythme : le
+ * panneau d'administration fait passer les relevés VM de 2 min à 5 s, soit
+ * 17 280 par jour projetés — alors qu'un panneau ouvert dix minutes n'en coûte
+ * que cent vingt. Extrapoler ce qui a réellement été écrit dans la dernière
+ * heure donne la bonne réponse dans les deux cas, et ne prévient que si le
+ * rythme dure.
+ */
+function compteurHoraire() {
+  let quand = [];
+  return {
+    enregistrer() { quand.push(Date.now()); },
+    parJour() {
+      const limite = Date.now() - 3_600_000;
+      quand = quand.filter((t) => t >= limite);
+      return quand.length * 24;
+    },
+  };
+}
+
+/**
+ * Projection de la journée aux conditions actuelles.
+ *
+ * Ce n'est pas une mesure : l'API de métriques Firestore demande des droits que
+ * la clé de service n'a pas. C'est la somme des cadences déclarées, plus la
+ * part des membres connectés — « si tout restait en l'état pendant 24 h ». Une
+ * pointe passagère la fait donc monter puis redescendre, et c'est voulu : c'est
+ * exactement ce qu'on veut voir venir.
+ */
+function estimation(sessions = 0) {
+  const detail = [];
+  let total = 0;
+  for (const [nom, valeur] of postes) {
+    let n = 0;
+    try {
+      n = Math.round(Number(typeof valeur === 'function' ? valeur() : valeur) || 0);
+    } catch (_) { n = 0; }
+    if (n > 0) { total += n; detail.push({ nom, parJour: n }); }
+  }
+  if (sessions > 0) {
+    const n = sessions * PRESENCE_PAR_HEURE * 24;
+    total += n;
+    detail.push({ nom: `présence (${sessions} session(s))`, parJour: n });
+  }
+  detail.sort((a, b) => b.parJour - a.parJour);
+  return { total, part: total / PLAFOND_ECRITURES, detail };
+}
+
+/** Nombre d'onglets qui écrivent en ce moment, lu dans `presence`. */
+async function sessionsActives(db) {
+  const snap = await db.collection('presence').where('online', '==', true).get();
+  const limite = Date.now() - PRESENCE_FRAICHEUR_MS;
+  let n = 0;
+  for (const doc of snap.docs) {
+    // `lastSeen` est un timestamp serveur ; un onglet fermé brutalement laisse
+    // `online: true` derrière lui, seule la fraîcheur fait foi.
+    const vu = doc.data().lastSeen;
+    const ms = vu?.toMillis ? vu.toMillis() : Number(vu) || 0;
+    if (ms >= limite) n++;
+  }
+  return n;
+}
+
+/**
+ * Contrôle horaire, et alerte préventive une fois par jour au-delà du seuil.
+ *
+ * La sentinelle réactive (`signaler`) ne parle qu'une fois le quota épuisé,
+ * c'est-à-dire une fois l'application fermée. Celle-ci parle avant, tant qu'il
+ * reste quelque chose à faire — fermer un panneau, repousser un lot d'audits.
+ */
+function surveiller(client, db) {
+  const controler = async () => {
+    if (estEpuise()) return;   // trop tard pour prévenir, `signaler` a parlé
+    let sessions = 0;
+    try {
+      sessions = await sessionsActives(db);
+    } catch (e) {
+      // Une lecture refusée n'est pas un motif d'alarme : on estime sans elle.
+      if (!estRefusDeQuota(e)) console.error('[quota] présence illisible :', e.message);
+    }
+    const { total, part, detail } = estimation(sessions);
+    const jour = new Date().toISOString().slice(0, 10);
+    if (part < SEUIL_ALERTE || previenuLe === jour) return;
+    previenuLe = jour;
+
+    const remise = prochaineRemiseAZero();
+    const lignes = detail.map((d) => `• ${d.nom} — ~${d.parJour.toLocaleString('fr-FR')}`);
+    const texte = [
+      `<@&${FONDATEUR_ROLE}>`,
+      `🟠 **Quota Firestore : ~${Math.round(part * 100)} % de la journée projetés**`,
+      '',
+      `Projection à cadence constante : **~${total.toLocaleString('fr-FR')}** écritures sur ${PLAFOND_ECRITURES.toLocaleString('fr-FR')}.`,
+      'Rien n\'est encore refusé — c\'est le moment d\'agir, pas après.',
+      '',
+      '**D\'où ça vient**',
+      ...lignes,
+      '',
+      '**Ce qui fait baisser la projection tout de suite**',
+      '• Fermer le panneau d\'administration : il fait passer les relevés de 2 min à 5 s',
+      '• Repousser un lot d\'audits à demain',
+      '• Fermer les onglets de l\'application restés ouverts',
+      '',
+      remise ? `Remise à zéro : <t:${Math.round(remise.getTime() / 1000)}:t> (<t:${Math.round(remise.getTime() / 1000)}:R>).` : '',
+      'Détail et méthode de calcul : `afaire-quota.md`.',
+    ].filter(Boolean).join('\n');
+
+    client.channels.fetch(SALON_SECURITE)
+      .then((salon) => salon.send({ content: texte, allowedMentions: { roles: [FONDATEUR_ROLE], parse: [] } }))
+      .catch((e) => console.error(`[quota] alerte préventive non postée : ${e.message}`));
+  };
+
+  controler().catch(() => {});
+  setInterval(() => { controler().catch(() => {}); }, CADENCE_ESTIMATION_MS).unref();
+}
 
 /** Vrai si le message d'erreur décrit un refus de quota. */
 function estRefusDeQuota(err) {
@@ -118,4 +262,8 @@ function signaler(client, err, origine = 'inconnue') {
   return true;
 }
 
-module.exports = { signaler, estEpuise, estRefusDeQuota, prochaineRemiseAZero, SALON_SECURITE };
+module.exports = {
+  signaler, estEpuise, estRefusDeQuota, prochaineRemiseAZero,
+  declarer, estimation, surveiller, compteurHoraire,
+  SALON_SECURITE, PLAFOND_ECRITURES, SEUIL_ALERTE,
+};

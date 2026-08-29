@@ -36,6 +36,10 @@ const { execFile } = require('node:child_process');
 const { getDb, isConfigured } = require('../firebase');
 const quota = require('./quota');
 
+// Ce que ce module a réellement écrit dans la dernière heure, pour la
+// projection préventive du quota.
+const ecrites = quota.compteurHoraire();
+
 // Chaque cycle écrit un document. Sur le forfait Spark, le projet dispose de
 // 20 000 écritures par jour, tous services confondus : une cadence d'une
 // seconde en consomme 3 600 par heure, et le 28/08 quatre heures de panneau
@@ -154,6 +158,7 @@ async function pousser() {
   if (quota.estEpuise()) return;
   try {
     await getDb().collection('ops').doc('vmStatus').set(await mesurer());
+    ecrites.enregistrer();
   } catch (e) {
     if (quota.signaler(bot, e, 'vmstatus')) return;
     console.error('[vmstatus] relevé non écrit :', e.message);
@@ -193,6 +198,11 @@ function start(client) {
     return;
   }
   if (minuterie) return;
+  // Le poste le plus lourd du projet, et le seul dont la cadence change en
+  // cours de journée. Il déclare donc ce qu'il a réellement écrit dans la
+  // dernière heure, pas sa cadence du moment : un panneau ouvert dix minutes
+  // ne doit pas se projeter comme un panneau ouvert toute la journée.
+  quota.declarer('relevés VM', () => ecrites.parJour());
   programmer(PERIODE_LENTE_MS);
   ecouterDemande();
 

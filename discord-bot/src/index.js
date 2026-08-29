@@ -23,6 +23,8 @@ const securitytest = require('./lib/securitytest');
 const burpaudit = require('./lib/burp-audit');
 const securitypanel = require('./lib/securitypanel');
 const vmstatus = require('./lib/vmstatus');
+const quota = require('./lib/quota');
+const { getDb, isConfigured } = require('./firebase');
 
 const LOG_CHANNEL   = '1520208505880187042';
 const ROLE_VISITEUR = '1512906509078495232';
@@ -67,6 +69,9 @@ client.once(Events.ClientReady, (c) => {
   burpaudit.watch(c);
   securitypanel.surveiller(c);
   vmstatus.start(c);
+  // Après les autres : chacun déclare son coût au démarrage, la projection
+  // n'a de sens qu'une fois toutes les déclarations posées.
+  if (isConfigured()) quota.surveiller(c, getDb());
 });
 
 // Rafraîchit le compteur de tickets dès qu'un salon est créé/supprimé.

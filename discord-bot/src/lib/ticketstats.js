@@ -8,6 +8,10 @@ const { ChannelType } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
 const quota = require('./quota');
 
+// Cinq minutes plutôt qu'une : 288 écritures par jour au lieu de 1 440, pour un
+// compteur qui ne bouge qu'à l'ouverture ou la fermeture d'un ticket.
+const CADENCE_MS = 5 * 60_000;
+
 const TICKET_CATEGORY = '1520204780751028385';
 // Salon où l'on demande aux utilisateurs d'ouvrir leur ticket. Le site en
 // affichait le nom en dur, donc à côté de la plaque dès qu'il était renommé.
@@ -53,11 +57,10 @@ async function push(client) {
 }
 
 function start(client) {
+  quota.declarer('compteur de tickets', Math.round(86_400_000 / CADENCE_MS));
   push(client);
   if (_timer) clearInterval(_timer);
-  // Cinq minutes plutôt qu'une : 288 écritures par jour au lieu de 1 440, pour
-  // un compteur qui ne bouge qu'à l'ouverture ou la fermeture d'un ticket.
-  _timer = setInterval(() => push(client), 5 * 60_000);
+  _timer = setInterval(() => push(client), CADENCE_MS);
 }
 
 module.exports = { start, push, countOpenTickets, ticketChannelName, TICKET_CATEGORY, TICKET_CHANNEL };
