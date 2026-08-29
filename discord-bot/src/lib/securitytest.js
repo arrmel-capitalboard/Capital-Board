@@ -1,12 +1,12 @@
 'use strict';
 
-// Tests de sécurité récurrents, chaque jour à 8h (heure de Paris).
+// Tests de sécurité, lancés à la main depuis le panneau du salon de sécurité.
 //
-// Le cron lance désormais un audit AUTOMATISÉ : une action tirée dans
-// security-test-actions.json est rejouée par un navigateur derrière un proxy
-// d'interception, puis la capture part à l'analyse. Le parcours lui-même vit
-// dans le dépôt privé capitalboard-securite, cloné à côté sur la VM.
-// Le compte rendu est posté par l'orchestrateur, capture jointe.
+// Il n'y a plus de cron : l'audit ne part plus seul chaque matin. Deux entrées,
+// toutes deux déclenchées par un bouton — l'audit de trafic (une action rejouée
+// par un navigateur derrière un proxy, capture analysée) et le pentest actif.
+// Le parcours et le pentest vivent dans le dépôt privé capitalboard-securite,
+// cloné à côté sur la VM ; le compte rendu est posté par l'orchestrateur.
 //
 // Le rappel manuel a été retiré le 28/08 : il vivait dans son propre salon, avec
 // un bouton de dépôt d'export Burp que personne n'utilisait. Tout passe
@@ -21,7 +21,6 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { spawn } = require('child_process');
-const cron = require('node-cron');
 const burpaudit = require('./burp-audit');
 const config = require('../config');
 
@@ -33,7 +32,6 @@ const HISTORIQUE_FILE = path.join(__dirname, '..', '..', 'security-test-history.
 // qui posait douze actions à la fois ; elle ne sert plus qu'à décider combien
 // d'actions doivent défiler avant qu'une puisse revenir.
 const SAMPLE_SIZE = 12;
-const CRON_EXPR = '0 8 * * *';
 // Motif d'échec relayé par l'orchestrateur sur sa sortie d'erreur.
 const LIGNE_ECHEC = /\[audit-auto\] Échec\s*:\s*(.+)/;
 
@@ -347,19 +345,19 @@ async function runPentest() {
   return { code, rapport: rapport.trim(), motif };
 }
 
-function start(client) {
-  cron.schedule(
-    CRON_EXPR,
-    () => {
-      runAutomated(client).catch((err) => console.error('[security-test] erreur :', err.message));
-    },
-    { timezone: 'Europe/Paris' },
-  );
+function start() {
+  // Plus d'audit automatique. Il tournait chaque matin a 8h ; desormais tout
+  // est lance a la main depuis le panneau du salon de securite — « Generer un
+  // scenario » puis « Realiser » pour l'audit de trafic, « Lancer un pentest »
+  // pour l'attaque active. Un audit qui part seul contre la production, sans
+  // personne pour en lire le resultat dans la foulee, ne se justifiait plus.
+  //
+  // `runAutomated` et `runPentest` restent exportes : le panneau les appelle.
   const total = loadActions().length;
-  console.log(`[security-test] Audit automatise programme (${CRON_EXPR}, Europe/Paris) — ${total} actions, rotation sur ${fenetre(total)}.`);
+  console.log(`[security-test] Audit a la demande uniquement — ${total} actions disponibles, rotation sur ${fenetre(total)}.`);
 }
 
 module.exports = {
   start, runAutomated, runPentest, pickActions, loadConfig, loadActions,
-  lireHistorique, fenetre, tuerParcours, CRON_EXPR, SAMPLE_SIZE,
+  lireHistorique, fenetre, tuerParcours, SAMPLE_SIZE,
 };
