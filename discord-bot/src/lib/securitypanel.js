@@ -532,7 +532,10 @@ async function lancerPentest(interaction) {
   // La liste que l'IA a décidé de tester — réussies ou non, c'est ce que le
   // fondateur veut voir : de quoi le modèle a eu l'idée.
   if (pistesIA.length) {
-    const l = pistesIA.slice(0, 12).map((x) => `${x.bloque ? '✅' : '🔴'} \`${x.chemin}\``).join('\n');
+    const l = pistesIA.slice(0, 12).map((x) => {
+      const pk = x.pourquoi ? ` — _${x.pourquoi}_` : '';
+      return `${x.bloque ? '✅' : '🔴'} \`${x.chemin}\`${pk}`;
+    }).join('\n');
     embed.addFields({ name: `🤖 Pistes générées par l'IA (${pistesIA.length})`, value: l.slice(0, 1024) });
   }
 
