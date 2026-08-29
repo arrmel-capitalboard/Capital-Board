@@ -618,7 +618,13 @@ async function menage(client) {
   const limite = Date.now() - RETENTION_SALON;
 
   const messages = await channel.messages.fetch({ limit: 100 });
-  const vieux = messages.filter((m) => m.id !== panneau && m.createdTimestamp < limite);
+  // Un message qui porte encore des boutons attend une decision. Les correctifs
+  // proposes par une analyse de trafic arrivent ici (lib/scan-patches.js), et
+  // leur « Appliquer » n'existe nulle part ailleurs : efface, le correctif ne
+  // peut plus etre applique. Le menage les epargne donc, comme le panneau.
+  const vieux = messages.filter((m) => m.id !== panneau
+    && m.createdTimestamp < limite
+    && !m.components?.length);
   if (!vieux.size) return;
 
   // Le second argument ecarte ce que Discord refuse de supprimer en lot : rien
