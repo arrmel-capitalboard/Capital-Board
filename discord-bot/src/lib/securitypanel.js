@@ -468,16 +468,25 @@ function ligneResume(entree) {
  * rien à interpréter côté bot.
  */
 async function lancerPentest(interaction) {
-  const enTete = '🛡️ **Pentest en cours** — attaques réelles, production, périmètre sûr.\n\n';
-  await interaction.reply({ content: enTete + '_Démarrage…_' });
-
-  // Chaque étape franchie coche la précédente et affiche celle en cours. Le
-  // message s'édite au fil de l'eau ; on limite la cadence pour ne pas se faire
-  // gronder par Discord (une édition à la seconde au plus).
+  // Tout en embed, progression comprise. Chaque étape franchie se coche,
+  // celle en cours est en attente. Édition limitée à ~1/s pour ne pas heurter
+  // la limite de Discord.
   const faites = [];
   let enCours = null;
   let derniereEdition = 0;
   let editionEnVol = false;
+
+  const embedProgres = () => {
+    const lignes = faites.map((e) => `✅ ${e}`);
+    if (enCours) lignes.push(`⏳ ${enCours}`);
+    return new EmbedBuilder()
+      .setColor(0x5b8def)
+      .setTitle('🛡️ Pentest en cours')
+      .setDescription('Attaques réelles jouées contre la production, périmètre sûr.\n\n'
+        + (lignes.join('\n') || '_Démarrage…_'));
+  };
+
+  await interaction.reply({ embeds: [embedProgres()] });
 
   const peindre = async (force = false) => {
     if (editionEnVol) return;
@@ -485,10 +494,8 @@ async function lancerPentest(interaction) {
     if (!force && maintenant - derniereEdition < 1100) return;
     editionEnVol = true;
     derniereEdition = maintenant;
-    const lignes = faites.map((e) => `✅ ${e}`);
-    if (enCours) lignes.push(`⏳ ${enCours}`);
     try {
-      await interaction.editReply({ content: enTete + lignes.join('\n') });
+      await interaction.editReply({ embeds: [embedProgres()] });
     } catch (_) { /* une édition ratée n'arrête pas le pentest */ }
     editionEnVol = false;
   };
@@ -503,9 +510,8 @@ async function lancerPentest(interaction) {
   if (enCours) { faites.push(enCours); enCours = null; }
 
   if (code !== 0) {
-    await interaction.editReply({
-      content: '🔴 **Pentest en échec.**' + (motif ? `\n> ${motif}` : ' Voir les logs de la VM (`journalctl --user -u capitalboard-bot`).'),
-    });
+    await interaction.editReply({ embeds: [new EmbedBuilder().setColor(0xff4d6a).setTitle('🔴 Pentest en échec')
+      .setDescription(motif || 'Voir les logs de la VM (`journalctl --user -u capitalboard-bot`).')] });
     return;
   }
 
@@ -532,9 +538,11 @@ async function lancerPentest(interaction) {
   // La liste que l'IA a décidé de tester — réussies ou non, c'est ce que le
   // fondateur veut voir : de quoi le modèle a eu l'idée.
   if (pistesIA.length) {
+    // En clair : ce que la piste concerne, pas le chemin technique. Le chemin
+    // reste en petit derriere, pour qui veut verifier.
     const l = pistesIA.slice(0, 12).map((x) => {
-      const pk = x.pourquoi ? ` — _${x.pourquoi}_` : '';
-      return `${x.bloque ? '✅' : '🔴'} \`${x.chemin}\`${pk}`;
+      const quoi = x.pourquoi || x.chemin;
+      return `${x.bloque ? '✅' : '🔴'} ${quoi}`;
     }).join('\n');
     embed.addFields({ name: `🤖 Pistes générées par l'IA (${pistesIA.length})`, value: l.slice(0, 1024) });
   }
