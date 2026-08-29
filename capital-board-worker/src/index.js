@@ -182,6 +182,14 @@ const VISION_CHAMPS_PROMPT =
 
 const CORS = {
   'Access-Control-Allow-Methods': 'GET, POST, OPTIONS',
+  // En-tetes de durcissement, poses sur toute reponse de l'API (le pentest les
+  // reclamait). HSTS force le navigateur a rester en HTTPS ; nosniff empeche
+  // qu'une reponse soit interpretee dans un autre type ; les reponses de l'API
+  // ne sont jamais affichees dans un cadre.
+  'Strict-Transport-Security': 'max-age=31536000; includeSubDomains',
+  'X-Content-Type-Options': 'nosniff',
+  'X-Frame-Options': 'DENY',
+  'Referrer-Policy': 'strict-origin-when-cross-origin',
   // Authorization : /username-available accepte le jeton du demandeur pour
   // s'exclure lui-meme du controle d'unicite.
   // X-File-Name / X-File-Type / X-Target-Uid : metadonnees de /support-upload,
