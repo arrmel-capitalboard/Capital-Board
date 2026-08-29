@@ -29,15 +29,11 @@ const PLAFOND_ECRITURES = 20000;
 // Au-delà, on prévient. 70 % laisse le temps de fermer un panneau ou de
 // repousser un lot d'audits ; 90 % arriverait trop tard pour agir.
 const SEUIL_ALERTE = 0.70;
-// La présence n'est plus un battement mais un bail de 30 min (voir
-// PRESENCE_BAIL_MS dans js/app.js) : l'onglet annonce jusqu'à quand il est là et
-// ne réécrit qu'en approchant du terme. Trois écritures par heure, contre douze
-// quand c'était un battement de cinq minutes. À tenir aligné sur le client :
-// c'est lui qui écrit, le bot ne fait qu'en compter le coût.
-const PRESENCE_PAR_HEURE = 3;
-// Repli pour les documents antérieurs au bail, sans `expiresAt` : on juge alors
-// sur la fraîcheur, comme le client le fait de son côté.
-const PRESENCE_FRAICHEUR_MS = 12.5 * 60_000;
+// La présence n'est plus suivie en direct : depuis le 29/08, chaque appareil
+// marque une fois par jour qu'il est venu, et rien de plus (`_bumpActivity`
+// dans js/app.js). Un membre coûte donc une écriture par jour, contre trois par
+// heure du temps du bail. C'était le premier poste du projet, il en devient le
+// dernier.
 // Contrôle horaire : l'estimation bouge en heures, pas en minutes.
 const CADENCE_ESTIMATION_MS = 60 * 60_000;
 
@@ -110,30 +106,27 @@ function estimation(sessions = 0) {
     if (n > 0) { total += n; detail.push({ nom, parJour: n }); }
   }
   if (sessions > 0) {
-    const n = sessions * PRESENCE_PAR_HEURE * 24;
-    total += n;
-    detail.push({ nom: `présence (${sessions} session(s))`, parJour: n });
+    // Une écriture par membre et par jour. Ceux qui viendront plus tard dans la
+    // journée ne sont pas comptés : la projection sous-estime donc un peu, et
+    // c'est sans conséquence — ce poste ne pèse plus rien.
+    total += sessions;
+    detail.push({ nom: `présence (${sessions} membre(s) vus aujourd'hui)`, parJour: sessions });
   }
   detail.sort((a, b) => b.parJour - a.parJour);
   return { total, part: total / PLAFOND_ECRITURES, detail };
 }
 
-/** Nombre d'onglets qui écrivent en ce moment, lu dans `presence`. */
-async function sessionsActives(db) {
-  const snap = await db.collection('presence').where('online', '==', true).get();
-  const maintenant = Date.now();
-  let n = 0;
-  for (const doc of snap.docs) {
-    const d = doc.data();
-    // Le bail fait foi quand il existe : un onglet fermé brutalement laisse
-    // `online: true` derrière lui, c'est l'échéance qui le fait disparaître.
-    const bail = Number(d.expiresAt) || 0;
-    if (bail) { if (bail > maintenant) n++; continue; }
-    const vu = d.lastSeen;
-    const ms = vu?.toMillis ? vu.toMillis() : Number(vu) || 0;
-    if (ms >= maintenant - PRESENCE_FRAICHEUR_MS) n++;
-  }
-  return n;
+/**
+ * Nombre de membres venus aujourd'hui, lu dans `presence`.
+ *
+ * `lastDay` porte la date au format `AAAA-MM-JJ`, écrite par le client. Le
+ * comparer en base plutôt que de tout lire éviterait des lectures, mais la
+ * collection est petite et ce contrôle est horaire : la simplicité l'emporte.
+ */
+async function membresDuJour(db) {
+  const jour = new Date().toISOString().slice(0, 10);
+  const snap = await db.collection('presence').where('lastDay', '==', jour).get();
+  return snap.size;
 }
 
 /**
@@ -148,7 +141,7 @@ function surveiller(client, db) {
     if (estEpuise()) return;   // trop tard pour prévenir, `signaler` a parlé
     let sessions = 0;
     try {
-      sessions = await sessionsActives(db);
+      sessions = await membresDuJour(db);
     } catch (e) {
       // Une lecture refusée n'est pas un motif d'alarme : on estime sans elle.
       if (!estRefusDeQuota(e)) console.error('[quota] présence illisible :', e.message);

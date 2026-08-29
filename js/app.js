@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260829e';
+const APP_VERSION = '20260829f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3526,7 +3526,6 @@ async function startApp(user) {
       applyNavLayout(null);
       applyFeatureFlags({}, {}, null);
     });
-    try { _startPresenceHeartbeat(); } catch(e) { console.warn('presence:', e); }
     try { _processDiscordLink(user); } catch(e) { console.warn('discord link:', e); }
   } catch(e) {
     console.error('startApp error:', e);
@@ -15309,13 +15308,7 @@ let _supportPresenceUnsub = null;
 let _activeSupportThread = null;
 let _currentThreadMeta = null;
 let _supportAdminTab = "active"; // 'active' | 'archived'
-let _presenceHeartbeat = null;
-// Échéance du bail de présence en cours, telle qu'elle a été écrite. En mémoire
-// seulement : la relire coûterait une lecture, et un onglet qui redémarre pose
-// un bail neuf de toute façon. Déclarée ici, avec les autres variables de
-// présence, parce que `_detachUserListeners` la remet à zéro bien plus haut
-// dans le fichier que la fonction qui l'entretient.
-let _presenceBailJusqua = 0;
+
 let _typingTimer = null;
 let _typingClearTimer = null;
 let _supportThreadDocUnsub = null;
@@ -15332,11 +15325,6 @@ function _detachUserListeners() {
   try { if (_supportPresenceUnsub) { _supportPresenceUnsub(); _supportPresenceUnsub = null; } } catch(_) {}
   try { if (_supportThreadDocUnsub) { _supportThreadDocUnsub(); _supportThreadDocUnsub = null; } } catch(_) {}
   try { if (_supportBadgeUnsub) { _supportBadgeUnsub(); _supportBadgeUnsub = null; } } catch(_) {}
-  try { if (_presenceHeartbeat) { clearInterval(_presenceHeartbeat); _presenceHeartbeat = null; } } catch(_) {}
-  // Le bail en cours ne vaut plus rien : sans cette remise a zero, une
-  // reconnexion dans la meme page croirait son bail encore valide et
-  // n'annoncerait la presence qu'a l'echeance de l'ancien.
-  _presenceBailJusqua = 0;
 }
 
 // Sons chat via Web Audio API (pas de fichier externe).
@@ -15509,135 +15497,90 @@ function _isStandaloneDisplay() {
   } catch (e) { return false; }
 }
 
-// Cadence du battement de présence, et fraîcheur au-delà de laquelle on cesse
-// de considérer quelqu'un en ligne.
+// La présence ne dit plus « en ligne maintenant », mais « venu aujourd'hui ».
 //
-// Chaque écriture de présence compte, par onglet ouvert, sur les 20 000 par
-// jour que le forfait Spark accorde à tout le projet. Le 28/08, le quota épuisé
-// a fait tomber le compteur du code PIN et fermé l'application à tout le monde :
-// c'est le poste qui décide combien de membres on peut porter.
+// Trois formes se sont succédé, toutes des battements : une écriture à
+// intervalle fixe, que quelqu'un regarde ou non — 30 s, puis 2 min, puis 5 min,
+// puis un bail de 30 min renouvelé à l'approche du terme. Chacune abaissait la
+// facture sans changer la nature du poste, et il dominait toujours le budget
+// d'écritures : 20 000 par jour pour tout le projet, forfait Spark.
 //
-// L'historique de ce seul chiffre : 30 s (120 écritures/heure), puis 2 min (30),
-// puis 5 min (12). Chaque palier doublait ou triplait le plafond de membres, et
-// chacun restait un battement — une écriture à intervalle fixe, que quelqu'un
-// regarde ou non.
+// Le besoin réel, formulé le 29/08 : savoir si quelqu'un s'est connecté dans la
+// journée. Pas à la minute près, pas en direct. C'est ce que `_bumpActivity`
+// écrivait déjà à chaque connexion (`lastDay`, `days`, `sessions`) — le
+// battement, lui, ne servait qu'à la précision temps réel dont personne n'avait
+// besoin. Il est donc supprimé, sans rien mettre à la place.
 //
-// Ce n'est plus un battement, c'est un BAIL. L'onglet annonce « je suis là
-// jusqu'à telle heure » et ne réécrit qu'en approchant de l'échéance. Une
-// session de deux heures coûte 6 écritures au lieu de 24 : l'ouverture, quatre
-// renouvellements, le départ. Trois écritures par heure au lieu de douze, soit
-// quatre fois plus de monde à quota constant — de l'ordre de 3 100 sessions
-// simultanées sur deux heures, contre 800.
+// Coût : une écriture par membre, par jour et par appareil, au lieu de trois
+// par heure. Le marquage est sauté sans lecture ni écriture quand cet appareil
+// a déjà marqué le jour courant — c'est à ça que sert `_PRESENCE_JOUR_CLE`.
 //
-// Pourquoi pas zéro écriture. « En ligne » ne peut pas se déduire des seules
-// actions : l'immense majorité des membres consultent sans rien écrire, et ils
-// n'apparaîtraient jamais. Et sans échéance, un onglet qui plante — ou un
-// mobile que le système tue sans prévenir, où `beforeunload` ne part pas —
-// resterait en ligne pour toujours. Le bail répond aux deux : il se renouvelle
-// tant que quelqu'un est devant, et il expire tout seul sinon.
-//
-// Ce qu'on paie en échange : quelqu'un qui ferme son onglet brutalement reste
-// affiché « en ligne » jusqu'à une demi-heure. Un départ propre l'efface tout
-// de suite. « En ligne » n'ouvre aucun droit — ça s'affiche, c'est tout.
-const PRESENCE_BAIL_MS = 1_800_000;      // 30 min : durée annoncée par l'onglet
-const PRESENCE_MARGE_MS = 120_000;       // on renouvelle dans les 2 dernières minutes
-const PRESENCE_CONTROLE_MS = 60_000;     // cadence de vérification — n'écrit rien
+// Ce qu'on perd, sciemment : le support ne sait plus si le membre est devant
+// son écran pendant la conversation. Il voit « vu aujourd'hui » ou « vu il y a
+// trois jours », ce qui suffit à savoir s'il faut attendre une réponse.
+const _PRESENCE_JOUR_CLE = 'cb_presence_jour';
 
-// Repli pour les documents écrits avant le bail, qui n'ont pas d'`expiresAt` :
-// on juge alors sur la fraîcheur de `lastSeen`, comme avant. À retirer quand
-// plus aucune session ancienne ne traîne.
-const PRESENCE_FRAICHEUR_MS = 750_000;
-
-/**
- * Quelqu'un est-il en ligne, vu depuis son document de présence ?
- *
- * Le bail fait foi quand il existe. Sinon on retombe sur `lastSeen`, pour ne
- * pas faire disparaître les sessions ouvertes avant ce changement.
- */
-function _presenceEnLigne(p) {
-  if (!p || p.online !== true) return false;
-  const bail = Number(p.expiresAt) || 0;
-  if (bail) return bail > Date.now();
-  const vu = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate().getTime() : Number(p.lastSeen) || 0;
-  return vu > 0 && (Date.now() - vu) < PRESENCE_FRAICHEUR_MS;
+/** Le jour courant, au format que `lastDay` porte déjà dans Firestore. */
+function _jourCourant() {
+  return new Date().toISOString().slice(0, 10);
 }
 
-// Heartbeat presence : écrit online + lastSeen à chaque battement.
+/**
+ * Ce membre s'est-il connecté aujourd'hui ?
+ *
+ * `lastDay` fait foi. Les documents antérieurs au 29/08 ne l'ont pas toujours :
+ * on retombe alors sur la date de `lastSeen`, qui dit la même chose en moins
+ * direct.
+ */
+function _vuAujourdhui(p) {
+  if (!p) return false;
+  if (p.lastDay) return p.lastDay === _jourCourant();
+  const vu = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null;
+  return !!vu && vu.toISOString().slice(0, 10) === _jourCourant();
+}
+
 // Compteurs d'activité, posés sur le doc de présence — le seul que l'admin
 // puisse lire pour tous les comptes (users/{uid}/data reste privé, y compris
 // pour lui). Deux mesures : le nombre de sessions ouvertes, et le nombre de
 // jours distincts de venue, qui dit mieux l'habitude qu'un total de sessions
 // gonflé par les rechargements d'un même après-midi.
 //
-// Une lecture avant écriture, une fois par session : le jour de la dernière
-// venue doit venir du serveur, sinon deux appareils comptent deux jours.
+// Depuis le 29/08, c'est le SEUL écrivain de `presence` : le battement a été
+// supprimé, et cette fonction porte à elle seule la réponse à « cette personne
+// s'est-elle connectée aujourd'hui ».
+//
+// Un garde-fou local évite de repayer à chaque rechargement de page. Sans lui,
+// dix ouvertures dans l'après-midi feraient dix écritures ET dix lectures pour
+// un renseignement déjà connu. `localStorage` peut être vide ou effacé : le
+// pire cas est alors quelques écritures de plus, jamais une donnée fausse.
+//
+// La lecture qui subsiste sert au comptage : le jour de la dernière venue doit
+// venir du serveur, sinon deux appareils compteraient deux jours pour un seul.
 async function _bumpActivity(uid) {
   if (window.IS_DEMO || !db || !uid) return;
+  const jour = _jourCourant();
+  try {
+    if (localStorage.getItem(_PRESENCE_JOUR_CLE) === uid + ':' + jour) return;
+  } catch (_) { /* stockage indisponible : on marque, quitte à le refaire */ }
   try {
     const ref = firestoreDoc(db, 'presence', uid);
     const snap = await getFirestoreDoc(ref);
     const d = snap.exists() ? (snap.data() || {}) : {};
-    const jour = new Date().toISOString().slice(0, 10);
-    const patch = { sessions: (Number(d.sessions) || 0) + 1, lastDay: jour };
+    const pwa = _isStandaloneDisplay();
+    // `pwa` décrit la session en cours ; `pwaEver` ne retombe jamais à faux,
+    // sans quoi une simple visite depuis un onglet effacerait l'information.
+    const patch = {
+      sessions: (Number(d.sessions) || 0) + 1,
+      lastDay: jour,
+      lastSeen: serverTimestamp(),
+      pwa,
+    };
+    if (pwa) { patch.pwaEver = true; patch.pwaAt = serverTimestamp(); }
     if (d.lastDay !== jour) patch.days = (Number(d.days) || 0) + 1;
     if (!d.firstDay) patch.firstDay = jour;
     await setFirestoreDoc(ref, patch, { merge: true });
+    try { localStorage.setItem(_PRESENCE_JOUR_CLE, uid + ':' + jour); } catch (_) {}
   } catch (e) { console.warn('[presence] activité:', e.message); }
-}
-
-function _startPresenceHeartbeat() {
-  if (window.IS_DEMO || !db || !currentUser) return;
-  if (_presenceHeartbeat) clearInterval(_presenceHeartbeat);
-  const pwa = _isStandaloneDisplay();
-
-  /** Pose ou repousse le bail. La seule fonction qui écrive dans `presence`. */
-  const poser = () => {
-    if (!currentUser) { if (_presenceHeartbeat) { clearInterval(_presenceHeartbeat); _presenceHeartbeat = null; } return; }
-    const jusqua = Date.now() + PRESENCE_BAIL_MS;
-    // `pwa` décrit la session en cours ; `pwaEver` ne retombe jamais à faux,
-    // sans quoi une simple visite depuis un onglet effacerait l'information.
-    const data = { online: true, lastSeen: serverTimestamp(), expiresAt: jusqua, pwa };
-    if (pwa) { data.pwaEver = true; data.pwaAt = serverTimestamp(); }
-    setFirestoreDoc(firestoreDoc(db, "presence", currentUser), data, { merge: true }).catch(() => {});
-    _presenceBailJusqua = jusqua;
-  };
-
-  /**
-   * Contrôle sans écriture, une fois par minute. N'écrit que si le bail arrive
-   * à son terme — c'est là toute la différence avec un battement.
-   */
-  const controler = () => {
-    if (!currentUser) { if (_presenceHeartbeat) { clearInterval(_presenceHeartbeat); _presenceHeartbeat = null; } return; }
-    // Verrou d'inactivité posé : la session reste ouverte et `currentUser` reste
-    // renseigné, mais personne n'est devant. On laisse le bail courir jusqu'à
-    // son terme sans le renouveler, et le membre passe hors ligne tout seul.
-    const verrou = document.getElementById('pin-lock-view');
-    if (verrou && verrou.style.display !== 'none' && verrou.offsetParent !== null) return;
-    if (document.hidden) return;
-    if (Date.now() < _presenceBailJusqua - PRESENCE_MARGE_MS) return;
-    poser();
-  };
-
-  poser();
-  _presenceHeartbeat = setInterval(controler, PRESENCE_CONTROLE_MS);
-
-  // Retour au premier plan : on ne repose un bail que s'il a expiré pendant
-  // l'absence. Revenir d'un aller-retour de trente secondes n'écrit donc rien,
-  // là où l'ancien battement relevait systématiquement.
-  document.addEventListener('visibilitychange', () => {
-    if (!currentUser || document.hidden) return;
-    if (Date.now() >= _presenceBailJusqua - PRESENCE_MARGE_MS) poser();
-  });
-
-  // Départ propre : le bail est rendu tout de suite, sans attendre son terme.
-  // Ce n'est pas garanti — un mobile que le système tue ne l'exécute pas — et
-  // c'est précisément pour ce cas que le bail a une échéance.
-  window.addEventListener("beforeunload", () => {
-    if (!currentUser) return;
-    _presenceBailJusqua = 0;
-    setFirestoreDoc(firestoreDoc(db, "presence", currentUser),
-      { online: false, lastSeen: serverTimestamp(), expiresAt: 0 }, { merge: true }).catch(() => {});
-  });
 }
 
 function isAdmin() { return currentUser === ADMIN_UID; }
@@ -16276,10 +16219,10 @@ async function renderAdminUsers() {
     const users = {};
     const get = uid => (users[uid] = users[uid] || { uid });
     rolesSnap.forEach(d => { const u = get(d.id), r = d.data(); u.role = r.role || 'user'; u.firstName = r.firstName; u.lastName = r.lastName; u.username = r.username; });
-    // Online fiable : basé sur la fraîcheur de lastSeen, PAS sur le booléen
-    // p.online qui reste figé à true si l'onglet meurt sans déclencher
-    // beforeunload (fréquent sur mobile/PWA).
-    presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; u.online = _presenceEnLigne(p);
+    // « Venu aujourd'hui », et non « en ligne maintenant » : plus rien ne bat,
+    // et le booléen `online` des anciens documents reste figé à true quand un
+    // onglet meurt sans déclencher beforeunload. Seul `lastDay` fait foi.
+    presSnap.forEach(d => { const u = get(d.id), p = d.data(); u.lastSeen = p.lastSeen && p.lastSeen.toDate ? p.lastSeen.toDate() : null; u.online = _vuAujourdhui(p);
       u.pwaNow = p.pwa === true; u.pwaEver = p.pwaEver === true; u.pwaKnown = Object.prototype.hasOwnProperty.call(p, 'pwa');
       u.pwaAt = p.pwaAt && p.pwaAt.toDate ? p.pwaAt.toDate() : null; });
     threadsSnap.forEach(d => { const u = get(d.id), t = d.data(); u.name = t.userName; u.email = t.userEmail; });
@@ -17748,11 +17691,13 @@ function _renderPresenceBadge(p) {
   const el = document.getElementById("presence-badge");
   if (!el) return;
   if (!p) { el.textContent = ""; return; }
-  const isOnline = _presenceEnLigne(p);
-  if (isOnline) {
-    el.innerHTML = '<span style="display:inline-block;width:8px;height:8px;background:#00e09e;border-radius:50%;margin-right:5px;vertical-align:middle"></span>En ligne';
+  // « Vu aujourd'hui » plutôt qu'« en ligne » : la présence n'est plus suivie
+  // en direct, et annoncer « en ligne » pour quelqu'un venu ce matin serait
+  // faux — l'admin attendrait une réponse qui ne vient pas.
+  if (_vuAujourdhui(p)) {
+    el.innerHTML = '<span style="display:inline-block;width:8px;height:8px;background:#00e09e;border-radius:50%;margin-right:5px;vertical-align:middle"></span>Vu aujourd\'hui';
   } else {
-    el.innerHTML = '<span style="display:inline-block;width:8px;height:8px;background:#6b7385;border-radius:50%;margin-right:5px;vertical-align:middle"></span>Hors ligne · ' + _formatLastSeen(p.lastSeen);
+    el.innerHTML = '<span style="display:inline-block;width:8px;height:8px;background:#6b7385;border-radius:50%;margin-right:5px;vertical-align:middle"></span>Vu ' + _formatLastSeen(p.lastSeen);
   }
 }
 
