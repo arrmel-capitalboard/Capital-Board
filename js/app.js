@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260829k';
+const APP_VERSION = '20260830a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4522,7 +4522,7 @@ function renderAvatarSwatches() {
     return '<div onclick="setAvatarHue(' + d + ')" title="Couleur" style="width:42px;height:42px;'
       + 'border-radius:11px;cursor:pointer;overflow:hidden;flex-shrink:0;transition:transform .12s;'
       + 'border:2px solid ' + (sel ? 'var(--accent)' : 'transparent') + '">'
-      + '<img src="assets/logo.png" style="width:100%;height:100%;object-fit:cover;filter:hue-rotate(' + d + 'deg)">'
+      + '<img src="assets/logo.png" alt="" style="width:100%;height:100%;object-fit:cover;filter:hue-rotate(' + d + 'deg)">'
       + '</div>';
   }).join('');
 }
@@ -6466,7 +6466,7 @@ function logoHtml(ticker, size, cssClass) {
 
   const onErr = 'var p=this.parentNode;p.textContent=\x22' + abbr + '\x22;p.classList.remove(\x22logo-wrap\x22)';
   return '<div class="' + cssClass + ' logo-wrap">' +
-    '<img src="' + _safeUrl(url) + '" style="' + st + '" onerror="' + onErr + '">' +
+    '<img src="' + _safeUrl(url) + '" alt="' + _attr(ticker) + '" style="' + st + '" onerror="' + onErr + '">' +
     '</div>';
 }
 
@@ -6480,7 +6480,7 @@ function logoHtmlModal(ticker) {
   }
   const onErr = 'this.parentNode.innerHTML=\x22' + abbr + '\x22;this.parentNode.style.background=\x22var(--s3)\x22;this.parentNode.style.color=\x22var(--accent)\x22;this.parentNode.style.fontSize=\x2210px\x22';
   return '<div style="' + base + 'background:var(--logo-bg);border:1px solid var(--logo-border);overflow:hidden">' +
-    '<img src="' + _safeUrl(url) + '" style="width:32px;height:32px;object-fit:contain" onerror="' + onErr + '">' +
+    '<img src="' + _safeUrl(url) + '" alt="' + _attr(ticker) + '" style="width:32px;height:32px;object-fit:contain" onerror="' + onErr + '">' +
     '</div>';
 }
 
@@ -13283,8 +13283,8 @@ function renderDivHistory(histEl) {
       : e.source==='reçu'
       ? '<span style="background:rgba(124,109,245,0.15);color:#a89cf7;font-size:10px;padding:1px 7px;border-radius:4px;display:inline-flex;align-items:center;gap:3px"><svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="#a89cf7" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>Manuel</span>'
       : e.source==='annoncé'
-      ? '<span style="background:var(--s2);color:var(--text3);font-size:10px;padding:1px 7px;border-radius:4px;display:inline-flex;align-items:center;gap:3px"><img src="https://www.boursorama.com/favicon.ico" width="11" height="11" style="border-radius:2px;vertical-align:middle">Boursorama</span>'
-      : '<span style="background:var(--s2);color:var(--text3);font-size:10px;padding:1px 7px;border-radius:4px;display:inline-flex;align-items:center;gap:3px"><img src="https://finance.yahoo.com/favicon.ico" width="11" height="11" style="border-radius:2px;vertical-align:middle">Yahoo Finance</span>';
+      ? '<span style="background:var(--s2);color:var(--text3);font-size:10px;padding:1px 7px;border-radius:4px;display:inline-flex;align-items:center;gap:3px"><img src="https://www.boursorama.com/favicon.ico" alt="Boursorama" width="11" height="11" style="border-radius:2px;vertical-align:middle">Boursorama</span>'
+      : '<span style="background:var(--s2);color:var(--text3);font-size:10px;padding:1px 7px;border-radius:4px;display:inline-flex;align-items:center;gap:3px"><img src="https://finance.yahoo.com/favicon.ico" alt="Yahoo Finance" width="11" height="11" style="border-radius:2px;vertical-align:middle">Yahoo Finance</span>';
     return `<tr>
       <td data-label="Date" class="mono" style="font-size:12px;color:var(--text2)">${ds}</td>
       <td data-label="Action"><div style="display:flex;align-items:center;gap:6px">${logoHtml(e.ticker||'',20,'ticker-icon')}
@@ -17685,7 +17685,7 @@ function _renderChatMessages(msgs) {
     if (m.type === "image" && m.imageUrl) {
       const _iu = _safeUrl(m.imageUrl);
       body = _iu
-        ? '<a href="' + _iu + '" target="_blank" rel="noopener"><img src="' + _iu + '" alt="img" style="max-width:240px;max-height:240px;border-radius:8px;display:block"></a>'
+        ? '<a href="' + _iu + '" target="_blank" rel="noopener"><img src="' + _iu + '" alt="Image jointe au message" style="max-width:240px;max-height:240px;border-radius:8px;display:block"></a>'
         : '<span style="color:var(--text3);font-size:11px">[image non affichable]</span>';
       if (m.text) body += '<div style="margin-top:6px">' + _escapeHtmlChat(m.text) + '</div>';
     } else if (m.type === "file" && m.fileUrl) {
@@ -21347,7 +21347,7 @@ function _livRenderLogo() {
   box.style.color      = t.color;
   if (_livDomaine) {
     box.classList.add('has-logo');
-    box.innerHTML = '<img src="' + _safeUrl(_depLogoUrl(_livDomaine)) + '" alt="" onerror="livLogoFailed()">';
+    box.innerHTML = '<img src="' + _safeUrl(_depLogoUrl(_livDomaine)) + '" alt="' + _attr(_livDomaine || 'banque') + '" onerror="livLogoFailed()">';
     return;
   }
   box.classList.remove('has-logo');
