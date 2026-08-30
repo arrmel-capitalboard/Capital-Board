@@ -12,7 +12,9 @@ const bundle = [
   g(/function getCryptoOps\(user\) \{[\s\S]*?\n\}/),
   g(/function _cryPositions\(\) \{[\s\S]*?\n\}/),
   g(/function _cryDetenu\(sym\) \{[\s\S]*?\n\}/),
-  'module.exports = { _cryPositions, _cryDetenu, set ops(v){ _localCache["u_crypto"] = v; }, get ops(){ return _localCache["u_crypto"]; } };',
+  g(/function _crySerie\(ops, series, depuis\) \{[\s\S]*?\n\}/),
+  g(/function _cryInvestiNet\(ops\) \{[\s\S]*?\n\}/),
+  'module.exports = { _cryPositions, _cryDetenu, _crySerie, _cryInvestiNet, _crySerie, _cryInvestiNet, set ops(v){ _localCache["u_crypto"] = v; }, get ops(){ return _localCache["u_crypto"]; } };',
 ].join('\n');
 const mod = new module.constructor();
 mod._compile(bundle, 'cry.js');
@@ -62,6 +64,41 @@ X.ops = [
   { id:'y', sym:'ADA', sens:'vente', qte:99, prix:1, date:'2026-02-01' },
 ];
 chk('vente excessive : bornee a zero', X._cryDetenu('ADA'), 0);
+
+// ── La courbe de valorisation ──
+//
+// Elle n'est pas stockee : elle se reconstitue des operations et des cours
+// passes. C'est ce qui la rend exacte meme pour les jours ou personne n'a
+// ouvert l'application — et ce qui merite d'etre verrouille.
+const cours = (deb, n, px) => {
+  const o = {}; const d = new Date(deb);
+  for (let i = 0; i < n; i++) { o[d.toISOString().slice(0, 10)] = px(i); d.setDate(d.getDate() + 1); }
+  return o;
+};
+
+const jour = (n) => new Date(Date.now() - n * 86400000).toISOString().slice(0, 10);
+
+// Achat d'1 BTC a 100, le cours monte de 5 par jour.
+const debut = jour(4);
+const opsC = [{ id: '1', sym: 'BTC', sens: 'achat', qte: 1, prix: 100, date: debut }];
+const serieC = { BTC: cours(debut, 6, (i) => 100 + i * 5) };
+const pts = X._crySerie(opsC, serieC, debut);
+chk('courbe : un point par jour depuis l achat', pts.length, 5);
+chk('courbe : valeur au premier jour', pts[0].valeur, 100);
+chk('courbe : valeur au dernier jour', pts[pts.length - 1].valeur, 100 + (pts.length - 1) * 5);
+chk('courbe : investi net', X._cryInvestiNet(opsC), 100);
+
+// Une vente retire de la quantite le jour meme, et de l'investi net.
+const opsV = opsC.concat([{ id: '2', sym: 'BTC', sens: 'vente', qte: 0.5, prix: 115, date: jour(1) }]);
+const ptsV = X._crySerie(opsV, serieC, debut);
+chk('courbe : la vente divise la valeur', ptsV[ptsV.length - 1].valeur, (100 + (ptsV.length - 1) * 5) * 0.5);
+chk('courbe : investi net apres vente', X._cryInvestiNet(opsV), 42.5);
+
+// Un trou dans la serie de Yahoo reporte le dernier cours connu : sans cela
+// la courbe plongerait a zero un jour sur deux.
+const troue = { BTC: {} };
+Object.entries(serieC.BTC).forEach(([j, v], i) => { if (i !== 2) troue.BTC[j] = v; });
+chk('courbe : trou de cotation, dernier cours reporte', X._crySerie(opsC, troue, debut)[2].valeur, 105);
 
 console.log('\n' + ok + '/' + (ok + ko) + (ko ? '  >>> ECHEC' : '  >>> tout passe'));
 process.exit(ko ? 1 : 0);

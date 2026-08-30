@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830r';
+const APP_VERSION = '20260830s';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4189,6 +4189,7 @@ async function renderCrypto() {
   _cryRender();
   _cryWatchPrixManquants();
   _cryRenderWatch();
+  _cryRenderChart().catch(e => console.warn('[crypto] courbe :', e && e.message));
 }
 
 // ── La liste de suggestions ────────────────────────────────────────────────
@@ -4763,6 +4764,244 @@ window.crySupprimerOp = function(id) {
   });
 };
 
+// ── Valorisation du portefeuille ───────────────────────────────────────────
+//
+// La courbe n'est pas stockée, elle se reconstitue.
+//
+// Le PEA garde un instantané par jour (`dailyValues`) parce que ses lignes
+// changent sans qu'on puisse les rejouer. Ici, tout est rejouable : les
+// opérations disent ce qu'on détenait chaque jour, et Yahoo donne le cours de
+// chaque jour. Le produit des deux est la valeur du portefeuille, exacte même
+// pour les journées où personne n'a ouvert l'application.
+//
+// Ce qu'on y gagne : aucune écriture Firestore, aucune tâche planifiée, et un
+// historique complet dès la première opération saisie — y compris rétroactif.
+
+let _cryChart = null;
+let _cryHistoCache = null;   // { syms, depuis, series } pour la session
+
+/** La plage Yahoo qui couvre la première opération. */
+function _cryPlage(depuis) {
+  const jours = (Date.now() - new Date(depuis).getTime()) / 86400000;
+  if (jours <= 30) return '1mo';
+  if (jours <= 180) return '6mo';
+  if (jours <= 365) return '1y';
+  if (jours <= 365 * 5) return '5y';
+  return '10y';
+}
+
+/**
+ * Les cours de clôture passés, par symbole, indexés par jour.
+ *
+ * Un échec isolé n'emporte pas les autres : le symbole manquant sortira du
+ * total, ce que la ligne sous le pourcentage dira.
+ */
+async function _cryHistorique(syms, depuis) {
+  const plage = _cryPlage(depuis);
+  const cle = syms.slice().sort().join(',') + '|' + plage;
+  if (_cryHistoCache && _cryHistoCache.cle === cle) return _cryHistoCache.series;
+
+  const res = await Promise.allSettled(syms.map(async (sym) => {
+    const raw = await fetchWithFallback(
+      'https://query1.finance.yahoo.com/v8/finance/chart/'
+      + encodeURIComponent(_cryParSym[sym].y) + '?interval=1d&range=' + plage);
+    const r = JSON.parse(raw).chart?.result?.[0];
+    const ts = (r && r.timestamp) || [];
+    const cl = (r && r.indicators?.quote?.[0]?.close) || [];
+    const par = {};
+    ts.forEach((t, i) => {
+      if (cl[i] == null) return;
+      par[new Date(t * 1000).toISOString().slice(0, 10)] = cl[i];
+    });
+    return { sym, par };
+  }));
+
+  const series = {};
+  res.forEach(r => { if (r.status === 'fulfilled') series[r.value.sym] = r.value.par; });
+  _cryHistoCache = { cle, series };
+  return series;
+}
+
+/**
+ * La valeur du portefeuille jour après jour.
+ *
+ * Le dernier cours connu est reporté sur les jours sans cotation : une crypto
+ * cote tous les jours, mais un trou dans la série de Yahoo ferait plonger la
+ * courbe à zéro plutôt que de la laisser plate.
+ */
+function _crySerie(ops, series, depuis) {
+  const syms = [...new Set(ops.map(o => o.sym))];
+  const parJour = new Map();
+  ops.forEach(o => {
+    const j = o.date || depuis;
+    if (!parJour.has(j)) parJour.set(j, []);
+    parJour.get(j).push(o);
+  });
+
+  const qte = {};
+  const dernier = {};
+  const points = [];
+  const fin = new Date();
+  for (let d = new Date(depuis); d <= fin; d.setDate(d.getDate() + 1)) {
+    const j = d.toISOString().slice(0, 10);
+    (parJour.get(j) || []).forEach(o => {
+      const q = Number(o.qte) || 0;
+      qte[o.sym] = (qte[o.sym] || 0) + (o.sens === 'vente' ? -q : q);
+      if (qte[o.sym] < 1e-12) qte[o.sym] = 0;
+    });
+    let valeur = 0, connu = false;
+    syms.forEach(sym => {
+      const px = (series[sym] && series[sym][j]) ?? dernier[sym];
+      if (px == null) return;
+      dernier[sym] = px;
+      if (qte[sym]) { valeur += qte[sym] * px; connu = true; }
+    });
+    points.push({ date: j, valeur: connu ? valeur : null });
+  }
+  return points;
+}
+
+/** Ce qui a été investi net, cumulé — la base du pourcentage affiché. */
+function _cryInvestiNet(ops) {
+  return ops.reduce((t, o) => {
+    const m = (Number(o.qte) || 0) * (Number(o.prix) || 0);
+    return t + (o.sens === 'vente' ? -m : m);
+  }, 0);
+}
+
+async function _cryRenderChart() {
+  const carte = document.getElementById('cry-chart-card');
+  if (!carte || typeof Chart === 'undefined') return;
+
+  const ops = getCryptoOps().filter(o => o.sym && o.date);
+  if (ops.length < 1) { carte.hidden = true; return; }
+  carte.hidden = false;
+
+  const depuis = ops.map(o => o.date).sort()[0];
+  const syms = [...new Set(ops.map(o => o.sym))].filter(x => _cryParSym[x]);
+  if (!syms.length) { carte.hidden = true; return; }
+
+  const loader = document.getElementById('cry-chart-loader');
+  let series;
+  try {
+    series = await _cryHistorique(syms, depuis);
+  } catch (e) {
+    console.warn('[crypto] historique :', e && e.message);
+    if (loader) loader.innerHTML = '<span>Courbe indisponible pour le moment.</span>';
+    return;
+  }
+  if (loader) loader.style.display = 'none';
+
+  const points = _crySerie(ops, series, depuis);
+  const valeurs = points.map(p => p.valeur);
+  const derniere = [...valeurs].reverse().find(v => v != null) ?? 0;
+  const investi = _cryInvestiNet(ops);
+  const gain = derniere - investi;
+  const pct = investi > 0 ? (gain / investi) * 100 : 0;
+  const hausse = gain >= 0;
+  const couleur = hausse ? '#00e09e' : '#ff4d6a';
+
+  const pctEl = document.getElementById('cry-chart-pct');
+  if (pctEl) {
+    // Comme sur le PEA : un clic bascule du pourcentage à l'euro. C'est le
+    // même geste, il doit donner la même chose.
+    pctEl.dataset.pct = (hausse ? '+' : '') + pct.toFixed(2) + '%';
+    pctEl.dataset.eur = (hausse ? '+' : '−') + fmt(Math.abs(gain));
+    pctEl.textContent = pctEl.dataset.pct;
+    pctEl.style.color = couleur;
+    pctEl.style.cursor = 'pointer';
+    pctEl.onclick = () => {
+      pctEl.textContent = pctEl.textContent === pctEl.dataset.pct ? pctEl.dataset.eur : pctEl.dataset.pct;
+    };
+  }
+
+  const sous = document.getElementById('cry-chart-sous');
+  if (sous) {
+    const jours = Math.max(1, Math.round((Date.now() - new Date(depuis).getTime()) / 86400000));
+    const absents = syms.filter(x => !series[x]).length;
+    sous.textContent = absents
+      ? (absents > 1 ? absents + ' cours introuvables' : 'un cours introuvable') + ' — la courbe est partielle'
+      : jours + (jours > 1 ? ' jours' : ' jour') + ' de détention';
+  }
+
+  // Pastilles aux dates d'opération, comme sur le PEA : la courbe ne dit pas
+  // toute seule si une marche vient d'un achat ou d'une hausse.
+  const index = new Map(points.map((p, i) => [p.date, i]));
+  const achats = valeurs.map(() => null);
+  const ventes = valeurs.map(() => null);
+  ops.forEach(o => {
+    const i = index.get(o.date);
+    if (i == null || valeurs[i] == null) return;
+    (o.sens === 'vente' ? ventes : achats)[i] = valeurs[i];
+  });
+
+  const labels = points.map(p => {
+    const dt = new Date(p.date);
+    return dt.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+  });
+
+  // Sans bornes, Chart.js arrondit et une progression de 3 100 à 3 400 € se
+  // trace dans une échelle 0–4 000, où elle ne se voit plus.
+  const nn = valeurs.filter(v => v != null);
+  const bas = Math.min(...nn), haut = Math.max(...nn);
+  const marge = (haut - bas) > 0 ? (haut - bas) * 0.14 : Math.max(Math.abs(haut || 1) * 0.02, 1);
+
+  const ctx = document.getElementById('chart-crypto').getContext('2d');
+  if (_cryChart) _cryChart.destroy();
+  const fond = ctx.createLinearGradient(0, 0, 0, 260);
+  fond.addColorStop(0, hausse ? 'rgba(0,224,158,0.22)' : 'rgba(255,77,106,0.22)');
+  fond.addColorStop(1, 'rgba(0,0,0,0)');
+
+  _cryChart = new Chart(ctx, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: 'Portefeuille', data: valeurs,
+          borderColor: couleur, borderWidth: 2, tension: 0.2,
+          pointRadius: 0, pointHoverRadius: 4, pointHoverBackgroundColor: couleur,
+          fill: true, backgroundColor: fond, spanGaps: true,
+        },
+        {
+          label: 'Achat', data: achats,
+          borderColor: 'transparent', pointRadius: 4,
+          pointBackgroundColor: '#00e09e', pointBorderColor: '#04060b', pointBorderWidth: 2,
+          showLine: false,
+        },
+        {
+          label: 'Vente', data: ventes,
+          borderColor: 'transparent', pointRadius: 4,
+          pointBackgroundColor: '#ff4d6a', pointBorderColor: '#04060b', pointBorderWidth: 2,
+          showLine: false,
+        },
+      ],
+    },
+    options: {
+      responsive: true, maintainAspectRatio: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: { display: false },
+        tooltip: {
+          displayColors: false,
+          callbacks: {
+            title: (it) => points[it[0].dataIndex]
+              ? new Date(points[it[0].dataIndex].date).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' })
+              : '',
+            label: (it) => it.datasetIndex === 0
+              ? fmt(it.parsed.y)
+              : (it.datasetIndex === 1 ? 'Achat ce jour-là' : 'Vente ce jour-là'),
+          },
+        },
+      },
+      scales: {
+        x: { display: false },
+        y: { display: false, min: bas - marge, max: haut + marge },
+      },
+    },
+  });
+}
+
 // ── Activité ───────────────────────────────────────────────────────────────
 //
 // La liste des opérations, sans rien y ajouter : ce sont exactement les
@@ -4919,10 +5158,15 @@ window.cryWatchChercher = function() {
 };
 
 /**
- * La watchlist, dans la table de celle du PEA.
+ * La watchlist crypto, dans le gabarit exact de celle du PEA.
  *
- * Mêmes colonnes, mêmes classes : c'est le même besoin, et deux présentations
- * différentes pour suivre un cours n'auraient eu aucune justification.
+ * Même fonction de ligne (`_wlLigneHtml`), même enrichissement
+ * (`enrichWatchlistRow`), donc mêmes colonnes : cours, variation du jour,
+ * sparkline sur trente jours, écart depuis l'ajout — et la courbe qui se
+ * déplie au clic. Les deux ne peuvent plus diverger.
+ *
+ * Le seul écart est le logo : les cryptos n'ont pas de ticker boursier dont
+ * `logoHtml` saurait tirer une image, on lui passe donc la pastille du module.
  */
 function _cryRenderWatch() {
   const tbody = document.getElementById('cry-watch-tbody');
@@ -4930,82 +5174,39 @@ function _cryRenderWatch() {
   const table = document.getElementById('cry-watch-table');
   if (!tbody) return;
 
-  const wl = getCryptoWatch();
-  if (vide) vide.style.display = wl.length ? 'none' : 'block';
-  if (table) table.style.display = wl.length ? '' : 'none';
-  tbody.innerHTML = '';
-
-  wl.forEach(w => {
+  const wl = getCryptoWatch().map(w => {
     const sym = _cryWatchSym(w);
     const info = _cryInfo(sym);
-    const cours = _cryCours[sym];
-    const depuis = (w && w.addedPrice) || null;
-    const ecart = Number.isFinite(cours) && depuis ? ((cours - depuis) / depuis) * 100 : null;
-
-    const tr = document.createElement('tr');
-
-    const tdNom = document.createElement('td');
-    tdNom.setAttribute('data-label', 'Crypto');
-    const cell = document.createElement('div');
-    cell.className = 'ticker-cell';
-    cell.appendChild(_cryPastille(info, 26));
-    const bloc = document.createElement('div');
-    const n1 = document.createElement('div');
-    n1.className = 'ticker-name';
-    n1.textContent = info.nom;
-    const n2 = document.createElement('div');
-    n2.className = 'ticker-sym';
-    n2.textContent = info.sym;
-    bloc.appendChild(n1); bloc.appendChild(n2);
-    cell.appendChild(bloc);
-    tdNom.appendChild(cell);
-
-    const tdPrix = document.createElement('td');
-    tdPrix.setAttribute('data-label', 'Cours');
-    tdPrix.className = 'mono';
-    tdPrix.style.textAlign = 'right';
-    tdPrix.textContent = Number.isFinite(cours) ? fmt(cours) : '—';
-
-    const tdEcart = document.createElement('td');
-    tdEcart.setAttribute('data-label', 'Depuis l’ajout');
-    tdEcart.className = 'mono';
-    tdEcart.style.textAlign = 'right';
-    if (ecart === null) {
-      tdEcart.style.color = 'var(--text2)';
-      tdEcart.textContent = '—';
-      tdEcart.title = 'Le cours du jour de l’ajout n’a pas été relevé.';
-    } else {
-      tdEcart.style.color = ecart >= 0 ? 'var(--positive)' : 'var(--negative)';
-      tdEcart.textContent = (ecart >= 0 ? '+' : '') + ecart.toFixed(2) + ' %';
-      tdEcart.title = 'Depuis le ' + String(w.addedAt || '').slice(0, 10) + ' à ' + fmt(depuis);
-    }
-
-    const tdAct = document.createElement('td');
-    tdAct.style.cssText = 'text-align:right;white-space:nowrap';
-    const acheter = document.createElement('button');
-    acheter.className = 'btn-add';
-    acheter.type = 'button';
-    acheter.textContent = 'Acheter';
-    acheter.style.display = 'inline-flex';
-    acheter.addEventListener('click', () => cryOpenModal('achat', sym));
-    const sup = document.createElement('button');
-    sup.className = 'btn-del';
-    sup.type = 'button';
-    sup.title = 'Retirer';
-    sup.style.marginLeft = '6px';
-    sup.textContent = '✕';
-    sup.addEventListener('click', () => cryWatchRetirer(sym));
-    const grp = document.createElement('div');
-    grp.style.cssText = 'display:inline-flex;gap:6px;align-items:center';
-    grp.appendChild(acheter); grp.appendChild(sup);
-    tdAct.appendChild(grp);
-
-    tr.appendChild(tdNom);
-    tr.appendChild(tdPrix);
-    tr.appendChild(tdEcart);
-    tr.appendChild(tdAct);
-    tbody.appendChild(tr);
+    // La forme attendue par le gabarit : un ticker Yahoo, un nom, un prix et
+    // une date d'ajout.
+    return {
+      sym,
+      ticker: info.y || sym,
+      name: info.nom,
+      addedPrice: (w && w.addedPrice) || null,
+      addedAt: (w && w.addedAt) || null,
+    };
   });
+
+  if (vide) vide.style.display = wl.length ? 'none' : 'block';
+  if (table) table.style.display = wl.length ? '' : 'none';
+
+  tbody.innerHTML = wl.map((w, n) => _wlLigneHtml(w, 'cw' + n, _cryLogoHtml(w.sym))).join('');
+  wl.forEach((w, n) => enrichWatchlistRow(w, 'cw' + n));
+}
+
+/** La pastille d'une crypto, en HTML, pour le gabarit de ligne du PEA. */
+function _cryLogoHtml(sym) {
+  const info = _cryInfo(sym);
+  const abbr = _attr(info.sym.slice(0, 4));
+  if (!info.d) {
+    return '<div class="ticker-icon" style="color:' + _attr(info.c) + '">' + abbr + '</div>';
+  }
+  const onErr = 'var p=this.parentNode;p.textContent=\x22' + abbr + '\x22;p.classList.remove(\x22logo-wrap\x22)';
+  return '<div class="ticker-icon logo-wrap">'
+    + '<img src="' + _safeUrl(WORKER_URL + '/logo?domain=' + encodeURIComponent(info.d)) + '"'
+    + ' alt="" style="width:26px;height:26px;border-radius:7px;object-fit:contain"'
+    + ' onerror="' + onErr + '"></div>';
 }
 
 // ── Rapporter une erreur ───────────────────────────────────────────────────
@@ -12024,12 +12225,28 @@ async function renderWatchlist() {
   const col = v => v == null ? 'var(--text2)' : (v >= 0 ? 'var(--positive)' : 'var(--negative)');
 
   // Rendu initial avec placeholders "…"
-  tbody.innerHTML = wl.map((w, i) => {
+  tbody.innerHTML = wl.map((w, i) => _wlLigneHtml(w, i)).join('');
+
+  // Fetch en parallèle pour chaque ticker
+  wl.forEach((w, i) => enrichWatchlistRow(w, i));
+}
+
+/**
+ * Une ligne de watchlist, cours et sparkline en attente.
+ *
+ * Extraite pour servir aussi la watchlist crypto : c'est le même besoin, et
+ * deux gabarits auraient divergé au premier changement. L'index sert
+ * d'identifiant de ligne — `cw0`, `cw1`… côté crypto, pour ne pas entrer en
+ * collision avec les entiers du PEA, les deux tableaux vivant dans le même
+ * document.
+ */
+function _wlLigneHtml(w, i, logoHtmlPerso) {
+  {
     const rowId = 'wl-row-' + i;
     const addedPrice = w.addedPrice || w.price; // compat données existantes
     return (
-      '<tr id="' + rowId + '" class="wl-row-clickable" onclick="toggleWatchlistChart(' + i + ',\'' + w.ticker + '\')">' +
-        '<td data-label="Action"><div class="ticker-cell">' + logoHtml(w.ticker, 26, 'ticker-icon') +
+      '<tr id="' + rowId + '" class="wl-row-clickable" onclick="toggleWatchlistChart(\'' + i + '\',\'' + w.ticker + '\')">' +
+        '<td data-label="Action"><div class="ticker-cell">' + (logoHtmlPerso || logoHtml(w.ticker, 26, 'ticker-icon')) +
           '<div><div class="ticker-name">' + (w.name || w.ticker) + '</div>' +
           '<div class="ticker-sym">' + w.ticker + '</div></div></div></td>' +
         '<td data-label="Prix actuel" class="mono wl-price" style="text-align:right">…</td>' +
@@ -12037,7 +12254,7 @@ async function renderWatchlist() {
         '<td data-label="30 jours" class="wl-spark" style="min-width:120px;width:120px;padding:0 8px"><div style="height:30px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:10px">…</div></td>' +
         '<td data-label="Depuis ajout" class="mono wl-since" style="text-align:right;color:var(--text2)" title="Depuis le ' + (w.addedAt ? w.addedAt.slice(0,10) : '?') + ' @ ' + (addedPrice ? addedPrice.toFixed(2) + ' €' : '?') + '">…</td>' +
         '<td data-label="" style="text-align:right;white-space:nowrap">' + _alertBtnHtml(w.ticker)
-          + '<button class="btn-del" onclick="event.stopPropagation();removeFromWatchlist(' + i + ')" title="Retirer" style="margin-left:6px">✕</button></td>' +
+          + '<button class="btn-del" onclick="event.stopPropagation();' + (String(i).startsWith('cw') ? 'cryWatchRetirer(\'' + w.sym + '\')' : 'removeFromWatchlist(' + i + ')') + '" title="Retirer" style="margin-left:6px">✕</button></td>' +
       '</tr>' +
       '<tr id="wl-chart-row-' + i + '" class="wl-chart-row" style="display:none">' +
         '<td colspan="6">' +
@@ -12049,7 +12266,7 @@ async function renderWatchlist() {
               '</div>' +
               '<div class="wl-period-bar" id="wl-pbar-' + i + '">' +
                 ['1J','5J','1M','6M','AAJ','1A','5A','ALL'].map((p, pi) =>
-                  '<button class="wl-period-btn' + (pi === 2 ? ' active' : '') + '" onclick="event.stopPropagation();wlSetPeriod(' + i + ',\'' + w.ticker + '\',\'' + p + '\',this)">' + p + '</button>'
+                  '<button class="wl-period-btn' + (pi === 2 ? ' active' : '') + '" onclick="event.stopPropagation();wlSetPeriod(\'' + i + '\',\'' + w.ticker + '\',\'' + p + '\',this)">' + p + '</button>'
                 ).join('') +
               '</div>' +
             '</div>' +
@@ -12061,10 +12278,7 @@ async function renderWatchlist() {
         '</td>' +
       '</tr>'
     );
-  }).join('');
-
-  // Fetch en parallèle pour chaque ticker
-  wl.forEach((w, i) => enrichWatchlistRow(w, i));
+  }
 }
 
 // Cache 5 minutes pour les charts watchlist (prix live bougent)

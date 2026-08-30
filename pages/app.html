@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260830r">
+<link rel="stylesheet" href="css/style.css?v=20260830s">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -1920,6 +1920,23 @@
         </div>
       </div>
 
+      <!-- Même carte que la valorisation du PEA. La série, elle, n'est pas
+           stockée : elle se reconstitue des opérations et des cours passés,
+           donc elle est exacte même pour les jours où personne n'a ouvert
+           l'application. -->
+      <div class="portf-chart-card" id="cry-chart-card" hidden>
+        <div class="portf-chart-title">Valorisation du portefeuille</div>
+        <div class="portf-chart-header">
+          <div class="portf-chart-pct" id="cry-chart-pct">—</div>
+          <div class="portf-chart-since">depuis le début</div>
+        </div>
+        <div id="cry-chart-sous" style="font-size:12px;color:var(--text3);padding:0 20px 6px;font-style:italic;min-height:16px"></div>
+        <div class="portf-canvas-wrap">
+          <canvas id="chart-crypto"></canvas>
+          <div id="cry-chart-loader" class="portf-chart-loader"><span class="loading-spinner"></span><span>Chargement de la courbe…</span></div>
+        </div>
+      </div>
+
       <div class="cry-listwrap">
         <div class="table-header">
           <div class="table-title">Vos cryptos</div>
@@ -1994,7 +2011,9 @@
             <thead><tr>
               <th style="text-align:left">Crypto</th>
               <th style="text-align:right">Cours</th>
-              <th style="text-align:right">Depuis l’ajout</th>
+              <th style="text-align:right">Variation jour</th>
+              <th style="text-align:center">30 jours</th>
+              <th style="text-align:right">Depuis ajout</th>
               <th></th>
             </tr></thead>
             <tbody id="cry-watch-tbody"></tbody>
@@ -4064,11 +4083,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260830r"></script>
+<script src="js/app.js?v=20260830s"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260830r"></script>
+<script src="js/onboarding.js?v=20260830s"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260830r"></script>
+<script src="js/import.js?v=20260830s"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
