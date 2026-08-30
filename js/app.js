@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830n';
+const APP_VERSION = '20260830o';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4368,8 +4368,22 @@ function _cryRender() {
 // Sur une vente totale, en revanche, la formule se simplifie exactement en
 // « valeur − prix d'acquisition ». C'est le seul cas où l'on peut être juste,
 // et c'est celui qu'on montre.
-const CRY_PFU = 0.30;          // 12,8 % d'impôt sur le revenu + 17,2 % de prélèvements sociaux
+// Taux d'imposition des plus-values de cession d'actifs numériques.
+//
+// 31,4 %, et non les 30 % du prélèvement forfaitaire ordinaire : c'est un
+// régime distinct de celui des intérêts, qui reste à 30 % côté livrets
+// (`LIV_PFU`). Ne pas aligner les deux « pour faire propre » — ils ne suivent
+// pas la même règle et ne bougeront pas ensemble.
+//
+// Le taux est affiché à partir de cette constante, jamais réécrit à la main :
+// la valeur et le libellé dérivaient sinon l'un de l'autre au premier
+// changement de barème.
+const CRY_PFU = 0.314;
 const CRY_SEUIL_CESSION = 305; // en deçà, le gain n'est pas imposé (art. 150 VH bis CGI)
+
+/** « 31,4 % » — le taux tel qu'il s'écrit, tiré de la constante. */
+const _cryTauxLabel = () =>
+  (CRY_PFU * 100).toFixed(1).replace('.', ',').replace(',0', '') + ' %';
 
 function _cryRenderFisc(valeur, investi, manquants) {
   const carte = document.getElementById('cry-fisc');
@@ -4419,7 +4433,7 @@ function _cryRenderFisc(valeur, investi, manquants) {
     pose(gain >= 0 ? 'Plus-value' : 'Moins-value',
       (gain >= 0 ? '+' : '−') + fmt(Math.abs(gain)),
       gain >= 0 ? 'pos' : 'neg');
-    pose('Impôt estimé (30 %)', impot ? '−' + fmt(impot) : '0 €', impot ? 'neg' : '');
+    pose('Impôt estimé (' + _cryTauxLabel() + ')', impot ? '−' + fmt(impot) : '0 €', impot ? 'neg' : '');
   }
 
   // Un cours manquant fausse les deux côtés : le dire vaut mieux qu'un chiffre
