@@ -606,20 +606,8 @@ async function listerReponses(interaction) {
     return;
   }
 
-  // La répartition d'abord : c'est ce qu'on vient chercher. Le détail ensuite.
-  const parChoix = {};
-  snap.forEach((d) => {
-    const c = (d.data() || {}).choix || '(vide)';
-    parChoix[c] = (parChoix[c] || 0) + 1;
-  });
-  embed.addFields({
-    name: 'Répartition',
-    value: Object.entries(parChoix).sort((a, b) => b[1] - a[1])
-      .map(([c, n]) => `**${propre(c)}** — ${n}`).join('\n').slice(0, 1024),
-  });
-
-  // Discord plafonne à 25 champs, en-tête compris. On en garde vingt.
-  const docs = snap.docs.slice(0, 20);
+  // Discord plafonne un embed à vingt-cinq champs.
+  const docs = snap.docs.slice(0, 25);
   for (const d of docs) {
     const r = d.data() || {};
     const qui = propre(r.nom || r.email || r.uid).slice(0, 200);
