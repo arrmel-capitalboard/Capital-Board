@@ -12,6 +12,15 @@
 // Tout se pilote depuis Discord : rien à déployer, rien à écrire à la main
 // dans Firestore.
 //
+// ── Le salon ne garde que le panneau ──
+//
+// Chaque réponse d'interaction est éphémère, et les réponses des membres ne
+// sont plus postées en message : elles s'accumulaient sous le panneau, qui
+// finissait hors de vue. Ce qu'on aurait perdu — savoir qu'une réponse est
+// arrivée sans aller la chercher — est rendu par le panneau lui-même, qui
+// porte le compteur et se réécrit en place à chaque réponse. Un message édité
+// ne remonte pas le salon.
+//
 // ── Le point de conception qui compte : zéro lecture Firestore ajoutée ──
 //
 // Le forfait Spark plafonne à 50 000 lectures par jour pour tout le projet, et
@@ -200,6 +209,24 @@ async function questionCourante() {
 }
 
 /**
+ * Combien de réponses pour cette question.
+ *
+ * `count()` plutôt que de rapatrier les documents : Firestore facture une
+ * lecture par millier compté, contre une par document lu. Le panneau se
+ * réécrit à chaque réponse, ce compteur est donc appelé souvent.
+ */
+async function compterReponses(id) {
+  if (!id) return 0;
+  const agg = await getDb().collection(COL_REPONSES).where('campagne', '==', id).count().get();
+  return agg.data().count || 0;
+}
+
+async function etatCourant() {
+  const question = await questionCourante();
+  return { question, reponses: question ? await compterReponses(question.id) : 0 };
+}
+
+/**
  * Enregistre la question et marque les membres visés.
  *
  * L'ordre compte : le ciblage d'abord, la question ensuite. Une marque posée
@@ -243,7 +270,10 @@ async function arreterQuestion() {
 
 // ── Le panneau ─────────────────────────────────────────────────────────────
 
-function panelPayload() {
+function panelPayload(etat) {
+  const q = etat && etat.question;
+  const nb = (etat && etat.reponses) || 0;
+
   const embed = new EmbedBuilder()
     .setColor(0xf5b731)
     .setTitle('Livrets & épargne')
@@ -251,19 +281,34 @@ function panelPayload() {
       'Savoir qui utilise le module, et leur poser une question directement '
       + 'dans l\'application.\n\n'
       + '**Qui a un livret** — la liste des membres concernés, nom et email.\n'
-      + '**Poser une question** — choisissez les destinataires dans la liste, '
-      + 'écrivez la question : elle s\'affiche à l\'ouverture de leur '
-      + 'application, et leurs réponses reviennent ici.\n'
-      + '**Arrêter la question** — elle cesse d\'être affichée.',
+      + '**Poser une question** — choisissez les destinataires, écrivez la '
+      + 'question : elle s\'affiche à l\'ouverture de leur application.\n'
+      + '**Voir les réponses** — ce qui est revenu, et de qui.\n'
+      + '**Arrêter la question** — elle cesse d\'être affichée.\n\n'
+      + '*Tout s\'affiche en message privé : le salon ne garde que ce panneau.*',
     );
+
+  // L'état de la question vit dans le panneau, pas dans un message à part : un
+  // message édité ne remonte pas le salon, contrairement à un nouveau.
+  if (q) {
+    embed.addFields({
+      name: `❓ Question en cours — ${nb} réponse${nb > 1 ? 's' : ''} sur ${q.cibles || '?'}`,
+      value: propre(q.texte).slice(0, 1024),
+    });
+  } else {
+    embed.addFields({ name: '❓ Question en cours', value: 'Aucune.' });
+  }
+  embed.setTimestamp();
 
   const row = new ActionRowBuilder().addComponents(
     new ButtonBuilder().setCustomId('liv:qui').setLabel('Qui a un livret')
       .setStyle(ButtonStyle.Primary).setEmoji('📒'),
     new ButtonBuilder().setCustomId('liv:demander').setLabel('Poser une question')
       .setStyle(ButtonStyle.Success).setEmoji('❓'),
+    new ButtonBuilder().setCustomId('liv:reponses').setLabel('Voir les réponses')
+      .setStyle(ButtonStyle.Secondary).setEmoji('📊').setDisabled(!q),
     new ButtonBuilder().setCustomId('liv:stop').setLabel('Arrêter la question')
-      .setStyle(ButtonStyle.Secondary).setEmoji('⏹'),
+      .setStyle(ButtonStyle.Secondary).setEmoji('⏹').setDisabled(!q),
   );
 
   return { embeds: [embed], components: [row] };
@@ -282,11 +327,12 @@ async function assurerPanneau(client) {
     const ref = getDb().doc(DOC_PANNEAU);
     const connu = (await ref.get()).data() || {};
     const channel = await client.channels.fetch(SALON);
+    const etat = await etatCourant();
 
     if (connu.messageId) {
       try {
         const message = await channel.messages.fetch(connu.messageId);
-        await message.edit(panelPayload());
+        await message.edit(panelPayload(etat));
         console.log(`[livretspanel] panneau à jour — message ${message.id}`);
         return;
       } catch (err) {
@@ -294,7 +340,7 @@ async function assurerPanneau(client) {
       }
     }
 
-    const message = await channel.send(panelPayload());
+    const message = await channel.send(panelPayload(etat));
     await ref.set({ messageId: message.id, channelId: message.channelId, majLe: Date.now() }, { merge: true });
     console.log(`[livretspanel] panneau posé — message ${message.id}`);
   } finally {
@@ -304,53 +350,53 @@ async function assurerPanneau(client) {
 
 // ── Les réponses qui remontent ─────────────────────────────────────────────
 
-function payloadReponse(data) {
-  const embed = new EmbedBuilder()
-    .setColor(0x22d98a)
-    .setTitle('Réponse à la question')
-    .setDescription(propre(data.question || '').slice(0, 2000))
-    .setTimestamp(data.createdAt || Date.now());
-
-  embed.addFields({ name: 'Réponse', value: propre(data.choix || '(aucun choix)').slice(0, 1024) });
-  if (data.commentaire) {
-    embed.addFields({ name: 'Commentaire', value: propre(data.commentaire).slice(0, 1024) });
+/**
+ * Réécrit le panneau en place — c'est lui qui porte le compteur de réponses.
+ *
+ * Un message édité ne remonte pas le salon : le compteur se met à jour sans
+ * rien ajouter sous les yeux de personne.
+ */
+async function rafraichirPanneau(client) {
+  const ref = getDb().doc(DOC_PANNEAU);
+  const connu = (await ref.get()).data() || {};
+  if (!connu.messageId) return assurerPanneau(client);
+  try {
+    const channel = await client.channels.fetch(SALON);
+    const message = await channel.messages.fetch(connu.messageId);
+    await message.edit(panelPayload(await etatCourant()));
+  } catch (err) {
+    // Panneau supprimé entre-temps : on en repose un plutôt que d'abandonner.
+    console.warn(`[livretspanel] rafraîchissement impossible (${err.message}) — repose.`);
+    await assurerPanneau(client);
   }
-  const qui = [data.nom, data.email].filter(Boolean).join(' — ') || data.uid;
-  embed.addFields({ name: 'Membre', value: propre(qui).slice(0, 300) });
-
-  return { embeds: [embed] };
-}
-
-async function poster(client, doc) {
-  const channel = await client.channels.fetch(SALON);
-  const msg = await channel.send(payloadReponse(doc.data() || {}));
-  await doc.ref.update({ posteLe: Date.now(), messageId: msg.id });
 }
 
 /**
- * Écoute les réponses non encore postées.
+ * Écoute les réponses des membres.
  *
- * Même mécanique que les signalements : le client écrit un document, le bot le
- * relit et le poste. `posteLe` empêche de reposter au redémarrage — se taire
- * quand le quota est épuisé ferait doublonner, pas économiser.
+ * Elles ne sont plus postées en message : elles s'empilaient sous le panneau,
+ * qui finissait hors de vue. Seul le compteur du panneau bouge, et « Voir les
+ * réponses » les rend en entier, en privé.
+ *
+ * Pas de `where` sur un champ que le client n'écrit pas : Firestore n'indexe
+ * pas l'absence, la requête ne rendrait jamais rien. Le tri se fait ici, sur un
+ * flux qui reste court.
  */
 function start(client) {
   if (!isConfigured()) {
     console.warn('[livretspanel] Firestore non configuré : réponses non écoutées.');
     return;
   }
-  // Pas de `where` sur `posteLe` : un document écrit par le client ne porte pas
-  // ce champ, et Firestore n'indexe pas l'absence — la requête ne rendrait
-  // jamais rien. Le tri se fait ici, sur un flux qui reste court.
+  let premier = true;
   getDb().collection(COL_REPONSES).onSnapshot(
     (snap) => {
-      for (const chg of snap.docChanges()) {
-        if (chg.type !== 'added') continue;
-        const doc = chg.doc;
-        if (doc.data().posteLe) continue;      // déjà posté (chargement initial)
-        poster(client, doc)
-          .catch((e) => console.error('[livretspanel] réponse non postée :', e.message));
-      }
+      // Le premier instantané rejoue tout l'existant : sans cette garde, le
+      // panneau serait réécrit une fois par réponse déjà connue au démarrage.
+      const nouvelles = snap.docChanges().filter((c) => c.type === 'added').length;
+      if (premier) { premier = false; return; }
+      if (!nouvelles) return;
+      rafraichirPanneau(client)
+        .catch((e) => console.error('[livretspanel] panneau non rafraîchi :', e.message));
     },
     (err) => console.error('[livretspanel] écoute des réponses :', err.message),
   );
@@ -380,7 +426,7 @@ function purgerTirages() {
 const etiquette = (m) => (m.nom || m.email || m.uid).slice(0, 100);
 
 async function demanderCibles(interaction) {
-  await interaction.deferReply();
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   purgerTirages();
 
   const membres = await membresAvecLivret();
@@ -469,7 +515,7 @@ async function ouvrirFormulaire(interaction) {
 }
 
 async function enregistrerQuestion(interaction) {
-  await interaction.deferReply();
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
 
   const id = interaction.customId.split(':')[2];
   const tirage = TIRAGES.get(id);
@@ -509,6 +555,9 @@ async function enregistrerQuestion(interaction) {
     texte, choix, membres: destinataires, par: interaction.user.tag,
   });
   TIRAGES.delete(id);
+  // Le panneau porte l'état : il doit le refléter tout de suite, sinon il
+  // annonce encore « aucune question » alors qu'elle vient de partir.
+  await rafraichirPanneau(interaction.client).catch(() => {});
 
   const embed = new EmbedBuilder()
     .setColor(0x22d98a)
@@ -527,20 +576,80 @@ async function enregistrerQuestion(interaction) {
   await interaction.editReply({ embeds: [embed] });
 }
 
+/**
+ * Les réponses reçues, en privé.
+ *
+ * Les documents sont rapatriés en entier ici, et seulement ici : c'est le geste
+ * qui les demande. Le compteur du panneau, lui, passe par `count()`.
+ */
+async function listerReponses(interaction) {
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
+  const q = await questionCourante();
+  if (!q) {
+    await interaction.editReply('Aucune question n\'est posée en ce moment.');
+    return;
+  }
+
+  const snap = await getDb().collection(COL_REPONSES)
+    .where('campagne', '==', q.id).get();
+
+  const embed = new EmbedBuilder()
+    .setColor(0x22d98a)
+    .setTitle(`Réponses — ${snap.size} sur ${q.cibles || '?'}`)
+    .setDescription(propre(q.texte).slice(0, 2000))
+    .setTimestamp();
+
+  if (!snap.size) {
+    embed.addFields({ name: 'Rien encore', value:
+      'La question s\'affiche à la prochaine ouverture de l\'application de chaque membre.' });
+    await interaction.editReply({ embeds: [embed] });
+    return;
+  }
+
+  // La répartition d'abord : c'est ce qu'on vient chercher. Le détail ensuite.
+  const parChoix = {};
+  snap.forEach((d) => {
+    const c = (d.data() || {}).choix || '(vide)';
+    parChoix[c] = (parChoix[c] || 0) + 1;
+  });
+  embed.addFields({
+    name: 'Répartition',
+    value: Object.entries(parChoix).sort((a, b) => b[1] - a[1])
+      .map(([c, n]) => `**${propre(c)}** — ${n}`).join('\n').slice(0, 1024),
+  });
+
+  // Discord plafonne à 25 champs, en-tête compris. On en garde vingt.
+  const docs = snap.docs.slice(0, 20);
+  for (const d of docs) {
+    const r = d.data() || {};
+    const qui = propre(r.nom || r.email || r.uid).slice(0, 200);
+    const val = `**${propre(r.choix || '?')}**`
+      + (r.commentaire ? `\n${propre(r.commentaire)}` : '')
+      + (r.email && r.nom ? `\n\`${propre(r.email)}\`` : '');
+    embed.addFields({ name: qui, value: val.slice(0, 1024) });
+  }
+  if (snap.size > docs.length) {
+    embed.setFooter({ text: `… et ${snap.size - docs.length} autres réponses.` });
+  }
+
+  await interaction.editReply({ embeds: [embed] });
+}
+
 async function listerMembres(interaction) {
-  await interaction.deferReply();
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const membres = await membresAvecLivret();
   await interaction.editReply({ embeds: [embedListe(membres)] });
 }
 
 async function stopper(interaction) {
-  await interaction.deferReply();
+  await interaction.deferReply({ flags: MessageFlags.Ephemeral });
   const en_cours = await questionCourante();
   if (!en_cours) {
     await interaction.editReply('Aucune question n\'est posée en ce moment.');
     return;
   }
   await arreterQuestion();
+  await rafraichirPanneau(interaction.client).catch(() => {});
   await interaction.editReply(`Question retirée — elle ne s'affichera plus. (\`${en_cours.id}\`)`);
 }
 
@@ -554,11 +663,14 @@ async function handleComponent(interaction) {
     if (geste === 'qui') { await listerMembres(interaction); return; }
     if (geste === 'demander') { await demanderCibles(interaction); return; }
     if (geste === 'cibles') { await ouvrirFormulaire(interaction); return; }
+    if (geste === 'reponses') { await listerReponses(interaction); return; }
     if (geste === 'modal') { await enregistrerQuestion(interaction); return; }
     if (geste === 'stop') { await stopper(interaction); return; }
   } catch (e) {
     console.error('[livretspanel] interaction :', e.message);
     const dire = { content: `Échec : ${e.message}` };
+    // Éphémère comme le reste : une erreur qui reste dans le salon oblige à
+    // faire le ménage à la main.
     if (interaction.deferred || interaction.replied) await interaction.editReply(dire).catch(() => {});
     else await interaction.reply({ ...dire, flags: MessageFlags.Ephemeral }).catch(() => {});
   }
@@ -567,6 +679,6 @@ async function handleComponent(interaction) {
 const isLivretsComponent = (customId) => customId.startsWith('liv:');
 
 module.exports = {
-  panelPayload, assurerPanneau, start, handleComponent, isLivretsComponent,
-  membresAvecLivret, SALON,
+  panelPayload, assurerPanneau, rafraichirPanneau, start, handleComponent,
+  isLivretsComponent, membresAvecLivret, SALON,
 };
