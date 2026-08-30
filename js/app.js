@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830k';
+const APP_VERSION = '20260830l';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4034,7 +4034,6 @@ async function renderCrypto() {
   if (app) app.hidden = !live;
   if (!live) return;
 
-  _cryRemplirCatalogue();
   _cryRender();                          // d'abord sans les cours, pour ne pas attendre
   try {
     await _cryChargerCours();
@@ -4044,16 +4043,125 @@ async function renderCrypto() {
   _cryRender();
 }
 
-function _cryRemplirCatalogue() {
-  const dl = document.getElementById('cry-catalogue');
-  if (!dl || dl.childElementCount) return;
-  CRY_CATALOGUE.forEach(c => {
-    const o = document.createElement('option');
-    o.value = c.nom;
-    o.label = c.sym;
-    dl.appendChild(o);
-  });
+// ── La liste de suggestions ────────────────────────────────────────────────
+//
+// Le `<datalist>` natif du premier jet était rendu par le navigateur, avec ses
+// couleurs et sa police à lui : il ne ressemblait à rien du reste de l'app.
+// C'est la même liste que « Ajouter une action » (`.search-dropdown`), au
+// détail près que le catalogue est local — il n'y a rien à chercher au loin,
+// donc rien à faire attendre.
+
+let _cryChoisi = null;      // l'entrée retenue, ou null tant qu'on tape
+let _cryDdIdx = -1;         // ligne survolée au clavier
+
+/** Les entrées du catalogue qui correspondent à ce qui est tapé. */
+function _cryFiltrer(txt) {
+  const t = String(txt || '').trim().toLowerCase();
+  if (!t) return CRY_CATALOGUE.slice(0, 8);
+  const debut = CRY_CATALOGUE.filter(c =>
+    c.nom.toLowerCase().startsWith(t) || c.sym.toLowerCase().startsWith(t));
+  const dedans = CRY_CATALOGUE.filter(c =>
+    !debut.includes(c) && (c.nom.toLowerCase().includes(t) || c.sym.toLowerCase().includes(t)));
+  return debut.concat(dedans).slice(0, 8);
 }
+
+window.cryChercher = function() {
+  const champ = document.getElementById('cry-f-sym');
+  const dd = document.getElementById('cry-dropdown');
+  if (!champ || !dd) return;
+
+  // Ce qui est tapé prime sur ce qui avait été choisi : sans ça, corriger le
+  // nom laissait l'ancienne crypto sélectionnée en silence.
+  _cryChoisi = null;
+  _cryDdIdx = -1;
+  const trouves = _cryFiltrer(champ.value);
+
+  dd.innerHTML = '';
+  if (!trouves.length) {
+    dd.classList.remove('open');
+    cryRecalc();
+    return;
+  }
+
+  trouves.forEach((c) => {
+    const item = document.createElement('div');
+    item.className = 'search-dropdown-item';
+
+    const pastille = document.createElement('div');
+    pastille.style.cssText = 'width:26px;height:26px;border-radius:7px;display:grid;place-items:center;'
+      + 'font-size:8px;font-weight:700;font-family:var(--mono);flex-shrink:0';
+    pastille.style.color = c.c;
+    pastille.style.background = c.c + '1f';
+    pastille.style.border = '1px solid ' + c.c + '40';
+    pastille.textContent = c.sym.slice(0, 4);
+
+    const milieu = document.createElement('div');
+    milieu.style.cssText = 'flex:1;min-width:0';
+    const nom = document.createElement('div');
+    nom.className = 'sd-name';
+    nom.textContent = c.nom;
+    const tick = document.createElement('div');
+    tick.className = 'sd-ticker';
+    tick.textContent = c.sym;
+    milieu.appendChild(nom);
+    milieu.appendChild(tick);
+
+    // Le cours quand la session le connaît déjà. On ne va pas le chercher pour
+    // huit lignes qu'on ne gardera pas : huit requêtes à chaque frappe.
+    const prix = document.createElement('div');
+    prix.className = 'sd-price';
+    prix.textContent = Number.isFinite(_cryCours[c.sym]) ? fmt(_cryCours[c.sym]) : '';
+
+    item.appendChild(pastille);
+    item.appendChild(milieu);
+    item.appendChild(prix);
+    item.addEventListener('mousedown', (e) => { e.preventDefault(); _cryRetenir(c); });
+    dd.appendChild(item);
+  });
+
+  dd.classList.add('open');
+  cryRecalc();
+};
+
+function _cryRetenir(c) {
+  _cryChoisi = c;
+  const champ = document.getElementById('cry-f-sym');
+  if (champ) champ.value = c.nom;
+  _cryFermerDd();
+  cryRecalc();
+  const qte = document.getElementById('cry-f-qte');
+  if (qte) qte.focus();
+}
+
+function _cryFermerDd() {
+  const dd = document.getElementById('cry-dropdown');
+  if (dd) { dd.classList.remove('open'); dd.innerHTML = ''; }
+  _cryDdIdx = -1;
+}
+
+/** Flèches pour parcourir, Entrée pour retenir, Échap pour refermer. */
+window.cryChercherTouche = function(e) {
+  const dd = document.getElementById('cry-dropdown');
+  if (!dd || !dd.classList.contains('open')) return;
+  const items = dd.querySelectorAll('.search-dropdown-item');
+  if (!items.length) return;
+
+  if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+    e.preventDefault();
+    items[_cryDdIdx]?.classList.remove('active');
+    _cryDdIdx = Math.max(0, Math.min(items.length - 1, _cryDdIdx + (e.key === 'ArrowDown' ? 1 : -1)));
+    items[_cryDdIdx].classList.add('active');
+    items[_cryDdIdx].scrollIntoView({ block: 'nearest' });
+    return;
+  }
+  if (e.key === 'Enter') {
+    e.preventDefault();
+    // Sans survol, la première ligne : c'est celle qu'on visait en tapant.
+    items[_cryDdIdx >= 0 ? _cryDdIdx : 0].dispatchEvent(new MouseEvent('mousedown'));
+    return;
+  }
+  if (e.key === 'Escape') { e.preventDefault(); _cryFermerDd(); }
+};
 
 function _cryRender() {
   const all = getCryptos();
@@ -4211,6 +4319,8 @@ window.cryOpenModal = function(id) {
   document.getElementById('cry-f-pru').value = l ? String(l.pru).replace('.', ',') : '';
   document.getElementById('cry-f-lieu').value = (l && l.lieu) || '';
   document.getElementById('cry-del').hidden = !l;
+  _cryChoisi = l ? _cryParSym[l.sym] || null : null;
+  _cryFermerDd();
   _cryErr('');
   cryRecalc();
   document.getElementById('cry-modal').classList.add('open');
@@ -4218,7 +4328,9 @@ window.cryOpenModal = function(id) {
 
 window.cryCloseModal = function() {
   document.getElementById('cry-modal').classList.remove('open');
+  _cryFermerDd();
   _cryEditId = null;
+  _cryChoisi = null;
 };
 
 function _cryErr(msg) {
@@ -4231,7 +4343,7 @@ function _cryErr(msg) {
 
 /** Aperçu vivant : ce que la ligne vaudra, calculé pendant la frappe. */
 window.cryRecalc = function() {
-  const info = _cryTrouve(_depVal('cry-f-sym'));
+  const info = _cryChoisi || _cryTrouve(_depVal('cry-f-sym'));
   const qte = _depParse(_depVal('cry-f-qte'));
   const pru = _depParse(_depVal('cry-f-pru'));
   const box = document.getElementById('cry-apercu');
@@ -4259,7 +4371,7 @@ window.cryRecalc = function() {
 };
 
 window.crySave = function() {
-  const info = _cryTrouve(_depVal('cry-f-sym'));
+  const info = _cryChoisi || _cryTrouve(_depVal('cry-f-sym'));
   if (!info) return _cryErr('Choisissez une crypto dans la liste : c’est elle qui donne le cours.');
 
   const qte = _depParse(_depVal('cry-f-qte'));
