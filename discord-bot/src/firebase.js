@@ -8,6 +8,8 @@ const path = require('node:path');
 const fs = require('node:fs');
 
 let db = null;
+let app = null;
+let auth = null;
 
 function getDb() {
   if (db) return db;
@@ -29,9 +31,22 @@ function getDb() {
   const { getFirestore } = require('firebase-admin/firestore');
   const serviceAccount = require(resolved);
 
-  const app = initializeApp({ credential: cert(serviceAccount) });
+  app = initializeApp({ credential: cert(serviceAccount) });
   db = getFirestore(app);
   return db;
+}
+
+/**
+ * Firebase Auth (Admin). L'email et le nom d'un membre n'existent que la —
+ * Firestore ne porte que son uid. C'est la seule facon de mettre un nom sur un
+ * document, et elle ne coute aucune lecture Firestore.
+ */
+function getAuth() {
+  if (auth) return auth;
+  if (!app) getDb(); // initialise l'app, avec les memes controles de cle
+  const { getAuth: _getAuth } = require('firebase-admin/auth');
+  auth = _getAuth(app);
+  return auth;
 }
 
 /** True si une clé Firebase est configurée (sans forcer l'init). */
@@ -39,4 +54,4 @@ function isConfigured() {
   return Boolean(process.env.FIREBASE_SERVICE_ACCOUNT);
 }
 
-module.exports = { getDb, isConfigured };
+module.exports = { getDb, getAuth, isConfigured };

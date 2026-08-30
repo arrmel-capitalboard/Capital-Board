@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260830g">
+<link rel="stylesheet" href="css/style.css?v=20260830h">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -1388,31 +1388,6 @@
               </label>
             </div>
             <div id="admin-signup-status" style="margin-top:14px;font-size:12px;color:var(--text3)">Chargement…</div>
-          </div>
-
-          <div class="admin-card wide">
-            <div class="admin-card-head">
-              <div class="admin-icon-sq"><svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="8" rx="2"/><rect x="2" y="14" width="20" height="8" rx="2"/><line x1="6" y1="6" x2="6.01" y2="6"/><line x1="6" y1="18" x2="6.01" y2="18"/></svg></div>
-              <div style="flex:1">
-                <div class="admin-card-title">État serveur</div>
-                <div class="admin-card-desc">Charge, mémoire et disque de la VM du bot, rafraîchis chaque minute dans Discord.</div>
-              </div>
-            </div>
-            <!-- Le relevé vivait ici, alimenté par `ops/vmStatus`. Il coûtait
-                 720 écritures Firestore par jour au repos et 900 par heure de
-                 panneau ouvert — le premier poste du projet, pour une jauge
-                 qu'on regarde quelques minutes par semaine. Le 28/08, quatre
-                 heures de panneau ouvert ont épuisé le quota quotidien et fermé
-                 l'application à tout le monde. Discord édite un message en
-                 place sans rien facturer : le relevé y est passé. -->
-            <div style="font-size:13px;color:var(--text2);line-height:1.6;margin-top:12px">
-              Le relevé est publié dans le salon <strong style="color:var(--text)">#sécurité</strong> de Discord,
-              où il se réécrit en place toutes les minutes.
-              <div style="font-size:12px;color:var(--text3);margin-top:8px">
-                Il vivait ici auparavant : à 900 écritures Firestore par heure de panneau ouvert,
-                c'était le premier poste de consommation du projet.
-              </div>
-            </div>
           </div>
 
         </div>
@@ -3058,6 +3033,40 @@
 <!-- ═══ DÉPENSES — confirmation de suppression ═════ -->
 <!-- Au-dessus de la modale de saisie (z-index), qui reste ouverte derrière :
      annuler doit ramener sur le formulaire, pas le refermer. -->
+<!-- ═══ Question posée aux membres ═══
+     Pilotée depuis Discord (`discord-bot/src/lib/livretspanel.js`). Le contenu
+     vient de `config/app.question`, le ciblage de `users/{uid}/data/annexes` —
+     deux documents que la session lit déjà, donc aucune lecture Firestore
+     ajoutée au démarrage.
+
+     Pas de croix ni de clic hors carte pour fermer : l'écran ne s'affiche
+     qu'aux membres visés, une fois, et « Plus tard » existe pour ceux qui ne
+     veulent pas répondre maintenant. Une croix aurait été le geste réflexe,
+     et la question n'aurait jamais été lue. -->
+<div class="modal-overlay" id="question-modal" role="dialog" aria-modal="true" aria-labelledby="question-title">
+  <div class="modal question-modal">
+    <div class="question-ico" aria-hidden="true">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/><circle cx="12" cy="12" r="10"/></svg>
+    </div>
+    <div class="modal-title" id="question-title">Une question, rapidement</div>
+    <div class="modal-sub">Votre réponse aide à faire évoluer les livrets. Rien n'est publié.</div>
+
+    <div class="question-texte" id="question-texte"></div>
+    <div class="question-choix" id="question-choix" role="radiogroup" aria-labelledby="question-texte"></div>
+
+    <label class="question-libre-label" for="question-libre">Un mot à ajouter ? (facultatif)</label>
+    <textarea id="question-libre" class="question-libre" rows="2" maxlength="500"
+              placeholder="Précisez si vous le souhaitez"></textarea>
+
+    <div class="question-err" id="question-err" style="display:none"></div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="questionPlusTard()">Plus tard</button>
+      <button class="btn-primary" id="question-envoyer" onclick="questionEnvoyer()" disabled>Envoyer</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay dep-confirm-overlay" id="dep-confirm" onclick="if(event.target===this)depConfirmClose()" role="alertdialog" aria-modal="true" aria-labelledby="dep-confirm-title">
   <div class="modal dep-confirm">
     <div class="dep-confirm-ico">
@@ -3778,11 +3787,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260830g"></script>
+<script src="js/app.js?v=20260830h"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260830g"></script>
+<script src="js/onboarding.js?v=20260830h"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260830g"></script>
+<script src="js/import.js?v=20260830h"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

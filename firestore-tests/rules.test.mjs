@@ -160,6 +160,52 @@ test('signalements : imageUrl doit pointer vers notre stockage', async () => {
     { uid: ALICE, texte: 'x', module: 'm', imageUrl: 'https://evil.example/x.png' }));
 });
 
+// ── questionReponses ────────────────────────────────────────────────────
+
+const REP = { uid: null, campagne: 'q1', question: 'Votre banque ?', choix: 'Oui' };
+const rep = (over = {}) => ({ ...REP, uid: ALICE, ...over });
+
+test('questionReponses : reponse valide sous son propre identifiant', async () => {
+  await assertSucceeds(setDoc(doc(asVerified(ALICE), `questionReponses/q1_${ALICE}`), rep()));
+});
+
+test('questionReponses : identifiant libre refuse', async () => {
+  // Sans cette contrainte, un membre repondait cent fois sous cent identifiants.
+  await assertFails(setDoc(doc(asVerified(ALICE), 'questionReponses/nimporte'), rep()));
+});
+
+test('questionReponses : on ne repond pas sous l\'identifiant d\'un tiers', async () => {
+  await assertFails(setDoc(doc(asVerified(ALICE), `questionReponses/q1_${BOB}`), rep({ uid: BOB })));
+  await assertFails(setDoc(doc(asVerified(ALICE), `questionReponses/q1_${BOB}`), rep()));
+});
+
+test('questionReponses : changer d\'avis est permis', async () => {
+  const ref = doc(asVerified(ALICE), `questionReponses/q1_${ALICE}`);
+  await assertSucceeds(setDoc(ref, rep()));
+  await assertSucceeds(setDoc(ref, rep({ choix: 'Non' })));
+});
+
+test('questionReponses : choix vide refuse', async () => {
+  await assertFails(setDoc(doc(asVerified(ALICE), `questionReponses/q1_${ALICE}`), rep({ choix: '' })));
+});
+
+test('questionReponses : champ hors liste refuse', async () => {
+  await assertFails(setDoc(doc(asVerified(ALICE), `questionReponses/q1_${ALICE}`),
+    rep({ posteLe: 1 })));
+});
+
+test('questionReponses : email ne peut pas etre celui d\'un tiers', async () => {
+  const alice = testEnv.authenticatedContext(ALICE, { email_verified: true, email: 'alice@x.com' }).firestore();
+  await assertSucceeds(setDoc(doc(alice, `questionReponses/q1_${ALICE}`), rep({ email: 'alice@x.com' })));
+  await assertFails(setDoc(doc(alice, `questionReponses/q1_${ALICE}`), rep({ email: 'victime@x.com' })));
+});
+
+test('questionReponses : ni lecture ni suppression, pas meme par l\'auteur', async () => {
+  await seedAsAdmin(`questionReponses/q1_${ALICE}`, rep());
+  await assertFails(getDoc(doc(asVerified(ALICE), `questionReponses/q1_${ALICE}`)));
+  await assertFails(deleteDoc(doc(asVerified(ALICE), `questionReponses/q1_${ALICE}`)));
+});
+
 // ── roles ───────────────────────────────────────────────────────────────
 
 test('roles/{uid} : création par soi avec champs autorisés', async () => {

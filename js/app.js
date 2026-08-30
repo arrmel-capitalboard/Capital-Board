@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830g';
+const APP_VERSION = '20260830h';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -568,6 +568,10 @@ const _COLS_ANNEXES = ['watchlist', 'alerts', 'divIgnored', 'nominatif', 'trCoho
 // un tableau, et il vit sous la même clé dans le document d'annexes.
 const _ANNEXE_SETTINGS = 'settings';
 
+// Identifiant de la question à laquelle ce compte est convié, lu dans les
+// annexes. `null` = aucune. Voir la section « QUESTION POSÉE AUX MEMBRES ».
+let _questionCiblee = null;
+
 // Vrai une fois le document d'annexes lu ou reconstruit : c'est ce qui autorise
 // les écritures à n'y toucher qu'un champ.
 let _annexesPretes = false;
@@ -586,6 +590,7 @@ async function _chargerAnnexes(uid) {
   // meme onglet heriterait du drapeau du premier et ecrirait dans un document
   // qu'il n'a pas encore lu.
   _annexesPretes = false;
+  _questionCiblee = null;   // comme _annexesPretes : jamais hérité d'un autre compte
   const defauts = () => {
     _COLS_ANNEXES.forEach(col => { if (_localCache[uid + '_' + col] === undefined) _localCache[uid + '_' + col] = []; });
     if (_localCache[uid + '_settings'] === undefined) _localCache[uid + '_settings'] = { pushRecap: true };
@@ -598,6 +603,10 @@ async function _chargerAnnexes(uid) {
       _COLS_ANNEXES.forEach(col => { _localCache[uid + '_' + col] = Array.isArray(d[col]) ? d[col] : []; });
       _localCache[uid + '_settings'] = (d[_ANNEXE_SETTINGS] && typeof d[_ANNEXE_SETTINGS] === 'object')
         ? d[_ANNEXE_SETTINGS] : { pushRecap: true };
+      // Marque de ciblage d'une question posée depuis Discord. Elle voyage ici
+      // précisément parce que ce document est déjà lu : la question ne coûte
+      // donc aucune lecture Firestore de plus au démarrage.
+      _questionCiblee = d.question || null;
       _annexesPretes = true;
       return;
     }
@@ -3792,6 +3801,9 @@ async function startApp(user) {
     appEl.classList.add('app-enter');
     setTimeout(() => appEl.classList.remove('app-enter'), 600);
     _startInactivityWatch();
+    // Apres l'ouverture, jamais avant : une question par-dessus l'ecran de
+    // code n'aurait pas de sens. Detachee, elle ne retarde pas l'affichage.
+    _questionAfficher().catch((e) => console.warn('[question]', e && e.message));
     _restoreHideBalances();
     _startVersionCheck();
     // Journal des connexions : en arriere-plan, jamais bloquant. Le mode demo
@@ -3861,6 +3873,188 @@ async function startApp(user) {
     _hideSplash();
   }
 }
+
+// ─── QUESTION POSÉE AUX MEMBRES ──────────────────────────────────
+//
+// Une question écrite depuis Discord s'affiche à l'ouverture de l'application,
+// aux seuls membres visés. Le pilotage vit dans
+// `discord-bot/src/lib/livretspanel.js` ; ici on ne fait que la rendre.
+//
+// Deux morceaux, rangés chacun dans un document que la session lit déjà :
+//
+//   • le contenu — `config/app.question`, passé par `_getAppConfig()` et son
+//     cache de session ;
+//   • le ciblage — le champ `question` des annexes, lu par `_chargerAnnexes`.
+//
+// La question ne s'affiche que si les deux concordent. Aucune lecture Firestore
+// n'est ajoutée au démarrage, ce qui était la condition pour la poser : une
+// session en coûte environ sept, sur les 50 000 quotidiennes du forfait Spark.
+//
+// Le ciblage ne pouvait pas vivre dans `config/app` : ce document est lisible
+// sans être connecté (l'écran de login y lit `maintenance` et `signupOpen`), et
+// y écrire la liste des membres concernés l'aurait publiée.
+
+const QUESTION_PLUS_TARD = 'cb_question_plus_tard';
+
+let _questionEnCours = null;    // la question affichée, ou null
+let _questionChoix = null;      // l'intitulé de la réponse cochée
+
+/** Vrai si ce compte est convié à la question actuellement posée. */
+function _questionApplicable(cfg) {
+  const q = cfg && cfg.question;
+  if (!q || !q.id || !q.texte || !Array.isArray(q.choix) || q.choix.length < 2) return false;
+  return _questionCiblee === q.id;
+}
+
+/**
+ * Affiche la question, s'il y en a une pour ce compte.
+ *
+ * Appelée après l'ouverture de l'application, jamais avant : une question
+ * par-dessus l'écran de code n'aurait aucun sens, et le membre doit d'abord
+ * être chez lui.
+ */
+async function _questionAfficher() {
+  if (window.IS_DEMO) return;
+  let cfg = {};
+  try { cfg = await _getAppConfig(); } catch (_) { return; }
+  if (!_questionApplicable(cfg)) return;
+  // Reportée pendant cette session : on ne la repose pas au changement de page.
+  try {
+    if (sessionStorage.getItem(QUESTION_PLUS_TARD) === cfg.question.id) return;
+  } catch (_) {}
+
+  _questionEnCours = cfg.question;
+  _questionChoix = null;
+
+  // textContent partout : le texte vient de Discord, rien ne justifie de
+  // l'interpréter comme du HTML.
+  const txt = document.getElementById('question-texte');
+  if (txt) txt.textContent = _questionEnCours.texte;
+
+  const box = document.getElementById('question-choix');
+  if (box) {
+    box.innerHTML = '';
+    _questionEnCours.choix.forEach((c, i) => {
+      const b = document.createElement('button');
+      b.type = 'button';
+      b.className = 'question-opt';
+      b.setAttribute('role', 'radio');
+      b.setAttribute('aria-checked', 'false');
+      const puce = document.createElement('span');
+      puce.className = 'question-puce';
+      const lib = document.createElement('span');
+      lib.textContent = c;
+      b.append(puce, lib);
+      b.addEventListener('click', () => _questionCocher(i));
+      box.appendChild(b);
+    });
+  }
+
+  const libre = document.getElementById('question-libre');
+  if (libre) libre.value = '';
+  _questionErr('');
+  const env = document.getElementById('question-envoyer');
+  if (env) env.disabled = true;
+
+  const ov = document.getElementById('question-modal');
+  if (ov) ov.classList.add('open');
+}
+
+function _questionCocher(i) {
+  if (!_questionEnCours) return;
+  _questionChoix = _questionEnCours.choix[i];
+  document.querySelectorAll('#question-choix .question-opt').forEach((el, j) => {
+    el.classList.toggle('on', j === i);
+    el.setAttribute('aria-checked', j === i ? 'true' : 'false');
+  });
+  const env = document.getElementById('question-envoyer');
+  if (env) env.disabled = false;
+  _questionErr('');
+}
+
+function _questionErr(msg) {
+  const el = document.getElementById('question-err');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.style.display = msg ? 'block' : 'none';
+}
+
+function _questionFermer() {
+  const ov = document.getElementById('question-modal');
+  if (ov) ov.classList.remove('open');
+  _questionEnCours = null;
+  _questionChoix = null;
+}
+
+/**
+ * Reporte la question à la prochaine ouverture.
+ *
+ * `sessionStorage` : la marque meurt avec l'onglet, donc la question revient à
+ * la session suivante. Un report définitif aurait demandé une écriture
+ * Firestore pour une intention que le membre n'a pas exprimée — il a dit « pas
+ * maintenant », pas « jamais ».
+ */
+window.questionPlusTard = function() {
+  try {
+    if (_questionEnCours) sessionStorage.setItem(QUESTION_PLUS_TARD, _questionEnCours.id);
+  } catch (_) {}
+  _questionFermer();
+};
+
+/**
+ * Envoie la réponse, puis retire la marque de ciblage.
+ *
+ * Deux écritures, dans cet ordre : la réponse d'abord — c'est elle qui compte,
+ * et le bot la poste dans Discord — puis l'effacement de la marque, qui n'est
+ * qu'un confort d'affichage. Si la seconde échoue, la question reviendra ; le
+ * bot, lui, ne postera pas deux fois, l'identifiant du document étant construit
+ * à partir de la question et du compte.
+ */
+window.questionEnvoyer = async function() {
+  if (!_questionEnCours || !_questionChoix) return;
+  const btn = document.getElementById('question-envoyer');
+  const libre = document.getElementById('question-libre');
+  const commentaire = libre ? libre.value.trim().slice(0, 500) : '';
+
+  if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; }
+  _questionErr('');
+
+  const q = _questionEnCours;
+  try {
+    await setFirestoreDoc(
+      firestoreDoc(db, 'questionReponses', q.id + '_' + currentUser),
+      {
+        uid: currentUser,
+        campagne: q.id,
+        question: q.texte,
+        choix: _questionChoix,
+        commentaire: commentaire || null,
+        nom: (fbAuth.currentUser && fbAuth.currentUser.displayName) || null,
+        email: (fbAuth.currentUser && fbAuth.currentUser.email) || null,
+        createdAt: Date.now(),
+      },
+    );
+  } catch (e) {
+    console.warn('[question] envoi :', e && e.message);
+    _questionErr('Envoi impossible : ' + ((e && e.message) || 'réessayez dans un instant.'));
+    if (btn) { btn.disabled = false; btn.textContent = 'Envoyer'; }
+    return;
+  }
+
+  // La marque retirée, la question ne se reposera plus à ce compte.
+  _questionCiblee = null;
+  try {
+    await setFirestoreDoc(firestoreDoc(db, 'users', currentUser, 'data', 'annexes'),
+      { question: null }, { merge: true });
+  } catch (e) {
+    console.warn('[question] marque non retirée :', e && e.message);
+  }
+
+  _questionFermer();
+  if (btn) btn.textContent = 'Envoyer';
+  _showChatToast({ icon: IC.checkCirc, title: 'Merci',
+    msg: 'Votre réponse est bien arrivée.' });
+};
 
 function stopApp() {
   _hideSplash();
@@ -15934,23 +16128,12 @@ async function _bumpActivity(uid) {
 function isAdmin() { return currentUser === ADMIN_UID; }
 
 // ─── PAGE ADMIN ──────────────────────────────────────────────────
-// ─── ÉTAT SERVEUR ────────────────────────────────────────────────
-// Le relevé de la VM s'affichait ici, en direct, alimenté par `ops/vmStatus`
-// que la machine écrivait avec la clé de service. Firestore servait de boîte
-// aux lettres : un navigateur ne peut pas parler à une IP nue sans HTTPS.
-//
-// Ça marchait, mais au mauvais prix. 720 écritures par jour au repos, 900 par
+// L'état de la VM ne s'affiche plus ici. Il coûtait 900 écritures Firestore par
 // heure de panneau ouvert — le premier poste du projet, sur les 20 000 que le
-// forfait Spark accorde à TOUT le projet. Le 28/08, quatre heures de panneau
-// ouvert ont épuisé le quota : Firestore a refusé toute écriture, le compteur
-// du code PIN compris, et l'application s'est fermée à tout le monde.
-//
-// Le relevé est passé sur Discord, où le bot édite un message en place toutes
-// les minutes (`discord-bot/src/lib/vmstatus.js`). Coût Firestore : zéro, pour
-// le relevé comme pour la demande de cadence que ce panneau posait.
-//
-// Ce qu'on perd : les sparklines sur une minute glissante, et le direct. Ce
-// qu'on gagne : le poste le plus lourd du projet, ramené à rien.
+// forfait Spark accorde à tout le projet — et le 28/08 quatre heures de panneau
+// ouvert ont épuisé le quota, refusé toute écriture, et fermé l'application à
+// tout le monde. Le relevé vit dans Discord, où le bot édite un message en
+// place chaque minute (`discord-bot/src/lib/vmstatus.js`), sans rien facturer.
 
 async function renderAdminPage() {
   if (!isAdmin()) { showPage('portfolio'); return; }

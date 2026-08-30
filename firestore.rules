@@ -89,6 +89,41 @@ service cloud.firestore {
                 && request.resource.data.imageUrl.matches('https://api[.]capitalboard[.]fr/support-file/.*')));
     }
 
+    // Reponses a une question posee depuis Discord (voir
+    // discord-bot/src/lib/livretspanel.js). Le bot les relit avec le SDK Admin
+    // et les poste dans le salon de suivi ; personne d'autre ne les lit.
+    //
+    // L'identifiant du document est impose : <campagne>_<uid>. C'est ce qui
+    // empeche un membre de repondre cent fois sous cent identifiants, et ce qui
+    // garantit au bot qu'il ne postera pas deux fois la meme reponse.
+    //
+    // `update` est ouvert, contrairement aux signalements : changer d'avis avant
+    // qu'on ait lu la reponse est legitime, et le bot n'ecoute que les documents
+    // ajoutes. Il reste borne aux memes champs et au meme auteur.
+    match /questionReponses/{id} {
+      allow read, delete: if false;
+      allow create, update: if _isVerified()
+        && request.resource.data.uid == request.auth.uid
+        && id == request.resource.data.campagne + '_' + request.auth.uid
+        && request.resource.data.keys().hasOnly(
+             ['uid','campagne','question','choix','commentaire','nom','email','createdAt'])
+        && request.resource.data.campagne is string
+        && request.resource.data.campagne.size() > 0
+        && request.resource.data.campagne.size() <= 40
+        && request.resource.data.question is string
+        && request.resource.data.question.size() <= 500
+        && request.resource.data.choix is string
+        && request.resource.data.choix.size() > 0
+        && request.resource.data.choix.size() <= 60
+        && (!('commentaire' in request.resource.data) || request.resource.data.commentaire == null
+            || (request.resource.data.commentaire is string
+                && request.resource.data.commentaire.size() <= 500))
+        && (!('nom' in request.resource.data) || request.resource.data.nom == null
+            || (request.resource.data.nom is string && request.resource.data.nom.size() <= 120))
+        && (!('email' in request.resource.data) || request.resource.data.email == null
+            || request.resource.data.email == request.auth.token.email);
+    }
+
     match /users/{uid}/ideaVotes/{ideaId} {
       allow read: if _isSelf(uid);
       allow write: if _isVerified() && _isSelf(uid);

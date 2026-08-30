@@ -23,6 +23,7 @@ const { checkPub } = require('./lib/automod-pub');
 const securitytest = require('./lib/securitytest');
 const burpaudit = require('./lib/burp-audit');
 const securitypanel = require('./lib/securitypanel');
+const livretspanel = require('./lib/livretspanel');
 const vmstatus = require('./lib/vmstatus');
 const serviceshealth = require('./lib/serviceshealth');
 const quota = require('./lib/quota');
@@ -71,6 +72,8 @@ client.once(Events.ClientReady, (c) => {
   securitytest.start(c);
   burpaudit.watch(c);
   securitypanel.surveiller(c);
+  livretspanel.assurerPanneau(c).catch((e) => console.error('[livretspanel] panneau :', e.message));
+  livretspanel.start(c);
   vmstatus.start(c);
   serviceshealth.start(c);
   // Après les autres : chacun déclare son coût au démarrage, la projection
@@ -254,6 +257,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
     if (interaction.isStringSelectMenu()) {
       if (securitypanel.isSecurityComponent(interaction.customId)) { await securitypanel.handleComponent(interaction); return; }
+      if (livretspanel.isLivretsComponent(interaction.customId)) { await livretspanel.handleComponent(interaction); return; }
       return;
     }
 
@@ -279,6 +283,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (suggestions.isSuggestionButton(interaction.customId)) { await suggestions.handleButton(interaction); return; }
       if (scanPatches.isScanPatchButton(interaction.customId)) { await scanPatches.handleButton(interaction); return; }
       if (securitypanel.isSecurityComponent(interaction.customId)) { await securitypanel.handleComponent(interaction); return; }
+      if (livretspanel.isLivretsComponent(interaction.customId)) { await livretspanel.handleComponent(interaction); return; }
 
       if (interaction.customId.startsWith('role_')) {
         const roleId = interaction.customId.slice(5);
