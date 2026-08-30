@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830e';
+const APP_VERSION = '20260830f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -455,6 +455,12 @@ _splashWatchdog = setTimeout(() => {
         if (!pinOn) {
           // Compte sans PIN : force la configuration avant l'accès
           showPinSetupView(u);
+          return;
+        }
+        // Rechargement dans les quinze minutes suivant un déverrouillage : on ne
+        // redemande pas le code. La marque est posée après coup, jamais avant.
+        if (_pinGraceValid(u.uid)) {
+          startApp(u);
           return;
         }
         showPinLockView(u);
@@ -1795,6 +1801,7 @@ window.pinLockSubmit = async function() {
 
 // Séquence déverrouillage réussi : dots verts → check pop → fondu carte → app.
 function _pinUnlockSuccess(user) {
+  _pinGraceSet(user.uid);
   const reduce = _reduceMotion();
   const view = document.getElementById('pin-lock-view');
   const dotsWrap = document.getElementById('pin-dots');
@@ -1839,6 +1846,44 @@ window.pinIdleAcknowledge = function() {
   if (inp) setTimeout(() => inp.focus(), 50);
 };
 
+// ─── Grâce de rechargement ────────────────────────────────────
+// Le code était redemandé à chaque rechargement, y compris trois secondes après
+// l'avoir saisi — et la vérification de version recharge la page d'elle-même. Un
+// déverrouillage réussi pose donc une marque, et un rechargement qui tombe dans
+// les quinze minutes qui suivent passe sans redemander le code.
+//
+// `sessionStorage` et non `localStorage` : la marque meurt avec l'onglet. Un F5
+// la garde, fermer l'application la perd — sans quoi on ouvrirait une fenêtre de
+// quinze minutes sur un appareil posé puis repris par quelqu'un d'autre.
+//
+// Elle est rafraîchie tant que l'onglet travaille, et effacée dès que le verrou
+// retombe : sans cela, un F5 juste après un re-verrouillage l'aurait contourné.
+const PIN_GRACE_MS = 15 * 60 * 1000;
+const PIN_GRACE_KEY = 'cb_pin_grace';
+
+function _pinGraceSet(uid) {
+  try { sessionStorage.setItem(PIN_GRACE_KEY, uid + ':' + Date.now()); } catch(_) {}
+}
+
+function _pinGraceClear() {
+  try { sessionStorage.removeItem(PIN_GRACE_KEY); } catch(_) {}
+}
+
+// L'uid est comparé : une marque laissée par un autre compte dans le même onglet
+// ne doit pas ouvrir celui-ci.
+function _pinGraceValid(uid) {
+  try {
+    const brut = sessionStorage.getItem(PIN_GRACE_KEY);
+    if (!brut) return false;
+    const sep = brut.lastIndexOf(':');
+    if (sep < 1) return false;
+    if (brut.slice(0, sep) !== uid) return false;
+    const pose = Number(brut.slice(sep + 1));
+    if (!pose || Date.now() - pose > PIN_GRACE_MS) { _pinGraceClear(); return false; }
+    return true;
+  } catch(_) { return false; }
+}
+
 // ─── Re-lock après inactivité ─────────────────────────────────────────────
 // Le code PIN est demandé au chargement et au rechargement, mais une session
 // laissée ouverte restait ouverte indéfiniment — précisément le cas (ordinateur
@@ -1861,9 +1906,11 @@ function _inactivityLockMs() {
 async function _checkInactivityLock() {
   const appEl = document.getElementById('app');
   if (!appEl || appEl.style.display === 'none') return; // app pas affichée : déjà verrouillé, ou pas encore chargée
-  if (Date.now() - _lastActivityAt < _inactivityLockMs()) return;
   const user = fbAuth.currentUser;
   if (!user) return;
+  // Session vivante : la marque de grâce suit, pour qu'un rechargement en plein
+  // travail ne redemande pas le code.
+  if (Date.now() - _lastActivityAt < _inactivityLockMs()) { _pinGraceSet(user.uid); return; }
   try {
     // Mêmes dérogations qu'au chargement : kill-switch admin, opt-out, PIN désactivé.
     if (await _isPinGloballyDisabled() || await _isPinOptedOut(user.uid)) return;
@@ -1877,6 +1924,8 @@ async function _checkInactivityLock() {
     el.classList.remove('open');
     el.style.display = '';
   });
+  // Le verrou retombe : la grâce n'a plus lieu d'être, sinon un F5 la contournerait.
+  _pinGraceClear();
   showPinLockView(user);
   const delai = document.getElementById('pin-idle-delay');
   if (delai) delai.textContent = String(Math.max(1, Math.round(_inactivityLockMs() / 60000)));
@@ -3813,6 +3862,7 @@ async function startApp(user) {
 
 function stopApp() {
   _hideSplash();
+  _pinGraceClear();
   // Filet : les autres sorties de session (veLogout, pinLockLogout, session
   // expirée) appellent signOut sans passer par doLogout, mais toutes finissent ici.
   try { _detachUserListeners(); } catch(_) {}
