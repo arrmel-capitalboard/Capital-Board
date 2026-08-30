@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830f';
+const APP_VERSION = '20260830g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1891,14 +1891,16 @@ function _pinGraceValid(uid) {
 // setTimeout qui compte les secondes : les timers sont ralentis en arrière-plan,
 // un setTimeout seul laisserait passer largement plus que le délai sur un onglet
 // resté caché.
-const INACTIVITY_LOCK_MS = 5 * 60 * 1000; // défaut si l'utilisateur n'a jamais touché au réglage
+const INACTIVITY_LOCK_MS = 15 * 60 * 1000; // aligné sur la grâce de rechargement
 let _lastActivityAt = Date.now();
 let _inactivityWatchStarted = false;
 
 function _markActivity() { _lastActivityAt = Date.now(); }
 
-// Delai de reverrouillage : fixe a 5 minutes pour tout le monde. Le reglage
+// Delai de reverrouillage : fixe a 15 minutes pour tout le monde. Le reglage
 // par appareil a ete retire — c'est une valeur de securite, pas une preference.
+// Meme duree que la grace de rechargement : deux valeurs differentes auraient
+// donne un verrou qui tombe avant que la grace n'expire, ou l'inverse.
 function _inactivityLockMs() {
   return INACTIVITY_LOCK_MS;
 }
@@ -2402,7 +2404,7 @@ window.totpDisable = async function() {
 // (`config/app`), la dérogation admin et l'activation du code, tous deux dans
 // `users/{uid}/data/security`. Ils étaient relus à chaque contrôle — trois
 // lectures au démarrage, puis trois de plus à chaque re-verrouillage. Le verrou
-// tombe après cinq minutes d'inactivité : dix retours dans la journée, trente
+// tombe après quinze minutes d'inactivité : dix retours dans la journée, trente
 // lectures, pour des valeurs qui ne changent jamais en cours de session.
 //
 // Elles sont donc lues une fois et gardées en mémoire. Le cache est vidé quand
@@ -2459,7 +2461,7 @@ async function _setPinOptOut(uid, optOut) {
 // Doc Firestore config/app { pinDisabled: bool }. Lu par tous, écrit par admin.
 async function _isPinGloballyDisabled() {
   // Passe par `_getAppConfig`, donc par son cache : ce contrôle est refait a
-  // chaque re-verrouillage, toutes les cinq minutes d'inactivite.
+  // chaque re-verrouillage, toutes les quinze minutes d'inactivite.
   try {
     return !!(await _getAppConfig()).pinDisabled;
   } catch (e) {
