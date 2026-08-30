@@ -35,10 +35,8 @@ scripts/    tâches planifiées (dividendes, alertes, sauvegardes, récaps)
 firestore-tests/        tests des règles Firestore contre l'émulateur
 ```
 
-Les notes de conception vivent à la racine, en `afaire*.md` : elles disent
-pourquoi les choix ont été faits, pas seulement ce que fait le code. Les
-documents qui décrivent des faiblesses non corrigées ou des procédures d'accès
-restent hors du dépôt, en local.
+Les documents qui décrivent des faiblesses non corrigées ou des procédures
+d'accès restent hors du dépôt, en local.
 
 ## Publier
 
