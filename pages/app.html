@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260830c">
+<link rel="stylesheet" href="css/style.css?v=20260830d">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -3424,19 +3424,6 @@
     <div id="pin-status-box" style="padding:10px 12px;background:var(--s2);border:1px solid var(--border);border-radius:10px;margin-bottom:10px;font-size:12px;color:var(--text3)">Chargement…</div>
     <div id="pin-actions" style="display:flex;gap:8px"></div>
 
-    <!-- Sécurité — Verrouillage automatique -->
-    <div style="margin-top:14px;padding-top:14px;border-top:1px solid var(--border)">
-      <div style="font-size:11px;color:var(--text3);line-height:1.55;margin-bottom:8px">
-        Reverrouille l'application (code PIN redemandé) après une période d'inactivité sur cet appareil.
-      </div>
-      <select id="inactivity-timeout-select" onchange="setInactivityTimeout(this.value)" style="width:100%;padding:9px 12px;background:var(--s2);border:1px solid var(--border);color:var(--text);border-radius:8px;font-size:12px;font-family:var(--sans)">
-        <option value="5">5 minutes (défaut)</option>
-        <option value="15">15 minutes</option>
-        <option value="30">30 minutes</option>
-        <option value="60">1 heure</option>
-        <option value="never">Jamais</option>
-      </select>
-    </div>
 
     <!-- Sécurité — Code d'authentification (TOTP, facultatif) -->
     <div style="height:1px;background:var(--border);margin:18px 0"></div>
@@ -3799,11 +3786,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260830c"></script>
+<script src="js/app.js?v=20260830d"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260830c"></script>
+<script src="js/onboarding.js?v=20260830d"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260830c"></script>
+<script src="js/import.js?v=20260830d"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
@@ -3912,6 +3899,7 @@
     <div id="pin-setup-sub" style="font-size:12px;color:#8892a8;text-align:center;line-height:1.55;margin-bottom:18px">Saisissez un code à 6 chiffres. Il sera demandé à chaque ouverture de l'application.</div>
     <input id="pin-setup-input" type="password" inputmode="none" readonly autocomplete="off" maxlength="6" placeholder="••••••" style="width:100%;padding:14px;border-radius:10px;border:1px solid #2a2b3d;background:#13141c;color:#fff;font-size:24px;font-family:var(--mono);font-weight:700;text-align:center;letter-spacing:10px;margin-bottom:14px;outline:none;caret-color:transparent;-webkit-text-security:disc">
     <div id="pin-setup-error" style="display:none;font-size:12px;color:#ff4d6a;margin-bottom:10px;text-align:center;padding:8px 12px;background:rgba(255,77,106,0.08);border-radius:8px"></div>
+    <div id="pin-setup-forgot" style="display:none;text-align:center;margin:-4px 0 12px"><span onclick="pinForgot()" style="color:#7c6df5;font-size:12px;cursor:pointer;font-weight:600">Code oublié ? Vérifier par email</span></div>
     <div class="pin-keypad" id="pin-setup-keypad"></div>
     <div style="display:flex;gap:10px">
       <button onclick="closePinSetupModal()" style="flex:1;padding:11px;border-radius:10px;border:1px solid #2a2b3d;background:#13141c;color:#cbd1de;font-size:13px;font-weight:600;cursor:pointer;font-family:var(--sans)">Annuler</button>

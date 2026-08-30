@@ -1711,6 +1711,13 @@ async function sendOtpChallenge(uid, email, type, deviceId, deviceLabel, locatio
 
   const [subject, html] = type === 'delete'
     ? ['Confirmation suppression de compte — Capital Board', emailDelete(code)]
+    : type === 'pin-reset'
+    ? ['Réinitialisation de votre code PIN — Capital Board',
+       `<div style="font-family:Arial,sans-serif;font-size:15px;color:#1a1a2e;line-height:1.6">`
+       + `<p>Vous avez demandé à réinitialiser votre code PIN Capital Board.</p>`
+       + `<p>Votre code de vérification :</p>`
+       + `<p style="font-size:28px;font-weight:700;letter-spacing:6px;color:#7c6df5">${code}</p>`
+       + `<p style="color:#666;font-size:13px">Il expire dans quelques minutes. Si vous n'êtes pas à l'origine de cette demande, ignorez cet email — votre code PIN reste inchangé.</p></div>`]
     : ['Code de vérification — nouvel appareil Capital Board',
        email2fa(code, deviceLabel, location)];
   await sendEmail(email, subject, html, env);
@@ -3325,7 +3332,7 @@ export default {
       // par le navigateur et simplement relayé.
       if (url.pathname === '/request-otp' && request.method === 'POST') {
         const { idToken, type, deviceId, deviceLabel, location, ipInfo, turnstileToken } = await request.json();
-        if (!idToken || !['delete', '2fa'].includes(type)) {
+        if (!idToken || !['delete', '2fa', 'pin-reset'].includes(type)) {
           return json({ ok: false, error: 'Paramètres invalides' }, 400);
         }
         // Turnstile sur la suppression : action destructrice et hors parcours normal.
@@ -3603,7 +3610,7 @@ export default {
       // de confiance lui-même : le client n'a aucun rôle dans la décision.
       if (url.pathname === '/verify-otp' && request.method === 'POST') {
         const { idToken, type, code } = await request.json();
-        if (!idToken || !['delete', '2fa'].includes(type) || !/^\d{6}$/.test(code ?? '')) {
+        if (!idToken || !['delete', '2fa', 'pin-reset'].includes(type) || !/^\d{6}$/.test(code ?? '')) {
           return json({ valid: false, error: 'Paramètres invalides' }, 400);
         }
         const user = await verifyIdToken(idToken, env);

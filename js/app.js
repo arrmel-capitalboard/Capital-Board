@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830c';
+const APP_VERSION = '20260830d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -1852,21 +1852,11 @@ let _inactivityWatchStarted = false;
 
 function _markActivity() { _lastActivityAt = Date.now(); }
 
-// Réglage par appareil (localStorage plutôt que Firestore : firestore.rules
-// verrouille les clés écrivables sur users/{uid}/data/security à
-// adminOptOut/adminOptOutAt, et un délai avant verrouillage a de toute façon
-// plus de sens par appareil — un ordinateur partagé et un téléphone perso
-// n'appellent pas le même délai).
+// Delai de reverrouillage : fixe a 5 minutes pour tout le monde. Le reglage
+// par appareil a ete retire — c'est une valeur de securite, pas une preference.
 function _inactivityLockMs() {
-  const v = localStorage.getItem('cb_inactivityTimeout');
-  if (v === 'never') return Infinity;
-  const mins = parseInt(v, 10);
-  return (Number.isFinite(mins) && mins > 0) ? mins * 60 * 1000 : INACTIVITY_LOCK_MS;
+  return INACTIVITY_LOCK_MS;
 }
-
-window.setInactivityTimeout = function(v) {
-  localStorage.setItem('cb_inactivityTimeout', v);
-};
 
 async function _checkInactivityLock() {
   const appEl = document.getElementById('app');
@@ -1915,8 +1905,6 @@ window.pinLockLogout = async function() {
 window.refreshPinStatus = async function() {
   const box = document.getElementById('pin-status-box');
   const actions = document.getElementById('pin-actions');
-  const timeoutSel = document.getElementById('inactivity-timeout-select');
-  if (timeoutSel) timeoutSel.value = localStorage.getItem('cb_inactivityTimeout') || '5';
   if (!box || !actions) return;
   const user = fbAuth.currentUser;
   if (!user) { box.textContent = 'Non connecté'; actions.innerHTML = ''; return; }
@@ -1958,25 +1946,72 @@ window.refreshPinStatus = async function() {
 let _pinSetupMode = 'setup'; // 'setup' | 'change'
 let _pinSetupStep1 = '';     // valeur 1ère saisie
 
-window.openPinSetupModal = function(mode) {
+// Phases du modal : 'actuel' (verifier le code en place avant de le changer),
+// 'email' (reset apres oubli, code recu par mail), 'nouveau' puis 'confirme'.
+let _pinPhase = 'nouveau';
+
+window.openPinSetupModal = async function(mode) {
   _pinSetupMode = mode || 'setup';
   _pinSetupStep1 = '';
   const m = document.getElementById('pin-setup-modal');
   if (!m) return;
-  document.getElementById('pin-setup-title').textContent = mode === 'change' ? 'Changer le code PIN' : 'Configurer un code PIN';
-  document.getElementById('pin-setup-sub').textContent = 'Saisissez un nouveau code à 6 chiffres.';
-  document.getElementById('pin-setup-btn').textContent = 'Continuer';
   const inp = document.getElementById('pin-setup-input');
   if (inp) inp.value = '';
   _renderPinKeypad('pin-setup-keypad', 'pin-setup-input', () => window.pinSetupSubmit());
   const err = document.getElementById('pin-setup-error'); if (err) err.style.display = 'none';
+  const forgot = document.getElementById('pin-setup-forgot');
+
+  // Changer un PIN deja en place : on exige d'abord le code actuel. Sans PIN
+  // existant (premiere config), on va directement a la saisie du nouveau.
+  const user = fbAuth.currentUser;
+  const dejaUnPin = mode === 'change' && user && await _isPinEnabled(user.uid).catch(() => false);
+  if (dejaUnPin) {
+    _pinPhase = 'actuel';
+    document.getElementById('pin-setup-title').textContent = 'Changer le code PIN';
+    document.getElementById('pin-setup-sub').textContent = 'Saisissez votre code actuel pour continuer.';
+    if (forgot) forgot.style.display = 'block';
+  } else {
+    _pinPhase = 'nouveau';
+    document.getElementById('pin-setup-title').textContent = mode === 'change' ? 'Changer le code PIN' : 'Configurer un code PIN';
+    document.getElementById('pin-setup-sub').textContent = 'Saisissez un nouveau code à 6 chiffres.';
+    if (forgot) forgot.style.display = 'none';
+  }
+  document.getElementById('pin-setup-btn').textContent = 'Continuer';
   m.style.display = 'flex';
+};
+
+/** Code PIN oublié : on prouve l'identité par un code reçu par email. */
+window.pinForgot = async function() {
+  const user = fbAuth.currentUser;
+  const err = document.getElementById('pin-setup-error');
+  const forgot = document.getElementById('pin-setup-forgot');
+  if (!user) return;
+  if (err) { err.style.display = 'block'; err.style.color = 'var(--text3)'; err.textContent = 'Envoi du code par email…'; }
+  try {
+    const idToken = await user.getIdToken();
+    const res = await fetch(`${WORKER_URL}/request-otp`, {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ idToken, type: 'pin-reset' }),
+    });
+    const d = await res.json().catch(() => ({}));
+    if (!res.ok || !d.ok) { if (err) { err.style.color = '#ff4d6a'; err.textContent = d.error || 'Envoi impossible.'; } return; }
+    _pinPhase = 'email';
+    if (forgot) forgot.style.display = 'none';
+    document.getElementById('pin-setup-sub').textContent = 'Entrez le code à 6 chiffres reçu par email.';
+    const inp = document.getElementById('pin-setup-input'); if (inp) inp.value = '';
+    if (err) err.style.display = 'none';
+  } catch (e) {
+    if (err) { err.style.color = '#ff4d6a'; err.textContent = 'Erreur réseau, réessayez.'; }
+  }
 };
 
 window.closePinSetupModal = function() {
   const m = document.getElementById('pin-setup-modal');
   if (m) m.style.display = 'none';
   _pinSetupStep1 = '';
+  _pinPhase = 'nouveau';
+  const forgot = document.getElementById('pin-setup-forgot');
+  if (forgot) forgot.style.display = 'none';
 };
 
 window.pinSetupSubmit = async function() {
@@ -1984,11 +2019,53 @@ window.pinSetupSubmit = async function() {
   const err = document.getElementById('pin-setup-error');
   const btn = document.getElementById('pin-setup-btn');
   const val = (inp?.value || '').trim();
-  if (err) err.style.display = 'none';
+  if (err) { err.style.display = 'none'; err.style.color = '#ff4d6a'; }
   if (!/^\d{6}$/.test(val)) {
     if (err) { err.textContent = 'Le code doit faire exactement 6 chiffres.'; err.style.display = 'block'; }
     return;
   }
+  const user0 = fbAuth.currentUser;
+
+  // Phase « actuel » : verifier le code en place avant d'autoriser le changement.
+  if (_pinPhase === 'actuel') {
+    setLoading('pin-setup-btn', true);
+    try {
+      const r = await _verifyPin(user0.uid, val);
+      if (!r.valid) {
+        if (err) { err.textContent = r.serverError ? 'Vérification indisponible, réessayez.' : 'Code actuel incorrect.'; err.style.display = 'block'; }
+        inp.value = ''; setTimeout(() => inp.focus(), 50);
+        return;
+      }
+    } finally { setLoading('pin-setup-btn', false); }
+    _pinPhase = 'nouveau';
+    document.getElementById('pin-setup-forgot').style.display = 'none';
+    document.getElementById('pin-setup-sub').textContent = 'Saisissez un nouveau code à 6 chiffres.';
+    inp.value = ''; setTimeout(() => inp.focus(), 50);
+    return;
+  }
+
+  // Phase « email » : valider le code recu par mail (reset apres oubli).
+  if (_pinPhase === 'email') {
+    setLoading('pin-setup-btn', true);
+    try {
+      const idToken = await user0.getIdToken();
+      const res = await fetch(`${WORKER_URL}/verify-otp`, {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ idToken, type: 'pin-reset', code: val }),
+      });
+      const d = await res.json().catch(() => ({}));
+      if (!res.ok || !d.valid) {
+        if (err) { err.textContent = d.error || 'Code incorrect ou expiré.'; err.style.display = 'block'; }
+        inp.value = ''; setTimeout(() => inp.focus(), 50);
+        return;
+      }
+    } finally { setLoading('pin-setup-btn', false); }
+    _pinPhase = 'nouveau';
+    document.getElementById('pin-setup-sub').textContent = 'Saisissez un nouveau code à 6 chiffres.';
+    inp.value = ''; setTimeout(() => inp.focus(), 50);
+    return;
+  }
+
   if (!_pinSetupStep1) {
     // Étape 1 → mémorise + passe à étape 2
     _pinSetupStep1 = val;
