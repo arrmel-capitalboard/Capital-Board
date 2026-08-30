@@ -27,7 +27,7 @@ jobs:
         run: |
           set -euo pipefail
           V=8.18.4
-          curl -sSfL "https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_x64.tar.gz" -o gl.tgz
+          curl -sSfL --retry 5 --retry-all-errors --retry-delay 3 --connect-timeout 20 "https://github.com/gitleaks/gitleaks/releases/download/v${V}/gitleaks_${V}_linux_x64.tar.gz" -o gl.tgz
           tar -xzf gl.tgz gitleaks
           if ! ./gitleaks detect --source . --no-git --config .gitleaks.toml --redact --exit-code 1; then
             echo "::error::Secret detecte dans l'arbre a deployer — deploiement bloque."
