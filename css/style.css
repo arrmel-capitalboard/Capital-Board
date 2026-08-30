@@ -6189,23 +6189,26 @@ body.has-demo-banner { padding-top: 40px; }
 }
 .cry-op-sup:hover { color: var(--negative); border-color: rgba(255,77,106,.25); background: rgba(255,77,106,.06); }
 
-.cry-watch-form { position: relative; margin-bottom: 16px; max-width: 460px; }
-.cry-row-watch { cursor: default; }
-.cry-row-watch:hover { background: none; }
-.cry-watch-buy {
-  flex-shrink: 0; padding: 7px 14px; border-radius: 9px;
-  background: var(--accent-d); border: 1px solid rgba(124,109,245,0.2);
-  color: var(--accent); font-family: var(--sans);
-  font-size: 12px; font-weight: 600; cursor: pointer; transition: all .18s;
+/* Le champ d'ajout vit dans l'en-tete de la table, sous son titre. */
+.cry-watch-form { position: relative; margin: 0; padding: 0 20px 16px; max-width: 520px; }
+
+/* Boutons d'action d'une ligne de position, comme ceux du PEA. Ils
+   n'apparaissent qu'au survol sur grand ecran : trois icones sur chaque ligne
+   attirent l'oeil plus que la valeur, qui est ce qu'on vient lire. */
+.cry-actions {
+  display: inline-flex; gap: 6px; align-items: center; flex-shrink: 0;
+  opacity: 0; transition: opacity .15s;
 }
-.cry-watch-buy:hover { background: rgba(124,109,245,0.14); border-color: rgba(124,109,245,0.35); }
+.cry-row:hover .cry-actions,
+.cry-row:focus-within .cry-actions { opacity: 1; }
 
 @media (max-width: 640px) {
   /* La cible tactile prime : la croix et le bouton d'achat gardent leurs
      44 px, et la ligne passe sur deux niveaux plutôt que de tout comprimer. */
   .cry-op { padding: 13px 14px; }
   .cry-op-sup { width: 34px; height: 34px; }
-  .cry-watch-buy { padding: 9px 13px; }
+  /* Au doigt, il n'y a pas de survol : les actions restent visibles. */
+  .cry-actions { opacity: 1; }
+  .cry-watch-form { padding: 0 14px 14px; max-width: none; }
   .cry-unite button { padding: 7px 10px; }
-  .cry-watch-form { max-width: none; }
 }

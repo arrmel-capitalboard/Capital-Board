@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830q';
+const APP_VERSION = '20260830r';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4128,7 +4128,7 @@ async function _cryChargerCours(force) {
   // Les positions ET la watchlist : une crypto suivie sans être détenue a
   // besoin de son cours pour valoir la peine d'être suivie.
   const syms = [...new Set(
-    _cryPositions().map(l => l.sym).concat(getCryptoWatch()),
+    _cryPositions().map(l => l.sym).concat(getCryptoWatch().map(_cryWatchSym)),
   )].filter(s => _cryParSym[s]);
   if (!syms.length) return;
   if (!force && _cryCoursLe && Date.now() - _cryCoursLe < 5 * 60 * 1000) return;
@@ -4187,6 +4187,7 @@ async function renderCrypto() {
     console.warn('[crypto] cours :', e && e.message);
   }
   _cryRender();
+  _cryWatchPrixManquants();
   _cryRenderWatch();
 }
 
@@ -4421,6 +4422,27 @@ function _cryRender() {
       milieu.appendChild(nom);
       milieu.appendChild(sous);
 
+      // Mêmes boutons que la ligne du PEA : acheter, vendre, supprimer.
+      const actions = document.createElement('span');
+      actions.className = 'cry-actions';
+      const bouton = (cls, titre, html, fn) => {
+        const b = document.createElement('button');
+        b.type = 'button';
+        b.className = cls;
+        b.title = titre;
+        b.setAttribute('aria-label', titre + ' ' + info.nom);
+        b.innerHTML = html;
+        b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
+        return b;
+      };
+      actions.appendChild(bouton('btn-edit', 'Acheter',
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
+        () => cryOpenModal('achat', l.sym)));
+      actions.appendChild(bouton('btn-edit', 'Vendre',
+        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14"/></svg>',
+        () => cryOpenModal('vente', l.sym)));
+      actions.appendChild(bouton('btn-del', 'Supprimer', '✕', () => crySupprimerLigne(l.sym)));
+
       const droite = document.createElement('span');
       droite.className = 'cry-right';
       const val = document.createElement('div');
@@ -4439,6 +4461,7 @@ function _cryRender() {
       row.appendChild(pastille);
       row.appendChild(milieu);
       row.appendChild(droite);
+      row.appendChild(actions);
       liste.appendChild(row);
     });
 }
@@ -4700,6 +4723,31 @@ window.crySave = function() {
   _cryChargerCours(true).then(_cryRender).catch(() => {});
 };
 
+/**
+ * Supprime une position entière.
+ *
+ * Une position n'existe pas en propre : elle est la somme de ses opérations.
+ * La supprimer, c'est donc les supprimer toutes, et le dire — sans quoi on
+ * effacerait un historique en croyant retirer une ligne.
+ */
+window.crySupprimerLigne = function(sym) {
+  const info = _cryInfo(sym);
+  const combien = getCryptoOps().filter(o => o.sym === sym).length;
+  showConfirmModal({
+    title: 'Supprimer ' + info.nom + ' ?',
+    body: combien > 1
+      ? 'Ses ' + combien + ' opérations seront supprimées, achats comme ventes.'
+      : 'Son opération sera supprimée.',
+    danger: true,
+    okLabel: 'Supprimer',
+    onConfirm: () => {
+      saveCryptoOps(currentUser, getCryptoOps().filter(o => o.sym !== sym));
+      _cryRender();
+      _cryRenderActivite();
+    },
+  });
+};
+
 /** Supprime une opération depuis l'Activité. */
 window.crySupprimerOp = function(id) {
   showConfirmModal({
@@ -4785,21 +4833,43 @@ function _cryRenderActivite() {
 // tout ce qui s'affiche — nom, logo, cours — se retrouve dans le catalogue et
 // dans les cours de la session.
 
+// Une entrée retient le cours du jour de son ajout : sans lui, « depuis
+// l'ajout » n'aurait rien à comparer. Même donnée que la watchlist du PEA.
 window.cryWatchAjouter = function() {
   const info = _cryWatchChoisi || _cryTrouve(_depVal('cry-watch-champ'));
   if (!info) return;
   const actuelle = getCryptoWatch();
-  if (actuelle.includes(info.sym)) return;
-  saveCryptoWatch(currentUser, actuelle.concat([info.sym]));
+  if (actuelle.some(w => _cryWatchSym(w) === info.sym)) return;
+  saveCryptoWatch(currentUser, actuelle.concat([{
+    sym: info.sym,
+    addedAt: new Date().toISOString(),
+    addedPrice: Number.isFinite(_cryCours[info.sym]) ? _cryCours[info.sym] : null,
+  }]));
   document.getElementById('cry-watch-champ').value = '';
   _cryWatchChoisi = null;
   _cryRenderWatch();
   // Le cours de la nouvelle ligne manque : on le cherche, puis on réaffiche.
-  _cryChargerCours(true).then(_cryRenderWatch).catch(() => {});
+  _cryChargerCours(true).then(() => { _cryWatchPrixManquants(); _cryRenderWatch(); }).catch(() => {});
 };
 
+// Les entrées de la première version étaient de simples symboles.
+const _cryWatchSym = (w) => (typeof w === 'string' ? w : (w && w.sym));
+
+/** Complète le prix d'ajout quand le cours n'était pas encore connu. */
+function _cryWatchPrixManquants() {
+  const wl = getCryptoWatch();
+  let change = false;
+  const maj = wl.map(w => {
+    const sym = _cryWatchSym(w);
+    if (typeof w === 'string') { change = true; return { sym, addedAt: null, addedPrice: _cryCours[sym] ?? null }; }
+    if (w.addedPrice == null && Number.isFinite(_cryCours[sym])) { change = true; return { ...w, addedPrice: _cryCours[sym] }; }
+    return w;
+  });
+  if (change) saveCryptoWatch(currentUser, maj);
+}
+
 window.cryWatchRetirer = function(sym) {
-  saveCryptoWatch(currentUser, getCryptoWatch().filter(s => s !== sym));
+  saveCryptoWatch(currentUser, getCryptoWatch().filter(w => _cryWatchSym(w) !== sym));
   _cryRenderWatch();
 };
 
@@ -4811,7 +4881,7 @@ window.cryWatchChercher = function() {
   const dd = document.getElementById('cry-watch-dropdown');
   if (!champ || !dd) return;
   _cryWatchChoisi = null;
-  const suivies = getCryptoWatch();
+  const suivies = getCryptoWatch().map(_cryWatchSym);
   const detenues = _cryPositions().map(p => p.sym);
   // Ni ce qu'on suit déjà, ni ce qu'on détient : la watchlist sert à regarder
   // ce qu'on n'a pas.
@@ -4848,62 +4918,93 @@ window.cryWatchChercher = function() {
   dd.classList.add('open');
 };
 
+/**
+ * La watchlist, dans la table de celle du PEA.
+ *
+ * Mêmes colonnes, mêmes classes : c'est le même besoin, et deux présentations
+ * différentes pour suivre un cours n'auraient eu aucune justification.
+ */
 function _cryRenderWatch() {
-  const liste = document.getElementById('cry-watch-liste');
+  const tbody = document.getElementById('cry-watch-tbody');
   const vide = document.getElementById('cry-watch-vide');
-  if (!liste) return;
+  const table = document.getElementById('cry-watch-table');
+  if (!tbody) return;
 
-  const syms = getCryptoWatch();
-  if (vide) vide.hidden = syms.length > 0;
-  liste.hidden = syms.length === 0;
-  liste.innerHTML = '';
+  const wl = getCryptoWatch();
+  if (vide) vide.style.display = wl.length ? 'none' : 'block';
+  if (table) table.style.display = wl.length ? '' : 'none';
+  tbody.innerHTML = '';
 
-  syms.forEach(sym => {
+  wl.forEach(w => {
+    const sym = _cryWatchSym(w);
     const info = _cryInfo(sym);
     const cours = _cryCours[sym];
+    const depuis = (w && w.addedPrice) || null;
+    const ecart = Number.isFinite(cours) && depuis ? ((cours - depuis) / depuis) * 100 : null;
 
-    const row = document.createElement('div');
-    row.className = 'cry-row cry-row-watch';
+    const tr = document.createElement('tr');
 
-    const milieu = document.createElement('span');
-    milieu.className = 'cry-mid';
-    const nom = document.createElement('div');
-    nom.className = 'cry-nom';
-    nom.textContent = info.nom;
-    const sous = document.createElement('div');
-    sous.className = 'cry-sous';
-    sous.textContent = info.sym;
-    milieu.appendChild(nom);
-    milieu.appendChild(sous);
+    const tdNom = document.createElement('td');
+    tdNom.setAttribute('data-label', 'Crypto');
+    const cell = document.createElement('div');
+    cell.className = 'ticker-cell';
+    cell.appendChild(_cryPastille(info, 26));
+    const bloc = document.createElement('div');
+    const n1 = document.createElement('div');
+    n1.className = 'ticker-name';
+    n1.textContent = info.nom;
+    const n2 = document.createElement('div');
+    n2.className = 'ticker-sym';
+    n2.textContent = info.sym;
+    bloc.appendChild(n1); bloc.appendChild(n2);
+    cell.appendChild(bloc);
+    tdNom.appendChild(cell);
 
-    const val = document.createElement('span');
-    val.className = 'cry-val';
-    if (Number.isFinite(cours)) {
-      val.textContent = fmt(cours);
+    const tdPrix = document.createElement('td');
+    tdPrix.setAttribute('data-label', 'Cours');
+    tdPrix.className = 'mono';
+    tdPrix.style.textAlign = 'right';
+    tdPrix.textContent = Number.isFinite(cours) ? fmt(cours) : '—';
+
+    const tdEcart = document.createElement('td');
+    tdEcart.setAttribute('data-label', 'Depuis l’ajout');
+    tdEcart.className = 'mono';
+    tdEcart.style.textAlign = 'right';
+    if (ecart === null) {
+      tdEcart.style.color = 'var(--text2)';
+      tdEcart.textContent = '—';
+      tdEcart.title = 'Le cours du jour de l’ajout n’a pas été relevé.';
     } else {
-      val.textContent = 'cours indisponible';
-      val.classList.add('cry-val-off');
+      tdEcart.style.color = ecart >= 0 ? 'var(--positive)' : 'var(--negative)';
+      tdEcart.textContent = (ecart >= 0 ? '+' : '') + ecart.toFixed(2) + ' %';
+      tdEcart.title = 'Depuis le ' + String(w.addedAt || '').slice(0, 10) + ' à ' + fmt(depuis);
     }
 
+    const tdAct = document.createElement('td');
+    tdAct.style.cssText = 'text-align:right;white-space:nowrap';
     const acheter = document.createElement('button');
-    acheter.className = 'cry-watch-buy';
+    acheter.className = 'btn-add';
     acheter.type = 'button';
     acheter.textContent = 'Acheter';
+    acheter.style.display = 'inline-flex';
     acheter.addEventListener('click', () => cryOpenModal('achat', sym));
-
     const sup = document.createElement('button');
-    sup.className = 'cry-op-sup';
+    sup.className = 'btn-del';
     sup.type = 'button';
-    sup.setAttribute('aria-label', 'Ne plus suivre ' + info.nom);
-    sup.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+    sup.title = 'Retirer';
+    sup.style.marginLeft = '6px';
+    sup.textContent = '✕';
     sup.addEventListener('click', () => cryWatchRetirer(sym));
+    const grp = document.createElement('div');
+    grp.style.cssText = 'display:inline-flex;gap:6px;align-items:center';
+    grp.appendChild(acheter); grp.appendChild(sup);
+    tdAct.appendChild(grp);
 
-    row.appendChild(_cryPastille(info));
-    row.appendChild(milieu);
-    row.appendChild(val);
-    row.appendChild(acheter);
-    row.appendChild(sup);
-    liste.appendChild(row);
+    tr.appendChild(tdNom);
+    tr.appendChild(tdPrix);
+    tr.appendChild(tdEcart);
+    tr.appendChild(tdAct);
+    tbody.appendChild(tr);
   });
 }
 

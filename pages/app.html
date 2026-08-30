@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260830q">
+<link rel="stylesheet" href="css/style.css?v=20260830r">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -1976,22 +1976,33 @@
       </div>
 
       <div class="cry-pan" data-pan="watchlist" hidden>
-        <div class="form-group cry-watch-form">
-          <label class="form-label" for="cry-watch-champ">Suivre une crypto</label>
-          <input type="text" class="form-input" id="cry-watch-champ" autocomplete="off"
-                 placeholder="Bitcoin, Ethereum, Solana…"
-                 oninput="cryWatchChercher()" onfocus="cryWatchChercher()">
-          <div id="cry-watch-dropdown" class="search-dropdown"></div>
-          <div class="dep-help">Suivre son cours sans la détenir. Ce que vous possédez déjà n’apparaît pas dans la liste.</div>
-        </div>
+        <!-- Même table que la watchlist du PEA : c'est le même besoin, et deux
+             présentations pour suivre un cours n'auraient rien justifié. -->
+        <div class="table-container">
+          <div class="table-header">
+            <span class="table-title">Cryptos suivies</span>
+          </div>
 
-        <div class="cry-listwrap" id="cry-watch-liste"></div>
+          <div class="form-group cry-watch-form">
+            <input type="text" class="form-input" id="cry-watch-champ" autocomplete="off"
+                   placeholder="Ajouter — Bitcoin, Ethereum, Solana…"
+                   oninput="cryWatchChercher()" onfocus="cryWatchChercher()">
+            <div id="cry-watch-dropdown" class="search-dropdown"></div>
+          </div>
 
-        <div class="cry-empty" id="cry-watch-vide" hidden>
-          <div class="cry-empty-title">Rien en observation</div>
-          <div class="cry-empty-desc">
-            Ajoutez une crypto pour suivre son cours sans y mettre un euro.
-            Vous pourrez l’acheter d’un bouton le jour où vous vous déciderez.
+          <table id="cry-watch-table">
+            <thead><tr>
+              <th style="text-align:left">Crypto</th>
+              <th style="text-align:right">Cours</th>
+              <th style="text-align:right">Depuis l’ajout</th>
+              <th></th>
+            </tr></thead>
+            <tbody id="cry-watch-tbody"></tbody>
+          </table>
+
+          <div class="empty-state" id="cry-watch-vide">
+            <div class="empty-icon"><svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="#8892a8" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg></div>
+            <div class="empty-text">Aucune crypto suivie.<br>Ajoutez-en pour suivre leur cours sans y mettre un euro.</div>
           </div>
         </div>
       </div>
@@ -4053,11 +4064,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260830q"></script>
+<script src="js/app.js?v=20260830r"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260830q"></script>
+<script src="js/onboarding.js?v=20260830r"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260830q"></script>
+<script src="js/import.js?v=20260830r"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
