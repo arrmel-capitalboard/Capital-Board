@@ -5,7 +5,8 @@ const g = (re) => { const m = src.match(re); if (!m) throw new Error('introuvabl
 
 const bundle = [
   g(/const LIV_BAREME = \{[\s\S]*?\n\};/),
-  g(/const LIV_PFU = [^\n]*\n/),
+  g(/const LIV_PFU    = [^\n]*\n/),
+  g(/const LIV_PFU_EL = [^\n]*\n/),
   g(/const LIV_PS  = [^\n]*\n/),
   g(/const LIV_EL_REFORME = [^\n]*\n/),
   'let _livBareme = null, _livCfg = null;',
@@ -19,7 +20,10 @@ const bundle = [
   g(/function _livTranches\(l, capital\) \{[\s\S]*?\n\}/),
   g(/function _livRegime\(l, annee, q\) \{[\s\S]*?\n\}/),
   g(/function _livAtteint\(ouvIso, ans, annee, q\) \{[\s\S]*?\n\}/),
-  g(/function _livImpot\(regime\) \{[\s\S]*?\n\}/),
+  g(/function _livEstEL\(l\) \{[\s\S]*?\n\}/),
+  g(/function _livPfu\(l\) \{[\s\S]*?\n\}/),
+  g(/function _livSeau\(regime, l\) \{[\s\S]*?\n\}/),
+  g(/function _livImpot\(regime, l\) \{[\s\S]*?\n\}/),
   g(/function _livNet\(l, d\) \{[\s\S]*?\n\}/),
   g(/function _livTauxImpot\(l, d\) \{[\s\S]*?\n\}/),
   g(/function _livInterets\(l\) \{[\s\S]*?\n\}/),
@@ -44,7 +48,7 @@ const bundle = [
   g(/function _livClasserFiche\(f\) \{[\s\S]*?\n\}/),
   'module.exports = { _livSolde, _livTaux, _livTauxA, _livInterets, _livInteretsQ,' +
   ' _livAcquis, _livProjete, _livDebutQuinzaine, _livQuinzaines, _livReste, _livPlafond,' +
-  ' _livSur, _livPlafondTotal, _livRegime, _livImpot, _livTauxMarge, _livFicheEstSur, _livClasserFiche, _livType_, _livB };',
+  ' _livSur, _livPlafondTotal, _livRegime, _livImpot, _livTauxMarge, _livFicheEstSur, _livClasserFiche, _livType_, _livB, LIV_PFU, LIV_PFU_EL };',
 ].join('\n');
 
 const mod = new module.constructor();
@@ -222,7 +226,7 @@ chk('deux tranches : plafond du produit entier', X._livPlafondTotal(gros), 10000
 chk('deux tranches : reste à verser sur le second', X._livReste(gros), 70000);
 chk('deux tranches : acquis brut',  X._livAcquis(gros).brut, (reglB + surB) * 14 / 24);
 chk('deux tranches : seul le dépassement est imposé',
-    X._livAcquis(gros).net, (reglB + surB * 0.7) * 14 / 24);
+    X._livAcquis(gros).net, (reglB + surB * (1 - X.LIV_PFU)) * 14 / 24);
 chk('deux tranches : projeté au 31 décembre', X._livProjete(gros).brut, reglB + surB);
 // `impot` est le taux d'imposition MOYEN des intérêts, pas la part imposée :
 // c'est lui qu'on applique à un chiffre de banque, qui ne se décompose pas.
@@ -235,8 +239,8 @@ chk('sous le plafond : taux réglementé',
 // Un chiffre venu de la banque est global : la fiscalité s'y applique dans la
 // proportion que le calcul, lui, sait établir.
 const relGros = Object.assign({}, gros, { releve: { le: '2026-08-12', acquis: 100, projete: 200 } });
-chk('relevé : imposé au prorata de la tranche', X._livAcquis(relGros).net, 100 * (1 - 0.30 * partA));
-chk('relevé : prévisionnel au prorata',          X._livProjete(relGros).net, 200 * (1 - 0.30 * partA));
+chk('relevé : imposé au prorata de la tranche', X._livAcquis(relGros).net, 100 * (1 - X.LIV_PFU * partA));
+chk('relevé : prévisionnel au prorata',          X._livProjete(relGros).net, 200 * (1 - X.LIV_PFU * partA));
 
 // Un versement postérieur au relevé se loge dans la tranche où il tombe : au
 // taux du dépassement, puisque le livret est déjà plein.
@@ -383,7 +387,7 @@ chk('LDDS au-delà du plafond : rien d’imposé',
 // exonéré d'impôt sur le revenu et ne supporte que les prélèvements sociaux ;
 // le second subit le prélèvement forfaitaire dès le premier euro. Le PEL perd
 // son exonération à douze ans, le CEL la garde.
-const PS = 0.172, PFU = 0.30;
+const PS = 0.172, PFU = 0.314;
 
 chk('régime : PEL de 2015 → prélèvements sociaux seuls',
     X._livRegime({ type: 'pel', ouverture: '2015-06-01' }, 2026, 14), 'ps');
@@ -417,7 +421,12 @@ chk('douze ans : quinzaine du 16 juin encore exonérée', X._livRegime(pel2014, 
 
 chk('impôt : exonéré', X._livImpot('exo'), 0);
 chk('impôt : prélèvements sociaux seuls', X._livImpot('ps'), PS);
-chk('impôt : prélèvement forfaitaire', X._livImpot('pfu'), PFU);
+// Le PFU de droit commun, à 31,4 % depuis 2026…
+chk('impôt : prélèvement forfaitaire', X._livImpot('pfu', { type: 'bancaire' }), PFU);
+// …mais l'épargne logement en a été exemptée et reste à 30 %. Les deux taux
+// coexistent : c'est exactement ce que ce couple de cas verrouille.
+chk('impôt : épargne logement épargnée par la hausse', X._livImpot('pfu', { type: 'pel' }), X.LIV_PFU_EL);
+chk('impôt : les deux taux forfaitaires diffèrent', PFU === X.LIV_PFU_EL ? 1 : 0, 0);
 
 // Chiffre en main. PEL de 2015, 20 000 € en place depuis l'an dernier, 2 % :
 // tout l'acquis de l'année relève des prélèvements sociaux seuls.
@@ -427,10 +436,11 @@ chk('PEL de 2015 : brut',  X._livAcquis(pelVieux).brut, 20000 * 0.02 * 14 / 24);
 chk('PEL de 2015 : net à 17,2 %', X._livAcquis(pelVieux).net, 20000 * 0.02 * 14 / 24 * (1 - PS));
 
 // Le même, ouvert en 2019 : le prélèvement forfaitaire s'applique, et le net
-// perd 12,8 points de plus.
+// perd 12,8 points de plus. À 30 % et non 31,4 : l'épargne logement a été
+// exemptée de la hausse des prélèvements sociaux de 2026.
 const pelNeuf = { type: 'pel', taux: 2, ouverture: '2019-06-01',
                   mouvements: [{ d: '2019-06-01', m: 20000 }] };
-chk('PEL de 2019 : net à 30 %', X._livAcquis(pelNeuf).net, 20000 * 0.02 * 14 / 24 * (1 - PFU));
+chk('PEL de 2019 : net à 30 %', X._livAcquis(pelNeuf).net, 20000 * 0.02 * 14 / 24 * (1 - X.LIV_PFU_EL));
 chk('PEL de 2019 : moins net que celui de 2015',
     X._livAcquis(pelNeuf).net < X._livAcquis(pelVieux).net ? 1 : 0, 1);
 
@@ -439,7 +449,7 @@ chk('PEL de 2019 : moins net que celui de 2015',
 const aCheval = Object.assign({}, pel2014, { mouvements: [{ d: '2014-07-01', m: 20000 }] });
 chk('douze ans : acquis partagé entre les deux régimes',
     X._livAcquis(aCheval).net,
-    20000 * 0.02 * 12 / 24 * (1 - PS) + 20000 * 0.02 * 2 / 24 * (1 - PFU));
+    20000 * 0.02 * 12 / 24 * (1 - PS) + 20000 * 0.02 * 2 / 24 * (1 - X.LIV_PFU_EL));
 
 // Un relevé de banque est un brut global : on lui applique le taux moyen que
 // le calcul établit, pas un régime choisi au hasard.
@@ -455,7 +465,7 @@ chk('CEL de 2010 : net des prélèvements sociaux',
     X._livProjete(cel2010).net, 10000 * 0.0125 * (1 - PS));
 const cel2020 = { type: 'cel', ouverture: '2020-03-01', mouvements: [{ d: '2020-03-01', m: 10000 }] };
 chk('CEL de 2020 : net du prélèvement forfaitaire',
-    X._livProjete(cel2020).net, 10000 * 0.0125 * (1 - PFU));
+    X._livProjete(cel2020).net, 10000 * 0.0125 * (1 - X.LIV_PFU_EL));
 // Le CEL garde son exonération sans limite de durée : à seize ans, il est
 // toujours au régime des prélèvements sociaux.
 chk('CEL de 2010 : toujours exonéré d’impôt à seize ans',
