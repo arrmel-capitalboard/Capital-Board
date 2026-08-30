@@ -35,6 +35,7 @@
 const {
   ActionRowBuilder, ButtonBuilder, ButtonStyle, EmbedBuilder,
   ModalBuilder, TextInputBuilder, TextInputStyle, MessageFlags,
+  StringSelectMenuBuilder,
 } = require('discord.js');
 const { getDb, getAuth, isConfigured } = require('../firebase');
 
@@ -92,8 +93,11 @@ async function membresAvecLivret() {
   snaps.forEach((snap, i) => {
     if (!snap.exists) return;
     const data = snap.data() || {};
-    // Le client écrit `{ data: [...] }` pour les collections hors annexes.
-    const livrets = Array.isArray(data.data) ? data.data
+    // `items` : c'est la clé qu'écrit `_fsWrite` pour toute collection hors
+    // annexes (`js/app.js`). Les deux autres formes sont des filets — un export
+    // réimporté, ou un document d'une version antérieure.
+    const livrets = Array.isArray(data.items) ? data.items
+      : Array.isArray(data.data) ? data.data
       : Array.isArray(data.livrets) ? data.livrets : [];
     if (!livrets.length) return;
     trouves.push({
@@ -222,8 +226,9 @@ function panelPayload() {
       'Savoir qui utilise le module, et leur poser une question directement '
       + 'dans l\'application.\n\n'
       + '**Qui a un livret** — la liste des membres concernés, nom et email.\n'
-      + '**Poser une question** — elle s\'affiche à ces membres à l\'ouverture '
-      + 'de l\'app ; leurs réponses reviennent ici.\n'
+      + '**Poser une question** — choisissez les destinataires dans la liste, '
+      + 'écrivez la question : elle s\'affiche à l\'ouverture de leur '
+      + 'application, et leurs réponses reviennent ici.\n'
       + '**Arrêter la question** — elle cesse d\'être affichée.',
     );
 
@@ -328,10 +333,98 @@ function start(client) {
 
 // ── Routage ────────────────────────────────────────────────────────────────
 
+// Les listes de destinataires vivent en mémoire, pas dans Firestore.
+//
+// L'identifiant du tirage voyage dans le `customId` du menu puis du modal —
+// les uid, eux, n'y tiendraient pas : Discord plafonne un customId à cent
+// caractères. Ils ne survivent pas à un redémarrage du bot, et c'est assumé :
+// mieux vaut redemander la liste que poser une question à des destinataires
+// oubliés. Purge à trente minutes, comme les scénarios d'audit.
+const TIRAGES = new Map();
+const TIRAGE_TTL = 30 * 60 * 1000;
+
+// Discord plafonne un menu à vingt-cinq options. La première est « tout le
+// monde », il en reste vingt-quatre pour désigner quelqu'un nommément.
+const MAX_OPTIONS_NOMMEES = 24;
+
+function purgerTirages() {
+  const limite = Date.now() - TIRAGE_TTL;
+  for (const [id, t] of TIRAGES) if (t.at < limite) TIRAGES.delete(id);
+}
+
+const etiquette = (m) => (m.nom || m.email || m.uid).slice(0, 100);
+
+async function demanderCibles(interaction) {
+  await interaction.deferReply();
+  purgerTirages();
+
+  const membres = await membresAvecLivret();
+  if (!membres.length) {
+    await interaction.editReply('Personne n\'a de livret enregistré : la question n\'aurait aucun destinataire.');
+    return;
+  }
+
+  const id = Date.now().toString(36);
+  TIRAGES.set(id, { membres, at: Date.now(), choix: null });
+
+  const nommes = membres.slice(0, MAX_OPTIONS_NOMMEES);
+  const menu = new StringSelectMenuBuilder()
+    .setCustomId(`liv:cibles:${id}`)
+    .setPlaceholder('À qui poser la question ?')
+    .setMinValues(1)
+    .setMaxValues(nommes.length + 1)
+    .addOptions([
+      {
+        label: `Tout le monde (${membres.length})`,
+        value: '*',
+        description: 'Tous les membres ayant au moins un livret',
+        emoji: '📒',
+      },
+      ...nommes.map((m) => ({
+        label: etiquette(m),
+        value: m.uid,
+        description: (m.email ? `${m.email} · ` : '') + m.types.map(nomType).join(', '),
+      })).map((o) => ({ ...o, description: o.description.slice(0, 100) })),
+    ]);
+
+  const reste = membres.length - nommes.length;
+  const embed = new EmbedBuilder()
+    .setColor(0xf5b731)
+    .setTitle('À qui poser la question ?')
+    .setDescription(
+      `${membres.length} membre${membres.length > 1 ? 's ont' : ' a'} au moins un livret.`
+      + '\n\nChoisissez un ou plusieurs destinataires, ou « Tout le monde ». '
+      + 'La question s\'écrit à l\'étape suivante.'
+      + (reste > 0
+        ? `\n\n*${reste} membre${reste > 1 ? 's ne sont' : ' n\'est'} pas listé${reste > 1 ? 's' : ''} `
+          + 'nommément (Discord plafonne un menu à 25 entrées) — « Tout le monde » '
+          + 'les inclut.*'
+        : ''),
+    );
+
+  await interaction.editReply({
+    embeds: [embed],
+    components: [new ActionRowBuilder().addComponents(menu)],
+  });
+}
+
 async function ouvrirFormulaire(interaction) {
   // Rien de distant avant un `showModal` : il doit être la première réponse à
-  // l'interaction, et Discord invalide le jeton au bout de trois secondes.
-  const modal = new ModalBuilder().setCustomId('liv:modal').setTitle('Question aux membres');
+  // l'interaction, et Discord invalide le jeton au bout de trois secondes. La
+  // sélection se range en mémoire, ce qui ne coûte rien.
+  const id = interaction.customId.split(':')[2];
+  const tirage = TIRAGES.get(id);
+  if (!tirage) {
+    await interaction.reply({
+      content: 'Cette sélection a expiré (le bot a redémarré, ou plus de trente minutes '
+        + 'ont passé). Relancez « Poser une question ».',
+      flags: MessageFlags.Ephemeral,
+    });
+    return;
+  }
+  tirage.choix = interaction.values;
+
+  const modal = new ModalBuilder().setCustomId(`liv:modal:${id}`).setTitle('Question aux membres');
   modal.addComponents(
     new ActionRowBuilder().addComponents(
       new TextInputBuilder().setCustomId('texte').setLabel('La question')
@@ -349,6 +442,20 @@ async function ouvrirFormulaire(interaction) {
 
 async function enregistrerQuestion(interaction) {
   await interaction.deferReply();
+
+  const id = interaction.customId.split(':')[2];
+  const tirage = TIRAGES.get(id);
+  if (!tirage || !tirage.choix) {
+    await interaction.editReply('Cette sélection a expiré. Relancez « Poser une question ».');
+    return;
+  }
+  // « Tout le monde » l'emporte sur une sélection nominative faite en même
+  // temps : c'est le sens de la case, et l'inverse aurait exclu des membres
+  // qu'on venait de cocher.
+  const destinataires = tirage.choix.includes('*')
+    ? tirage.membres
+    : tirage.membres.filter((m) => tirage.choix.includes(m.uid));
+
   const texte = interaction.fields.getTextInputValue('texte').trim();
   const choix = interaction.fields.getTextInputValue('choix')
     .split('\n').map((s) => s.trim()).filter(Boolean).slice(0, 4);
@@ -365,15 +472,15 @@ async function enregistrerQuestion(interaction) {
     return;
   }
 
-  const membres = await membresAvecLivret();
-  if (!membres.length) {
-    await interaction.editReply('Personne n\'a de livret enregistré : la question n\'aurait aucun destinataire.');
+  if (!destinataires.length) {
+    await interaction.editReply('Aucun destinataire retenu — la sélection était vide.');
     return;
   }
 
-  const id = await lancerQuestion({
-    texte, choix, membres, par: interaction.user.tag,
+  const campagne = await lancerQuestion({
+    texte, choix, membres: destinataires, par: interaction.user.tag,
   });
+  TIRAGES.delete(id);
 
   const embed = new EmbedBuilder()
     .setColor(0x22d98a)
@@ -381,8 +488,10 @@ async function enregistrerQuestion(interaction) {
     .setDescription(propre(texte).slice(0, 2000))
     .addFields(
       { name: 'Réponses proposées', value: choix.map((c) => `• ${propre(c)}`).join('\n').slice(0, 1024) },
-      { name: 'Destinataires', value: `${membres.length} membre${membres.length > 1 ? 's' : ''} ayant au moins un livret`, inline: true },
-      { name: 'Référence', value: `\`${id}\``, inline: true },
+      { name: 'Destinataires', value: destinataires.length === tirage.membres.length
+          ? `Tous les membres ayant un livret (${destinataires.length})`
+          : propre(destinataires.map(etiquette).join(', ')).slice(0, 1024), inline: false },
+      { name: 'Référence', value: `\`${campagne}\``, inline: true },
     )
     .setFooter({ text: 'Elle s\'affiche à leur prochaine ouverture de l\'application.' })
     .setTimestamp();
@@ -415,7 +524,8 @@ async function handleComponent(interaction) {
   const [, geste] = interaction.customId.split(':');
   try {
     if (geste === 'qui') { await listerMembres(interaction); return; }
-    if (geste === 'demander') { await ouvrirFormulaire(interaction); return; }
+    if (geste === 'demander') { await demanderCibles(interaction); return; }
+    if (geste === 'cibles') { await ouvrirFormulaire(interaction); return; }
     if (geste === 'modal') { await enregistrerQuestion(interaction); return; }
     if (geste === 'stop') { await stopper(interaction); return; }
   } catch (e) {

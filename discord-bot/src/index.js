@@ -246,6 +246,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (interaction.isModalSubmit()) {
+      if (livretspanel.isLivretsComponent(interaction.customId)) { await livretspanel.handleComponent(interaction); return; }
       if (newsqueue.isNewsTextModal(interaction.customId)) { await newsqueue.handleTextModal(interaction); return; }
       if (suggestions.isSuggestionModal(interaction.customId)) { await suggestions.handleModal(interaction); return; }
       if (interaction.customId === 'ticket_modal') {
