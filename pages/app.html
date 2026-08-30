@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260830m">
+<link rel="stylesheet" href="css/style.css?v=20260830n">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -1849,6 +1849,18 @@
         </div>
       </div>
 
+      <!-- Même barre que le PEA. Interne à la page : ces sections ne sont pas
+           des pages de l'application, et en faire pour trois panneaux qui n'ont
+           encore rien à montrer aurait été payer d'avance une architecture dont
+           on ne connaît pas la forme. -->
+      <nav class="pea-tabs" id="cry-tabs" aria-label="Sections de la crypto">
+        <button type="button" class="pea-tab active" data-tab="portefeuille" onclick="cryTab('portefeuille')">Mes cryptos</button>
+        <button type="button" class="pea-tab" data-tab="activite"  onclick="cryTab('activite')">Activité</button>
+        <button type="button" class="pea-tab" data-tab="watchlist" onclick="cryTab('watchlist')">Watchlist</button>
+        <button type="button" class="pea-tab" data-tab="recap"     onclick="cryTab('recap')">Récap du jour</button>
+      </nav>
+
+      <div class="cry-pan" data-pan="portefeuille">
       <!-- Saisie manuelle pour l'instant : relier une plateforme ou une adresse
            viendra ensuite. Le dire évite qu'on prenne le module pour fini. -->
       <div class="dep-beta-note">
@@ -1928,6 +1940,54 @@
         Les crypto-actifs sont volatils et peuvent perdre l’intégralité de leur valeur.
         Rien ici ne constitue un conseil en investissement.
       </p>
+      </div><!-- /portefeuille -->
+
+      <!-- Les trois sections à venir. Elles disent ce qu'elles feront plutôt
+           que d'afficher un écran vide : un onglet qui ne répond rien laisse
+           croire à une panne. -->
+      <div class="cry-pan" data-pan="activite" hidden>
+        <div class="cry-avenir">
+          <div class="cry-avenir-ico">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          </div>
+          <div class="cry-avenir-title">Activité</div>
+          <div class="cry-avenir-desc">
+            Vos achats, vos ventes et vos transferts, dans l’ordre. C’est cette liste
+            qui distinguera une vente imposable d’un simple déplacement entre vos
+            propres portefeuilles — la seule chose qui rende la fiscalité juste.
+          </div>
+          <div class="cry-avenir-tag">À venir</div>
+        </div>
+      </div>
+
+      <div class="cry-pan" data-pan="watchlist" hidden>
+        <div class="cry-avenir">
+          <div class="cry-avenir-ico">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+          </div>
+          <div class="cry-avenir-title">Watchlist</div>
+          <div class="cry-avenir-desc">
+            Suivre une crypto sans la détenir, et être prévenu quand son cours
+            atteint le seuil que vous fixez. Même mécanique que la watchlist du PEA.
+          </div>
+          <div class="cry-avenir-tag">À venir</div>
+        </div>
+      </div>
+
+      <div class="cry-pan" data-pan="recap" hidden>
+        <div class="cry-avenir">
+          <div class="cry-avenir-ico cry-avenir-ia">
+            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="M18.5 15.5l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9z"/></svg>
+          </div>
+          <div class="cry-avenir-title">Récap du jour</div>
+          <div class="cry-avenir-desc">
+            Chaque matin, ce qui a bougé sur vos lignes et pourquoi, écrit en clair
+            par une IA : le mouvement de la veille, ce qui l’explique, et ce que ça
+            change à votre exposition. Le même récap que celui du PEA, appliqué ici.
+          </div>
+          <div class="cry-avenir-tag">À venir</div>
+        </div>
+      </div>
     </div>
     </div>
 
@@ -2802,11 +2862,6 @@
         <input class="form-input" id="cry-f-pru" inputmode="decimal" placeholder="62 400" oninput="cryRecalc()">
         <div class="dep-help">En euros, par unité. Si vous avez acheté en plusieurs fois, indiquez le prix moyen.</div>
       </div>
-    </div>
-
-    <div class="form-group">
-      <label class="form-label" for="cry-f-lieu">Où elle se trouve <span class="dep-opt">facultatif</span></label>
-      <input class="form-input" id="cry-f-lieu" maxlength="40" placeholder="Kraken, Ledger…">
     </div>
 
     <div class="cry-apercu" id="cry-apercu" hidden></div>
@@ -3959,11 +4014,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260830m"></script>
+<script src="js/app.js?v=20260830n"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260830m"></script>
+<script src="js/onboarding.js?v=20260830n"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260830m"></script>
+<script src="js/import.js?v=20260830n"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

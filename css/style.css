@@ -6033,8 +6033,16 @@ body.has-demo-banner { padding-top: 40px; }
   border: 1px solid transparent;
   display: grid; place-items: center;
   font-family: var(--mono); font-size: 9px; font-weight: 700;
-  flex-shrink: 0;
+  flex-shrink: 0; overflow: hidden;
 }
+/* Fond clair sous un logo, comme les tuiles de titres : beaucoup de logos de
+   projet sont dessines en noir sur transparent et disparaissaient sur sombre. */
+.cry-ico-logo {
+  background: var(--logo-bg);
+  border-color: var(--logo-border);
+  padding: 3px;
+}
+.cry-ico-logo img { width: 100%; height: 100%; object-fit: contain; display: block; }
 .cry-mid { flex: 1; min-width: 0; }
 .cry-nom { font-size: 13.5px; font-weight: 600; color: var(--text); }
 .cry-sous {
@@ -6070,6 +6078,44 @@ body.has-demo-banner { padding-top: 40px; }
   display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
 }
 
+/* Les onglets internes reprennent `.pea-tabs` tel quel ; seule la marge change,
+   la barre etant ici sous l'en-tete de page et non au-dessus. */
+#cry-tabs { margin-bottom: 18px; }
+.cry-pan[hidden] { display: none; }
+
+/* Une section a venir dit ce qu'elle fera. Un onglet qui ne repond rien laisse
+   croire a une panne ; une promesse datee se comprend. */
+.cry-avenir {
+  background: #0f1119; border: 1px dashed var(--border2);
+  border-radius: 18px; padding: 46px 32px; text-align: center;
+}
+.cry-avenir-ico {
+  width: 42px; height: 42px; border-radius: 12px; margin: 0 auto 16px;
+  display: grid; place-items: center;
+  background: rgba(124,109,245,.10); border: 1px solid rgba(124,109,245,.22);
+  color: var(--accent);
+}
+.cry-avenir-ia {
+  background: rgba(245,183,49,.10); border-color: rgba(245,183,49,.24);
+  color: var(--gold);
+}
+.cry-avenir-title {
+  font-family: var(--display); font-size: 17px; font-weight: 700;
+  letter-spacing: -0.3px; margin-bottom: 10px;
+}
+.cry-avenir-desc {
+  font-size: 13px; color: var(--text2); line-height: 1.65;
+  max-width: 52ch; margin: 0 auto 18px;
+}
+.cry-avenir-tag {
+  display: inline-block;
+  font-family: var(--mono); font-size: 9.5px; font-weight: 700;
+  letter-spacing: .8px; text-transform: uppercase;
+  padding: 5px 11px; border-radius: 8px;
+  background: rgba(245,183,49,.10); border: 1px solid rgba(245,183,49,.24);
+  color: var(--gold);
+}
+
 .cry-apercu {
   margin-top: 4px; padding: 11px 13px; border-radius: 10px;
   background: rgba(245,183,49,.07); border: 1px solid rgba(245,183,49,.22);
@@ -6092,7 +6138,7 @@ body.has-demo-banner { padding-top: 40px; }
   .cry-nom { font-size: 14px; }
   .cry-val { font-size: 14px; }
   .cry-legend { gap: 12px; }
-  .cry-empty { padding: 34px 20px; }
+  .cry-empty, .cry-avenir { padding: 34px 20px; }
   .cry-maj { display: none; }
   /* Deux champs côte à côte deviennent illisibles sous 640 px. */
   .dep-form-row { grid-template-columns: 1fr; gap: 0; }

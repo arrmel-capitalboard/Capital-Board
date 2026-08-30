@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830m';
+const APP_VERSION = '20260830n';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3916,28 +3916,68 @@ async function startApp(user) {
 // Les cours passent par le même relais Yahoo que les actions
 // (`fetchWithFallback`), en paire directe contre l'euro : aucune conversion à
 // faire, et rien de nouveau à déployer côté Worker.
+// `d` est le domaine du projet : le logo vient de `GET /logo?domain=`, la même
+// route que les marchands des Dépenses (cascade Clearbit puis favicon, cache
+// de sept jours côté Worker). Rien de nouveau à déployer, et les vingt
+// domaines ont été vérifiés un par un contre la production.
 const CRY_CATALOGUE = [
-  { sym: 'BTC',   nom: 'Bitcoin',      y: 'BTC-EUR',   c: '#f7931a' },
-  { sym: 'ETH',   nom: 'Ethereum',     y: 'ETH-EUR',   c: '#7c6df5' },
-  { sym: 'USDT',  nom: 'Tether',       y: 'USDT-EUR',  c: '#26a17b' },
-  { sym: 'BNB',   nom: 'BNB',          y: 'BNB-EUR',   c: '#f3ba2f' },
-  { sym: 'SOL',   nom: 'Solana',       y: 'SOL-EUR',   c: '#5b8dee' },
-  { sym: 'USDC',  nom: 'USD Coin',     y: 'USDC-EUR',  c: '#2775ca' },
-  { sym: 'XRP',   nom: 'XRP',          y: 'XRP-EUR',   c: '#8892a8' },
-  { sym: 'ADA',   nom: 'Cardano',      y: 'ADA-EUR',   c: '#0d6efd' },
-  { sym: 'AVAX',  nom: 'Avalanche',    y: 'AVAX-EUR',  c: '#e84142' },
-  { sym: 'DOGE',  nom: 'Dogecoin',     y: 'DOGE-EUR',  c: '#c2a633' },
-  { sym: 'TRX',   nom: 'TRON',         y: 'TRX-EUR',   c: '#ff4d6a' },
-  { sym: 'DOT',   nom: 'Polkadot',     y: 'DOT-EUR',   c: '#e6007a' },
-  { sym: 'MATIC', nom: 'Polygon',      y: 'MATIC-EUR', c: '#8247e5' },
-  { sym: 'LINK',  nom: 'Chainlink',    y: 'LINK-EUR',  c: '#2a5ada' },
-  { sym: 'LTC',   nom: 'Litecoin',     y: 'LTC-EUR',   c: '#a6a9aa' },
-  { sym: 'BCH',   nom: 'Bitcoin Cash', y: 'BCH-EUR',   c: '#0ac18e' },
-  { sym: 'XLM',   nom: 'Stellar',      y: 'XLM-EUR',   c: '#00e09e' },
-  { sym: 'ATOM',  nom: 'Cosmos',       y: 'ATOM-EUR',  c: '#5b8dee' },
-  { sym: 'XMR',   nom: 'Monero',       y: 'XMR-EUR',   c: '#ff6600' },
-  { sym: 'ALGO',  nom: 'Algorand',     y: 'ALGO-EUR',  c: '#8892a8' },
+  { sym: 'BTC',   nom: 'Bitcoin',      y: 'BTC-EUR',   c: '#f7931a', d: 'bitcoin.org' },
+  { sym: 'ETH',   nom: 'Ethereum',     y: 'ETH-EUR',   c: '#7c6df5', d: 'ethereum.org' },
+  { sym: 'USDT',  nom: 'Tether',       y: 'USDT-EUR',  c: '#26a17b', d: 'tether.to' },
+  { sym: 'BNB',   nom: 'BNB',          y: 'BNB-EUR',   c: '#f3ba2f', d: 'binance.com' },
+  { sym: 'SOL',   nom: 'Solana',       y: 'SOL-EUR',   c: '#5b8dee', d: 'solana.com' },
+  { sym: 'USDC',  nom: 'USD Coin',     y: 'USDC-EUR',  c: '#2775ca', d: 'circle.com' },
+  { sym: 'XRP',   nom: 'XRP',          y: 'XRP-EUR',   c: '#8892a8', d: 'ripple.com' },
+  { sym: 'ADA',   nom: 'Cardano',      y: 'ADA-EUR',   c: '#0d6efd', d: 'cardano.org' },
+  { sym: 'AVAX',  nom: 'Avalanche',    y: 'AVAX-EUR',  c: '#e84142', d: 'avax.network' },
+  { sym: 'DOGE',  nom: 'Dogecoin',     y: 'DOGE-EUR',  c: '#c2a633', d: 'dogecoin.com' },
+  { sym: 'TRX',   nom: 'TRON',         y: 'TRX-EUR',   c: '#ff4d6a', d: 'tron.network' },
+  { sym: 'DOT',   nom: 'Polkadot',     y: 'DOT-EUR',   c: '#e6007a', d: 'polkadot.network' },
+  { sym: 'MATIC', nom: 'Polygon',      y: 'MATIC-EUR', c: '#8247e5', d: 'polygon.technology' },
+  { sym: 'LINK',  nom: 'Chainlink',    y: 'LINK-EUR',  c: '#2a5ada', d: 'chain.link' },
+  { sym: 'LTC',   nom: 'Litecoin',     y: 'LTC-EUR',   c: '#a6a9aa', d: 'litecoin.org' },
+  { sym: 'BCH',   nom: 'Bitcoin Cash', y: 'BCH-EUR',   c: '#0ac18e', d: 'bitcoincash.org' },
+  { sym: 'XLM',   nom: 'Stellar',      y: 'XLM-EUR',   c: '#00e09e', d: 'stellar.org' },
+  { sym: 'ATOM',  nom: 'Cosmos',       y: 'ATOM-EUR',  c: '#5b8dee', d: 'cosmos.network' },
+  { sym: 'XMR',   nom: 'Monero',       y: 'XMR-EUR',   c: '#ff6600', d: 'getmonero.org' },
+  { sym: 'ALGO',  nom: 'Algorand',     y: 'ALGO-EUR',  c: '#8892a8', d: 'algorand.com' },
 ];
+
+/**
+ * La pastille d'une crypto : son logo, ou ses initiales si l'image ne vient pas.
+ *
+ * Fond clair sous le logo, comme les tuiles de titres : beaucoup de logos de
+ * projet sont dessinés en noir sur transparent et disparaissaient sur sombre.
+ * Le repli est posé par `onerror` et non par une vérification préalable — un
+ * aller-retour de plus pour savoir s'il faut afficher une image qu'on demande
+ * de toute façon n'aurait rien économisé.
+ */
+function _cryPastille(info, taille) {
+  const px = taille || 34;
+  const el = document.createElement('span');
+  el.className = 'cry-ico';
+  el.style.width = px + 'px';
+  el.style.height = px + 'px';
+
+  const initiales = () => {
+    el.classList.remove('cry-ico-logo');
+    el.style.color = info.c;
+    el.style.borderColor = info.c + '40';
+    el.style.background = info.c + '1f';
+    el.textContent = info.sym.slice(0, 4);
+  };
+
+  if (!info.d) { initiales(); return el; }
+
+  el.classList.add('cry-ico-logo');
+  const img = document.createElement('img');
+  img.alt = '';
+  img.loading = 'lazy';
+  img.src = WORKER_URL + '/logo?domain=' + encodeURIComponent(info.d);
+  img.addEventListener('error', () => { el.innerHTML = ''; initiales(); });
+  el.appendChild(img);
+  return el;
+}
 
 const _cryParSym = Object.fromEntries(CRY_CATALOGUE.map(c => [c.sym, c]));
 
@@ -4026,6 +4066,27 @@ async function _cryChargerCours(force) {
 
 // ── Rendu ──────────────────────────────────────────────────────────────────
 
+// ── Onglets ────────────────────────────────────────────────────────────────
+//
+// Même barre que le PEA, mais interne à la page : les sections d'ici ne sont
+// pas des pages de l'application, et en faire pour trois panneaux qui n'ont
+// encore rien à montrer aurait été payer d'avance une architecture dont on ne
+// sait pas encore la forme.
+let _cryOnglet = 'portefeuille';
+
+window.cryTab = function(id) {
+  _cryOnglet = id;
+  document.querySelectorAll('#cry-tabs .pea-tab').forEach(b => {
+    b.classList.toggle('active', b.dataset.tab === id);
+  });
+  document.querySelectorAll('#crypto-app .cry-pan').forEach(p => {
+    p.hidden = p.dataset.pan !== id;
+  });
+  // Les boutons d'en-tête n'ont de sens que sur le portefeuille.
+  const outils = document.querySelector('#crypto-app .dep-header-tools');
+  if (outils) outils.hidden = id !== 'portefeuille';
+};
+
 async function renderCrypto() {
   const live = _isModuleLive('crypto');
   const teaser = document.getElementById('crypto-teaser');
@@ -4087,13 +4148,7 @@ window.cryChercher = function() {
     const item = document.createElement('div');
     item.className = 'search-dropdown-item';
 
-    const pastille = document.createElement('div');
-    pastille.style.cssText = 'width:26px;height:26px;border-radius:7px;display:grid;place-items:center;'
-      + 'font-size:8px;font-weight:700;font-family:var(--mono);flex-shrink:0';
-    pastille.style.color = c.c;
-    pastille.style.background = c.c + '1f';
-    pastille.style.border = '1px solid ' + c.c + '40';
-    pastille.textContent = c.sym.slice(0, 4);
+    const pastille = _cryPastille(c, 26);
 
     const milieu = document.createElement('div');
     milieu.style.cssText = 'flex:1;min-width:0';
@@ -4263,12 +4318,7 @@ function _cryRender() {
       row.addEventListener('click', () => cryOpenModal(l.id));
       row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cryOpenModal(l.id); } });
 
-      const pastille = document.createElement('span');
-      pastille.className = 'cry-ico';
-      pastille.style.color = info.c;
-      pastille.style.borderColor = info.c + '40';
-      pastille.style.background = info.c + '1f';
-      pastille.textContent = info.sym.slice(0, 4);
+      const pastille = _cryPastille(info);
 
       const milieu = document.createElement('span');
       milieu.className = 'cry-mid';
@@ -4277,7 +4327,7 @@ function _cryRender() {
       nom.textContent = info.nom;
       const sous = document.createElement('div');
       sous.className = 'cry-sous';
-      sous.textContent = _cryQte(l.qte) + ' ' + info.sym + (l.lieu ? ' · ' + l.lieu : '');
+      sous.textContent = _cryQte(l.qte) + ' ' + info.sym;
       milieu.appendChild(nom);
       milieu.appendChild(sous);
 
@@ -4401,7 +4451,6 @@ window.cryOpenModal = function(id) {
   document.getElementById('cry-f-sym').value = l ? _cryInfo(l.sym).nom : '';
   document.getElementById('cry-f-qte').value = l ? String(l.qte).replace('.', ',') : '';
   document.getElementById('cry-f-pru').value = l ? String(l.pru).replace('.', ',') : '';
-  document.getElementById('cry-f-lieu').value = (l && l.lieu) || '';
   document.getElementById('cry-del').hidden = !l;
   _cryChoisi = l ? _cryParSym[l.sym] || null : null;
   _cryFermerDd();
@@ -4475,7 +4524,6 @@ window.crySave = function() {
     sym: info.sym,
     qte,
     pru: pru || 0,
-    lieu: _depVal('cry-f-lieu').trim().slice(0, 40) || null,
   };
 
   const all = getCryptos().slice();
