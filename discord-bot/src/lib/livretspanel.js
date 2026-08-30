@@ -107,8 +107,8 @@ async function membresAvecLivret() {
     });
   });
 
-  // L'email et le nom ne sont pas dans Firestore : ils vivent dans Firebase
-  // Auth. `getUsers` les résout par lots de cent, sans coûter de lecture.
+  // L'email vient de Firebase Auth : Firestore ne le porte pas. `getUsers` le
+  // résout par lots de cent, sans coûter de lecture Firestore.
   const auth = getAuth();
   for (let i = 0; i < trouves.length; i += 100) {
     const lot = trouves.slice(i, i + 100);
@@ -117,14 +117,35 @@ async function membresAvecLivret() {
       res = await auth.getUsers(lot.map((m) => ({ uid: m.uid })));
     } catch (e) {
       console.warn('[livretspanel] résolution des comptes :', e.message);
-      continue; // sans nom ni email, l'uid reste affiché
+      continue; // sans email, l'uid reste affiché
     }
     const par = new Map(res.users.map((u) => [u.uid, u]));
     lot.forEach((m) => {
       const u = par.get(m.uid);
       if (!u) return;
       m.email = u.email || null;
-      m.nom = u.displayName || null;
+      m.nom = u.displayName || null;   // presque toujours vide, voir ci-dessous
+    });
+  }
+
+  // Le nom, lui, n'est pas dans Auth : `displayName` n'est jamais renseigné à
+  // l'inscription, d'où les « (sans nom) » de la première version. Il vit dans
+  // `roles/{uid}` — le pseudo écrit par le Worker, le prénom et le nom saisis
+  // par le membre dans son profil.
+  //
+  // Une lecture de plus par membre, assumée pour la même raison que le reste :
+  // c'est à la demande, sur un clic.
+  const rolesRefs = trouves.map((m) => db.collection('roles').doc(m.uid));
+  if (rolesRefs.length) {
+    const rolesSnaps = await db.getAll(...rolesRefs);
+    rolesSnaps.forEach((snap, i) => {
+      const d = snap.exists ? (snap.data() || {}) : {};
+      const civil = [d.firstName, d.lastName].filter(Boolean).join(' ').trim();
+      // Le pseudo d'abord : c'est sous ce nom que le membre se présente dans la
+      // communauté, et c'est lui qu'on retrouve dans Discord. L'état civil vient
+      // en second, l'éventuel displayName d'Auth en dernier.
+      trouves[i].nom = d.username || civil || trouves[i].nom || null;
+      trouves[i].civil = civil || null;
     });
   }
 
@@ -144,9 +165,13 @@ function embedListe(membres) {
 
   const lignes = membres.slice(0, MAX_LIGNES).map((m) => {
     const qui = propre(m.nom || '(sans nom)');
+    // L'état civil n'est répété que s'il apporte quelque chose : « oyoki » seul
+    // ne dit pas qui c'est, « Armel CapitalBoard » après « armel.capitalboard »
+    // non plus.
+    const civil = m.civil && m.civil !== m.nom ? ` *(${propre(m.civil)})*` : '';
     const mail = m.email ? ` — \`${propre(m.email)}\`` : ` — uid \`${m.uid}\``;
     const quoi = m.types.map(nomType).join(', ');
-    return `• **${qui}**${mail}\n  ${quoi}`;
+    return `• **${qui}**${civil}${mail}\n  ${quoi}`;
   });
   if (membres.length > MAX_LIGNES) {
     lignes.push(`… et ${membres.length - MAX_LIGNES} autres.`);
@@ -383,7 +408,10 @@ async function demanderCibles(interaction) {
       ...nommes.map((m) => ({
         label: etiquette(m),
         value: m.uid,
-        description: (m.email ? `${m.email} · ` : '') + m.types.map(nomType).join(', '),
+        // L'ordre suit ce qui identifie le mieux : l'état civil, puis l'email,
+        // puis ce qu'il détient. Tronqué à cent caractères par Discord.
+        description: [m.civil, m.email, m.types.map(nomType).join(', ')]
+          .filter(Boolean).join(' · '),
       })).map((o) => ({ ...o, description: o.description.slice(0, 100) })),
     ]);
 
