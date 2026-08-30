@@ -5910,3 +5910,130 @@ body.has-demo-banner { padding-top: 40px; }
 @media (prefers-reduced-motion: reduce) {
   .question-opt { transition: none; }
 }
+
+/* ═══ CRYPTO ═══
+   Le module reprend le vocabulaire des Dépenses et des Livrets : mêmes cartes
+   #0f1119 en rayon 18px, mêmes lignes cliquables, même hero. Rien de propre à
+   la crypto n'est inventé ici — c'est une poche de patrimoine comme une autre,
+   et la traiter différemment aurait été un signal sans fondement. */
+
+.cry-top { margin-bottom: 16px; }
+
+.cry-hero {
+  position: relative; overflow: hidden;
+  background: #0f1119; border: 1px solid var(--border);
+  border-radius: 18px; padding: 22px;
+}
+/* Halo teinté par le signe de la plus-value, comme le hero des Dépenses. */
+.cry-hero::after {
+  content: ''; position: absolute; top: -35%; right: -12%;
+  width: 55%; height: 115%; pointer-events: none;
+  background: radial-gradient(circle, rgba(245,183,49,.09), transparent 65%);
+  transition: background .3s;
+}
+.cry-hero.neg::after { background: radial-gradient(circle, rgba(255,77,106,.09), transparent 65%); }
+.cry-hero .dep-kv { color: var(--gold); }
+.cry-hero.neg .dep-kv { color: var(--negative); }
+
+.cry-heroline { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-top: 14px; }
+.cry-hero .dep-pill { background: rgba(0,224,158,.10); color: var(--positive); }
+.cry-hero.neg .dep-pill { background: rgba(255,77,106,.10); color: var(--negative); }
+
+.cry-repart:not(:empty) { margin-top: 22px; }
+.cry-bar {
+  height: 9px; border-radius: 6px; overflow: hidden;
+  display: flex; background: var(--s3);
+}
+.cry-bar > span { display: block; height: 100%; }
+.cry-legend {
+  display: flex; gap: 18px; margin-top: 10px; flex-wrap: wrap;
+  font-size: 11px; color: var(--text3);
+}
+.cry-legend i {
+  width: 8px; height: 8px; border-radius: 50%;
+  display: inline-block; margin-right: 6px; vertical-align: middle;
+}
+
+.cry-listwrap {
+  background: #0f1119; border: 1px solid var(--border);
+  border-radius: 18px; overflow: hidden;
+}
+.cry-maj { font-family: var(--mono); font-size: 11px; color: var(--text3); }
+
+.cry-row {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 20px; cursor: pointer;
+  border-top: 1px solid var(--border);
+  transition: background .15s;
+}
+.cry-row:hover { background: rgba(255,255,255,0.018); }
+.cry-row:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+
+.cry-ico {
+  width: 34px; height: 34px; border-radius: 9px;
+  border: 1px solid transparent;
+  display: grid; place-items: center;
+  font-family: var(--mono); font-size: 9px; font-weight: 700;
+  flex-shrink: 0;
+}
+.cry-mid { flex: 1; min-width: 0; }
+.cry-nom { font-size: 13.5px; font-weight: 600; color: var(--text); }
+.cry-sous {
+  font-family: var(--mono); font-size: 11px; color: var(--text3);
+  margin-top: 2px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
+}
+.cry-right { text-align: right; flex-shrink: 0; }
+.cry-val { font-family: var(--mono); font-size: 13.5px; font-weight: 600; color: var(--text); }
+/* Un cours absent se dit, il ne se remplace pas par un zéro : une valeur fausse
+   se propagerait au total du patrimoine sans que rien ne le signale. */
+.cry-val-off { font-family: var(--sans); font-size: 12px; font-weight: 400; color: var(--text3); }
+.cry-pv { font-family: var(--mono); font-size: 11px; margin-top: 2px; }
+.cry-pv.pos { color: var(--positive); }
+.cry-pv.neg { color: var(--negative); }
+
+.cry-empty {
+  background: #0f1119; border: 1px dashed var(--border2);
+  border-radius: 18px; padding: 46px 32px; text-align: center;
+}
+.cry-empty-title {
+  font-family: var(--display); font-size: 16px; font-weight: 700;
+  letter-spacing: -0.2px; margin-bottom: 8px;
+}
+.cry-empty-desc {
+  font-size: 13px; color: var(--text2); line-height: 1.6;
+  max-width: 46ch; margin: 0 auto 22px;
+}
+
+/* Deux champs sur une ligne dans une modale. La classe était utilisée par le
+   formulaire crypto sans exister nulle part : les deux champs tombaient l'un
+   sous l'autre, ce qui marchait, mais pas comme prévu. */
+.dep-form-row {
+  display: grid; grid-template-columns: 1fr 1fr; gap: 12px;
+}
+
+.cry-apercu {
+  margin-top: 4px; padding: 11px 13px; border-radius: 10px;
+  background: rgba(245,183,49,.07); border: 1px solid rgba(245,183,49,.22);
+  font-size: 12.5px; color: var(--text2); line-height: 1.5;
+}
+
+@media (max-width: 640px) {
+  /* Mêmes règles que les autres modules : la carte respire moins, la ligne
+     garde sa cible tactile, et le sous-titre passe sous le nom au lieu de
+     rogner la valeur. */
+  .cry-hero { padding: 18px; }
+  .cry-hero .dep-kv { font-size: 32px; letter-spacing: -1.3px; }
+  .cry-row { padding: 13px 14px; min-height: 60px; }
+  .cry-ico { width: 36px; height: 36px; }
+  .cry-nom { font-size: 14px; }
+  .cry-val { font-size: 14px; }
+  .cry-legend { gap: 12px; }
+  .cry-empty { padding: 34px 20px; }
+  .cry-maj { display: none; }
+  /* Deux champs côte à côte deviennent illisibles sous 640 px. */
+  .dep-form-row { grid-template-columns: 1fr; gap: 0; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cry-row, .cry-hero::after { transition: none; }
+}

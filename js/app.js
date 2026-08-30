@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830j';
+const APP_VERSION = '20260830k';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -663,6 +663,7 @@ const _DONNEES_PAGE = {
   // `divIgnored`, `nominatif` et `trCohort` ne figurent plus ici : le document
   // d'annexes les apporte au chargement, sans lecture supplémentaire.
   depenses:    ['depenses'],
+  crypto:      ['crypto'],
   // La page Livrets projette l'epargne a partir des depenses mensuelles
   // (`_livDepenseMensuelle`) : les deux collections lui sont necessaires.
   livrets:     ['livrets', 'depenses'],
@@ -3887,6 +3888,463 @@ async function startApp(user) {
   }
 }
 
+// ─── CRYPTO ──────────────────────────────────────────────────────
+//
+// Saisie manuelle des lignes, valorisation automatique.
+//
+// Le partage des rôles est celui du reste de l'app : le membre saisit ce que
+// lui seul sait — combien il détient, ce qu'il l'a payé — et l'application
+// s'occupe de ce qui bouge tout seul. Lui demander de tenir le cours à jour
+// reviendrait à lui demander de refaire le calcul chaque semaine, ce qu'il ne
+// ferait pas plus ici que pour les livrets.
+//
+// Relier une plateforme ou une adresse publique viendra ensuite. La saisie
+// manuelle reste de toute façon nécessaire : elle est le repli quand une
+// plateforme n'est pas prise en charge, et le seul chemin qui ne demande rien
+// à personne.
+//
+// Stockage : `users/{uid}/data/crypto`, `{ items: [...] }`, comme les livrets.
+// Chargé à l'ouverture de la page seulement (`_DONNEES_PAGE`).
+//
+//   { id, sym, qte, pru, lieu }
+//
+// `sym` est la clé du catalogue, pas un texte libre : c'est elle qui donne le
+// symbole Yahoo, donc le cours. Une ligne dont le symbole a disparu du
+// catalogue reste affichée, sans cours — perdre la valeur vaut mieux que
+// perdre la ligne.
+
+// Les cours passent par le même relais Yahoo que les actions
+// (`fetchWithFallback`), en paire directe contre l'euro : aucune conversion à
+// faire, et rien de nouveau à déployer côté Worker.
+const CRY_CATALOGUE = [
+  { sym: 'BTC',   nom: 'Bitcoin',      y: 'BTC-EUR',   c: '#f7931a' },
+  { sym: 'ETH',   nom: 'Ethereum',     y: 'ETH-EUR',   c: '#7c6df5' },
+  { sym: 'USDT',  nom: 'Tether',       y: 'USDT-EUR',  c: '#26a17b' },
+  { sym: 'BNB',   nom: 'BNB',          y: 'BNB-EUR',   c: '#f3ba2f' },
+  { sym: 'SOL',   nom: 'Solana',       y: 'SOL-EUR',   c: '#5b8dee' },
+  { sym: 'USDC',  nom: 'USD Coin',     y: 'USDC-EUR',  c: '#2775ca' },
+  { sym: 'XRP',   nom: 'XRP',          y: 'XRP-EUR',   c: '#8892a8' },
+  { sym: 'ADA',   nom: 'Cardano',      y: 'ADA-EUR',   c: '#0d6efd' },
+  { sym: 'AVAX',  nom: 'Avalanche',    y: 'AVAX-EUR',  c: '#e84142' },
+  { sym: 'DOGE',  nom: 'Dogecoin',     y: 'DOGE-EUR',  c: '#c2a633' },
+  { sym: 'TRX',   nom: 'TRON',         y: 'TRX-EUR',   c: '#ff4d6a' },
+  { sym: 'DOT',   nom: 'Polkadot',     y: 'DOT-EUR',   c: '#e6007a' },
+  { sym: 'MATIC', nom: 'Polygon',      y: 'MATIC-EUR', c: '#8247e5' },
+  { sym: 'LINK',  nom: 'Chainlink',    y: 'LINK-EUR',  c: '#2a5ada' },
+  { sym: 'LTC',   nom: 'Litecoin',     y: 'LTC-EUR',   c: '#a6a9aa' },
+  { sym: 'BCH',   nom: 'Bitcoin Cash', y: 'BCH-EUR',   c: '#0ac18e' },
+  { sym: 'XLM',   nom: 'Stellar',      y: 'XLM-EUR',   c: '#00e09e' },
+  { sym: 'ATOM',  nom: 'Cosmos',       y: 'ATOM-EUR',  c: '#5b8dee' },
+  { sym: 'XMR',   nom: 'Monero',       y: 'XMR-EUR',   c: '#ff6600' },
+  { sym: 'ALGO',  nom: 'Algorand',     y: 'ALGO-EUR',  c: '#8892a8' },
+];
+
+const _cryParSym = Object.fromEntries(CRY_CATALOGUE.map(c => [c.sym, c]));
+
+// Cours du jour, par symbole. Vidé à la déconnexion avec le reste des caches.
+let _cryCours = {};
+let _cryCoursLe = null;
+let _cryEditId = null;
+
+/**
+ * Vide les cours de la session.
+ *
+ * Déclarée ici, avec les variables qu'elle touche, et non à côté des autres
+ * vidages de cache : `_cryCours` est un `let` de portée module, et une fonction
+ * qui le lirait depuis un point du fichier évalué plus tôt lèverait une
+ * ReferenceError avalée par un `try`. C'est le piège qui avait mis `/chat` à
+ * terre le 22/08.
+ */
+function _viderCacheCrypto() {
+  _cryCours = {};
+  _cryCoursLe = null;
+}
+
+function getCryptos(user) { return _localCache[(user || currentUser) + '_crypto'] || []; }
+function saveCryptos(user, data) { _fsWrite(user || currentUser, 'crypto', data); }
+
+/** Retrouve une entrée du catalogue par son symbole ou par son nom. */
+function _cryTrouve(txt) {
+  const t = String(txt || '').trim().toLowerCase();
+  if (!t) return null;
+  return CRY_CATALOGUE.find(c => c.nom.toLowerCase() === t || c.sym.toLowerCase() === t)
+    || CRY_CATALOGUE.find(c => c.nom.toLowerCase().startsWith(t))
+    || null;
+}
+
+const _cryInfo = (sym) => _cryParSym[sym] || { sym, nom: sym, y: null, c: '#8892a8' };
+
+/** Valeur d'une ligne au cours du jour, ou null tant qu'il n'est pas connu. */
+function _cryValeur(l) {
+  const c = _cryCours[l.sym];
+  return Number.isFinite(c) ? c * (Number(l.qte) || 0) : null;
+}
+
+const _cryInvesti = (l) => (Number(l.qte) || 0) * (Number(l.pru) || 0);
+
+/**
+ * Total du portefeuille crypto, en euros.
+ *
+ * Rendu aussi à la page Patrimoine (`PATRI_ROWS`). Il vaut `null` tant que rien
+ * n'est chargé : une ligne à 0 € dans le patrimoine ferait croire à un compte
+ * vide alors qu'on n'a simplement pas encore lu.
+ */
+function _cryTotal() {
+  const all = getCryptos();
+  if (!all.length) return null;
+  let t = 0, connu = false;
+  all.forEach(l => { const v = _cryValeur(l); if (v !== null) { t += v; connu = true; } });
+  return connu ? t : null;
+}
+
+/**
+ * Récupère les cours des seules lignes détenues.
+ *
+ * Une requête par symbole, en parallèle, et un échec isolé n'emporte pas les
+ * autres : mieux vaut trois valeurs sur quatre qu'un écran vide. Les cours sont
+ * gardés pour la session — ils ne bougent pas assez en quelques minutes pour
+ * justifier de rappeler à chaque rendu.
+ */
+async function _cryChargerCours(force) {
+  const syms = [...new Set(getCryptos().map(l => l.sym))].filter(s => _cryParSym[s]);
+  if (!syms.length) return;
+  if (!force && _cryCoursLe && Date.now() - _cryCoursLe < 5 * 60 * 1000) return;
+
+  const res = await Promise.allSettled(syms.map(async (sym) => {
+    const raw = await fetchWithFallback(
+      'https://query1.finance.yahoo.com/v8/finance/chart/'
+      + encodeURIComponent(_cryParSym[sym].y) + '?interval=1d&range=1d');
+    const meta = JSON.parse(raw).chart?.result?.[0]?.meta;
+    const px = meta && meta.regularMarketPrice;
+    if (!Number.isFinite(px)) throw new Error('cours absent');
+    return { sym, px };
+  }));
+
+  res.forEach(r => { if (r.status === 'fulfilled') _cryCours[r.value.sym] = r.value.px; });
+  if (res.some(r => r.status === 'fulfilled')) _cryCoursLe = Date.now();
+}
+
+// ── Rendu ──────────────────────────────────────────────────────────────────
+
+async function renderCrypto() {
+  const live = _isModuleLive('crypto');
+  const teaser = document.getElementById('crypto-teaser');
+  const app = document.getElementById('crypto-app');
+  if (teaser) teaser.hidden = live;
+  if (app) app.hidden = !live;
+  if (!live) return;
+
+  _cryRemplirCatalogue();
+  _cryRender();                          // d'abord sans les cours, pour ne pas attendre
+  try {
+    await _cryChargerCours();
+  } catch (e) {
+    console.warn('[crypto] cours :', e && e.message);
+  }
+  _cryRender();
+}
+
+function _cryRemplirCatalogue() {
+  const dl = document.getElementById('cry-catalogue');
+  if (!dl || dl.childElementCount) return;
+  CRY_CATALOGUE.forEach(c => {
+    const o = document.createElement('option');
+    o.value = c.nom;
+    o.label = c.sym;
+    dl.appendChild(o);
+  });
+}
+
+function _cryRender() {
+  const all = getCryptos();
+  const liste = document.getElementById('cry-list');
+  const vide = document.getElementById('cry-empty');
+  const wrap = document.querySelector('#crypto-app .cry-listwrap');
+  const top = document.querySelector('#crypto-app .cry-top');
+
+  if (vide) vide.hidden = all.length > 0;
+  if (wrap) wrap.hidden = all.length === 0;
+  if (top) top.hidden = all.length === 0;
+  if (!all.length) return;
+
+  // Total et plus-value. Les lignes sans cours sont écartées des deux, sans
+  // quoi la plus-value comparerait un investi complet à une valeur partielle.
+  let valeur = 0, investi = 0, manquants = 0;
+  all.forEach(l => {
+    const v = _cryValeur(l);
+    if (v === null) { manquants++; return; }
+    valeur += v;
+    investi += _cryInvesti(l);
+  });
+
+  const elTotal = document.getElementById('cry-total');
+  if (elTotal) elTotal.textContent = valeur ? fmt(valeur) : '—';
+
+  const gain = valeur - investi;
+  const elGain = document.getElementById('cry-gain');
+  const hero = document.getElementById('cry-hero');
+  if (elGain) {
+    elGain.textContent = (gain >= 0 ? '+' : '−') + fmt(Math.abs(gain));
+    elGain.hidden = !investi;
+  }
+  if (hero) hero.classList.toggle('neg', gain < 0);
+
+  const elPart = document.getElementById('cry-part');
+  if (elPart) {
+    const pct = investi ? (gain / investi) * 100 : null;
+    elPart.textContent = pct === null ? ''
+      : (pct >= 0 ? '+' : '−') + Math.abs(pct).toFixed(1).replace('.', ',') + ' % depuis vos achats';
+  }
+
+  const elMaj = document.getElementById('cry-maj');
+  if (elMaj) {
+    elMaj.textContent = manquants
+      ? (manquants > 1 ? manquants + ' cours indisponibles' : 'un cours indisponible')
+      : (_cryCoursLe ? 'Cours de ' + new Date(_cryCoursLe).toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }) : '');
+  }
+
+  // Répartition : seulement au-delà d'une ligne, une barre pleine n'apprend rien.
+  const elRep = document.getElementById('cry-repart');
+  if (elRep) {
+    elRep.innerHTML = '';
+    const avecValeur = all.filter(l => _cryValeur(l) !== null);
+    if (avecValeur.length > 1 && valeur > 0) {
+      const barre = document.createElement('div');
+      barre.className = 'cry-bar';
+      const legende = document.createElement('div');
+      legende.className = 'cry-legend';
+      avecValeur
+        .map(l => ({ l, v: _cryValeur(l) }))
+        .sort((a, b) => b.v - a.v)
+        .forEach(({ l, v }) => {
+          const info = _cryInfo(l.sym);
+          const part = (v / valeur) * 100;
+          const seg = document.createElement('span');
+          seg.style.width = part + '%';
+          seg.style.background = info.c;
+          barre.appendChild(seg);
+          const item = document.createElement('span');
+          const dot = document.createElement('i');
+          dot.style.background = info.c;
+          item.appendChild(dot);
+          item.appendChild(document.createTextNode(info.nom + ' ' + Math.round(part) + ' %'));
+          legende.appendChild(item);
+        });
+      elRep.appendChild(barre);
+      elRep.appendChild(legende);
+    }
+  }
+
+  // Les lignes. Construites par le DOM : `lieu` est un texte libre du membre.
+  if (!liste) return;
+  liste.innerHTML = '';
+  all
+    .map(l => ({ l, v: _cryValeur(l) }))
+    .sort((a, b) => (b.v || 0) - (a.v || 0))
+    .forEach(({ l, v }) => {
+      const info = _cryInfo(l.sym);
+      const invest = _cryInvesti(l);
+      const g = v === null ? null : v - invest;
+
+      const row = document.createElement('div');
+      row.className = 'cry-row';
+      row.setAttribute('role', 'button');
+      row.setAttribute('tabindex', '0');
+      row.addEventListener('click', () => cryOpenModal(l.id));
+      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cryOpenModal(l.id); } });
+
+      const pastille = document.createElement('span');
+      pastille.className = 'cry-ico';
+      pastille.style.color = info.c;
+      pastille.style.borderColor = info.c + '40';
+      pastille.style.background = info.c + '1f';
+      pastille.textContent = info.sym.slice(0, 4);
+
+      const milieu = document.createElement('span');
+      milieu.className = 'cry-mid';
+      const nom = document.createElement('div');
+      nom.className = 'cry-nom';
+      nom.textContent = info.nom;
+      const sous = document.createElement('div');
+      sous.className = 'cry-sous';
+      sous.textContent = _cryQte(l.qte) + ' ' + info.sym + (l.lieu ? ' · ' + l.lieu : '');
+      milieu.appendChild(nom);
+      milieu.appendChild(sous);
+
+      const droite = document.createElement('span');
+      droite.className = 'cry-right';
+      const val = document.createElement('div');
+      val.className = 'cry-val';
+      val.textContent = v === null ? 'cours indisponible' : fmt(v);
+      if (v === null) val.classList.add('cry-val-off');
+      droite.appendChild(val);
+      if (g !== null && invest) {
+        const pv = document.createElement('div');
+        pv.className = 'cry-pv ' + (g >= 0 ? 'pos' : 'neg');
+        const pct = (g / invest) * 100;
+        pv.textContent = (g >= 0 ? '+' : '−') + Math.abs(pct).toFixed(1).replace('.', ',') + ' %';
+        droite.appendChild(pv);
+      }
+
+      row.appendChild(pastille);
+      row.appendChild(milieu);
+      row.appendChild(droite);
+      liste.appendChild(row);
+    });
+}
+
+/** Quantité lisible : huit décimales pour le bitcoin, aucune de trop ailleurs. */
+function _cryQte(q) {
+  const n = Number(q) || 0;
+  return n.toLocaleString('fr-FR', { maximumFractionDigits: 8 });
+}
+
+// ── Saisie ─────────────────────────────────────────────────────────────────
+
+window.cryOpenModal = function(id) {
+  _cryEditId = id || null;
+  const l = id ? getCryptos().find(x => x.id === id) : null;
+
+  document.getElementById('cry-modal-title').textContent = l ? 'Modifier la ligne' : 'Ajouter une crypto';
+  document.getElementById('cry-f-sym').value = l ? _cryInfo(l.sym).nom : '';
+  document.getElementById('cry-f-qte').value = l ? String(l.qte).replace('.', ',') : '';
+  document.getElementById('cry-f-pru').value = l ? String(l.pru).replace('.', ',') : '';
+  document.getElementById('cry-f-lieu').value = (l && l.lieu) || '';
+  document.getElementById('cry-del').hidden = !l;
+  _cryErr('');
+  cryRecalc();
+  document.getElementById('cry-modal').classList.add('open');
+};
+
+window.cryCloseModal = function() {
+  document.getElementById('cry-modal').classList.remove('open');
+  _cryEditId = null;
+};
+
+function _cryErr(msg) {
+  const el = document.getElementById('cry-error');
+  if (!el) return;
+  el.textContent = msg || '';
+  el.hidden = !msg;
+  return false;
+}
+
+/** Aperçu vivant : ce que la ligne vaudra, calculé pendant la frappe. */
+window.cryRecalc = function() {
+  const info = _cryTrouve(_depVal('cry-f-sym'));
+  const qte = _depParse(_depVal('cry-f-qte'));
+  const pru = _depParse(_depVal('cry-f-pru'));
+  const box = document.getElementById('cry-apercu');
+  const help = document.getElementById('cry-sym-help');
+
+  if (help) {
+    help.textContent = info
+      ? 'Cours suivi automatiquement (' + info.sym + ').'
+      : 'Choisissez dans la liste : c’est elle qui donne le cours.';
+  }
+  if (!box) return;
+
+  const cours = info ? _cryCours[info.sym] : null;
+  if (!info || !Number.isFinite(qte) || qte <= 0) { box.hidden = true; return; }
+
+  const invest = Number.isFinite(pru) && pru > 0 ? qte * pru : null;
+  const valeur = Number.isFinite(cours) ? qte * cours : null;
+
+  box.hidden = false;
+  box.textContent = valeur === null
+    ? 'Investi : ' + (invest === null ? '—' : fmt(invest)) + ' · le cours sera récupéré après l’enregistrement.'
+    : 'Vaut aujourd’hui ' + fmt(valeur)
+      + (invest === null ? '' : ' · investi ' + fmt(invest)
+        + ' · ' + (valeur >= invest ? '+' : '−') + fmt(Math.abs(valeur - invest)));
+};
+
+window.crySave = function() {
+  const info = _cryTrouve(_depVal('cry-f-sym'));
+  if (!info) return _cryErr('Choisissez une crypto dans la liste : c’est elle qui donne le cours.');
+
+  const qte = _depParse(_depVal('cry-f-qte'));
+  if (!Number.isFinite(qte) || qte <= 0) return _cryErr('Indiquez la quantité que vous détenez.');
+
+  const pruBrut = _depVal('cry-f-pru');
+  const pru = pruBrut ? _depParse(pruBrut) : 0;
+  if (pruBrut && (!Number.isFinite(pru) || pru < 0)) return _cryErr('Le prix d’achat doit être un montant positif.');
+
+  // Une même crypto ne se saisit qu'une fois : deux lignes de Bitcoin
+  // afficheraient deux plus-values dont aucune ne serait la vraie.
+  const doublon = getCryptos().some(x => x.sym === info.sym && x.id !== _cryEditId);
+  if (doublon) return _cryErr('Vous avez déjà une ligne ' + info.nom + '. Modifiez-la plutôt que d’en ajouter une seconde.');
+
+  const entree = {
+    id: _cryEditId || ('c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
+    sym: info.sym,
+    qte,
+    pru: pru || 0,
+    lieu: _depVal('cry-f-lieu').trim().slice(0, 40) || null,
+  };
+
+  const all = getCryptos().slice();
+  const i = _cryEditId ? all.findIndex(x => x.id === _cryEditId) : -1;
+  if (i >= 0) all[i] = entree; else all.push(entree);
+  saveCryptos(currentUser, all);
+
+  cryCloseModal();
+  _cryRender();
+  // Le cours de la nouvelle ligne manque : on le cherche, puis on réaffiche.
+  _cryChargerCours(true).then(_cryRender).catch(() => {});
+};
+
+window.cryDelete = function() {
+  if (!_cryEditId) return;
+  saveCryptos(currentUser, getCryptos().filter(x => x.id !== _cryEditId));
+  cryCloseModal();
+  _cryRender();
+};
+
+// ── Rapporter une erreur ───────────────────────────────────────────────────
+
+window.cryBugOpen = function() {
+  document.getElementById('cry-bug-texte').value = '';
+  document.getElementById('cry-bug-error').hidden = true;
+  document.getElementById('cry-bug-send').disabled = true;
+  document.getElementById('cry-bug').classList.add('open');
+};
+
+window.cryBugClose = function() { document.getElementById('cry-bug').classList.remove('open'); };
+
+window.cryBugRecalc = function() {
+  const t = document.getElementById('cry-bug-texte');
+  const b = document.getElementById('cry-bug-send');
+  if (t && b) b.disabled = t.value.trim().length < 10;
+};
+
+window.cryBugSend = async function() {
+  const texte = document.getElementById('cry-bug-texte').value.trim().slice(0, 2000);
+  if (texte.length < 10) return;
+  const btn = document.getElementById('cry-bug-send');
+  const err = document.getElementById('cry-bug-error');
+  if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; }
+  try {
+    await addFirestoreDoc(firestoreCollection(db, 'signalements'), {
+      uid: currentUser,
+      nom: (fbAuth.currentUser && fbAuth.currentUser.displayName) || null,
+      email: (fbAuth.currentUser && fbAuth.currentUser.email) || null,
+      module: 'Crypto',
+      texte,
+      imageUrl: null,
+      createdAt: Date.now(),
+    });
+    cryBugClose();
+    _showChatToast({ icon: IC.checkCirc, title: 'Signalement envoyé',
+      msg: 'Merci — l’équipe vous répondra bientôt.' });
+  } catch (e) {
+    console.warn('[crypto] signalement :', e && e.message);
+    if (err) { err.textContent = 'Envoi impossible : ' + ((e && e.message) || 'réessayez dans un instant.'); err.hidden = false; }
+  } finally {
+    if (btn) { btn.textContent = 'Envoyer'; }
+    cryBugRecalc();
+  }
+};
+
 // ─── QUESTION POSÉE AUX MEMBRES ──────────────────────────────────
 //
 // Une question écrite depuis Discord s'affiche à l'ouverture de l'application,
@@ -4072,6 +4530,7 @@ window.questionEnvoyer = async function() {
 function stopApp() {
   _hideSplash();
   _pinGraceClear();
+  _viderCacheCrypto();
   // Filet : les autres sorties de session (veLogout, pinLockLogout, session
   // expirée) appellent signOut sans passer par doLogout, mais toutes finissent ici.
   try { _detachUserListeners(); } catch(_) {}
@@ -4906,7 +5365,7 @@ const FLAGGABLE = ['watchlist','dividendes','avantages','benchmark','projections
 // livrets non encore éprouvés restent marqués « Bientôt » dans le formulaire
 // (`bientot` dans LIV_BAREME), ce qui est plus juste qu'une section entière
 // fermée — le Livret A et le Livret Jeune, eux, sont prêts.
-const BETA_CAPABLE = ['depenses'];
+const BETA_CAPABLE = ['depenses', 'crypto'];
 
 // Sections ouvertes récemment. Leur entrée de menu porte une pastille « New »
 // jusqu'à la première visite : une section qui apparaît sans rien dire passe
@@ -5266,6 +5725,7 @@ async function _runPageHook(id) {
   if (id === 'patrimoine')    renderPatrimoine();
   if (id === 'depenses')      renderDepenses();
   if (id === 'livrets')       renderLivrets();
+  if (id === 'crypto')        renderCrypto();
   // La pastille « New » s'éteint à la première ouverture, pas au bout d'un
   // délai : elle a rempli son office dès que la page a été vue.
   _navMarquerVue(id);
@@ -5555,7 +6015,7 @@ const PATRIMOINE_ENVELOPPES = [
   { key: 'cto',       label: 'Compte-titres',           color: '#5b8dee', value: () => null },
   { key: 'av',        label: 'Assurance-vie',           color: '#00cec9', value: () => null },
   { key: 'per',       label: 'PER',                     color: '#00e09e', value: () => null },
-  { key: 'crypto',    label: 'Crypto',                  color: '#f5b731', value: () => null },
+  { key: 'crypto',    label: 'Crypto',                  color: '#f5b731', value: () => _cryTotal() },
   { key: 'livrets',   label: 'Livrets & épargne',       color: '#ff9f43', value: () => _livTotal() || null },
   { key: 'immo',      label: 'Immobilier & SCPI',       color: '#a29bfe', value: () => null },
   { key: 'or',        label: 'Or & métaux',             color: '#ffd166', value: () => null },

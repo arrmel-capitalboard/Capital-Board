@@ -69,3 +69,7 @@ afaire-securite.md
 # publie, il donne la mesure exacte du deni de service le moins couteux contre
 # le service. Les correctifs, eux, sont dans le code et peuvent rester publics.
 afaire-quota.md
+
+# Maquettes de conception (canvas Claude Design). Le fichier publie pese ~2 Mo
+# de code d'editeur : la maquette vit dans l'artifact, pas dans le depot.
+.design/

@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260830j">
+<link rel="stylesheet" href="css/style.css?v=20260830k">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -1717,6 +1717,7 @@
          Lecture seule assumée dès la page d'annonce : c'est la première
          question que se pose quiconque rattache un portefeuille crypto. -->
     <div class="page" id="page-crypto">
+    <div id="crypto-teaser">
       <div class="page-header">
         <div>
           <div class="page-title">Crypto</div>
@@ -1828,6 +1829,70 @@
         Capital Board aujourd'hui, et rien ici ne constitue un conseil en investissement.
         Les crypto-actifs peuvent perdre l'intégralité de leur valeur.
       </p>
+    </div>
+
+    <div id="crypto-app" hidden>
+      <div class="page-header dep-header">
+        <div>
+          <div class="page-title">Crypto</div>
+          <div class="page-subtitle">Vos cryptos, à côté du reste de votre patrimoine</div>
+        </div>
+        <div class="dep-header-tools">
+          <button class="liv-aide liv-bug" onclick="cryBugOpen()" title="Signaler une erreur de calcul ou d’affichage">
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
+            <span>Rapporter une erreur</span>
+          </button>
+          <button class="dep-addbtn" onclick="cryOpenModal()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Ajouter une crypto
+          </button>
+        </div>
+      </div>
+
+      <!-- Saisie manuelle pour l'instant : relier une plateforme ou une adresse
+           viendra ensuite. Le dire évite qu'on prenne le module pour fini. -->
+      <div class="dep-beta-note">
+        <span class="dep-beta-tag">Bêta</span>
+        <span>Pour l’instant, vous saisissez vos lignes à la main. Les cours sont récupérés automatiquement, plusieurs fois par jour.</span>
+      </div>
+
+      <div class="cry-top">
+        <div class="cry-hero" id="cry-hero">
+          <div class="dep-kl">Vous avez</div>
+          <div class="dep-kv" id="cry-total">—</div>
+          <div class="cry-heroline">
+            <span class="dep-pill" id="cry-gain">—</span>
+            <span class="dep-hint" id="cry-part"></span>
+          </div>
+          <div class="cry-repart" id="cry-repart"></div>
+        </div>
+      </div>
+
+      <div class="cry-listwrap">
+        <div class="table-header">
+          <div class="table-title">Vos cryptos</div>
+          <div class="cry-maj" id="cry-maj"></div>
+        </div>
+        <div id="cry-list"></div>
+      </div>
+
+      <div class="cry-empty" id="cry-empty" hidden>
+        <div class="cry-empty-title">Aucune crypto enregistrée</div>
+        <div class="cry-empty-desc">
+          Ajoutez ce que vous détenez : Capital Board récupère les cours et calcule
+          la valeur en euros. Rien n’est relié à une plateforme, rien ne sort d’ici.
+        </div>
+        <button class="dep-addbtn" onclick="cryOpenModal()">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+          Ajouter une crypto
+        </button>
+      </div>
+
+      <p class="tease-note" style="margin-top:18px">
+        Les crypto-actifs sont volatils et peuvent perdre l’intégralité de leur valeur.
+        Rien ici ne constitue un conseil en investissement.
+      </p>
+    </div>
     </div>
 
 
@@ -2673,6 +2738,76 @@
 <!-- ═══ SIGNALER UNE ERREUR (Livrets) ════════════════
      Part dans le salon de suivi Discord, par le Worker. Rien n'est stocké :
      ni le texte, ni la capture, qui est relayée telle quelle. -->
+<!-- ═══ CRYPTO — saisie d'une ligne ═══
+     Saisie manuelle : quantité et prix d'achat. Le cours, lui, est récupéré —
+     demander au membre de le tenir à jour reviendrait à lui demander de refaire
+     le calcul à la main chaque semaine. -->
+<div class="modal-overlay" id="cry-modal" onclick="if(event.target===this)cryCloseModal()" role="dialog" aria-modal="true" aria-labelledby="cry-modal-title">
+  <div class="modal dep-modal">
+    <div class="modal-title" id="cry-modal-title">Ajouter une crypto</div>
+    <div class="modal-sub">Ce que vous détenez et ce que vous l’avez payé. Le cours du jour est récupéré automatiquement.</div>
+
+    <div class="form-group">
+      <label class="form-label" for="cry-f-sym">Crypto</label>
+      <input class="form-input" id="cry-f-sym" list="cry-catalogue" autocomplete="off"
+             placeholder="Bitcoin, Ethereum…" oninput="cryRecalc()">
+      <datalist id="cry-catalogue"></datalist>
+      <div class="dep-help" id="cry-sym-help">Choisissez dans la liste : c’est elle qui donne le cours.</div>
+    </div>
+
+    <div class="dep-form-row">
+      <div class="form-group">
+        <label class="form-label" for="cry-f-qte">Quantité</label>
+        <input class="form-input" id="cry-f-qte" inputmode="decimal" placeholder="0,0921" oninput="cryRecalc()">
+      </div>
+      <div class="form-group">
+        <label class="form-label" for="cry-f-pru">Prix d’achat unitaire</label>
+        <input class="form-input" id="cry-f-pru" inputmode="decimal" placeholder="62 400" oninput="cryRecalc()">
+        <div class="dep-help">En euros, par unité. Si vous avez acheté en plusieurs fois, indiquez le prix moyen.</div>
+      </div>
+    </div>
+
+    <div class="form-group">
+      <label class="form-label" for="cry-f-lieu">Où elle se trouve <span class="dep-opt">facultatif</span></label>
+      <input class="form-input" id="cry-f-lieu" maxlength="40" placeholder="Kraken, Ledger…">
+    </div>
+
+    <div class="cry-apercu" id="cry-apercu" hidden></div>
+
+    <div class="dep-error" id="cry-error" hidden></div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" id="cry-del" onclick="cryDelete()" hidden>Supprimer</button>
+      <button class="btn-secondary" onclick="cryCloseModal()">Annuler</button>
+      <button class="btn-primary" id="cry-save" onclick="crySave()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<!-- ═══ CRYPTO — rapporter une erreur ═══
+     Même chemin que les livrets : un doc `signalements` que le bot poste dans
+     le salon de suivi. Le module calcule des montants que le membre est seul à
+     pouvoir comparer à ce qu'affiche sa plateforme. -->
+<div class="modal-overlay" id="cry-bug" onclick="if(event.target===this)cryBugClose()" role="dialog" aria-modal="true" aria-labelledby="cry-bug-title">
+  <div class="modal dep-modal">
+    <div class="modal-title" id="cry-bug-title">Rapporter une erreur</div>
+    <div class="modal-sub">Un cours qui ne colle pas, une valeur fausse : dites ce que vous voyez, et ce que vous attendiez.</div>
+
+    <div class="form-group">
+      <label class="form-label" for="cry-bug-texte">Ce qui ne va pas</label>
+      <textarea class="form-input liv-bug-texte" id="cry-bug-texte" rows="5" maxlength="2000"
+        placeholder="Exemple : mon Bitcoin est valorisé 8 200 €, ma plateforme affiche 8 600 €." oninput="cryBugRecalc()"></textarea>
+    </div>
+
+    <div class="dep-error" id="cry-bug-error" hidden></div>
+
+    <div class="modal-footer">
+      <button class="btn-secondary" onclick="cryBugClose()">Annuler</button>
+      <button class="btn-primary" id="cry-bug-send" onclick="cryBugSend()" disabled>Envoyer</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal-overlay" id="liv-bug" onclick="if(event.target===this)livBugClose()" role="dialog" aria-modal="true" aria-labelledby="liv-bug-title">
   <div class="modal dep-modal">
     <div class="modal-title" id="liv-bug-title">Rapporter une erreur</div>
@@ -3787,11 +3922,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260830j"></script>
+<script src="js/app.js?v=20260830k"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260830j"></script>
+<script src="js/onboarding.js?v=20260830k"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260830j"></script>
+<script src="js/import.js?v=20260830k"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
