@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830i';
+const APP_VERSION = '20260830j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -598,15 +598,23 @@ async function _chargerAnnexes(uid) {
 
   try {
     const snap = await getFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', 'annexes'));
-    if (snap.exists()) {
-      const d = snap.data() || {};
+    const d = snap.exists() ? (snap.data() || {}) : null;
+    // Marque de ciblage d'une question posée depuis Discord. Elle voyage ici
+    // précisément parce que ce document est déjà lu : la question ne coûte donc
+    // aucune lecture Firestore de plus au démarrage. Relevée avant tout le
+    // reste, pour valoir aussi sur un compte pas encore regroupé.
+    if (d) _questionCiblee = d.question || null;
+
+    // L'existence du document ne suffit pas à dire que le regroupement a eu
+    // lieu : le bot y écrit `question` en `merge`, ce qui le crée sur un compte
+    // qui n'était pas encore migré. Le prendre pour une migration aurait rendu
+    // watchlist, alertes et réglages vides — puis les aurait écrasés à la
+    // première sauvegarde. On exige donc qu'il porte vraiment des annexes.
+    const regroupe = !!d && (_ANNEXE_SETTINGS in d || _COLS_ANNEXES.some(col => col in d));
+    if (regroupe) {
       _COLS_ANNEXES.forEach(col => { _localCache[uid + '_' + col] = Array.isArray(d[col]) ? d[col] : []; });
       _localCache[uid + '_settings'] = (d[_ANNEXE_SETTINGS] && typeof d[_ANNEXE_SETTINGS] === 'object')
         ? d[_ANNEXE_SETTINGS] : { pushRecap: true };
-      // Marque de ciblage d'une question posée depuis Discord. Elle voyage ici
-      // précisément parce que ce document est déjà lu : la question ne coûte
-      // donc aucune lecture Firestore de plus au démarrage.
-      _questionCiblee = d.question || null;
       _annexesPretes = true;
       return;
     }
@@ -633,7 +641,10 @@ async function _chargerAnnexes(uid) {
   const doc = { [_ANNEXE_SETTINGS]: _localCache[uid + '_settings'] };
   _COLS_ANNEXES.forEach(col => { doc[col] = _localCache[uid + '_' + col]; });
   try {
-    await setFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', 'annexes'), doc);
+    // `merge` : le document peut déjà porter la marque d'une question posée
+    // depuis Discord, qu'une écriture pleine effacerait — la question ne se
+    // serait alors affichée à personne.
+    await setFirestoreDoc(firestoreDoc(db, 'users', uid, 'data', 'annexes'), doc, { merge: true });
     _annexesPretes = true;
   } catch (e) {
     // L'écriture a échoué : on reste sur l'ancien découpage pour cette session,
@@ -3801,9 +3812,6 @@ async function startApp(user) {
     appEl.classList.add('app-enter');
     setTimeout(() => appEl.classList.remove('app-enter'), 600);
     _startInactivityWatch();
-    // Apres l'ouverture, jamais avant : une question par-dessus l'ecran de
-    // code n'aurait pas de sens. Detachee, elle ne retarde pas l'affichage.
-    _questionAfficher().catch((e) => console.warn('[question]', e && e.message));
     _restoreHideBalances();
     _startVersionCheck();
     // Journal des connexions : en arriere-plan, jamais bloquant. Le mode demo
@@ -3819,6 +3827,11 @@ async function startApp(user) {
     // re-render. Évite que le dashboard attende 9 s pour 2 fetchs EURUSD/EURGBP.
     await _withTimeout(loadAllUserData(user.uid), 12000);
     _perfMark('données chargées (Firestore)');
+    // Après le chargement, pas avant : le ciblage de la question est un champ
+    // des annexes, et `_questionCiblee` vaut encore null tant qu'elles ne sont
+    // pas lues. Appelée trop tôt, la question ne s'affichait jamais — c'est ce
+    // qui s'est passé la première fois. Détachée, elle ne retarde rien.
+    _questionAfficher().catch((e) => console.warn('[question]', e && e.message));
     loadFxRates().then(() => {
       _perfMark('FX chargé (arrière-plan)');
       try { window.renderPortfolio(); } catch(_) {}
