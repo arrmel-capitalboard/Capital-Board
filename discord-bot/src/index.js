@@ -281,6 +281,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
 
       if (newsqueue.isNewsButton(interaction.customId)) { await newsqueue.handleButton(interaction); return; }
       if (appsuggestions.isButton(interaction.customId)) { await appsuggestions.handleButton(interaction); return; }
+      if (signalements.isButton(interaction.customId)) { await signalements.handleButton(interaction); return; }
       if (suggestions.isSuggestionButton(interaction.customId)) { await suggestions.handleButton(interaction); return; }
       if (scanPatches.isScanPatchButton(interaction.customId)) { await scanPatches.handleButton(interaction); return; }
       if (securitypanel.isSecurityComponent(interaction.customId)) { await securitypanel.handleComponent(interaction); return; }
