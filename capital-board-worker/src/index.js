@@ -2143,8 +2143,23 @@ function flagSuspiciousInput(text, context, uid, request, env) {
 // défaut) : sans clé, no-op complet, comportement inchangé. Résultat mis en
 // cache 1h par IP pour rester large sous les 1000 requêtes/jour du plan gratuit.
 const ABUSEIPDB_SCORE_BLOCK = 90; // confidence score (0-100) au-delà duquel on bloque
+// Secondes jusqu'a la prochaine remise a zero d'AbuseIPDB (minuit UTC).
+function _abuseipdbResetTtl() {
+  const now = Date.now();
+  const d = new Date(now);
+  const minuitUTC = Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), d.getUTCDate() + 1);
+  return Math.max(60, Math.ceil((minuitUTC - now) / 1000));
+}
+
 async function checkIpReputation(ip, env) {
   if (!env.ABUSEIPDB_KEY || !ip) return { blocked: false };
+  // Backoff global : une fois le quota quotidien atteint (429), inutile de
+  // rappeler l'API a chaque connexion — chaque appel est un aller-retour perdu
+  // et une ligne de log, alors que le controle est de toute facon inactif
+  // (fail-open). On se met en veille jusqu'a la remise a zero d'AbuseIPDB.
+  try {
+    if (await env.EARNINGS.get('abuseipdb:backoff')) return { blocked: false, score: 0, degraded: true };
+  } catch (_) {}
   const cacheKey = `abuseipdb:${ip}`;
   try {
     const cached = await env.EARNINGS.get(cacheKey);
@@ -2165,6 +2180,13 @@ async function checkIpReputation(ip, env) {
       // en silence — indiscernable d'une IP simplement propre. On ne met pas
       // ce cas en cache : la prochaine tentative doit réessayer.
       console.error(`AbuseIPDB HS: HTTP ${res.status} — protection inactive`);
+      // 429 = quota quotidien epuise : veille jusqu'a la remise a zero (minuit
+      // UTC). Autre echec (401 cle invalide...) : veille courte, la cle peut
+      // etre corrigee dans la journee.
+      try {
+        const ttl = res.status === 429 ? _abuseipdbResetTtl() : 3600;
+        await env.EARNINGS.put('abuseipdb:backoff', String(res.status), { expirationTtl: ttl });
+      } catch (_) {}
       return { blocked: false, score: 0, degraded: true };
     }
   } catch (e) {

@@ -8,6 +8,7 @@ const path = require('node:path');
 const { EmbedBuilder } = require('discord.js');
 const config = require('../config');
 const E = require('./emojis');
+const quota = require('./quota');
 
 const FILE = path.join(__dirname, '..', '..', 'data', 'status-monitors.json');
 
@@ -34,7 +35,12 @@ async function check(url) {
 
 async function buildEmbed() {
   const results = await Promise.all(TARGETS.map(async (t) => ({ ...t, ...(await check(t.url)) })));
-  const allUp = results.every((r) => r.ok);
+  // Le site est aussi « off » quand les écritures Firestore sont plafonnées :
+  // la page se charge (statique, HTTP 200) mais l'application ne peut plus rien
+  // enregistrer et affiche son écran d'indisponibilité. `estEpuise()` bascule
+  // dès qu'un écrivain du bot prend un RESOURCE_EXHAUSTED — même quota projet.
+  // On ne dit pas pourquoi : off, c'est tout.
+  const allUp = results.every((r) => r.ok) && !quota.estEpuise();
 
   return new EmbedBuilder()
     .setColor(allUp ? 0x16a34a : 0xdc2626)
