@@ -26,7 +26,7 @@
 // jeton GitHub reste sur la VM, jamais dans le dépôt.
 
 const {
-  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags, AttachmentBuilder,
+  EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags,
 } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
 const config = require('../config');
@@ -104,9 +104,8 @@ async function poster(client, id, data) {
   // a le sien) sans toucher à la config du bot. Absent, c'est le salon des scans.
   const channel = await client.channels.fetch(data.salon || SECURITE_CHANNEL);
   const base = payload(id, data);
-  const fichiersJoints = data.patch
-    ? [new AttachmentBuilder(Buffer.from(data.patch, 'utf8'), { name: `correctif-${id}.patch` })]
-    : [];
+  // Le diff n'est plus joint en piece : il vit deja dans le commit une fois
+  // applique, et encombrait le salon. Le resume de l'embed suffit a decider.
   // Une décision est attendue : le rôle fondateur est mentionné, comme pour les
   // alertes du scan. La mention doit être dans le contenu (Discord ne la résout
   // pas dans un embed) et `allowedMentions` la borne à ce seul rôle. Seul l'envoi
@@ -115,7 +114,6 @@ async function poster(client, id, data) {
     content: `<@&${FONDATEUR_ROLE}>`,
     allowedMentions: { roles: [FONDATEUR_ROLE], parse: [] },
     ...base,
-    files: fichiersJoints,
   });
   await col().doc(id).update({ messageId: msg.id, channelId: channel.id });
 }

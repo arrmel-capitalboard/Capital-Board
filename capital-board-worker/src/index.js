@@ -3724,7 +3724,8 @@ export default {
         if (!nm || nm.length > 40) {
           return json({ ok: false, error: 'Nom invalide (1–40 caractères).' }, 400);
         }
-        if (/capitalboard/i.test(nm.replace(/[\s._-]/g, ''))) {
+        // L'admin peut porter « Capital Board » dans son nom : compte officiel.
+        if (user.localId !== env.ADMIN_UID && /capitalboard/i.test(nm.replace(/[\s._-]/g, ''))) {
           return json({ ok: false, error: "Ce nom d'affichage n'est pas autorisé." }, 400);
         }
         await setAuthDisplayName(user.localId, nm, env);

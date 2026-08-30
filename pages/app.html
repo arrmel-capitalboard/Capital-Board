@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260830a">
+<link rel="stylesheet" href="css/style.css?v=20260830b">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -615,10 +615,10 @@
       <div class="nav-section-label">Mes comptes</div>
       <!-- Entrée unique : les dix vues du PEA sont devenues des sous-onglets,
            voir la barre #pea-tabs. -->
-      <div class="nav-item" onclick="showPage('patrimoine')">
+      <div class="nav-item active" onclick="showPage('patrimoine')">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V8l9-5 9 5v13"/><path d="M9 21v-7h6v7"/></svg></span> Patrimoine
       </div>
-      <div class="nav-item active" onclick="showPage('portfolio')">
+      <div class="nav-item" onclick="showPage('portfolio')">
         <span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg></span> PEA
       </div>
       <div class="nav-item" onclick="showPage('cto')" id="nav-cto">
@@ -759,7 +759,7 @@
     <!-- ══════════════════════════════════════════════
          PATRIMOINE — consolidation de toutes les enveloppes
          ══════════════════════════════════════════════ -->
-    <div class="page" id="page-patrimoine">
+    <div class="page active" id="page-patrimoine">
       <div class="page-header">
         <div>
           <div class="page-title">Patrimoine</div>
@@ -769,7 +769,7 @@
       <div id="patrimoine-content"></div>
     </div>
 
-    <div class="page active" id="page-portfolio">
+    <div class="page" id="page-portfolio">
       <div class="page-header">
         <div>
           <div class="page-title">Mon PEA</div>
@@ -3799,11 +3799,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260830a"></script>
+<script src="js/app.js?v=20260830b"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260830a"></script>
+<script src="js/onboarding.js?v=20260830b"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260830a"></script>
+<script src="js/import.js?v=20260830b"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

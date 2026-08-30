@@ -1,6 +1,6 @@
 ﻿'use strict';
 
-const { Client, GatewayIntentBits, Partials, Events, MessageFlags, ActivityType, EmbedBuilder } = require('discord.js');
+const { Client, GatewayIntentBits, Partials, Events, MessageFlags, ActivityType, EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle } = require('discord.js');
 const config = require('./config');
 const { loadCommands } = require('./loadCommands');
 const tempbans = require('./lib/tempbans');
@@ -179,9 +179,58 @@ client.on(Events.MessageCreate, async (message) => {
       )
       .setFooter({ text: 'CapitalBoard AutoMod' })
       .setTimestamp();
-    await logChannel.send({ embeds: [embed] });
+    // Deux boutons pour trancher : le filtre se trompe parfois, et un faux
+    // positif rétablit le message injustement supprimé.
+    const jugement = new ActionRowBuilder().addComponents(
+      new ButtonBuilder().setCustomId('pub:ok').setLabel('Vrai positif').setStyle(ButtonStyle.Success).setEmoji('✅'),
+      new ButtonBuilder().setCustomId('pub:faux').setLabel('Faux positif — rétablir').setStyle(ButtonStyle.Secondary).setEmoji('⚠️'),
+    );
+    await logChannel.send({ embeds: [embed], components: [jugement] });
   } catch {}
 });
+
+/**
+ * Jugement d'une détection de pub par le fondateur.
+ *
+ * Vrai positif : on confirme, rien d'autre à faire (le message est déjà
+ * supprimé). Faux positif : le filtre s'est trompé — on rétablit le message
+ * dans son salon d'origine, à partir de ce que l'embed a gardé, et on marque la
+ * détection comme erronée pour qu'elle serve de repère.
+ */
+async function jugerPub(interaction) {
+  if (!interaction.member?.roles.cache.has(FONDATEUR_ROLE_AUTOMOD)) {
+    await interaction.reply({ content: 'Réservé au rôle fondateur.', flags: MessageFlags.Ephemeral });
+    return;
+  }
+  await interaction.deferUpdate();
+  const faux = interaction.customId === 'pub:faux';
+  const embed = interaction.message.embeds[0];
+  const champ = (nom) => (embed?.fields || []).find((f) => f.name === nom)?.value || '';
+
+  const neuf = EmbedBuilder.from(embed);
+  if (faux) {
+    // Rétablir le message dans son salon. Le contenu vient de l'embed (tronqué
+    // à 1024 au pire) ; l'auteur et le salon aussi.
+    const salonId = (champ('Salon').match(/\d+/) || [])[0];
+    const auteur = champ('Membre').split(' ')[0];   // « <@id> (tag) » → « <@id> »
+    const contenu = champ('Message');
+    try {
+      if (salonId) {
+        const salon = await interaction.client.channels.fetch(salonId);
+        await salon.send({
+          content: `♻️ Message rétabli (faux positif de l'anti-pub).\n${auteur} avait écrit :\n> ${contenu.replace(/\n/g, '\n> ')}`,
+          allowedMentions: { parse: [] },
+        });
+      }
+    } catch (e) { console.error('[pub] rétablissement :', e.message); }
+    neuf.setColor(0x6b7280).setTitle('⚠️ Faux positif — message rétabli')
+      .addFields({ name: 'Décision', value: `<@${interaction.user.id}> — le filtre s'est trompé` });
+  } else {
+    neuf.setColor(0x16a34a).setTitle('✅ Pub confirmée')
+      .addFields({ name: 'Décision', value: `<@${interaction.user.id}> — bien une pub` });
+  }
+  await interaction.editReply({ embeds: [neuf], components: [] });
+}
 
 client.on(Events.InteractionCreate, async (interaction) => {
   try {
@@ -207,6 +256,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
     }
 
     if (interaction.isButton()) {
+      if (interaction.customId === 'pub:ok' || interaction.customId === 'pub:faux') { await jugerPub(interaction); return; }
       if (interaction.customId === 'open_ticket') { await tickets.promptTicketReason(interaction); return; }
       if (interaction.customId === 'close_ticket') { await tickets.closeTicket(interaction); return; }
 

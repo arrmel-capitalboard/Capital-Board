@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830a';
+const APP_VERSION = '20260830b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3690,6 +3690,11 @@ async function startApp(user) {
     loadProfilePage(user);
     window.renderPortfolio();
     window.fetchAllLogos();
+    // Page d'accueil : Patrimoine (vue d'ensemble) plutot que le PEA. Le PEA est
+    // deja calcule par renderPortfolio ci-dessus (Patrimoine en reprend le
+    // total) ; showPageMobile charge les donnees de la page et la rend, sans
+    // dependre d'un clic. L'onglet actif est deja pose dans le HTML.
+    try { showPageMobile('patrimoine'); } catch (e) { console.warn('accueil patrimoine:', e); }
     if (!window.autoRefreshInterval) window.toggleAutoRefresh();
     setTimeout(initStatCardsScroll, 1500);
     setTimeout(initChartExpandButtons, 800);
@@ -3916,7 +3921,9 @@ window.saveDisplayName = async function() {
   const status = document.getElementById('profil-name-status');
   if (!name) { status.textContent = 'Le nom ne peut pas être vide.'; status.style.color = 'var(--negative)'; return; }
   // Pré-check client (UX) ; le refus autoritaire est fait côté Worker.
-  if (/capitalboard/i.test(name.replace(/[\s._-]/g, ''))) { status.textContent = "Ce nom d'affichage n'est pas autorisé."; status.style.color = 'var(--negative)'; return; }
+  // L'admin (fondateur) peut porter « Capital Board » dans son nom : c'est le
+  // seul compte legitime a le faire, et le Worker fait la meme exception.
+  if (!isAdmin() && /capitalboard/i.test(name.replace(/[\s._-]/g, ''))) { status.textContent = "Ce nom d'affichage n'est pas autorisé."; status.style.color = 'var(--negative)'; return; }
   status.textContent = 'Enregistrement…'; status.style.color = 'var(--text3)';
   try {
     const idToken = await user.getIdToken();
