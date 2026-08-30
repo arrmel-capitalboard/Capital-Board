@@ -170,6 +170,10 @@ html { overflow-x: clip; }
 /* Bandeau d'indisponibilité, pour un membre déjà entré. Posé en bas et non en
    haut : le haut porte déjà la barre de navigation mobile, et une bande qui
    pousse la mise en page ferait sauter la lecture en cours. */
+/* Un graphe en plein ecran : la barre haut-droite (Aide + profil) chevauchait
+   le bouton Reduire. On l'efface tant qu'un graphe est agrandi. */
+body.chart-fullscreen-actif .app-topright { display: none !important; }
+
 .indispo-bar {
   position: fixed; left: 50%; bottom: 18px; transform: translateX(-50%);
   z-index: 9000; max-width: min(560px, calc(100vw - 32px));

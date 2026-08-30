@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830b';
+const APP_VERSION = '20260830c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3695,6 +3695,9 @@ async function startApp(user) {
     // total) ; showPageMobile charge les donnees de la page et la rend, sans
     // dependre d'un clic. L'onglet actif est deja pose dans le HTML.
     try { showPageMobile('patrimoine'); } catch (e) { console.warn('accueil patrimoine:', e); }
+    // Badge « Boite a idees » des le lancement, sans attendre l'ouverture de
+    // l'onglet. Admin uniquement (c'est la file de moderation qu'il compte).
+    if (!window.IS_DEMO && isAdmin()) { _loadIdeas().then(_updateIdeasBadge).catch(() => {}); }
     if (!window.autoRefreshInterval) window.toggleAutoRefresh();
     setTimeout(initStatCardsScroll, 1500);
     setTimeout(initChartExpandButtons, 800);
@@ -4369,8 +4372,14 @@ window.delVerifyOtp = async function() {
     // Compte supprimé côté serveur : on ferme et on force le retour login.
     window.closeDeleteAccountModal();
     try { window.closeProfilModal && window.closeProfilModal(); } catch(_) {}
+    try { _viderCacheSecurite(); } catch(_) {}
     try { await signOut(fbAuth); } catch(_) {}
     try { stopApp(); } catch(_) {}
+    // Rechargement dur : le serveur a bien purge pinSecrets et supprime le
+    // compte, mais des caches en memoire (reglages du verrou, donnees) vivent
+    // dans l'onglet. Sans reload, rouvrir un compte dans le meme onglet
+    // pourrait heriter d'un etat de l'ancien — dont le PIN. On repart a blanc.
+    setTimeout(() => { try { location.reload(); } catch(_) {} }, 400);
   } catch(e) {
     console.error('[delete] suppression échouée:', e);
     const s3 = document.getElementById('del-step-3'); if (s3) s3.style.display = 'none';
@@ -13999,6 +14008,9 @@ function toggleChartFullscreen(canvasId, btn) {
   const isOn = container.classList.toggle('chart-fullscreen');
   btn.innerHTML = isOn ? COLLAPSE_ICON : EXPAND_ICON;
   btn.title = isOn ? 'Réduire' : 'Agrandir';
+  // Plein ecran : la barre haut-droite (Aide + profil) recouvrait le bouton
+  // « Reduire ». On la masque tant qu'un graphe est agrandi.
+  document.body.classList.toggle('chart-fullscreen-actif', isOn);
   // Si bouton dans bar dédiée (portfolio), positionne fixed en fullscreen pour rester accessible
   const bar = btn.closest('.chart-expand-bar');
   if (bar) bar.classList.toggle('chart-expand-bar-fullscreen', isOn);
