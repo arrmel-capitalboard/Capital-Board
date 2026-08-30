@@ -48,3 +48,6 @@ jobs:
 
       - name: Parseur de relevés
         run: node scripts/t-import.cjs
+
+      - name: Positions crypto
+        run: node scripts/t-crypto.cjs

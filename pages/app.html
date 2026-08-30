@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260830p">
+<link rel="stylesheet" href="css/style.css?v=20260830q">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -1842,7 +1842,7 @@
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 9v4"/><path d="M12 17h.01"/><path d="M10.3 3.9 1.8 18a2 2 0 0 0 1.7 3h17a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0z"/></svg>
             <span>Rapporter une erreur</span>
           </button>
-          <button class="dep-addbtn" onclick="cryOpenModal()">
+          <button class="dep-addbtn" onclick="cryOpenModal('achat')">
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
             Ajouter une crypto
           </button>
@@ -1934,7 +1934,7 @@
           Ajoutez ce que vous détenez : Capital Board récupère les cours et calcule
           la valeur en euros. Rien n’est relié à une plateforme, rien ne sort d’ici.
         </div>
-        <button class="dep-addbtn" onclick="cryOpenModal()">
+        <button class="dep-addbtn" onclick="cryOpenModal('achat')">
           <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
           Ajouter une crypto
         </button>
@@ -1950,31 +1950,49 @@
            que d'afficher un écran vide : un onglet qui ne répond rien laisse
            croire à une panne. -->
       <div class="cry-pan" data-pan="activite" hidden>
-        <div class="cry-avenir">
-          <div class="cry-avenir-ico">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+        <div class="cry-listwrap">
+          <div class="table-header">
+            <div class="table-title">Vos opérations</div>
+            <button class="dep-addbtn" onclick="cryOpenModal('achat')">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+              Acheter ou vendre
+            </button>
           </div>
-          <div class="cry-avenir-title">Activité</div>
-          <div class="cry-avenir-desc">
-            Vos achats, vos ventes et vos transferts, dans l’ordre. C’est cette liste
-            qui distinguera une vente imposable d’un simple déplacement entre vos
-            propres portefeuilles — la seule chose qui rende la fiscalité juste.
+          <div id="cry-activite"></div>
+        </div>
+
+        <div class="cry-empty" id="cry-activite-vide" hidden>
+          <div class="cry-empty-title">Aucune opération</div>
+          <div class="cry-empty-desc">
+            Vos achats et vos ventes s’inscrivent ici. Ce sont eux qui déterminent
+            ce que vous détenez et ce que vous avez payé — la liste et le
+            portefeuille ne peuvent donc pas se contredire.
           </div>
-          <div class="cry-avenir-tag">À venir</div>
+          <button class="dep-addbtn" onclick="cryOpenModal('achat')">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>
+            Enregistrer une opération
+          </button>
         </div>
       </div>
 
       <div class="cry-pan" data-pan="watchlist" hidden>
-        <div class="cry-avenir">
-          <div class="cry-avenir-ico">
-            <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3.5-7 10-7 10 7 10 7-3.5 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>
+        <div class="form-group cry-watch-form">
+          <label class="form-label" for="cry-watch-champ">Suivre une crypto</label>
+          <input type="text" class="form-input" id="cry-watch-champ" autocomplete="off"
+                 placeholder="Bitcoin, Ethereum, Solana…"
+                 oninput="cryWatchChercher()" onfocus="cryWatchChercher()">
+          <div id="cry-watch-dropdown" class="search-dropdown"></div>
+          <div class="dep-help">Suivre son cours sans la détenir. Ce que vous possédez déjà n’apparaît pas dans la liste.</div>
+        </div>
+
+        <div class="cry-listwrap" id="cry-watch-liste"></div>
+
+        <div class="cry-empty" id="cry-watch-vide" hidden>
+          <div class="cry-empty-title">Rien en observation</div>
+          <div class="cry-empty-desc">
+            Ajoutez une crypto pour suivre son cours sans y mettre un euro.
+            Vous pourrez l’acheter d’un bouton le jour où vous vous déciderez.
           </div>
-          <div class="cry-avenir-title">Watchlist</div>
-          <div class="cry-avenir-desc">
-            Suivre une crypto sans la détenir, et être prévenu quand son cours
-            atteint le seuil que vous fixez. Même mécanique que la watchlist du PEA.
-          </div>
-          <div class="cry-avenir-tag">À venir</div>
         </div>
       </div>
 
@@ -2844,8 +2862,13 @@
      le calcul à la main chaque semaine. -->
 <div class="modal-overlay" id="cry-modal" onclick="if(event.target===this)cryCloseModal()" role="dialog" aria-modal="true" aria-labelledby="cry-modal-title">
   <div class="modal dep-modal">
-    <div class="modal-title" id="cry-modal-title">Ajouter une crypto</div>
-    <div class="modal-sub">Ce que vous détenez et ce que vous l’avez payé. Le cours du jour est récupéré automatiquement.</div>
+    <div class="modal-title" id="cry-modal-title">Acheter ou vendre</div>
+    <div class="modal-sub">Enregistrez l’opération telle que votre plateforme l’a passée. Le cours du jour est proposé, et reste modifiable.</div>
+
+    <div class="dep-seg" id="cry-sens">
+      <button type="button" data-sens="achat" class="active" onclick="crySetSens('achat')">Acheter</button>
+      <button type="button" data-sens="vente" onclick="crySetSens('vente')">Vendre</button>
+    </div>
 
     <div class="form-group">
       <label class="form-label" for="cry-f-sym">Crypto</label>
@@ -2856,15 +2879,28 @@
       <div class="dep-help" id="cry-sym-help">Choisissez dans la liste : c’est elle qui donne le cours.</div>
     </div>
 
+    <!-- Montant ou quantité : deux façons de dire la même chose, et personne
+         n'a les deux sous la main. On achète « pour 200 € » ou « 0,003 BTC »
+         selon la plateforme ; l'autre se calcule. -->
+    <div class="form-group">
+      <div class="cry-unite-head">
+        <label class="form-label" for="cry-f-montant" id="cry-f-montant-label">Montant</label>
+        <div class="cry-unite" id="cry-unite">
+          <button type="button" data-unite="montant" class="active" onclick="crySetUnite('montant')">en €</button>
+          <button type="button" data-unite="quantite" onclick="crySetUnite('quantite')">en quantité</button>
+        </div>
+      </div>
+      <input class="form-input" id="cry-f-montant" inputmode="decimal" placeholder="200" oninput="cryRecalc()">
+    </div>
+
     <div class="dep-form-row">
       <div class="form-group">
-        <label class="form-label" for="cry-f-qte">Quantité</label>
-        <input class="form-input" id="cry-f-qte" inputmode="decimal" placeholder="0,0921" oninput="cryRecalc()">
+        <label class="form-label" for="cry-f-prix">Prix unitaire</label>
+        <input class="form-input" id="cry-f-prix" inputmode="decimal" placeholder="62 400" oninput="cryRecalc()">
       </div>
       <div class="form-group">
-        <label class="form-label" for="cry-f-pru">Prix d’achat unitaire</label>
-        <input class="form-input" id="cry-f-pru" inputmode="decimal" placeholder="62 400" oninput="cryRecalc()">
-        <div class="dep-help">En euros, par unité. Si vous avez acheté en plusieurs fois, indiquez le prix moyen.</div>
+        <label class="form-label" for="cry-f-date">Date</label>
+        <input class="form-input" id="cry-f-date" type="date">
       </div>
     </div>
 
@@ -2873,9 +2909,8 @@
     <div class="dep-error" id="cry-error" hidden></div>
 
     <div class="modal-footer">
-      <button class="btn-secondary" id="cry-del" onclick="cryDelete()" hidden>Supprimer</button>
       <button class="btn-secondary" onclick="cryCloseModal()">Annuler</button>
-      <button class="btn-primary" id="cry-save" onclick="crySave()">Enregistrer</button>
+      <button class="btn-primary" id="cry-save" onclick="crySave()">Enregistrer l’achat</button>
     </div>
   </div>
 </div>
@@ -4018,11 +4053,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260830p"></script>
+<script src="js/app.js?v=20260830q"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260830p"></script>
+<script src="js/onboarding.js?v=20260830q"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260830p"></script>
+<script src="js/import.js?v=20260830q"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

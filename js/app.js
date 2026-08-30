@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830p';
+const APP_VERSION = '20260830q';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -663,7 +663,9 @@ const _DONNEES_PAGE = {
   // `divIgnored`, `nominatif` et `trCohort` ne figurent plus ici : le document
   // d'annexes les apporte au chargement, sans lecture supplémentaire.
   depenses:    ['depenses'],
-  crypto:      ['crypto'],
+  // La watchlist vit dans son propre document : elle n'a pas la même durée de
+  // vie que les opérations, et la mêler à elles obligerait à filtrer partout.
+  crypto:      ['crypto', 'cryptoWatch'],
   // La page Livrets projette l'epargne a partir des depenses mensuelles
   // (`_livDepenseMensuelle`) : les deux collections lui sont necessaires.
   livrets:     ['livrets', 'depenses'],
@@ -4000,8 +4002,85 @@ function _viderCacheCrypto() {
   _cryCoursLe = null;
 }
 
-function getCryptos(user) { return _localCache[(user || currentUser) + '_crypto'] || []; }
-function saveCryptos(user, data) { _fsWrite(user || currentUser, 'crypto', data); }
+// ── Le modèle : des opérations, dont les positions se déduisent ───────────
+//
+// La première version stockait des positions — une ligne par crypto, quantité
+// et prix de revient. Elle ne savait pas dire ce qui s'était passé, et un
+// achat supplémentaire obligeait à recalculer le prix moyen de tête.
+//
+// Ce sont désormais des opérations qui sont enregistrées, et les positions
+// s'en déduisent. Le portefeuille reste juste sans qu'on ait à le tenir, et
+// l'onglet Activité n'a plus rien à inventer : il montre ce qui est écrit.
+//
+//   { id, sym, sens: 'achat' | 'vente', qte, prix, date }
+//
+// Les lignes de l'ancienne forme (`pru`, pas de `sens`) sont lues comme un
+// achat initial. Rien à migrer : la conversion se fait à la lecture, et la
+// première opération enregistrée réécrit le document au nouveau format.
+function getCryptoOps(user) {
+  return (_localCache[(user || currentUser) + '_crypto'] || []).map(_cryNormOp);
+}
+function saveCryptoOps(user, data) { _fsWrite(user || currentUser, 'crypto', data); }
+
+function _cryNormOp(o) {
+  if (o && o.sens) return o;
+  // Ancienne forme : une position, comprise comme l'achat qui l'a constituée.
+  return {
+    id: (o && o.id) || 'c0',
+    sym: o && o.sym,
+    sens: 'achat',
+    qte: Number(o && o.qte) || 0,
+    prix: Number(o && o.pru) || 0,
+    date: (o && o.date) || null,
+  };
+}
+
+// Les cryptos suivies sans être détenues. Document à part : la watchlist n'a
+// pas la même durée de vie que les opérations, et la mêler à elles obligerait
+// à filtrer partout.
+function getCryptoWatch(user) { return _localCache[(user || currentUser) + '_cryptoWatch'] || []; }
+function saveCryptoWatch(user, data) { _fsWrite(user || currentUser, 'cryptoWatch', data); }
+
+/**
+ * Les positions, déduites des opérations.
+ *
+ * Le prix de revient suit la règle du prix moyen pondéré : un achat le
+ * recalcule, une vente ne le change pas — elle retire de la quantité, pas du
+ * prix payé pour ce qui reste. C'est la convention comptable habituelle, et
+ * celle que le membre retrouvera sur son relevé.
+ *
+ * Une position revenue à zéro disparaît : elle n'a plus de valeur, et son
+ * histoire vit dans l'Activité.
+ */
+function _cryPositions() {
+  const par = new Map();
+  getCryptoOps()
+    .slice()
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+    .forEach(o => {
+      if (!o.sym) return;
+      const qte = Number(o.qte) || 0;
+      const prix = Number(o.prix) || 0;
+      if (qte <= 0) return;
+      const pos = par.get(o.sym) || { sym: o.sym, qte: 0, pru: 0 };
+      if (o.sens === 'vente') {
+        pos.qte = Math.max(0, pos.qte - qte);
+        if (pos.qte === 0) pos.pru = 0;
+      } else {
+        const cout = pos.qte * pos.pru + qte * prix;
+        pos.qte += qte;
+        pos.pru = pos.qte ? cout / pos.qte : 0;
+      }
+      par.set(o.sym, pos);
+    });
+  return [...par.values()].filter(p => p.qte > 1e-12);
+}
+
+/** Ce qu'il reste d'une crypto, pour empêcher d'en vendre plus qu'on n'en a. */
+function _cryDetenu(sym) {
+  const p = _cryPositions().find(x => x.sym === sym);
+  return p ? p.qte : 0;
+}
 
 /** Retrouve une entrée du catalogue par son symbole ou par son nom. */
 function _cryTrouve(txt) {
@@ -4030,7 +4109,7 @@ const _cryInvesti = (l) => (Number(l.qte) || 0) * (Number(l.pru) || 0);
  * vide alors qu'on n'a simplement pas encore lu.
  */
 function _cryTotal() {
-  const all = getCryptos();
+  const all = _cryPositions();
   if (!all.length) return null;
   let t = 0, connu = false;
   all.forEach(l => { const v = _cryValeur(l); if (v !== null) { t += v; connu = true; } });
@@ -4046,7 +4125,11 @@ function _cryTotal() {
  * justifier de rappeler à chaque rendu.
  */
 async function _cryChargerCours(force) {
-  const syms = [...new Set(getCryptos().map(l => l.sym))].filter(s => _cryParSym[s]);
+  // Les positions ET la watchlist : une crypto suivie sans être détenue a
+  // besoin de son cours pour valoir la peine d'être suivie.
+  const syms = [...new Set(
+    _cryPositions().map(l => l.sym).concat(getCryptoWatch()),
+  )].filter(s => _cryParSym[s]);
   if (!syms.length) return;
   if (!force && _cryCoursLe && Date.now() - _cryCoursLe < 5 * 60 * 1000) return;
 
@@ -4096,12 +4179,15 @@ async function renderCrypto() {
   if (!live) return;
 
   _cryRender();                          // d'abord sans les cours, pour ne pas attendre
+  _cryRenderActivite();
+  _cryRenderWatch();
   try {
     await _cryChargerCours();
   } catch (e) {
     console.warn('[crypto] cours :', e && e.message);
   }
   _cryRender();
+  _cryRenderWatch();
 }
 
 // ── La liste de suggestions ────────────────────────────────────────────────
@@ -4184,8 +4270,10 @@ function _cryRetenir(c) {
   if (champ) champ.value = c.nom;
   _cryFermerDd();
   cryRecalc();
-  const qte = document.getElementById('cry-f-qte');
-  if (qte) qte.focus();
+  // Le curseur passe au montant : c'est le champ suivant dans l'ordre où on
+  // saisit une opération.
+  const suivant = document.getElementById('cry-f-montant');
+  if (suivant) suivant.focus();
 }
 
 function _cryFermerDd() {
@@ -4219,7 +4307,7 @@ window.cryChercherTouche = function(e) {
 };
 
 function _cryRender() {
-  const all = getCryptos();
+  const all = _cryPositions();
   const liste = document.getElementById('cry-list');
   const vide = document.getElementById('cry-empty');
   const wrap = document.querySelector('#crypto-app .cry-listwrap');
@@ -4315,8 +4403,10 @@ function _cryRender() {
       row.className = 'cry-row';
       row.setAttribute('role', 'button');
       row.setAttribute('tabindex', '0');
-      row.addEventListener('click', () => cryOpenModal(l.id));
-      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cryOpenModal(l.id); } });
+      // Un clic ouvre un achat sur cette crypto : c'est le geste le plus
+      // fréquent, et la vente est à un bouton de là dans la modale.
+      row.addEventListener('click', () => cryOpenModal('achat', l.sym));
+      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cryOpenModal('achat', l.sym); } });
 
       const pastille = _cryPastille(info);
 
@@ -4457,18 +4547,62 @@ function _cryQte(q) {
 
 // ── Saisie ─────────────────────────────────────────────────────────────────
 
-window.cryOpenModal = function(id) {
-  _cryEditId = id || null;
-  const l = id ? getCryptos().find(x => x.id === id) : null;
+// ── Acheter, vendre ────────────────────────────────────────────────────────
+//
+// Une seule modale pour les deux sens : ce sont les mêmes champs, et deux
+// écrans auraient demandé de choisir avant de savoir ce qu'on allait saisir.
+//
+// La quantité et le montant sont deux façons de dire la même chose, et
+// personne n'a les deux sous la main : on achète « pour 200 € » ou « 0,003
+// BTC » selon la plateforme. L'un se saisit, l'autre se calcule, et le bouton
+// dit lequel.
+let _crySens = 'achat';
+let _cryUnite = 'montant';   // 'montant' | 'quantite'
 
-  document.getElementById('cry-modal-title').textContent = l ? 'Modifier la ligne' : 'Ajouter une crypto';
-  document.getElementById('cry-f-sym').value = l ? _cryInfo(l.sym).nom : '';
-  document.getElementById('cry-f-qte').value = l ? String(l.qte).replace('.', ',') : '';
-  document.getElementById('cry-f-pru').value = l ? String(l.pru).replace('.', ',') : '';
-  document.getElementById('cry-del').hidden = !l;
-  _cryChoisi = l ? _cryParSym[l.sym] || null : null;
+window.crySetSens = function(sens) {
+  _crySens = sens;
+  document.querySelectorAll('#cry-sens button').forEach(b => {
+    b.classList.toggle('active', b.dataset.sens === sens);
+  });
+  const save = document.getElementById('cry-save');
+  if (save) save.textContent = sens === 'vente' ? 'Enregistrer la vente' : 'Enregistrer l’achat';
+  cryRecalc();
+};
+
+window.crySetUnite = function(u) {
+  _cryUnite = u;
+  document.querySelectorAll('#cry-unite button').forEach(b => {
+    b.classList.toggle('active', b.dataset.unite === u);
+  });
+  const champ = document.getElementById('cry-f-montant');
+  const lbl = document.getElementById('cry-f-montant-label');
+  if (lbl) lbl.textContent = u === 'montant' ? 'Montant' : 'Quantité';
+  if (champ) {
+    champ.placeholder = u === 'montant' ? '200' : '0,0032';
+    champ.value = '';
+    champ.focus();
+  }
+  cryRecalc();
+};
+
+window.cryOpenModal = function(sens, sym) {
+  _cryEditId = null;
+  _cryChoisi = sym ? (_cryParSym[sym] || null) : null;
   _cryFermerDd();
+
+  document.getElementById('cry-modal-title').textContent = 'Acheter ou vendre';
+  document.getElementById('cry-f-sym').value = _cryChoisi ? _cryChoisi.nom : '';
+  document.getElementById('cry-f-montant').value = '';
+  document.getElementById('cry-f-prix').value = '';
+  document.getElementById('cry-f-date').value = new Date().toISOString().slice(0, 10);
   _cryErr('');
+  crySetUnite('montant');
+  crySetSens(sens === 'vente' ? 'vente' : 'achat');
+  // Le cours du jour comme prix par défaut : c'est celui auquel on vient
+  // d'acheter neuf fois sur dix, et il reste modifiable.
+  if (_cryChoisi && Number.isFinite(_cryCours[_cryChoisi.sym])) {
+    document.getElementById('cry-f-prix').value = String(_cryCours[_cryChoisi.sym].toFixed(2)).replace('.', ',');
+  }
   cryRecalc();
   document.getElementById('cry-modal').classList.add('open');
 };
@@ -4488,75 +4622,290 @@ function _cryErr(msg) {
   return false;
 }
 
-/** Aperçu vivant : ce que la ligne vaudra, calculé pendant la frappe. */
-window.cryRecalc = function() {
+/** Ce que l'opération représente, des deux façons, pendant la frappe. */
+function _cryLire() {
   const info = _cryChoisi || _cryTrouve(_depVal('cry-f-sym'));
-  const qte = _depParse(_depVal('cry-f-qte'));
-  const pru = _depParse(_depVal('cry-f-pru'));
+  const saisi = _depParse(_depVal('cry-f-montant'));
+  let prix = _depParse(_depVal('cry-f-prix'));
+  if ((!Number.isFinite(prix) || prix <= 0) && info) prix = _cryCours[info.sym];
+
+  if (!info || !Number.isFinite(saisi) || saisi <= 0 || !Number.isFinite(prix) || prix <= 0) {
+    return { info, prix: Number.isFinite(prix) ? prix : null, qte: null, montant: null };
+  }
+  const qte = _cryUnite === 'montant' ? saisi / prix : saisi;
+  return { info, prix, qte, montant: qte * prix };
+}
+
+window.cryRecalc = function() {
+  const { info, qte, montant } = _cryLire();
   const box = document.getElementById('cry-apercu');
   const help = document.getElementById('cry-sym-help');
+  const prixChamp = document.getElementById('cry-f-prix');
 
   if (help) {
     help.textContent = info
       ? 'Cours suivi automatiquement (' + info.sym + ').'
       : 'Choisissez dans la liste : c’est elle qui donne le cours.';
   }
+  // Le prix du jour se pose dès que la crypto est connue, s'il est vide.
+  if (prixChamp && info && !prixChamp.value && Number.isFinite(_cryCours[info.sym])) {
+    prixChamp.value = String(_cryCours[info.sym].toFixed(2)).replace('.', ',');
+  }
   if (!box) return;
 
-  const cours = info ? _cryCours[info.sym] : null;
-  if (!info || !Number.isFinite(qte) || qte <= 0) { box.hidden = true; return; }
+  if (!info || qte === null) { box.hidden = true; return; }
 
-  const invest = Number.isFinite(pru) && pru > 0 ? qte * pru : null;
-  const valeur = Number.isFinite(cours) ? qte * cours : null;
-
+  const detenu = _cryDetenu(info.sym);
   box.hidden = false;
-  box.textContent = valeur === null
-    ? 'Investi : ' + (invest === null ? '—' : fmt(invest)) + ' · le cours sera récupéré après l’enregistrement.'
-    : 'Vaut aujourd’hui ' + fmt(valeur)
-      + (invest === null ? '' : ' · investi ' + fmt(invest)
-        + ' · ' + (valeur >= invest ? '+' : '−') + fmt(Math.abs(valeur - invest)));
+  box.textContent = _crySens === 'vente'
+    ? 'Vous vendez ' + _cryQte(qte) + ' ' + info.sym + ' pour ' + fmt(montant)
+      + ' · il vous en resterait ' + _cryQte(Math.max(0, detenu - qte))
+    : 'Vous achetez ' + _cryQte(qte) + ' ' + info.sym + ' pour ' + fmt(montant)
+      + (detenu ? ' · vous en auriez ' + _cryQte(detenu + qte) : '');
 };
 
 window.crySave = function() {
-  const info = _cryChoisi || _cryTrouve(_depVal('cry-f-sym'));
+  const { info, prix, qte } = _cryLire();
   if (!info) return _cryErr('Choisissez une crypto dans la liste : c’est elle qui donne le cours.');
+  if (!Number.isFinite(prix) || prix <= 0) return _cryErr('Indiquez le prix unitaire de l’opération.');
+  if (qte === null || qte <= 0) {
+    return _cryErr(_cryUnite === 'montant' ? 'Indiquez le montant de l’opération.' : 'Indiquez la quantité.');
+  }
 
-  const qte = _depParse(_depVal('cry-f-qte'));
-  if (!Number.isFinite(qte) || qte <= 0) return _cryErr('Indiquez la quantité que vous détenez.');
+  // On ne vend pas ce qu'on n'a pas : la position deviendrait négative, et le
+  // prix de revient n'aurait plus de sens.
+  if (_crySens === 'vente') {
+    const detenu = _cryDetenu(info.sym);
+    if (!detenu) return _cryErr('Vous ne détenez pas de ' + info.nom + '.');
+    if (qte > detenu + 1e-9) {
+      return _cryErr('Vous n’en détenez que ' + _cryQte(detenu) + ' ' + info.sym + '.');
+    }
+  }
 
-  const pruBrut = _depVal('cry-f-pru');
-  const pru = pruBrut ? _depParse(pruBrut) : 0;
-  if (pruBrut && (!Number.isFinite(pru) || pru < 0)) return _cryErr('Le prix d’achat doit être un montant positif.');
+  const date = _depVal('cry-f-date') || new Date().toISOString().slice(0, 10);
+  if (date > new Date().toISOString().slice(0, 10)) return _cryErr('La date est dans le futur.');
 
-  // Une même crypto ne se saisit qu'une fois : deux lignes de Bitcoin
-  // afficheraient deux plus-values dont aucune ne serait la vraie.
-  const doublon = getCryptos().some(x => x.sym === info.sym && x.id !== _cryEditId);
-  if (doublon) return _cryErr('Vous avez déjà une ligne ' + info.nom + '. Modifiez-la plutôt que d’en ajouter une seconde.');
-
-  const entree = {
-    id: _cryEditId || ('c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6)),
+  const op = {
+    id: 'c' + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
     sym: info.sym,
+    sens: _crySens,
     qte,
-    pru: pru || 0,
+    prix,
+    date,
   };
 
-  const all = getCryptos().slice();
-  const i = _cryEditId ? all.findIndex(x => x.id === _cryEditId) : -1;
-  if (i >= 0) all[i] = entree; else all.push(entree);
-  saveCryptos(currentUser, all);
-
+  saveCryptoOps(currentUser, getCryptoOps().concat([op]));
   cryCloseModal();
   _cryRender();
-  // Le cours de la nouvelle ligne manque : on le cherche, puis on réaffiche.
   _cryChargerCours(true).then(_cryRender).catch(() => {});
 };
 
-window.cryDelete = function() {
-  if (!_cryEditId) return;
-  saveCryptos(currentUser, getCryptos().filter(x => x.id !== _cryEditId));
-  cryCloseModal();
-  _cryRender();
+/** Supprime une opération depuis l'Activité. */
+window.crySupprimerOp = function(id) {
+  showConfirmModal({
+    title: 'Supprimer cette opération ?',
+    body: 'Vos positions seront recalculées sans elle.',
+    danger: true,
+    okLabel: 'Supprimer',
+    onConfirm: () => {
+      saveCryptoOps(currentUser, getCryptoOps().filter(o => o.id !== id));
+      _cryRender();
+      _cryRenderActivite();
+    },
+  });
 };
+
+// ── Activité ───────────────────────────────────────────────────────────────
+//
+// La liste des opérations, sans rien y ajouter : ce sont exactement les
+// documents enregistrés. C'est ce qui fait qu'elle ne peut pas diverger des
+// positions — les unes se déduisent des autres.
+
+function _cryRenderActivite() {
+  const liste = document.getElementById('cry-activite');
+  const vide = document.getElementById('cry-activite-vide');
+  if (!liste) return;
+
+  const ops = getCryptoOps()
+    .slice()
+    .sort((a, b) => String(b.date || '').localeCompare(String(a.date || '')));
+
+  if (vide) vide.hidden = ops.length > 0;
+  liste.hidden = ops.length === 0;
+  liste.innerHTML = '';
+
+  ops.forEach(o => {
+    const info = _cryInfo(o.sym);
+    const vente = o.sens === 'vente';
+    const montant = (Number(o.qte) || 0) * (Number(o.prix) || 0);
+
+    const row = document.createElement('div');
+    row.className = 'cry-op';
+
+    const fleche = document.createElement('span');
+    fleche.className = 'cry-op-ico ' + (vente ? 'neg' : 'pos');
+    fleche.innerHTML = vente
+      ? '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M19 12l-7 7-7-7"/></svg>'
+      : '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19V5"/><path d="M5 12l7-7 7 7"/></svg>';
+
+    const milieu = document.createElement('span');
+    milieu.className = 'cry-mid';
+    const titre = document.createElement('div');
+    titre.className = 'cry-nom';
+    titre.textContent = (vente ? 'Vente de ' : 'Achat de ') + _cryQte(o.qte) + ' ' + info.sym;
+    const sous = document.createElement('div');
+    sous.className = 'cry-sous';
+    sous.textContent = (o.date ? _depDateCourt(o.date) : 'sans date')
+      + ' · ' + fmt(Number(o.prix) || 0) + ' l’unité';
+    milieu.appendChild(titre);
+    milieu.appendChild(sous);
+
+    const droite = document.createElement('span');
+    droite.className = 'cry-val';
+    droite.textContent = (vente ? '+' : '−') + fmt(montant);
+
+    const sup = document.createElement('button');
+    sup.className = 'cry-op-sup';
+    sup.type = 'button';
+    sup.setAttribute('aria-label', 'Supprimer cette opération');
+    sup.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+    sup.addEventListener('click', () => crySupprimerOp(o.id));
+
+    row.appendChild(fleche);
+    row.appendChild(milieu);
+    row.appendChild(droite);
+    row.appendChild(sup);
+    liste.appendChild(row);
+  });
+}
+
+// ── Watchlist ──────────────────────────────────────────────────────────────
+//
+// Suivre une crypto sans la détenir. Un tableau de symboles, rien de plus :
+// tout ce qui s'affiche — nom, logo, cours — se retrouve dans le catalogue et
+// dans les cours de la session.
+
+window.cryWatchAjouter = function() {
+  const info = _cryWatchChoisi || _cryTrouve(_depVal('cry-watch-champ'));
+  if (!info) return;
+  const actuelle = getCryptoWatch();
+  if (actuelle.includes(info.sym)) return;
+  saveCryptoWatch(currentUser, actuelle.concat([info.sym]));
+  document.getElementById('cry-watch-champ').value = '';
+  _cryWatchChoisi = null;
+  _cryRenderWatch();
+  // Le cours de la nouvelle ligne manque : on le cherche, puis on réaffiche.
+  _cryChargerCours(true).then(_cryRenderWatch).catch(() => {});
+};
+
+window.cryWatchRetirer = function(sym) {
+  saveCryptoWatch(currentUser, getCryptoWatch().filter(s => s !== sym));
+  _cryRenderWatch();
+};
+
+let _cryWatchChoisi = null;
+
+/** Même liste de suggestions que la modale, sur le champ de la watchlist. */
+window.cryWatchChercher = function() {
+  const champ = document.getElementById('cry-watch-champ');
+  const dd = document.getElementById('cry-watch-dropdown');
+  if (!champ || !dd) return;
+  _cryWatchChoisi = null;
+  const suivies = getCryptoWatch();
+  const detenues = _cryPositions().map(p => p.sym);
+  // Ni ce qu'on suit déjà, ni ce qu'on détient : la watchlist sert à regarder
+  // ce qu'on n'a pas.
+  const trouves = _cryFiltrer(champ.value)
+    .filter(c => !suivies.includes(c.sym) && !detenues.includes(c.sym));
+
+  dd.innerHTML = '';
+  if (!trouves.length) { dd.classList.remove('open'); return; }
+
+  trouves.forEach(c => {
+    const item = document.createElement('div');
+    item.className = 'search-dropdown-item';
+    const milieu = document.createElement('div');
+    milieu.style.cssText = 'flex:1;min-width:0';
+    const nom = document.createElement('div');
+    nom.className = 'sd-name';
+    nom.textContent = c.nom;
+    const tick = document.createElement('div');
+    tick.className = 'sd-ticker';
+    tick.textContent = c.sym;
+    milieu.appendChild(nom);
+    milieu.appendChild(tick);
+    item.appendChild(_cryPastille(c, 26));
+    item.appendChild(milieu);
+    item.addEventListener('mousedown', (e) => {
+      e.preventDefault();
+      _cryWatchChoisi = c;
+      champ.value = c.nom;
+      dd.classList.remove('open');
+      cryWatchAjouter();
+    });
+    dd.appendChild(item);
+  });
+  dd.classList.add('open');
+};
+
+function _cryRenderWatch() {
+  const liste = document.getElementById('cry-watch-liste');
+  const vide = document.getElementById('cry-watch-vide');
+  if (!liste) return;
+
+  const syms = getCryptoWatch();
+  if (vide) vide.hidden = syms.length > 0;
+  liste.hidden = syms.length === 0;
+  liste.innerHTML = '';
+
+  syms.forEach(sym => {
+    const info = _cryInfo(sym);
+    const cours = _cryCours[sym];
+
+    const row = document.createElement('div');
+    row.className = 'cry-row cry-row-watch';
+
+    const milieu = document.createElement('span');
+    milieu.className = 'cry-mid';
+    const nom = document.createElement('div');
+    nom.className = 'cry-nom';
+    nom.textContent = info.nom;
+    const sous = document.createElement('div');
+    sous.className = 'cry-sous';
+    sous.textContent = info.sym;
+    milieu.appendChild(nom);
+    milieu.appendChild(sous);
+
+    const val = document.createElement('span');
+    val.className = 'cry-val';
+    if (Number.isFinite(cours)) {
+      val.textContent = fmt(cours);
+    } else {
+      val.textContent = 'cours indisponible';
+      val.classList.add('cry-val-off');
+    }
+
+    const acheter = document.createElement('button');
+    acheter.className = 'cry-watch-buy';
+    acheter.type = 'button';
+    acheter.textContent = 'Acheter';
+    acheter.addEventListener('click', () => cryOpenModal('achat', sym));
+
+    const sup = document.createElement('button');
+    sup.className = 'cry-op-sup';
+    sup.type = 'button';
+    sup.setAttribute('aria-label', 'Ne plus suivre ' + info.nom);
+    sup.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>';
+    sup.addEventListener('click', () => cryWatchRetirer(sym));
+
+    row.appendChild(_cryPastille(info));
+    row.appendChild(milieu);
+    row.appendChild(val);
+    row.appendChild(acheter);
+    row.appendChild(sup);
+    liste.appendChild(row);
+  });
+}
 
 // ── Rapporter une erreur ───────────────────────────────────────────────────
 

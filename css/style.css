@@ -6147,3 +6147,65 @@ body.has-demo-banner { padding-top: 40px; }
 @media (prefers-reduced-motion: reduce) {
   .cry-row, .cry-hero::after { transition: none; }
 }
+
+/* ═══ CRYPTO — acheter, vendre, suivre ═══ */
+
+/* Bascule montant / quantité, posée sur la ligne du libellé : c'est le libellé
+   lui-même qu'elle change, pas un réglage à part. */
+.cry-unite-head {
+  display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; margin-bottom: 7px;
+}
+.cry-unite-head .form-label { margin-bottom: 0; }
+.cry-unite { display: flex; gap: 3px; padding: 3px; border-radius: 9px;
+  background: var(--s2); border: 1px solid var(--border2); }
+.cry-unite button {
+  padding: 5px 10px; border: none; border-radius: 7px;
+  background: none; color: var(--text3);
+  font-family: var(--sans); font-size: 11.5px; font-weight: 600;
+  cursor: pointer; transition: all .15s;
+}
+.cry-unite button.active { background: var(--s4); color: var(--text); }
+
+/* Une opération de l'Activité. Même gabarit qu'une ligne de position, avec la
+   croix de suppression en plus. */
+.cry-op {
+  display: flex; align-items: center; gap: 12px;
+  padding: 13px 20px; border-top: 1px solid var(--border);
+}
+.cry-op:hover { background: rgba(255,255,255,0.018); }
+.cry-op-ico {
+  width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+  display: grid; place-items: center;
+}
+.cry-op-ico.pos { background: rgba(0,224,158,.10); color: var(--positive); }
+.cry-op-ico.neg { background: rgba(255,77,106,.10); color: var(--negative); }
+
+.cry-op-sup {
+  width: 30px; height: 30px; border-radius: 8px; flex-shrink: 0;
+  display: grid; place-items: center;
+  background: none; border: 1px solid transparent;
+  color: var(--text3); cursor: pointer; transition: all .15s;
+}
+.cry-op-sup:hover { color: var(--negative); border-color: rgba(255,77,106,.25); background: rgba(255,77,106,.06); }
+
+.cry-watch-form { position: relative; margin-bottom: 16px; max-width: 460px; }
+.cry-row-watch { cursor: default; }
+.cry-row-watch:hover { background: none; }
+.cry-watch-buy {
+  flex-shrink: 0; padding: 7px 14px; border-radius: 9px;
+  background: var(--accent-d); border: 1px solid rgba(124,109,245,0.2);
+  color: var(--accent); font-family: var(--sans);
+  font-size: 12px; font-weight: 600; cursor: pointer; transition: all .18s;
+}
+.cry-watch-buy:hover { background: rgba(124,109,245,0.14); border-color: rgba(124,109,245,0.35); }
+
+@media (max-width: 640px) {
+  /* La cible tactile prime : la croix et le bouton d'achat gardent leurs
+     44 px, et la ligne passe sur deux niveaux plutôt que de tout comprimer. */
+  .cry-op { padding: 13px 14px; }
+  .cry-op-sup { width: 34px; height: 34px; }
+  .cry-watch-buy { padding: 9px 13px; }
+  .cry-unite button { padding: 7px 10px; }
+  .cry-watch-form { max-width: none; }
+}
