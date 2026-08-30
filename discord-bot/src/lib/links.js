@@ -14,6 +14,16 @@ async function getUid(discordId) {
 }
 
 /**
+ * Sens inverse : compte Discord lié à un UID Firebase, ou null. Sert au récap
+ * hebdo des suggestions, où l'on part de l'auteur (côté app) pour lui écrire en
+ * MP. Le lien étant unique par compte, on prend le premier trouvé.
+ */
+async function getDiscordId(uid) {
+  const snap = await getDb().collection('discordLinks').where('uid', '==', uid).limit(1).get();
+  return snap.empty ? null : snap.docs[0].id;
+}
+
+/**
  * Crée une demande de liaison (le bot connaît le discordId). Le site,
  * une fois ouvert avec ce token par un utilisateur connecté, appelle le
  * Worker qui vérifie l'idToken et écrit le lien. Retourne le token.

@@ -3749,7 +3749,8 @@ body.has-demo-banner { padding-top: 40px; }
   border-radius: 20px; white-space: nowrap;
 }
 .idea-status-pending   { background: rgba(245,183,49,0.13); color: var(--gold); }
-.idea-status-published { background: rgba(0,224,158,0.11); color: var(--positive); }
+.idea-status-published,
+.idea-status-accepted  { background: rgba(0,224,158,0.11); color: var(--positive); }
 .idea-status-rejected  { background: rgba(255,77,106,0.11); color: var(--negative); }
 .idea-reason-box {
   margin-top: 7px; padding: 8px 11px;

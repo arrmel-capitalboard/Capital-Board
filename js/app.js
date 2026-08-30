@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830d';
+const APP_VERSION = '20260830e';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3774,7 +3774,6 @@ async function startApp(user) {
     try { showPageMobile('patrimoine'); } catch (e) { console.warn('accueil patrimoine:', e); }
     // Badge « Boite a idees » des le lancement, sans attendre l'ouverture de
     // l'onglet. Admin uniquement (c'est la file de moderation qu'il compte).
-    if (!window.IS_DEMO && isAdmin()) { _loadIdeas().then(_updateIdeasBadge).catch(() => {}); }
     if (!window.autoRefreshInterval) window.toggleAutoRefresh();
     setTimeout(initStatCardsScroll, 1500);
     setTimeout(initChartExpandButtons, 800);
@@ -18229,28 +18228,15 @@ async function _loadPublishedIdeas() {
   return await getDocs(firestoreQuery(coll, firestoreWhere('status', '==', 'published')));
 }
 
+// La modération vit desormais sur Discord : l'app ne charge que les suggestions
+// de l'utilisateur, pour lui en montrer le suivi. Pas de mur, pas de vote.
 async function _loadIdeas() {
-  const pub = await _loadPublishedIdeas();
-  _ideasPublished = [];
-  pub.forEach(d => _ideasPublished.push({ id: d.id, ...d.data() }));
-  // Tri appliqué dans les deux cas : il départage les scores égaux par date, ce
-  // que l'index seul ne fait pas, et remet en ordre le repli non indexé.
-  _ideasPublished.sort((a, b) => (b.score || 0) - (a.score || 0)
-    || _ideaTime(b) - _ideaTime(a));
-
-  const mine = await getDocs(firestoreQuery(
-    firestoreCollection(db, 'ideas'), firestoreWhere('authorUid', '==', currentUser)));
   _ideasMine = [];
+  if (!currentUser) return;
+  const mine = await getDocs(firestoreQuery(
+    firestoreCollection(db, 'suggestions'), firestoreWhere('uid', '==', currentUser)));
   mine.forEach(d => _ideasMine.push({ id: d.id, ...d.data() }));
   _ideasMine.sort((a, b) => _ideaTime(b) - _ideaTime(a));
-
-  _ideasPending = [];
-  if (isAdmin()) {
-    const pend = await getDocs(firestoreQuery(
-      firestoreCollection(db, 'ideas'), firestoreWhere('status', '==', 'pending')));
-    pend.forEach(d => _ideasPending.push({ id: d.id, ...d.data() }));
-    _ideasPending.sort((a, b) => _ideaTime(a) - _ideaTime(b));
-  }
 }
 
 function _ideaTime(i) {
@@ -18269,18 +18255,13 @@ async function renderIdeasPage() {
   if (!el || !db || !currentUser) return;
   el.innerHTML = _ideaSkeletonHtml();
   try {
-    await Promise.all([_loadIdeas(), _loadMyIdeaVotes()]);
+    await _loadIdeas();
   } catch (e) {
     el.innerHTML = '<div class="idea-blank">Chargement impossible : ' + _escapeHtmlChat(e.message) + '</div>';
     return;
   }
-  el.innerHTML = _ideaPendingHtml() + _ideaWallHtml();
-  _updateIdeasBadge();
+  el.innerHTML = _ideaMineHtml();
   _updateMyIdeasCount();
-  const body = document.getElementById('idea-mine-body');
-  if (body && document.getElementById('idea-mine-overlay').classList.contains('open')) {
-    body.innerHTML = _ideaMineHtml();
-  }
 }
 
 // Silhouettes pendant le chargement plutôt qu'un spinner : la hauteur des
@@ -18388,23 +18369,29 @@ function _ideaPendingHtml() {
 
 function _ideaMineHtml() {
   if (!_ideasMine.length) {
-    return '<div class="idea-blank">Vous n\'avez encore rien proposé.</div>';
+    return '<div class="idea-blank idea-blank-big">' +
+      '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M12 2a7 7 0 0 0-4 12.7V17h8v-2.3A7 7 0 0 0 12 2z"/></svg>' +
+      '<div class="idea-blank-title">Aucune suggestion pour l\'instant</div>' +
+      '<div>Dites-nous ce qui vous aiderait : chaque suggestion est lue par l\'équipe.</div>' +
+      '<button class="btn-primary idea-cta" onclick="openIdeaForm()">Proposer une suggestion</button>' +
+    '</div>';
   }
-  const label = { pending: 'En attente', published: 'Publiée', rejected: 'Refusée' };
-  return _ideasMine.map(i => '' +
+  const label = { pending: 'En attente', accepted: 'Retenue', rejected: 'Non retenue' };
+  return '<div class="idea-mine-list">' + _ideasMine.map(i => {
+    const st = i.statut || 'pending';
+    return '' +
     '<div class="idea-mine-row">' +
       '<div class="idea-mine-left">' +
-        '<div class="idea-mine-title">' + _escapeHtmlChat(i.title) + '</div>' +
+        '<div class="idea-mine-title">' + _escapeHtmlChat(i.texte) + '</div>' +
         '<div class="idea-meta">' + _ideaDate(i) + '</div>' +
-        (i.status === 'rejected' && i.rejectReason
-          ? '<div class="idea-reason-box">Motif : ' + _escapeHtmlChat(i.rejectReason) + '</div>' : '') +
       '</div>' +
       '<div class="idea-mine-right">' +
-        '<span class="idea-status idea-status-' + i.status + '">' + (label[i.status] || i.status) + '</span>' +
-        (i.status === 'pending'
+        '<span class="idea-status idea-status-' + st + '">' + (label[st] || 'En attente') + '</span>' +
+        (st === 'pending'
           ? '<button class="idea-link-danger" onclick="deleteMyIdea(\'' + i.id + '\')">Retirer</button>' : '') +
       '</div>' +
-    '</div>').join('');
+    '</div>';
+  }).join('') + '</div>';
 }
 
 function _ideaWallHtml() {
@@ -18453,40 +18440,36 @@ function _ideaWallHtml() {
 }
 
 window.submitIdea = async function() {
-  const tEl = document.getElementById('idea-title');
   const bEl = document.getElementById('idea-body');
   const msg = document.getElementById('idea-form-msg');
   const btn = document.getElementById('idea-submit-btn');
-  const title = (tEl.value || '').trim();
-  const body  = (bEl.value || '').trim();
+  const texte = (bEl.value || '').trim();
   msg.className = 'idea-msg';
-  if (!title || !body) { msg.classList.add('err'); msg.textContent = 'Titre et description sont requis.'; return; }
-  if (title.length > IDEA_MAX_TITLE || body.length > IDEA_MAX_BODY) {
-    msg.classList.add('err'); msg.textContent = 'Texte trop long.'; return;
-  }
+  if (!texte) { msg.classList.add('err'); msg.textContent = 'Écrivez votre suggestion.'; return; }
+  if (texte.length > IDEA_MAX_BODY) { msg.classList.add('err'); msg.textContent = 'Texte trop long.'; return; }
   // Le bouton se verrouille le temps de l'envoi : sans ça, un double clic crée
-  // deux propositions identiques.
+  // deux suggestions identiques.
   if (btn) { btn.disabled = true; btn.textContent = 'Envoi…'; }
   msg.textContent = '';
   try {
+    // authorName doit égaler le pseudo du profil (roles/{uid}.username), sinon la
+    // règle Firestore rejette l'écriture (anti-usurpation).
     let authorName = '';
     try {
       const r = await getFirestoreDoc(firestoreDoc(db, 'roles', currentUser));
       if (r.exists()) authorName = r.data().username || '';
     } catch (_) {}
-    await addFirestoreDoc(firestoreCollection(db, 'ideas'), {
-      title, body,
-      authorUid: currentUser,
+    await addFirestoreDoc(firestoreCollection(db, 'suggestions'), {
+      uid: currentUser,
       authorName: authorName || 'membre',
-      status: 'pending',
+      texte,
+      statut: 'pending',
       createdAt: serverTimestamp(),
-      up: 0, down: 0, score: 0,
     });
-    tEl.value = ''; bEl.value = '';
+    bEl.value = '';
     const c = document.getElementById('idea-body-count'); if (c) c.textContent = '0';
     window.closeIdeaForm();
     await renderIdeasPage();
-    window.openMyIdeas();   // l'auteur voit tout de suite sa proposition « En attente »
   } catch (e) {
     msg.classList.add('err');
     msg.textContent = 'Échec : ' + e.message;
@@ -18522,13 +18505,11 @@ window.voteIdea = async function(ideaId, v, _retried) {
   }
 };
 
-window.deleteMyIdea = async function(ideaId) {
+window.deleteMyIdea = async function(id) {
   try {
-    await deleteFirestoreDoc(firestoreDoc(db, 'ideas', ideaId));
+    await deleteFirestoreDoc(firestoreDoc(db, 'suggestions', id));
     await renderIdeasPage();
-    const body = document.getElementById('idea-mine-body');
-    if (body) body.innerHTML = _ideaMineHtml();
-  } catch (e) { console.warn('[idees] retrait refusé:', e.message); }
+  } catch (e) { console.warn('[suggestions] retrait refusé:', e.message); }
 };
 
 // La publication prévient l'auteur (mail + push s'il y est abonné). Comme pour

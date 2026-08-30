@@ -290,5 +290,27 @@ service cloud.firestore {
         || (_isVerified() && _isSelf(resource.data.authorUid) && resource.data.status == 'pending');
     }
 
+    // Boîte à suggestions : le membre écrit, le bot Discord relit et tranche.
+    // Aucune modération dans l'app — le statut (accepted/rejected) et les champs
+    // de suivi sont posés par le bot via l'Admin SDK, qui contourne ces règles.
+    // Le client ne lit et ne supprime que ses propres suggestions.
+    match /suggestions/{id} {
+      allow read: if request.auth != null && _isSelf(resource.data.uid);
+
+      allow create: if _isVerified()
+        && request.resource.data.keys().hasOnly(['uid','authorName','texte','statut','createdAt'])
+        && _isSelf(request.resource.data.uid)
+        && request.resource.data.authorName == _usernameOf(request.auth.uid)
+        && request.resource.data.statut == 'pending'
+        && request.resource.data.texte is string
+        && request.resource.data.texte.size() > 0
+        && request.resource.data.texte.size() <= 2000;
+
+      // Retrait possible tant que la suggestion n'a pas été tranchée.
+      allow delete: if _isVerified()
+        && _isSelf(resource.data.uid)
+        && resource.data.statut == 'pending';
+    }
+
   }
 }

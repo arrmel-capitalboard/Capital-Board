@@ -13,6 +13,7 @@ const leaderboard = require('./lib/leaderboard');
 const suggestions = require('./lib/suggestions');
 const restartmonitor = require('./lib/restartmonitor');
 const signalements = require('./lib/signalements');
+const appsuggestions = require('./lib/appsuggestions');
 const opsAlerts = require('./lib/ops-alerts');
 const scanPatches = require('./lib/scan-patches');
 const bareme = require('./lib/bareme');
@@ -62,6 +63,7 @@ client.once(Events.ClientReady, (c) => {
   leaderboard.start(c);
   ticketstats.start(c);
   signalements.start(c);
+  appsuggestions.start(c);
   opsAlerts.start(c);
   scanPatches.watch(c);
   bareme.start(c);
@@ -273,6 +275,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       }
 
       if (newsqueue.isNewsButton(interaction.customId)) { await newsqueue.handleButton(interaction); return; }
+      if (appsuggestions.isButton(interaction.customId)) { await appsuggestions.handleButton(interaction); return; }
       if (suggestions.isSuggestionButton(interaction.customId)) { await suggestions.handleButton(interaction); return; }
       if (scanPatches.isScanPatchButton(interaction.customId)) { await scanPatches.handleButton(interaction); return; }
       if (securitypanel.isSecurityComponent(interaction.customId)) { await securitypanel.handleComponent(interaction); return; }

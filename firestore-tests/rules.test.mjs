@@ -296,3 +296,55 @@ test('ops : aucun document de la collection ne reste accessible', async () => {
     await assertFails(setDoc(doc(asAdmin(), chemin), { x: 2 }));
   }
 });
+
+// ── suggestions (boîte à suggestions app → Discord) ─────────────────────────
+
+test('suggestions : création valide, en attente', async () => {
+  await assertSucceeds(setDoc(doc(asVerified(ALICE), 'suggestions/s1'), {
+    uid: ALICE, authorName: 'membre', texte: 'Ajouter un graphique', statut: 'pending',
+  }));
+});
+
+test('suggestions : impossible de se valider soi-même (statut != pending)', async () => {
+  await assertFails(setDoc(doc(asVerified(ALICE), 'suggestions/s1'), {
+    uid: ALICE, authorName: 'membre', texte: 'Coucou', statut: 'accepted',
+  }));
+});
+
+test('suggestions : créer sous l\'uid d\'un autre est refusé', async () => {
+  await assertFails(setDoc(doc(asVerified(ALICE), 'suggestions/s1'), {
+    uid: BOB, authorName: 'membre', texte: 'Coucou', statut: 'pending',
+  }));
+});
+
+test('suggestions : usurper le nom d\'auteur est refusé', async () => {
+  await assertFails(setDoc(doc(asVerified(ALICE), 'suggestions/s1'), {
+    uid: ALICE, authorName: 'quelquun-dautre', texte: 'Coucou', statut: 'pending',
+  }));
+});
+
+test('suggestions : le client ne peut pas trancher (update refusé)', async () => {
+  await seedAsAdmin('suggestions/s1', {
+    uid: ALICE, authorName: 'membre', texte: 'Coucou', statut: 'pending',
+  });
+  await assertFails(updateDoc(doc(asVerified(ALICE), 'suggestions/s1'), { statut: 'accepted' }));
+});
+
+test('suggestions : une suggestion n\'est visible que de son auteur', async () => {
+  await seedAsAdmin('suggestions/s1', {
+    uid: ALICE, authorName: 'membre', texte: 'Coucou', statut: 'pending',
+  });
+  await assertSucceeds(getDoc(doc(asVerified(ALICE), 'suggestions/s1')));
+  await assertFails(getDoc(doc(asVerified(BOB), 'suggestions/s1')));
+});
+
+test('suggestions : retrait possible tant que non tranchée, pas après', async () => {
+  await seedAsAdmin('suggestions/s1', {
+    uid: ALICE, authorName: 'membre', texte: 'Coucou', statut: 'pending',
+  });
+  await assertSucceeds(deleteDoc(doc(asVerified(ALICE), 'suggestions/s1')));
+  await seedAsAdmin('suggestions/s2', {
+    uid: ALICE, authorName: 'membre', texte: 'Coucou', statut: 'accepted',
+  });
+  await assertFails(deleteDoc(doc(asVerified(ALICE), 'suggestions/s2')));
+});
