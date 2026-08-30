@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830l';
+const APP_VERSION = '20260830m';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4243,6 +4243,8 @@ function _cryRender() {
     }
   }
 
+  _cryRenderFisc(valeur, investi, manquants);
+
   // Les lignes. Construites par le DOM : `lieu` est un texte libre du membre.
   if (!liste) return;
   liste.innerHTML = '';
@@ -4299,6 +4301,88 @@ function _cryRender() {
       row.appendChild(droite);
       liste.appendChild(row);
     });
+}
+
+// ── Fiscalité ──────────────────────────────────────────────────────────────
+//
+// Une seule question, celle qu'on se pose avant d'arbitrer : si je vends, il
+// me reste combien ?
+//
+// Le calcul n'est exact que pour une vente TOTALE, et c'est pourquoi la carte
+// ne propose que ce cas. Une vente partielle ne se calcule pas au prorata de
+// la ligne vendue mais du portefeuille entier — prix de cession × prix total
+// d'acquisition ÷ valeur globale — une formule qui demande la valeur de tout
+// le portefeuille au jour de chaque vente, donc un historique qu'on n'a pas.
+// Annoncer un chiffre approché sur ce cas-là aurait été pire que se taire.
+//
+// Sur une vente totale, en revanche, la formule se simplifie exactement en
+// « valeur − prix d'acquisition ». C'est le seul cas où l'on peut être juste,
+// et c'est celui qu'on montre.
+const CRY_PFU = 0.30;          // 12,8 % d'impôt sur le revenu + 17,2 % de prélèvements sociaux
+const CRY_SEUIL_CESSION = 305; // en deçà, le gain n'est pas imposé (art. 150 VH bis CGI)
+
+function _cryRenderFisc(valeur, investi, manquants) {
+  const carte = document.getElementById('cry-fisc');
+  if (!carte) return;
+
+  // Sans prix d'achat, il n'y a pas de plus-value à calculer — et un impôt de
+  // 0 € laisserait croire qu'il n'y en aura pas.
+  if (!valeur || !investi) {
+    carte.hidden = true;
+    return;
+  }
+  carte.hidden = false;
+
+  const gain = valeur - investi;
+  const exonere = valeur < CRY_SEUIL_CESSION;
+  const impot = gain > 0 && !exonere ? gain * CRY_PFU : 0;
+  const net = valeur - impot;
+
+  const val = document.getElementById('cry-fisc-val');
+  const sub = document.getElementById('cry-fisc-sub');
+  if (val) val.textContent = fmt(net);
+  if (sub) {
+    sub.textContent = impot
+      ? 'vous resteraient, une fois l’impôt payé'
+      : gain > 0
+        ? 'vous resteraient — vos ventes tiennent sous le seuil de 305 €'
+        : 'vous resteraient : sans gain, il n’y a pas d’impôt';
+  }
+
+  const lignes = document.getElementById('cry-fisc-lignes');
+  if (lignes) {
+    lignes.innerHTML = '';
+    const pose = (label, montant, teinte) => {
+      const l = document.createElement('div');
+      l.className = 'cry-fisc-ligne';
+      const g = document.createElement('span');
+      g.textContent = label;
+      const d = document.createElement('span');
+      d.className = 'cry-fisc-montant' + (teinte ? ' ' + teinte : '');
+      d.textContent = montant;
+      l.appendChild(g);
+      l.appendChild(d);
+      lignes.appendChild(l);
+    };
+    pose('Valeur aujourd’hui', fmt(valeur));
+    pose('Ce que vous avez payé', fmt(investi));
+    pose(gain >= 0 ? 'Plus-value' : 'Moins-value',
+      (gain >= 0 ? '+' : '−') + fmt(Math.abs(gain)),
+      gain >= 0 ? 'pos' : 'neg');
+    pose('Impôt estimé (30 %)', impot ? '−' + fmt(impot) : '0 €', impot ? 'neg' : '');
+  }
+
+  // Un cours manquant fausse les deux côtés : le dire vaut mieux qu'un chiffre
+  // qu'on croirait complet.
+  const avert = carte.querySelector('.cry-fisc-avert');
+  if (avert && manquants) {
+    avert.textContent = 'Estimation partielle : '
+      + (manquants > 1 ? manquants + ' lignes sont exclues faute de cours.' : 'une ligne est exclue faute de cours.')
+      + ' Elle suppose une vente de la totalité ; une vente partielle se calcule autrement.';
+  } else if (avert) {
+    avert.textContent = 'Estimation, pas une déclaration. Elle suppose une vente de la totalité : '
+      + 'une vente partielle se calcule autrement, au prorata du portefeuille.';
+  }
 }
 
 /** Quantité lisible : huit décimales pour le bitcoin, aucune de trop ailleurs. */

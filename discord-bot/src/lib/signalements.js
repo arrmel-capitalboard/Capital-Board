@@ -29,7 +29,9 @@ const {
 } = require('discord.js');
 const { getDb, isConfigured } = require('../firebase');
 
-const CHANNEL = '1537760259203014766';
+// Salon dédié aux signalements. Distinct de celui du barème et du panneau
+// Livrets, qui restent dans 1537760259203014766.
+const CHANNEL = '1543729314607009803';
 const FONDATEUR_ROLE = '1512905140108001391';
 const COL = 'signalements';
 

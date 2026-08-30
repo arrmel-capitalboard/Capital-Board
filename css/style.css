@@ -5917,7 +5917,12 @@ body.has-demo-banner { padding-top: 40px; }
    la crypto n'est inventé ici — c'est une poche de patrimoine comme une autre,
    et la traiter différemment aurait été un signal sans fondement. */
 
-.cry-top { margin-bottom: 16px; }
+/* Le hero et la fiscalité côte à côte : la question « combien j'ai » et la
+   question « combien il me resterait » se lisent ensemble, ou pas du tout. */
+.cry-top {
+  display: grid; grid-template-columns: 1.35fr 1fr;
+  gap: 16px; margin-bottom: 16px; align-items: start;
+}
 
 .cry-hero {
   position: relative; overflow: hidden;
@@ -5952,6 +5957,60 @@ body.has-demo-banner { padding-top: 40px; }
 .cry-legend i {
   width: 8px; height: 8px; border-radius: 50%;
   display: inline-block; margin-right: 6px; vertical-align: middle;
+}
+
+/* `display: grid` bat la regle `[hidden] { display: none }` du navigateur :
+   sans ceci, masquer le bloc par son attribut n'aurait plus aucun effet. */
+.cry-top[hidden] { display: none; }
+
+.cry-fisc {
+  background: #0f1119; border: 1px solid var(--border);
+  border-radius: 18px; padding: 22px;
+}
+.cry-fisc-head { display: flex; align-items: center; gap: 10px; margin-bottom: 16px; }
+.cry-fisc-ico {
+  width: 30px; height: 30px; border-radius: 9px; flex-shrink: 0;
+  display: grid; place-items: center;
+  background: rgba(124,109,245,.10); border: 1px solid rgba(124,109,245,.22);
+  color: var(--accent);
+}
+.cry-fisc-title { font-size: 12.5px; font-weight: 500; color: var(--text3); }
+.cry-fisc-val {
+  font-family: var(--mono); font-size: 26px; font-weight: 700;
+  letter-spacing: -0.8px; color: var(--text); line-height: 1;
+}
+.cry-fisc-sub { font-size: 12.5px; color: var(--text3); margin-top: 8px; line-height: 1.5; }
+
+.cry-fisc-lignes {
+  margin-top: 18px; padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 9px;
+}
+.cry-fisc-ligne {
+  display: flex; align-items: baseline; justify-content: space-between;
+  gap: 12px; font-size: 12.5px; color: var(--text2);
+}
+.cry-fisc-montant { font-family: var(--mono); font-size: 12.5px; font-weight: 600; color: var(--text); }
+.cry-fisc-montant.pos { color: var(--positive); }
+.cry-fisc-montant.neg { color: var(--negative); }
+
+.cry-fisc-notes {
+  margin-top: 18px; padding-top: 16px;
+  border-top: 1px solid var(--border);
+  display: flex; flex-direction: column; gap: 10px;
+}
+.cry-fisc-note {
+  display: flex; gap: 9px;
+  font-size: 12px; color: var(--text3); line-height: 1.5;
+}
+.cry-fisc-puce {
+  width: 5px; height: 5px; border-radius: 50%; flex-shrink: 0;
+  background: var(--accent); margin-top: 6px;
+}
+.cry-fisc-avert {
+  margin-top: 16px; padding: 10px 12px; border-radius: 10px;
+  background: rgba(245,183,49,.06); border: 1px solid rgba(245,183,49,.20);
+  font-size: 11.5px; color: var(--text3); line-height: 1.5;
 }
 
 .cry-listwrap {
@@ -6021,7 +6080,12 @@ body.has-demo-banner { padding-top: 40px; }
   /* Mêmes règles que les autres modules : la carte respire moins, la ligne
      garde sa cible tactile, et le sous-titre passe sous le nom au lieu de
      rogner la valeur. */
+  /* La fiscalité passe sous le hero : deux colonnes de 190 px ne se lisent
+     plus, ni l'une ni l'autre. */
+  .cry-top { grid-template-columns: 1fr; }
   .cry-hero { padding: 18px; }
+  .cry-fisc { padding: 18px; }
+  .cry-fisc-val { font-size: 24px; }
   .cry-hero .dep-kv { font-size: 32px; letter-spacing: -1.3px; }
   .cry-row { padding: 13px 14px; min-height: 60px; }
   .cry-ico { width: 36px; height: 36px; }

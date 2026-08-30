@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260830l">
+<link rel="stylesheet" href="css/style.css?v=20260830m">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -1865,6 +1865,42 @@
             <span class="dep-hint" id="cry-part"></span>
           </div>
           <div class="cry-repart" id="cry-repart"></div>
+        </div>
+
+        <!-- Fiscalite. Elle repond a une seule question, celle qu'on se pose
+             avant d'arbitrer : si je vends, il me reste combien ? -->
+        <div class="cry-fisc" id="cry-fisc">
+          <div class="cry-fisc-head">
+            <span class="cry-fisc-ico">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/></svg>
+            </span>
+            <span class="cry-fisc-title">Si vous vendiez tout aujourd’hui</span>
+          </div>
+
+          <div class="cry-fisc-val" id="cry-fisc-val">—</div>
+          <div class="cry-fisc-sub" id="cry-fisc-sub"></div>
+
+          <div class="cry-fisc-lignes" id="cry-fisc-lignes"></div>
+
+          <div class="cry-fisc-notes">
+            <div class="cry-fisc-note">
+              <span class="cry-fisc-puce"></span>
+              <span>Passer d’une crypto à une autre ne déclenche rien. Seul un retour en euros est imposable.</span>
+            </div>
+            <div class="cry-fisc-note">
+              <span class="cry-fisc-puce"></span>
+              <span>En dessous de 305 € de ventes dans l’année, le gain n’est pas imposé.</span>
+            </div>
+            <div class="cry-fisc-note">
+              <span class="cry-fisc-puce"></span>
+              <span>Un compte ouvert sur une plateforme étrangère se déclare chaque année, même vide (formulaire 3916-bis).</span>
+            </div>
+          </div>
+
+          <div class="cry-fisc-avert">
+            Estimation, pas une déclaration. Elle suppose une vente de la totalité :
+            une vente partielle se calcule autrement, au prorata du portefeuille.
+          </div>
         </div>
       </div>
 
@@ -3923,11 +3959,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260830l"></script>
+<script src="js/app.js?v=20260830m"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260830l"></script>
+<script src="js/onboarding.js?v=20260830m"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260830l"></script>
+<script src="js/import.js?v=20260830m"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">
