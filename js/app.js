@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830w';
+const APP_VERSION = '20260830x';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -672,9 +672,11 @@ const _DONNEES_PAGE = {
   // La page Livrets projette l'epargne a partir des depenses mensuelles
   // (`_livDepenseMensuelle`) : les deux collections lui sont necessaires.
   livrets:     ['livrets', 'depenses'],
-  // Les documents du CTO ne sont lus qu'ici et sur ses propres pages : le
-  // patrimoine additionne les enveloppes, il lui faut les deux comptes.
-  patrimoine:  ['livrets', 'depenses', 'portfolioCto', 'transactionsCto', 'versementsCto'],
+  // Les documents du CTO n'y figurent pas : le patrimoine est la page
+  // d'accueil, et trois lectures de plus par session pour un compte que la
+  // plupart n'ouvriront jamais, c'est ce qui a déjà épuisé le quota une fois.
+  // Il les charge quand le membre a un compte-titres — voir `_runPageHook`.
+  patrimoine:  ['livrets', 'depenses'],
   // `recap` n'y figure pas : `renderRecapPage` relit deja les deux documents
   // a chaque ouverture (`_refreshRecap`), les declarer ici doublerait la note.
 };
@@ -806,10 +808,20 @@ function getVersements(user, compte)   { return _localCache[(user||currentUser) 
 function getWatchlist(user, compte)    { return _localCache[(user||currentUser) + '_' + _col('watchlist',    compte)] || []; }
 function getDailyValues(user, compte)  { return _localCache[(user||currentUser) + '_' + _col('dailyValues',  compte)] || []; }
 
+// Un compte-titres se signale dans les réglages dès sa première ligne. Sans ce
+// drapeau, le patrimoine devrait lire les documents du CTO pour découvrir qu'il
+// n'existe pas — trois lectures par session, pour rien, chez presque tout le
+// monde.
+function _aUnCto(uid) { return !!getUserSettings(uid).ctoActif; }
+function _marquerCto(uid, col, data) {
+  if (!col.endsWith('Cto') || !(data || []).length || _aUnCto(uid)) return;
+  saveUserSettings(uid, { ctoActif: true }).catch(e => console.warn('[cto] drapeau :', e));
+}
+
 // Écriture synchrone dans le cache + Firestore en arrière-plan
-function savePortfolio(user, data, compte)    { _fsWrite(user||currentUser, _col('portfolio',    compte), data); }
-function saveTransactions(user, data, compte) { _fsWrite(user||currentUser, _col('transactions', compte), data); }
-function saveVersements(user, data, compte)   { _fsWrite(user||currentUser, _col('versements',   compte), data); }
+function savePortfolio(user, data, compte)    { const u = user||currentUser, c = _col('portfolio',    compte); _marquerCto(u, c, data); _fsWrite(u, c, data); }
+function saveTransactions(user, data, compte) { const u = user||currentUser, c = _col('transactions', compte); _marquerCto(u, c, data); _fsWrite(u, c, data); }
+function saveVersements(user, data, compte)   { const u = user||currentUser, c = _col('versements',   compte); _marquerCto(u, c, data); _fsWrite(u, c, data); }
 function saveWatchlist(user, data, compte)    { _fsWrite(user||currentUser, _col('watchlist',    compte), data); }
 function saveDailyValues(user, data, compte)  { _fsWrite(user||currentUser, _col('dailyValues',  compte), data); }
 // trCohort : résultat de perf cohorte importé depuis un CSV Trade Republic (objet unique en array)
@@ -6745,6 +6757,9 @@ async function _runPageHook(id) {
   // chargement à la demande, la moitié des collections n'est lue qu'ici. Les
   // collections dédoublées par compte suivent celui qu'on regarde.
   if (PEA_TABS.includes(id)) await assurerCompte(_compte);
+  // Le patrimoine additionne les enveloppes : il lui faut le compte-titres,
+  // mais seulement si le membre en a un.
+  if (id === 'patrimoine' && _aUnCto()) await assurerCompte('cto');
   const besoins = (_DONNEES_PAGE[id] || []).map(c => COLS_COMPTE.includes(c) ? _col(c) : c);
   if (besoins.length) await assurerDonnees(...besoins);
   // Le CTO n'a pas d'entrée à lui dans la liste des pages : sa pastille
