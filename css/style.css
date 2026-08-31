@@ -3952,6 +3952,13 @@ body.has-demo-banner { padding-top: 40px; }
   border-color: rgba(0,224,158,0.35);
   color: var(--positive);
 }
+/* Bêta : rouge. Le doré de « Bientôt » disait l'attente, le vert de « New »
+   l'ouverture ; le rouge dit qu'on entre dans un module qui n'est pas fini. */
+.nav-soon.beta {
+  background: rgba(255,77,106,0.12);
+  border-color: rgba(255,77,106,0.35);
+  color: var(--negative);
+}
 /* Sidebar repliée : le libellé disparaît, le badge doit suivre. */
 .sidebar.collapsed .nav-soon { display: none; }
 
@@ -4595,9 +4602,9 @@ body.has-demo-banner { padding-top: 40px; }
 .adm-tri-opt:hover { color: var(--text2); }
 .adm-tri-opt.active { background: var(--s1); color: var(--text); box-shadow: 0 1px 5px rgba(0,0,0,.4); }
 .adm-tri-opt.active.beta    { color: var(--gold); }
-/* Bêta publique : ouverte comme « Ouvert », étiquetée comme « Bêta » — la
-   couleur le dit, verte mais tirant sur l'or. */
-.adm-tri-opt.active.betapub { color: #b9d24b; }
+/* Bêta publique : c'est l'état qui pose une pastille rouge « Bêta » sous les
+   yeux des membres — le cran porte la même couleur qu'elle. */
+.adm-tri-opt.active.betapub { color: var(--negative); }
 .adm-tri-opt.active.on      { color: var(--positive); }
 
 /* ═══════════════════════════════════════════════════
@@ -4643,11 +4650,13 @@ body.has-demo-banner { padding-top: 40px; }
 }
 .dep-addbtn:hover { box-shadow: 0 6px 22px rgba(124,109,245,.35); transform: translateY(-1px); }
 
+/* Rouge, comme la pastille « Bêta » du menu : les deux marquent la même
+   chose, un module ouvert mais pas fini. */
 .dep-beta-note {
   display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   margin-bottom: 18px; padding: 10px 14px;
-  background: rgba(245,183,49,.07);
-  border: 1px solid rgba(245,183,49,.22);
+  background: rgba(255,77,106,.07);
+  border: 1px solid rgba(255,77,106,.22);
   border-radius: 12px;
   font-size: 12.5px; color: var(--text2); line-height: 1.5;
 }
@@ -4655,7 +4664,7 @@ body.has-demo-banner { padding-top: 40px; }
   font-family: var(--mono); font-size: 9.5px; font-weight: 700;
   letter-spacing: .8px; text-transform: uppercase;
   padding: 3px 8px; border-radius: 6px;
-  background: rgba(245,183,49,.16); color: var(--gold);
+  background: rgba(255,77,106,.16); color: var(--negative);
 }
 
 /* ─── Bento des trois chiffres ─── */
