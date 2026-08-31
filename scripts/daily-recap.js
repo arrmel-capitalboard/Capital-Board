@@ -43,7 +43,13 @@ async function getAllUsers() {
 }
 
 // ─── RÉCUPÉRER LES SETTINGS FIRESTORE ───────────────────────
+// Les réglages ont déménagé dans `data/annexes` (un document au lieu de six,
+// pour tenir le quota de lectures). L'ancien document reste en place pour les
+// comptes pas encore migrés : on lit le nouveau d'abord, le vieux ensuite.
+// Sans ça le script lisait une préférence figée au jour de la migration.
 async function getUserSettings(uid) {
+  const annexes = await db.doc(`users/${uid}/data/annexes`).get();
+  if (annexes.exists && annexes.data().settings) return annexes.data().settings;
   const snap = await db.doc(`users/${uid}/data/settings`).get();
   return snap.exists ? snap.data() : {};
 }
@@ -55,11 +61,65 @@ function recapEnabled(settings) {
   return true;
 }
 
-// ─── RÉCUPÉRER LE PORTFOLIO FIRESTORE ────────────────────────
-async function getUserPortfolio(uid) {
-  const snap = await db.doc(`users/${uid}/data/portfolio`).get();
+// ─── RÉCUPÉRER LES LIGNES FIRESTORE ──────────────────────────
+async function getUserItems(uid, nom) {
+  const snap = await db.doc(`users/${uid}/data/${nom}`).get();
   return snap.exists ? (snap.data().items || []) : [];
 }
+
+// Positions crypto reconstituées depuis le journal d'opérations : la
+// collection `crypto` stocke des achats et des ventes, pas un état. Même
+// calcul que `_cryPositions()` côté application — prix de revient moyen
+// pondéré, ligne close quand la quantité retombe à zéro. Les deux doivent
+// donner le même chiffre : si l'un change, changer l'autre.
+function cryptoPositions(ops) {
+  const par = new Map();
+  [...ops]
+    .sort((a, b) => String(a.date || '').localeCompare(String(b.date || '')))
+    .forEach(o => {
+      if (!o.sym) return;
+      const qte  = Number(o.qte)  || 0;
+      const prix = Number(o.prix) || 0;
+      if (qte <= 0) return;
+      const pos = par.get(o.sym) || { sym: o.sym, qte: 0, pru: 0 };
+      if (o.sens === 'vente') {
+        pos.qte = Math.max(0, pos.qte - qte);
+        if (pos.qte === 0) pos.pru = 0;
+      } else {
+        const cout = pos.qte * pos.pru + qte * prix;
+        pos.qte += qte;
+        pos.pru  = pos.qte ? cout / pos.qte : 0;
+      }
+      par.set(o.sym, pos);
+    });
+  return [...par.values()].filter(p => p.qte > 1e-12);
+}
+
+// Toutes les lignes suivies d'un membre, chacune sachant d'où elle vient. Le
+// récap parle du patrimoine, pas d'un compte : une hausse du Nasdaq logée au
+// compte-titres compte autant qu'une valeur du PEA.
+const ENV_LABELS = { pea: 'PEA', cto: 'Compte-titres', crypto: 'Crypto' };
+
+async function getUserLignes(uid) {
+  const [pea, cto, cryptoOps] = await Promise.all([
+    getUserItems(uid, 'portfolio'),
+    getUserItems(uid, 'portfolioCto'),
+    getUserItems(uid, 'crypto'),
+  ]);
+  const titres = [
+    ...pea.map(r => ({ ...r, env: 'pea' })),
+    ...cto.map(r => ({ ...r, env: 'cto' })),
+  ].filter(r => r && r.ticker && r.qty > 0);
+  // Une crypto se cote sur Yahoo comme un titre, au suffixe près : BTC-EUR.
+  // Le symbole nu reste le ticker affiché, plus lisible dans le tableau.
+  const cryptos = cryptoPositions(cryptoOps).map(p => ({
+    ticker: p.sym, name: p.sym, qty: p.qte, buyPrice: p.pru, env: 'crypto',
+  }));
+  return [...titres, ...cryptos];
+}
+
+// Symbole à interroger chez Yahoo. Seule la crypto s'en écarte.
+const symboleYahoo = (l) => (l.env === 'crypto' ? l.ticker + '-EUR' : l.ticker);
 
 // ─── PRIX YAHOO FINANCE ──────────────────────────────────────
 async function fetchPrice(ticker) {
@@ -272,13 +332,16 @@ async function generateReport(lines, totalPct) {
   // 2. Contexte pour le modèle
   const ctx = lines.map(l => {
     const r = webByTicker[l.ticker] || [];
-    return `### ${l.name} (${l.ticker}) — variation du jour : ${fmtp(l.changePct)}\n`
+    return `### ${l.name} (${l.ticker}) — ${ENV_LABELS[l.env] || 'PEA'} — variation du jour : ${fmtp(l.changePct)}\n`
       + (r.length
         ? r.map(x => `- ${x.title} : ${x.content}`).join('\n')
         : '- (aucun résultat web)');
   }).join('\n\n');
 
-  const prompt = `Tu es analyste financier. Rédige le rapport quotidien de ce portefeuille PEA, daté du ${today}.
+  const prompt = `Tu es analyste financier. Rédige le rapport quotidien de ce patrimoine, daté du ${today}.
+Les lignes viennent de trois enveloppes : PEA, compte-titres et crypto. Le compte-titres
+n'a pas les contraintes du PEA (places hors Europe possibles) et ses plus-values sont
+imposées à 31,4 %. Une crypto se traite en continu, week-end compris.
 
 Performance globale du jour : ${fmtp(totalPct)}
 
@@ -409,7 +472,8 @@ async function generateWeeklyReport(weekLines, weekPct, dividends) {
     ? dividends.map(d => `- ${d.name} : ${d.amount ? d.amount + ' € ' : ''}vers le ${d.date}${d.estimated ? ' (date estimée)' : ''}`).join('\n')
     : '(aucun dividende à venir — lignes capitalisantes ou sans versement prévu)';
 
-  const prompt = `Tu es analyste financier. Rédige le RAPPORT HEBDOMADAIRE de ce portefeuille PEA, semaine se terminant le ${today}.
+  const prompt = `Tu es analyste financier. Rédige le RAPPORT HEBDOMADAIRE de ce patrimoine, semaine se terminant le ${today}.
+Les lignes viennent de trois enveloppes : PEA, compte-titres et crypto.
 
 Performance du portefeuille sur la semaine : ${fmtp(weekPct)}
 
@@ -509,18 +573,19 @@ async function main() {
       continue;
     }
 
-    // 3. Récupérer le portfolio
-    const portfolio = await getUserPortfolio(user.uid);
+    // 3. Récupérer les lignes des trois enveloppes suivies
+    const portfolio = await getUserLignes(user.uid);
     if (!portfolio.length) {
-      console.log(`   Portfolio vide, ignoré`);
+      console.log(`   Aucune ligne suivie, ignoré`);
       continue;
     }
-    console.log(`  ${portfolio.length} ligne(s) détectée(s)`);
+    console.log(`  ${portfolio.length} ligne(s) détectée(s)`
+      + ` (${['pea','cto','crypto'].map(e => e + ':' + portfolio.filter(r => r.env === e).length).join(' ')})`);
 
     // 4. Récupérer les prix en parallèle
     const priceResults = await Promise.all(
       portfolio.map(async row => {
-        const data = await fetchPrice(row.ticker);
+        const data = await fetchPrice(symboleYahoo(row));
         return { row, data };
       })
     );
@@ -530,7 +595,10 @@ async function main() {
       .filter(({ data }) => data !== null)
       .map(({ row, data }) => ({
         ticker:    row.ticker,
-        name:      data.name || row.name || row.ticker,
+        // Yahoo nomme une crypto « Bitcoin EUR » : le nom du catalogue est
+        // plus juste dans un tableau où tout est déjà en euros.
+        name:      (row.env === 'crypto' ? row.name : (data.name || row.name)) || row.ticker,
+        env:       row.env,
         qty:       row.qty,
         buyPrice:  row.buyPrice || 0,
         price:     data.price,
@@ -595,13 +663,14 @@ async function main() {
     if (isFriday) {
       console.log(`  Vendredi — génération du rapport hebdomadaire...`);
       const weekResults = await Promise.all(
-        portfolio.map(async row => ({ row, w: await fetchWeek(row.ticker) }))
+        portfolio.map(async row => ({ row, w: await fetchWeek(symboleYahoo(row)) }))
       );
       const weekLines = weekResults
         .filter(({ w }) => w && w.weekStart > 0)
         .map(({ row, w }) => ({
           ticker:    row.ticker,
-          name:      w.name || row.name || row.ticker,
+          name:      (row.env === 'crypto' ? row.name : (w.name || row.name)) || row.ticker,
+          env:       row.env,
           qty:       row.qty,
           price:     w.price,
           weekStart: w.weekStart,
@@ -615,7 +684,8 @@ async function main() {
         const wWeekChange = wTotalValue - wPrevValue;
         const wWeekPct    = wPrevValue > 0 ? (wWeekChange / wPrevValue) * 100 : 0;
         const wSorted     = [...weekLines].sort((a, b) => b.weekPct - a.weekPct);
-        const divs        = await upcomingDividends(portfolio);
+        // Une crypto ne verse pas de dividende : on ne l'interroge pas.
+        const divs        = await upcomingDividends(portfolio.filter(r => r.env !== 'crypto'));
 
         console.log(`  Génération du rapport hebdo Mistral...`);
         const aiReport = await generateWeeklyReport(weekLines, wWeekPct, divs);

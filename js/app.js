@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830z';
+const APP_VERSION = '20260831a';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4064,6 +4064,9 @@ const _cryParSym = Object.fromEntries(CRY_CATALOGUE.map(c => [c.sym, c]));
 
 // Cours du jour, par symbole. Vidé à la déconnexion avec le reste des caches.
 let _cryCours = {};
+// Clôture de la veille, gardée à côté du cours : sans elle, le récap ne sait
+// pas dire ce qu'une crypto a fait dans la journée.
+let _cryVeille = {};
 let _cryCoursLe = null;
 let _cryEditId = null;
 
@@ -4078,6 +4081,7 @@ let _cryEditId = null;
  */
 function _viderCacheCrypto() {
   _cryCours = {};
+  _cryVeille = {};
   _cryCoursLe = null;
 }
 
@@ -4219,10 +4223,15 @@ async function _cryChargerCours(force) {
     const meta = JSON.parse(raw).chart?.result?.[0]?.meta;
     const px = meta && meta.regularMarketPrice;
     if (!Number.isFinite(px)) throw new Error('cours absent');
-    return { sym, px };
+    const veille = meta.chartPreviousClose || meta.previousClose || null;
+    return { sym, px, veille };
   }));
 
-  res.forEach(r => { if (r.status === 'fulfilled') _cryCours[r.value.sym] = r.value.px; });
+  res.forEach(r => {
+    if (r.status !== 'fulfilled') return;
+    _cryCours[r.value.sym] = r.value.px;
+    if (Number.isFinite(r.value.veille)) _cryVeille[r.value.sym] = r.value.veille;
+  });
   if (res.some(r => r.status === 'fulfilled')) _cryCoursLe = Date.now();
 }
 
@@ -4238,6 +4247,11 @@ let _cryOnglet = 'portefeuille';
 
 window.cryTab = function(id) {
   _cryOnglet = id;
+  // Le document du récap n'arrive pas avec la page : on va le chercher quand
+  // son onglet s'ouvre, et une seule fois par session.
+  if (id === 'recap' && !getRecap(currentUser)) {
+    _refreshRecap().then(_cryRenderRecap).catch(() => {});
+  }
   document.querySelectorAll('#cry-tabs .pea-tab').forEach(b => {
     b.classList.toggle('active', b.dataset.tab === id);
   });
@@ -4257,6 +4271,7 @@ async function renderCrypto() {
   if (app) app.hidden = !live;
   if (!live) return;
 
+  _cryRenderRecap();
   _cryRender();                          // d'abord sans les cours, pour ne pas attendre
   _cryRenderActivite();
   _cryRenderWatch();
@@ -4269,6 +4284,70 @@ async function renderCrypto() {
   _cryWatchPrixManquants();
   _cryRenderWatch();
   _cryRenderChart().catch(e => console.warn('[crypto] courbe :', e && e.message));
+}
+
+/**
+ * Le récap du jour, vu depuis la crypto.
+ *
+ * Aucun second rapport : c'est celui que le serveur écrit chaque soir pour
+ * tout le patrimoine, dont on ne garde ici que les lignes crypto et les
+ * phrases de l'IA qui les concernent. Deux rapports auraient coûté deux
+ * appels au modèle pour dire la même chose de deux morceaux du même compte.
+ */
+function _cryRenderRecap() {
+  const pan = document.getElementById('cry-recap');
+  if (!pan) return;
+  const r = getRecap(currentUser);
+  const lignes = ((r && r.lines) || []).filter(l => l.env === 'crypto');
+
+  if (!lignes.length) {
+    pan.innerHTML =
+      '<div class="cry-avenir">'
+      + '<div class="cry-avenir-ico cry-avenir-ia">'
+      + '<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3l1.6 4.4L18 9l-4.4 1.6L12 15l-1.6-4.4L6 9l4.4-1.6L12 3z"/><path d="M18.5 15.5l.7 1.9 1.9.7-1.9.7-.7 1.9-.7-1.9-1.9-.7 1.9-.7.7-1.9z"/></svg>'
+      + '</div>'
+      + '<div class="cry-avenir-title">Récap du jour</div>'
+      + '<div class="cry-avenir-desc">Le récap est écrit chaque jour ouvré à 20h, sur tout votre patrimoine. '
+      + 'Vos lignes crypto y apparaîtront dès le prochain passage — ou tout de suite, '
+      + 'avec « Générer maintenant » depuis la page Récap du jour.</div>'
+      + '</div>';
+    return;
+  }
+
+  const sgn = v => (v >= 0 ? '+' : '');
+  const col = v => (v >= 0 ? 'var(--positive)' : 'var(--negative)');
+  const valeur = lignes.reduce((s, l) => s + l.value, 0);
+  const jour   = lignes.reduce((s, l) => s + l.qty * (l.price - l.prev), 0);
+  const veille = lignes.reduce((s, l) => s + l.qty * l.prev, 0);
+  const jourPct = veille > 0 ? (jour / veille) * 100 : 0;
+
+  // Le commentaire de l'IA porte sur tout le patrimoine : on n'en garde que la
+  // synthèse et les phrases dont le nom correspond à une ligne d'ici.
+  const noms = lignes.map(l => String(l.name || '').toLowerCase());
+  const phrases = String((r && r.aiComment) || '')
+    .split('\n')
+    .map(t => t.trim())
+    .filter(t => t && (/^synth[eè]se\s*:/i.test(t) || noms.some(n => t.toLowerCase().startsWith(n))));
+
+  pan.innerHTML =
+    '<div class="cry-fisc" style="margin-bottom:16px">'
+    + '<div class="cry-fisc-head"><span class="cry-fisc-title">Vos cryptos aujourd’hui · '
+    + _escapeHtmlChat(String((r && r.dateLabel) || '')) + '</span></div>'
+    + '<div class="cry-fisc-val" style="color:' + col(jour) + '">' + sgn(jourPct) + jourPct.toFixed(2) + ' %</div>'
+    + '<div class="cry-fisc-sub">' + sgn(jour) + fmt(jour) + ' sur la journée · ' + fmt(valeur) + ' détenus</div>'
+    + '<div class="cry-fisc-lignes">'
+    + lignes.map(l =>
+        '<div class="cry-fisc-ligne"><span>' + _escapeHtmlChat(l.name) + '</span>'
+        + '<span class="cry-fisc-montant ' + (l.changePct >= 0 ? 'pos' : 'neg') + '">'
+        + sgn(l.changePct) + Number(l.changePct || 0).toFixed(2) + ' %</span></div>').join('')
+    + '</div>'
+    + (phrases.length
+        ? '<div class="cry-fisc-notes">' + phrases.map(t =>
+            '<div class="cry-fisc-note"><span class="cry-fisc-puce"></span><span>' + _escapeHtmlChat(t) + '</span></div>').join('') + '</div>'
+        : '')
+    + '<div class="cry-fisc-avert">Écrit par une IA à partir des cours du jour et de la presse financière. '
+    + 'Ni conseil d’investissement, ni analyse à suivre les yeux fermés.</div>'
+    + '</div>';
 }
 
 // ── La liste de suggestions ────────────────────────────────────────────────
@@ -6886,11 +6965,11 @@ function _syncPeaFab(id) {
   if (!on) togglePeaFab(false);
 }
 
-// Vues qui n'ont pas de sens sur le compte-titres. Le récap du soir et la
-// série quotidienne sont écrits hors de l'application, pour le PEA seul :
-// affichés ici, ils montreraient les chiffres de l'autre compte ou un écran
-// vide. Ils reviendront quand la donnée du CTO sera produite.
-const TABS_HORS_CTO = ['benchmark', 'recap'];
+// Vues qui n'ont pas de sens sur le compte-titres. Le Benchmark compare une
+// série quotidienne qui n'est écrite que pour le PEA : affiché ici, il
+// montrerait un écran vide. Le Récap, lui, couvre désormais les trois
+// enveloppes — il est le même des deux côtés, et reste donc accessible.
+const TABS_HORS_CTO = ['benchmark'];
 function _tabHorsCompte(key) { return _estCto() && TABS_HORS_CTO.includes(key); }
 
 function _syncPeaTabs(id) {
@@ -16841,13 +16920,18 @@ function _paintWeeklyRecap() {
 
   const rows = r.lines.map(l => {
     const c = col(l.weekPct);
-    const badge = _isEtfRow(l)
+    const badge = l.env === 'crypto'
+      ? '<span class="badge-crypto">CRYPTO</span>'
+      : _isEtfRow(l)
       ? '<span class="badge-etf">ETF</span>'
       : '<span class="badge-action">ACTION</span>';
+    const envTag = (l.env === 'pea' || l.env === 'cto')
+      ? '<span class="badge-env">' + l.env.toUpperCase() + '</span>'
+      : '';
     return '<tr>'
       + '<td data-label="Action"><div style="display:flex;align-items:center;gap:9px">'
       + logoHtml(l.ticker, 28, 'ticker-icon')
-      + '<span style="font-size:13px;font-weight:600;color:var(--text)">' + l.name + badge + '</span>'
+      + '<span style="font-size:13px;font-weight:600;color:var(--text)">' + l.name + badge + envTag + '</span>'
       + '</div></td>'
       + '<td data-label="Ticker" style="color:var(--text2)">' + l.ticker + '</td>'
       + '<td data-label="Qté" style="color:var(--text)">' + l.qty + '</td>'
@@ -17227,19 +17311,31 @@ window.renderFavoris    = renderFavoris;
 
 window.generateRecapNow = async function() {
   const btn = document.getElementById('btn-generate-recap');
-  const pf  = getPortfolio(currentUser);
-  if (!pf.length) {
-    _showChatToast({ icon: IC.inbox, title: 'Portefeuille vide', msg: 'Ajoutez des lignes avant de générer un récap.' });
+  // Les collections des autres enveloppes ne sont lues que si l'on presse le
+  // bouton : la page du récap, elle, se contente du document déjà écrit.
+  try {
+    await assurerDonnees('crypto');
+    if (_aUnCto()) await assurerCompte('cto');
+  } catch (e) { console.warn('[recap] chargement :', e); }
+  // Le récap parle du patrimoine, pas d'un compte : PEA, compte-titres et
+  // crypto y entrent ensemble, comme dans celui que le serveur écrit le soir.
+  const titres = [
+    ...getPortfolio(currentUser, 'pea').map(r => ({ ...r, env: 'pea' })),
+    ...getPortfolio(currentUser, 'cto').map(r => ({ ...r, env: 'cto' })),
+  ];
+  if (!titres.length && !_cryPositions().length) {
+    _showChatToast({ icon: IC.inbox, title: 'Rien à résumer', msg: 'Ajoutez des lignes avant de générer un récap.' });
     return;
   }
   if (btn) { btn.disabled = true; btn.textContent = 'Génération…'; }
 
-  const lines = pf.filter(r => r.currentPrice).map(r => {
+  const lines = titres.filter(r => r.currentPrice).map(r => {
     const chg  = r.changePct || 0;
     const prev = r.currentPrice / (1 + chg / 100);
     return {
       ticker:    r.ticker,
       name:      r.name || r.ticker,
+      env:       r.env,
       qty:       r.qty,
       buyPrice:  r.buyPrice || 0,
       price:     r.currentPrice,
@@ -17249,6 +17345,32 @@ window.generateRecapNow = async function() {
       pnl:       r.qty * (r.currentPrice - (r.buyPrice || r.currentPrice)),
     };
   });
+
+  // Crypto : une ligne n'entre que si son cours ET sa clôture de la veille
+  // sont connus. Sans la veille, la variation du jour serait inventée.
+  _cryPositions().forEach(pos => {
+    const px = _cryCours[pos.sym];
+    const veille = _cryVeille[pos.sym];
+    if (!Number.isFinite(px) || !Number.isFinite(veille) || veille <= 0) return;
+    lines.push({
+      ticker:    pos.sym,
+      name:      (_cryParSym[pos.sym] && _cryParSym[pos.sym].nom) || pos.sym,
+      env:       'crypto',
+      qty:       pos.qte,
+      buyPrice:  pos.pru || 0,
+      price:     px,
+      prev:      veille,
+      changePct: (px - veille) / veille * 100,
+      value:     pos.qte * px,
+      pnl:       pos.qte * (px - (pos.pru || px)),
+    });
+  });
+
+  if (!lines.length) {
+    if (btn) { btn.disabled = false; btn.innerHTML = IC.zap + ' Générer maintenant'; }
+    _showChatToast({ icon: IC.inbox, title: 'Cours manquants', msg: 'Aucun cours à jour : réessayez dans un instant.' });
+    return;
+  }
 
   const totalValue     = lines.reduce((s, l) => s + l.value, 0);
   const totalInvested  = lines.reduce((s, l) => s + l.qty * l.buyPrice, 0);
@@ -17359,13 +17481,22 @@ function _paintRecapPage() {
   const rows = r.lines.map(l => {
     const c = col(l.changePct);
     const dayVal = l.qty * (l.price - l.prev);
-    const badge  = _isEtfRow(l)
+    // Le récap couvre les trois enveloppes depuis le 31/08 : la nature de la
+    // ligne ne suffit plus à la situer, elle dit aussi d'où elle vient. Les
+    // récaps écrits avant n'ont pas de champ `env` — ils restent lisibles,
+    // sans pastille d'enveloppe.
+    const badge  = l.env === 'crypto'
+      ? '<span class="badge-crypto">CRYPTO</span>'
+      : _isEtfRow(l)
       ? '<span class="badge-etf">ETF</span>'
       : '<span class="badge-action">ACTION</span>';
+    const envTag = (l.env === 'pea' || l.env === 'cto')
+      ? '<span class="badge-env">' + l.env.toUpperCase() + '</span>'
+      : '';
     return '<tr>'
       + '<td data-label="Action"><div style="display:flex;align-items:center;gap:9px">'
       + logoHtml(l.ticker, 28, 'ticker-icon')
-      + '<span style="font-size:13px;font-weight:600;color:var(--text)">' + l.name + badge + '</span>'
+      + '<span style="font-size:13px;font-weight:600;color:var(--text)">' + l.name + badge + envTag + '</span>'
       + '</div></td>'
       + '<td data-label="Ticker" style="color:var(--text2)">' + l.ticker + '</td>'
       + '<td data-label="Qté" style="color:var(--text)">' + l.qty + '</td>'

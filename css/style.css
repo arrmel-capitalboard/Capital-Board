@@ -1091,6 +1091,27 @@ tr:hover td { background: rgba(255,255,255,0.018); }
   font-size: 9px; font-family: var(--mono); font-weight: 700;
   letter-spacing: 0.8px; margin-left: 6px; vertical-align: middle;
 }
+/* Une ligne de crypto dans un tableau qui mêle les trois enveloppes. Même
+   grammaire que les deux autres badges, la teinte de la section crypto. */
+.badge-crypto {
+  display: inline-flex; align-items: center;
+  background: rgba(245,183,49,0.10); color: var(--gold);
+  border: 1px solid rgba(245,183,49,0.25);
+  padding: 1px 6px; border-radius: 4px;
+  font-size: 9px; font-family: var(--mono); font-weight: 700;
+  letter-spacing: 0.8px; margin-left: 6px; vertical-align: middle;
+}
+/* D'où vient la ligne : PEA, CTO ou Crypto. Volontairement discret — c'est
+   une précision, pas une information qu'on vient chercher. */
+.badge-env {
+  display: inline-flex; align-items: center;
+  background: var(--s3); color: var(--text3);
+  border: 1px solid var(--border);
+  padding: 1px 6px; border-radius: 4px;
+  font-size: 9px; font-family: var(--mono); font-weight: 700;
+  letter-spacing: 0.8px; margin-left: 6px; vertical-align: middle;
+}
+
 .badge-action {
   display: inline-flex; align-items: center;
   background: rgba(0,224,158,0.08); color: var(--positive);
@@ -2370,6 +2391,8 @@ body.sb-collapsed .main { margin-left: 58px; }
   /* Ticker cell — logo + nom uniquement */
   .ticker-sym { display: none; }
   .ticker-name .badge-action,
+  .ticker-name .badge-crypto,
+  .ticker-name .badge-env,
   .ticker-name .badge-etf { display: none; }
 
   /* Sur le portefeuille, les deux badges reviennent, posés sur leur propre
