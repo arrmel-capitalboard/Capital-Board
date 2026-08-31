@@ -4578,9 +4578,11 @@ body.has-demo-banner { padding-top: 40px; }
   .ob-spot, .ob-rail i, .ob-tick::after { transition: none; }
 }
 
-/* ─── Admin : réglage à trois crans d'une section à double vue ─── */
+/* ─── Admin : réglage à quatre crans d'une section à double vue ─── */
+/* Quatre libellés ne tiennent pas toujours sur une ligne dans la colonne de
+   l'éditeur : on les laisse passer à la ligne plutôt que déborder. */
 .adm-tri {
-  display: inline-flex; gap: 2px; padding: 2px;
+  display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 2px;
   background: var(--s3); border: 1px solid var(--border);
   border-radius: 8px;
 }
@@ -4592,8 +4594,11 @@ body.has-demo-banner { padding-top: 40px; }
 }
 .adm-tri-opt:hover { color: var(--text2); }
 .adm-tri-opt.active { background: var(--s1); color: var(--text); box-shadow: 0 1px 5px rgba(0,0,0,.4); }
-.adm-tri-opt.active.beta { color: var(--gold); }
-.adm-tri-opt.active.on   { color: var(--positive); }
+.adm-tri-opt.active.beta    { color: var(--gold); }
+/* Bêta publique : ouverte comme « Ouvert », étiquetée comme « Bêta » — la
+   couleur le dit, verte mais tirant sur l'or. */
+.adm-tri-opt.active.betapub { color: #b9d24b; }
+.adm-tri-opt.active.on      { color: var(--positive); }
 
 /* ═══════════════════════════════════════════════════
    DÉPENSES & ABONNEMENTS

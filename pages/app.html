@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260830s">
+<link rel="stylesheet" href="css/style.css?v=20260830t">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -2766,9 +2766,11 @@
         </div>
       </div>
 
+      <!-- Le texte est réécrit au rendu : bêta privée (admin seul) et bêta
+           publique (tout le monde entre) ne disent pas la même chose. -->
       <div class="dep-beta-note" id="dep-beta-note" hidden>
         <span class="dep-beta-tag">Bêta</span>
-        Section visible par vous seul. Les autres membres voient encore la page « Bientôt ».
+        <span id="dep-beta-txt">Section visible par vous seul. Les autres membres voient encore la page « Bientôt ».</span>
       </div>
 
       <!-- Bento : le reste à vivre occupe la grande tuile, les deux flux
@@ -4083,11 +4085,11 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260830s"></script>
+<script src="js/app.js?v=20260830t"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260830s"></script>
+<script src="js/onboarding.js?v=20260830t"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
-<script src="js/import.js?v=20260830s"></script>
+<script src="js/import.js?v=20260830t"></script>
 
 <!-- Modal confirmation générique (broker reset etc.) -->
 <div id="confirm-modal2" style="display:none;position:fixed;inset:0;z-index:9999;background:rgba(0,0,0,0.6);backdrop-filter:blur(4px);align-items:center;justify-content:center">

@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830s';
+const APP_VERSION = '20260830t';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3875,11 +3875,11 @@ async function startApp(user) {
     _getAppConfig().then(c => {
       applySocialLinks(c.social);
       applyNavLayout(_navFromConfig(c));
-      applyFeatureFlags(c.features, c.beta, c.bareme);
+      applyFeatureFlags(c.features, c.beta, c.bareme, c.betaPublic);
     }).catch(() => {
       applySocialLinks(null);
       applyNavLayout(null);
-      applyFeatureFlags({}, {}, null);
+      applyFeatureFlags({}, {}, null, {});
     });
     try { _processDiscordLink(user); } catch(e) { console.warn('discord link:', e); }
   } catch(e) {
@@ -6301,6 +6301,12 @@ let _featureFlags = {};
 // config/app.beta = { depenses: true }. Séparé de `features` pour que couper
 // une section reste possible sans toucher à son état bêta, et inversement.
 let _betaFlags = {};
+// config/app.betaPublic = { depenses: true }. Bêta publique : le module est
+// ouvert à tous les membres mais garde son étiquette « Bêta ». Séparé de
+// `beta` pour qu'on puisse le refermer aux membres sans lui retirer
+// l'étiquette, et pour que le défaut reste la bêta privée tant que rien n'a
+// été réglé dans config/app.
+let _betaPublicFlags = {};
 
 function _isFeatureOn(key) { return _featureFlags[key] !== false; }
 // Bêta = la section est visible dans le menu pour tout le monde, mais seul
@@ -6311,20 +6317,27 @@ function _isFeatureOn(key) { return _featureFlags[key] !== false; }
 // l'inverse avait exposé Dépenses à tous les membres alors que rien n'avait
 // jamais été réglé dans config/app.
 function _isFeatureBeta(key) { return BETA_CAPABLE.includes(key) && _betaFlags[key] !== false; }
-// Trois états pour l'éditeur admin : masqué / bêta / ouvert.
+// Bêta publique : tout le monde entre, le bandeau et la pastille « Bêta »
+// restent. Le module est livré, mais annoncé comme jeune. Il faut le dire
+// explicitement — sans réglage, une bêta reste privée.
+function _isBetaPublique(key) { return _isFeatureBeta(key) && _betaPublicFlags[key] === true; }
+// Quatre états pour l'éditeur admin : masqué / bêta / bêta publique / ouvert.
 function _featureState(key) {
   if (!_isFeatureOn(key)) return 'off';
-  return _isFeatureBeta(key) ? 'beta' : 'on';
+  if (!_isFeatureBeta(key)) return 'on';
+  return _isBetaPublique(key) ? 'betapub' : 'beta';
 }
 // La vraie question posée par les pages à double vue : montre-t-on le module ?
 function _isModuleLive(key) {
   if (!_isFeatureOn(key)) return false;
-  return _isFeatureBeta(key) ? isAdmin() : true;
+  if (!_isFeatureBeta(key)) return true;
+  return _isBetaPublique(key) || isAdmin();
 }
 
-function applyFeatureFlags(features, beta, bareme) {
+function applyFeatureFlags(features, beta, bareme, betaPublic) {
   _featureFlags = features || {};
   if (beta !== undefined) _betaFlags = beta || {};
+  if (betaPublic !== undefined) _betaPublicFlags = betaPublic || {};
   if (bareme !== undefined) applyLivretsBareme(bareme);
   FLAGGABLE.forEach(key => {
     const on = _featureFlags[key] !== false;
@@ -6365,7 +6378,9 @@ function _applyBetaBadges() {
       // Poser la seule couleur du texte laissait un « New » vert dans une
       // pastille restée jaune.
       badge.classList.toggle('neuf', neuf);
-      if (beta && isAdmin()) {
+      // En bêta privée seul l'admin voit « Bêta » ; en bêta publique tout le
+      // monde le voit, puisque tout le monde peut ouvrir le module.
+      if (beta && live) {
         badge.textContent = 'Bêta';
         badge.style.color = '#f5b731';
         badge.hidden = false;
@@ -17553,7 +17568,7 @@ async function renderAdminPage() {
   _adminSignupStatus(signupOpen);
 
   // Feature flags (masqué / bêta / ouvert) — intégrés à l'éditeur de menu ci-dessous
-  applyFeatureFlags(cfg.features || {}, cfg.beta || {}, cfg.bareme || null);
+  applyFeatureFlags(cfg.features || {}, cfg.beta || {}, cfg.bareme || null, cfg.betaPublic || {});
 
   // Éditeur d'organisation du menu
   const savedNav = _navFromConfig(cfg);
@@ -17599,33 +17614,38 @@ async function adminToggleFeature(key, el) {
   } finally { el.disabled = false; }
 }
 
-// Sections à double vue : un seul réglage à trois crans plutôt qu'un
-// interrupteur plus une case. « Bêta » ouvre le module à l'admin seul, les
-// membres continuent de voir la page « Bientôt ».
+// Sections à double vue : un seul réglage plutôt qu'un interrupteur plus des
+// cases. « Bêta » ouvre le module à l'admin seul, les membres continuent de
+// voir la page « Bientôt » ; « Bêta publique » l'ouvre à tous en gardant
+// l'étiquette ; « Ouvert » la retire.
 async function adminSetFeatureState(key, state) {
   if (!isAdmin() || !BETA_CAPABLE.includes(key)) return;
   if (_featureState(key) === state) return;
-  const prevOn = _featureFlags[key];
+  const prevOn   = _featureFlags[key];
   const prevBeta = _betaFlags[key];
+  const prevPub  = _betaPublicFlags[key];
   const on   = state !== 'off';
-  const beta = state === 'beta';
-  _featureFlags[key] = on;
-  _betaFlags[key]    = beta;
+  const beta = state === 'beta' || state === 'betapub';
+  const pub  = state === 'betapub';
+  _featureFlags[key]    = on;
+  _betaFlags[key]       = beta;
+  _betaPublicFlags[key] = pub;
   applyFeatureFlags(_featureFlags, _betaFlags);
   renderNavEditor();
   try {
-    await _setAppConfig({ features: { [key]: on }, beta: { [key]: beta } });
+    await _setAppConfig({ features: { [key]: on }, beta: { [key]: beta }, betaPublic: { [key]: pub } });
     _audit('feature', key + '=' + state);
   } catch (e) {
     console.error('[admin] feature state:', e);
-    _featureFlags[key] = prevOn;
-    _betaFlags[key]    = prevBeta;
+    _featureFlags[key]    = prevOn;
+    _betaFlags[key]       = prevBeta;
+    _betaPublicFlags[key] = prevPub;
     applyFeatureFlags(_featureFlags, _betaFlags);
     renderNavEditor();
   }
 }
 
-// Rendu du sélecteur à trois crans, à la place de l'interrupteur.
+// Rendu du sélecteur à quatre crans, à la place de l'interrupteur.
 function _featureStateCtrl(key) {
   const cur = _featureState(key);
   const opt = (val, label, title) =>
@@ -17634,7 +17654,8 @@ function _featureStateCtrl(key) {
   return '<span class="adm-tri">' +
     opt('off',  'Masqué', 'Invisible dans le menu, pour tout le monde') +
     opt('beta', 'Bêta',   'Le module ne s\'ouvre que pour vous ; les membres voient « Bientôt »') +
-    opt('on',   'Ouvert', 'Module visible par tous les membres') +
+    opt('betapub', 'Bêta publique', 'Le module s\'ouvre à tous les membres, avec le bandeau « Bêta »') +
+    opt('on',   'Ouvert', 'Module visible par tous les membres, sans bandeau') +
   '</span>';
 }
 
@@ -20770,8 +20791,16 @@ function renderDepenses() {
   teaser.hidden = live;
   app.hidden    = !live;
   if (!live) return;
+  // Le bandeau ne dit pas la même chose selon qui peut entrer : en bêta privée
+  // il rappelle à l'admin que lui seul voit le module, en bêta publique il
+  // prévient le membre que le module est encore jeune.
   const note = document.getElementById('dep-beta-note');
-  if (note) note.hidden = !_isFeatureBeta('depenses');
+  if (note) {
+    note.hidden = !_isFeatureBeta('depenses');
+    _depText('dep-beta-txt', _isBetaPublique('depenses')
+      ? 'Module en bêta : vos données sont enregistrées normalement, mais l’affichage et les calculs peuvent encore évoluer. Vos retours nous aident — la boîte à idées est faite pour ça.'
+      : 'Section visible par vous seul. Les autres membres voient encore la page « Bientôt ».');
+  }
   if (!_depMonth) _depMonth = _depNowYm();
   _depRender();
 }
@@ -22354,7 +22383,7 @@ function _livRenderKpis(livrets, total, nets) {
     // La question n'est pas « puis-je y aller ? » mais « est-il ouvert ? » :
     // en bêta, l'admin y accède quand personne d'autre ne le peut, et le
     // message doit rester vrai pour celui qui le lit.
-    const depOuvert = _isFeatureOn('depenses') && !_isFeatureBeta('depenses');
+    const depOuvert = _isModuleLive('depenses');
     _depText('liv-k-reserve-sub', depOuvert
       ? 'Renseignez vos dépenses pour connaître votre réserve en mois.'
       : 'Se calculera dès l’ouverture de l’onglet Dépenses & abonnements : ' +
