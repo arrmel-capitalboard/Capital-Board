@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830v';
+const APP_VERSION = '20260830w';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -562,7 +562,10 @@ const _COLS_LOURDES = ['portfolio', 'transactions', 'versements'];
 // ses symboles, et le tableau principal affiche le nombre d'alertes par ligne.
 // `divIgnored`, `nominatif` et `trCohort` y sont pour rien — elles arrivent
 // gratuitement, puisque le document est lu de toute façon.
-const _COLS_ANNEXES = ['watchlist', 'alerts', 'divIgnored', 'nominatif', 'trCohort'];
+// `watchlistCto` y est aussi : une seconde watchlist ne pèse rien dans un
+// document déjà lu, là où un document à elle coûterait une lecture par session
+// à tout le monde, CTO ouvert ou non.
+const _COLS_ANNEXES = ['watchlist', 'watchlistCto', 'alerts', 'divIgnored', 'nominatif', 'trCohort'];
 
 // Réglages personnels. Traités à part des listes ci-dessus : c'est un objet, pas
 // un tableau, et il vit sous la même clé dans le document d'annexes.
@@ -669,7 +672,9 @@ const _DONNEES_PAGE = {
   // La page Livrets projette l'epargne a partir des depenses mensuelles
   // (`_livDepenseMensuelle`) : les deux collections lui sont necessaires.
   livrets:     ['livrets', 'depenses'],
-  patrimoine:  ['livrets', 'depenses'],
+  // Les documents du CTO ne sont lus qu'ici et sur ses propres pages : le
+  // patrimoine additionne les enveloppes, il lui faut les deux comptes.
+  patrimoine:  ['livrets', 'depenses', 'portfolioCto', 'transactionsCto', 'versementsCto'],
   // `recap` n'y figure pas : `renderRecapPage` relit deja les deux documents
   // a chaque ouverture (`_refreshRecap`), les declarer ici doublerait la note.
 };
@@ -713,7 +718,21 @@ async function assurerDonnees(...cols) {
 
 /** Charge tout, sans exception. Pour l'export : il doit être complet. */
 async function assurerToutesLesDonnees() {
-  await assurerDonnees('dailyValues', 'depenses', 'livrets', '@recap', '@weeklyRecap');
+  await assurerDonnees('dailyValues', 'depenses', 'livrets', '@recap', '@weeklyRecap', 'dailyValuesCto');
+  await assurerCompte('cto');
+}
+
+/**
+ * Amène en mémoire les collections lourdes d'un compte.
+ *
+ * Le PEA arrive au chargement de l'application ; le CTO, lui, ne se lit qu'à
+ * l'ouverture de sa page ou du patrimoine — trois documents de plus à chaque
+ * session, pour un compte que tout le monde n'a pas, c'était le genre de
+ * dépense qui a déjà épuisé le quota de lectures une fois.
+ */
+async function assurerCompte(compte) {
+  if (compte !== 'cto') return;
+  await assurerDonnees('portfolioCto', 'transactionsCto', 'versementsCto');
 }
 
 function getUserSettings(uid) {
@@ -742,29 +761,57 @@ async function saveUserSettings(uid, settings) {
   await setFirestoreDoc(firestoreDoc(db, 'users', u, 'data', 'settings'), merged);
 }
 
+// ─── Compte-titres actif ───────────────────────────────────────────────────
+//
+// Le CTO n'a ni page ni code à lui : ce sont les écrans du PEA, ouverts sur
+// d'autres données. Un compte-titres ordinaire se tient exactement pareil —
+// des lignes, des ordres, des versements, des dividendes ; ce qui change tient
+// à l'éligibilité (aucune restriction de place) et à la fiscalité (flat tax de
+// 31,4 % sur les plus-values et les dividendes, quand le PEA en exonère
+// l'impôt après cinq ans). Dupliquer six mille lignes de rendu pour ça aurait
+// fait deux modules à corriger deux fois.
+//
+// Le compte actif décide donc du suffixe des collections : `portfolio` pour le
+// PEA, `portfolioCto` pour le compte-titres. Les fonds de tâche (alertes,
+// patrimoine, export) ne suivent pas l'écran : ils nomment le compte qu'ils
+// veulent, sinon ils liraient celui qu'on regarde.
+let _compte = 'pea';
+// Dernier compte dont le tableau a été rendu. Le PEA l'est au chargement, avant
+// toute navigation : c'est sa valeur de départ.
+let _compteRendu = 'pea';
+const _estCto = () => _compte === 'cto';
+
+// Collections dédoublées par compte. Les autres (alertes, dividendes ignorés,
+// nominatif…) restent communes : elles portent un ticker, pas une enveloppe.
+const COLS_COMPTE = ['portfolio', 'transactions', 'versements', 'watchlist', 'dailyValues'];
+function _col(col, compte) { return (compte || _compte) === 'cto' ? col + 'Cto' : col; }
+
 // Lecture synchrone depuis le cache
 // Une seule entrée nulle dans le portefeuille fait planter renderPortfolio()
 // (row.qty) ET refreshPrices() (row.ticker) — les deux tournant sous try/catch,
 // l'échec est silencieux : plus de mise à jour des cours ni d'animation. On
 // écarte donc les lignes invalides à la lecture, en gardant le tableau
 // d'origine tant qu'il est sain (son identité sert aux appelants qui le mutent).
-function getPortfolio(user) {
-  const raw = _localCache[(user||currentUser) + '_portfolio'];
+//
+// Le second argument nomme le compte (`'pea'` / `'cto'`) ; sans lui, c'est
+// celui affiché à l'écran.
+function getPortfolio(user, compte) {
+  const raw = _localCache[(user||currentUser) + '_' + _col('portfolio', compte)];
   if (!Array.isArray(raw)) return [];
   const ok = (r) => r && typeof r === 'object';
   return raw.every(ok) ? raw : raw.filter(ok);
 }
-function getTransactions(user) { return _localCache[(user||currentUser) + '_transactions'] || []; }
-function getVersements(user)   { return _localCache[(user||currentUser) + '_versements']   || []; }
-function getWatchlist(user)    { return _localCache[(user||currentUser) + '_watchlist']    || []; }
-function getDailyValues(user)  { return _localCache[(user||currentUser) + '_dailyValues']  || []; }
+function getTransactions(user, compte) { return _localCache[(user||currentUser) + '_' + _col('transactions', compte)] || []; }
+function getVersements(user, compte)   { return _localCache[(user||currentUser) + '_' + _col('versements',   compte)] || []; }
+function getWatchlist(user, compte)    { return _localCache[(user||currentUser) + '_' + _col('watchlist',    compte)] || []; }
+function getDailyValues(user, compte)  { return _localCache[(user||currentUser) + '_' + _col('dailyValues',  compte)] || []; }
 
 // Écriture synchrone dans le cache + Firestore en arrière-plan
-function savePortfolio(user, data)    { _fsWrite(user||currentUser, 'portfolio',    data); }
-function saveTransactions(user, data) { _fsWrite(user||currentUser, 'transactions', data); }
-function saveVersements(user, data)   { _fsWrite(user||currentUser, 'versements',   data); }
-function saveWatchlist(user, data)    { _fsWrite(user||currentUser, 'watchlist',    data); }
-function saveDailyValues(user, data)  { _fsWrite(user||currentUser, 'dailyValues', data); }
+function savePortfolio(user, data, compte)    { _fsWrite(user||currentUser, _col('portfolio',    compte), data); }
+function saveTransactions(user, data, compte) { _fsWrite(user||currentUser, _col('transactions', compte), data); }
+function saveVersements(user, data, compte)   { _fsWrite(user||currentUser, _col('versements',   compte), data); }
+function saveWatchlist(user, data, compte)    { _fsWrite(user||currentUser, _col('watchlist',    compte), data); }
+function saveDailyValues(user, data, compte)  { _fsWrite(user||currentUser, _col('dailyValues',  compte), data); }
 // trCohort : résultat de perf cohorte importé depuis un CSV Trade Republic (objet unique en array)
 function getTRCohort(user)  { const a = _localCache[(user||currentUser) + '_trCohort']; return (a && a[0]) || null; }
 function saveTRCohort(user, obj) { _fsWrite(user||currentUser, 'trCohort', obj ? [obj] : []); }
@@ -873,11 +920,21 @@ async function exportAllUserData() {
       exportedAt: new Date().toISOString(),
       uid: uid,
     },
-    portfolio:    getPortfolio(uid),
-    transactions: getTransactions(uid),
-    versements:   getVersements(uid),
-    watchlist:    getWatchlist(uid),
-    dailyValues:  getDailyValues(uid),
+    // Les collections du PEA gardent leur nom : un export ancien reste
+    // lisible, et un fichier d'aujourd'hui se restaure sur une version qui ne
+    // connaît pas encore le compte-titres.
+    portfolio:    getPortfolio(uid, 'pea'),
+    transactions: getTransactions(uid, 'pea'),
+    versements:   getVersements(uid, 'pea'),
+    watchlist:    getWatchlist(uid, 'pea'),
+    dailyValues:  getDailyValues(uid, 'pea'),
+    cto: {
+      portfolio:    getPortfolio(uid, 'cto'),
+      transactions: getTransactions(uid, 'cto'),
+      versements:   getVersements(uid, 'cto'),
+      watchlist:    getWatchlist(uid, 'cto'),
+      dailyValues:  getDailyValues(uid, 'cto'),
+    },
     settings:     getUserSettings(uid),
   };
 
@@ -925,6 +982,7 @@ async function importAllUserData(event) {
     versements:   (payload.versements   || []).length,
     watchlist:    (payload.watchlist    || []).length,
     dailyValues:  (payload.dailyValues  || []).length,
+    cto:          Object.values(payload.cto || {}).reduce((n, v) => n + (Array.isArray(v) ? v.length : 0), 0),
   };
   const total = Object.values(counts).reduce((s,n) => s+n, 0);
 
@@ -933,7 +991,8 @@ async function importAllUserData(event) {
     + '• Transactions : ' + counts.transactions + '\n'
     + '• Versements   : ' + counts.versements + '\n'
     + '• Watchlist    : ' + counts.watchlist + '\n'
-    + '• Valorisations quotidiennes : ' + counts.dailyValues + '\n\n'
+    + '• Valorisations quotidiennes : ' + counts.dailyValues + '\n'
+    + '• Compte-titres : ' + counts.cto + ' éléments\n\n'
     + 'Exporté le : ' + (payload._meta.exportedAt || '?') + '\n\n'
     + '⚠ Cela REMPLACE toutes les données actuelles de votre compte.';
 
@@ -945,17 +1004,25 @@ async function importAllUserData(event) {
       // Une sauvegarde peut avoir été bricolée à la main, ou dater d'avant le
       // contrôle d'éligibilité : on la filtre comme le reste.
       const horsPea = payload.portfolio.filter(r => r && r.ticker
-        && peaEligibility(r.ticker, r.name, r.quoteType).level === 'block');
+        && peaEligibiliteStricte(r.ticker, r.name, r.quoteType).level === 'block');
       if (horsPea.length) {
         alert('Lignes non éligibles au PEA, écartées de la restauration :' + String.fromCharCode(10, 10)
           + horsPea.map(r => '• ' + r.ticker).join(String.fromCharCode(10)));
       }
-      savePortfolio(uid, payload.portfolio.filter(r => !horsPea.includes(r)));
+      savePortfolio(uid, payload.portfolio.filter(r => !horsPea.includes(r)), 'pea');
     }
-    if (Array.isArray(payload.transactions)) saveTransactions(uid, payload.transactions);
-    if (Array.isArray(payload.versements))   saveVersements(uid, payload.versements);
-    if (Array.isArray(payload.watchlist))    saveWatchlist(uid, payload.watchlist);
-    if (Array.isArray(payload.dailyValues))  saveDailyValues(uid, payload.dailyValues);
+    if (Array.isArray(payload.transactions)) saveTransactions(uid, payload.transactions, 'pea');
+    if (Array.isArray(payload.versements))   saveVersements(uid, payload.versements, 'pea');
+    if (Array.isArray(payload.watchlist))    saveWatchlist(uid, payload.watchlist, 'pea');
+    if (Array.isArray(payload.dailyValues))  saveDailyValues(uid, payload.dailyValues, 'pea');
+    // Le compte-titres n'a pas de contrôle d'éligibilité à passer : il accepte
+    // ce que le PEA refuse, c'est le sens même du compte.
+    const cto = payload.cto || {};
+    if (Array.isArray(cto.portfolio))    savePortfolio(uid, cto.portfolio, 'cto');
+    if (Array.isArray(cto.transactions)) saveTransactions(uid, cto.transactions, 'cto');
+    if (Array.isArray(cto.versements))   saveVersements(uid, cto.versements, 'cto');
+    if (Array.isArray(cto.watchlist))    saveWatchlist(uid, cto.watchlist, 'cto');
+    if (Array.isArray(cto.dailyValues))  saveDailyValues(uid, cto.dailyValues, 'cto');
     if (payload.settings && typeof payload.settings === 'object') {
       await saveUserSettings(uid, payload.settings);
     }
@@ -6123,7 +6190,12 @@ window.closeMobileDrawer = function() {
 
 // Les entrées qui mènent à un second niveau plutôt qu'à une page. Une seule
 // aujourd'hui ; le jour où le CTO aura ses vues, il suffira de l'ajouter ici.
-const DRAWER_SUBMENUS = { portfolio: { title: 'PEA', tabs: () => PEA_TABS } };
+// Les deux comptes partagent les mêmes vues : le sous-menu est le même, seul
+// le compte sur lequel il ouvre change.
+const DRAWER_SUBMENUS = {
+  portfolio: { title: 'PEA', compte: 'pea', tabs: () => PEA_TABS },
+  cto:       { title: 'CTO', compte: 'cto', tabs: () => PEA_TABS },
+};
 
 function _drawerShowRoot() {
   const dr = document.querySelector('.mobile-drawer');
@@ -6147,7 +6219,9 @@ function _drawerOpenSub(key) {
   if (!cfg || !dr || !sub) return;
 
   const active = (document.querySelector('.page.active') || {}).id || '';
-  const current = active.replace('page-', '');
+  // Une vue n'est « courante » que si le sous-menu ouvert est celui du compte
+  // affiché : Dividendes du PEA ne s'allume pas dans le sous-menu du CTO.
+  const current = cfg.compte === _compte ? active.replace('page-', '') : '';
   sub.innerHTML =
     '<button type="button" class="drawer-back" onclick="_drawerShowRoot()">'
     + '<svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 18 9 12l6-6"/></svg>'
@@ -6155,10 +6229,11 @@ function _drawerOpenSub(key) {
     + '<div class="mobile-drawer-section">' + cfg.title + '</div>'
     + cfg.tabs()
         .filter(k => !(FLAGGABLE.includes(k) && !_isFeatureOn(k)))
+        .filter(k => !(cfg.compte === 'cto' && TABS_HORS_CTO.includes(k)))
         .map(k => '<div class="mobile-drawer-item drawer-view' + (k === current ? ' active' : '') + '"'
-          + ' onclick="showPeaTab(\'' + k + '\');closeMobileDrawer()">'
+          + ' onclick="showPeaTab(\'' + k + '\',\'' + cfg.compte + '\');closeMobileDrawer()">'
           + '<span class="mobile-drawer-icon">' + (PEA_TAB_ICONS[k] || '') + '</span>'
-          + PEA_TAB_LABELS[k] + '</div>')
+          + (k === 'portfolio' ? _nomCompte(cfg.compte) : PEA_TAB_LABELS[k]) + '</div>')
         .join('');
 
   dr.classList.add('sub-open');
@@ -6182,9 +6257,10 @@ document.addEventListener('click', e => {
 // Sync active states across mobile nav + drawer
 function syncMobileNav(id) {
   // Les dix vues du PEA n'ont pas d'entrée propre dans la barre : c'est « Mon
-  // PEA » qui reste marquée. Sans ça, revenir au premier niveau depuis
-  // Dividendes n'allumait plus aucun onglet.
-  const navKey = PEA_TABS.includes(id) ? 'portfolio' : id;
+  // PEA » qui reste marquée — ou « Mon CTO », puisque les mêmes vues servent
+  // aux deux comptes. Sans ça, revenir au premier niveau depuis Dividendes
+  // n'allumait plus aucun onglet.
+  const navKey = PEA_TABS.includes(id) ? _cleCompte() : id;
   document.querySelectorAll('.mobile-nav-item[data-mob]').forEach(b => {
     b.classList.toggle('active', b.dataset.mob === navKey);
   });
@@ -6281,7 +6357,7 @@ const BETA_CAPABLE = ['depenses', 'crypto'];
 // inaperçue, et un badge qui disparaît au bout de quelques jours ne serait pas
 // vu par qui revient moins souvent. C'est donc l'ouverture qui l'éteint, pas le
 // temps qui passe.
-const NEW_SECTIONS = ['livrets'];
+const NEW_SECTIONS = ['livrets', 'cto'];
 const LS_NEW_SEEN = 'cb_sections_vues';
 
 function _navSectionsVues() {
@@ -6624,13 +6700,64 @@ const PEA_TAB_ICONS = {
   recap:       _peaIcon('#00cec9', '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 14h8"/><path d="M8 17h5"/>'),
 };
 
+// Nom du compte tel qu'il s'affiche, et clé de son entrée de menu.
+function _nomCompte(compte) { return (compte || _compte) === 'cto' ? 'Mon CTO' : 'Mon PEA'; }
+function _cleCompte(compte) { return (compte || _compte) === 'cto' ? 'cto' : 'portfolio'; }
+
+// « cto » n'est pas une page : c'est le PEA ouvert sur l'autre compte. On
+// traduit donc l'identifiant demandé en couple (compte, page) avant tout
+// rendu. Les autres vues du PEA gardent le compte courant — passer de
+// Dividendes à Watchlist ne ramène pas au PEA quand on regarde le CTO.
+function _resoudreVue(id) {
+  if (id === 'cto')       return { compte: 'cto', page: 'portfolio' };
+  if (id === 'portfolio') return { compte: 'pea', page: 'portfolio' };
+  return { compte: PEA_TABS.includes(id) ? _compte : 'pea', page: id };
+}
+
+// Ce que le compte affiché change à l'écran : deux titres, un bandeau fiscal,
+// et une classe sur le corps de page pour ce que le CSS doit masquer.
+function _appliquerLibellesCompte() {
+  const cto = _estCto();
+  const titre = document.getElementById('pf-titre');
+  if (titre) titre.textContent = _nomCompte();
+  const bar = document.getElementById('pea-tabs');
+  if (bar) {
+    bar.setAttribute('aria-label', cto ? 'Sections du compte-titres' : 'Sections du PEA');
+    const onglet = bar.querySelector('.pea-tab[data-tab="portfolio"]');
+    if (onglet) onglet.textContent = _nomCompte();
+  }
+  // Les pages partagées nomment le compte au fil de leurs phrases (« votre PEA
+  // face aux grands indices »). Le mot est isolé dans un span plutôt que la
+  // phrase entière : un seul mot change, pas la tournure.
+  document.querySelectorAll('.js-nom-compte').forEach(el => {
+    el.textContent = cto ? 'CTO' : 'PEA';
+  });
+  document.body.classList.toggle('compte-cto', cto);
+  const fisc = document.getElementById('cto-fisc');
+  if (fisc) fisc.hidden = !cto;
+  if (cto) _ctoRenderFisc();
+}
+
 // Rendu différé propre à une page. Extrait des trois fonctions de navigation
 // qui en avaient chacune une copie.
 async function _runPageHook(id) {
   // La page ne peut pas se rendre avant que ses données soient là : depuis le
-  // chargement à la demande, la moitié des collections n'est lue qu'ici.
-  const besoins = _DONNEES_PAGE[id];
-  if (besoins) await assurerDonnees(...besoins);
+  // chargement à la demande, la moitié des collections n'est lue qu'ici. Les
+  // collections dédoublées par compte suivent celui qu'on regarde.
+  if (PEA_TABS.includes(id)) await assurerCompte(_compte);
+  const besoins = (_DONNEES_PAGE[id] || []).map(c => COLS_COMPTE.includes(c) ? _col(c) : c);
+  if (besoins.length) await assurerDonnees(...besoins);
+  // Le CTO n'a pas d'entrée à lui dans la liste des pages : sa pastille
+  // s'éteint quand on ouvre ses écrans.
+  if (PEA_TABS.includes(id) && _estCto()) _navMarquerVue('cto');
+  // Le tableau est rendu au chargement pour le PEA seul. En passant d'un compte
+  // à l'autre il montrerait les lignes du précédent : on le refait, et on va
+  // chercher les cours du compte qu'on découvre.
+  if (id === 'portfolio' && _compteRendu !== _compte) {
+    _compteRendu = _compte;
+    renderPortfolio();
+    refreshPrices();
+  }
 
   if (id === 'activite')    renderActivite();
   if (id === 'graphiques')  initCharts();
@@ -6730,15 +6857,23 @@ function _syncPeaFab(id) {
   if (!on) togglePeaFab(false);
 }
 
+// Vues qui n'ont pas de sens sur le compte-titres. Le récap du soir et la
+// série quotidienne sont écrits hors de l'application, pour le PEA seul :
+// affichés ici, ils montreraient les chiffres de l'autre compte ou un écran
+// vide. Ils reviendront quand la donnée du CTO sera produite.
+const TABS_HORS_CTO = ['benchmark', 'recap'];
+function _tabHorsCompte(key) { return _estCto() && TABS_HORS_CTO.includes(key); }
+
 function _syncPeaTabs(id) {
   _syncPeaFab(id);
   const bar = document.getElementById('pea-tabs');
   if (!bar) return;
   const inPea = PEA_TABS.includes(id);
   bar.hidden = !inPea;
+  if (inPea) _appliquerLibellesCompte();
   bar.querySelectorAll('.pea-tab').forEach(btn => {
     const key = btn.dataset.tab;
-    const off = FLAGGABLE.includes(key) && !_isFeatureOn(key);
+    const off = (FLAGGABLE.includes(key) && !_isFeatureOn(key)) || _tabHorsCompte(key);
     btn.style.display = off ? 'none' : '';
     btn.classList.toggle('active', key === id);
     btn.setAttribute('aria-current', key === id ? 'page' : 'false');
@@ -6747,12 +6882,17 @@ function _syncPeaTabs(id) {
 
 // Bascule d'un sous-onglet à l'autre. L'entrée « Mon PEA » du menu garde son
 // état actif : elle n'est pas la cible du clic, contrairement à showPage().
-function showPeaTab(id) {
+function showPeaTab(id, compte) {
   if (FLAGGABLE.includes(id) && !_isFeatureOn(id)) return;
+  if (compte === 'cto' && TABS_HORS_CTO.includes(id)) id = 'portfolio';
   const page = document.getElementById('page-' + id);
   if (!page) return;
+  // Le sous-menu du tiroir nomme son compte : c'est la seule porte par laquelle
+  // on peut changer de compte sans repasser par l'entrée de menu.
+  if (compte) _compte = compte === 'cto' ? 'cto' : 'pea';
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   page.classList.add('active');
+  _syncNavCompte();
   syncMobileNav(id);
   _syncPeaTabs(id);
   _scrollToTop();
@@ -6761,14 +6901,28 @@ function showPeaTab(id) {
 
 function showPage(id) {
   if (FLAGGABLE.includes(id) && !_isFeatureOn(id)) return; // section désactivée
+  const vue = _resoudreVue(id);
+  _compte = vue.compte;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById('page-' + id).classList.add('active');
+  document.getElementById('page-' + vue.page).classList.add('active');
   event.currentTarget.classList.add('active');
-  syncMobileNav(id);
-  _syncPeaTabs(id);
+  syncMobileNav(vue.page);
+  _syncPeaTabs(vue.page);
   _scrollToTop();
-  _runPageHook(id);
+  _runPageHook(vue.page);
+}
+
+// Marque l'entrée de menu du compte affiché. Les sous-onglets ne sont pas des
+// entrées : sans ça, ouvrir Dividendes depuis le CTO rallumait « Mon PEA ».
+function _syncNavCompte() {
+  const cle = _cleCompte();
+  document.querySelectorAll('.nav-item').forEach(n => {
+    const oc = n.getAttribute('onclick') || '';
+    if (oc.includes("showPage('portfolio')") || oc.includes("showPage('cto')")) {
+      n.classList.toggle('active', oc.includes("showPage('" + cle + "')"));
+    }
+  });
 }
 
 function _renderDemoBlocked(pageId, sectionTitle) {
@@ -6788,6 +6942,9 @@ function _renderDemoBlocked(pageId, sectionTitle) {
 
 function showPageMobile(id) {
   if (FLAGGABLE.includes(id) && !_isFeatureOn(id)) return; // section désactivée
+  const vue = _resoudreVue(id);
+  _compte = vue.compte;
+  id = vue.page;
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
   document.getElementById('page-' + id).classList.add('active');
   syncMobileNav(id);
@@ -6795,7 +6952,7 @@ function showPageMobile(id) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   // Les sous-onglets du PEA n'ont pas d'entrée propre : c'est « Mon PEA » qui
   // reste marquée, sinon la barre latérale n'indiquait plus rien.
-  const navKey = PEA_TABS.includes(id) ? 'portfolio' : id;
+  const navKey = PEA_TABS.includes(id) ? _cleCompte() : id;
   document.querySelectorAll('.nav-item').forEach(n => {
     const onclick = n.getAttribute('onclick') || '';
     if (onclick.includes("'" + navKey + "'")) n.classList.add('active');
@@ -6922,12 +7079,14 @@ function _startPfChartTick() {
 
 // Valeur du PEA : titres au cours du jour + solde espèces. Même calcul que la
 // page Mon PEA et que les trophées, repris ici pour ne pas diverger.
-function _peaTotals() {
-  const pf  = getPortfolio(currentUser);
-  const txs = getTransactions(currentUser);
+// `compte` est explicite ici : le patrimoine additionne les deux enveloppes,
+// il ne peut pas dépendre de celle qu'on regarde.
+function _peaTotals(compte) {
+  const pf  = getPortfolio(currentUser, compte);
+  const txs = getTransactions(currentUser, compte);
   const titres     = pf.reduce((s, r) => s + r.qty * r.currentPrice, 0);
   const investi    = pf.reduce((s, r) => s + r.qty * r.buyPrice, 0);
-  const versements = getVersements(currentUser).reduce((s, v) => s + v.amount, 0);
+  const versements = getVersements(currentUser, compte).reduce((s, v) => s + v.amount, 0);
   let achats = 0, ventes = 0, divs = 0, distrib = 0;
   txs.forEach(t => {
     if (t.type === 'buy')          achats  += t.qty * t.price;
@@ -6939,11 +7098,87 @@ function _peaTotals() {
   return { titres, cash, investi, versements, total: titres + cash, latent: titres - investi };
 }
 
+// ─── Fiscalité du compte-titres ────────────────────────────────────────────
+//
+// Flat tax : 12,8 % d'impôt sur le revenu et 18,6 % de prélèvements sociaux.
+// Même valeur aujourd'hui que celle des actifs numériques (`CRY_PFU`), mais
+// pas la même règle : deux constantes, qui ne bougeront pas ensemble.
+//
+// Le PEA n'a pas d'équivalent — cinq ans de détention et l'impôt sur le revenu
+// tombe. C'est toute la différence entre les deux comptes, et la seule chose
+// que ces écrans disent différemment d'une enveloppe à l'autre.
+const CTO_PFU = 0.314;
+const _ctoTauxLabel = () =>
+  (CTO_PFU * 100).toFixed(1).replace('.', ',').replace(',0', '') + ' %';
+
+/**
+ * « Si vous vendiez tout aujourd'hui ». Même carte que la crypto, même
+ * question : ce qui reste une fois l'impôt payé, puisqu'un compte-titres n'en
+ * exonère rien.
+ *
+ * La vente totale est le seul cas qu'on sait calculer juste : une vente
+ * partielle se compte au prorata des lignes cédées, ce qui dépend de celles
+ * qu'on choisit.
+ */
+function _ctoRenderFisc() {
+  const carte = document.getElementById('cto-fisc');
+  if (!carte) return;
+  if (!_estCto()) { carte.hidden = true; return; }
+
+  const pf      = getPortfolio(currentUser);
+  const titres  = pf.reduce((s, r) => s + (r.qty || 0) * (r.currentPrice || 0), 0);
+  const investi = pf.reduce((s, r) => s + (r.qty || 0) * (r.buyPrice || 0), 0);
+
+  // Sans ligne valorisée il n'y a rien à imposer, et un « 0 € d'impôt »
+  // laisserait croire qu'il n'y en aura jamais.
+  if (!titres || !investi) { carte.hidden = true; return; }
+  carte.hidden = false;
+
+  const gain  = titres - investi;
+  const impot = gain > 0 ? gain * CTO_PFU : 0;
+  const net   = titres - impot;
+
+  const val = document.getElementById('cto-fisc-val');
+  const sub = document.getElementById('cto-fisc-sub');
+  if (val) val.textContent = fmt(net);
+  if (sub) sub.textContent = impot
+    ? 'vous resteraient, une fois l’impôt payé'
+    : 'vous resteraient : sans plus-value, il n’y a pas d’impôt';
+
+  const lignes = document.getElementById('cto-fisc-lignes');
+  if (lignes) {
+    lignes.innerHTML = '';
+    const pose = (label, montant, teinte) => {
+      const l = document.createElement('div');
+      l.className = 'cry-fisc-ligne';
+      const g = document.createElement('span');
+      g.textContent = label;
+      const d = document.createElement('span');
+      d.className = 'cry-fisc-montant' + (teinte ? ' ' + teinte : '');
+      d.textContent = montant;
+      l.appendChild(g); l.appendChild(d);
+      lignes.appendChild(l);
+    };
+    pose('Valeur des titres', fmt(titres));
+    pose('Ce que vous avez payé', fmt(investi));
+    pose(gain >= 0 ? 'Plus-value latente' : 'Moins-value latente',
+         (gain >= 0 ? '+' : '') + fmt(gain), gain >= 0 ? 'pos' : 'neg');
+    pose('Impôt estimé', impot ? '− ' + fmt(impot) : '—', impot ? 'neg' : '');
+  }
+
+  const taux = document.getElementById('cto-fisc-taux');
+  if (taux) taux.textContent = _ctoTauxLabel() +
+    ' : 12,8 % d’impôt sur le revenu et 18,6 % de prélèvements sociaux. ' +
+    'Vous pouvez lui préférer le barème progressif.';
+}
+
 // Les enveloppes, dans l'ordre d'affichage. `value` renvoie null tant qu'aucun
 // module ne l'alimente : la page l'affiche alors comme à venir.
 const PATRIMOINE_ENVELOPPES = [
-  { key: 'portfolio', label: 'PEA',                     color: '#7c6df5', value: () => _peaTotals().total },
-  { key: 'cto',       label: 'Compte-titres',           color: '#5b8dee', value: () => null },
+  { key: 'portfolio', label: 'PEA',                     color: '#7c6df5', value: () => _peaTotals('pea').total },
+  // Un compte-titres vide vaut 0 et non « à venir » : la nuance dit si le
+  // module existe. Tant qu'aucune ligne n'y est saisie, on le laisse annoncé.
+  { key: 'cto',       label: 'Compte-titres',           color: '#5b8dee', value: () => _peaTotals('cto').total || null },
   { key: 'av',        label: 'Assurance-vie',           color: '#00cec9', value: () => null },
   { key: 'per',       label: 'PER',                     color: '#00e09e', value: () => null },
   { key: 'crypto',    label: 'Crypto',                  color: '#f5b731', value: () => _cryTotal() },
@@ -6972,7 +7207,7 @@ function renderPatrimoine() {
   const el = document.getElementById('patrimoine-content');
   if (!el) return;
 
-  const pea  = _peaTotals();
+  const pea  = _peaTotals('pea');
   const rows = PATRIMOINE_ENVELOPPES.map(e => Object.assign({}, e, { montant: e.value() }));
   const actives = rows.filter(r => r.montant !== null && r.montant > 0);
   const total   = actives.reduce((s, r) => s + r.montant, 0);
@@ -7357,6 +7592,9 @@ function renderPortfolio() {
   // Render transaction history
   renderTxHistory();
 
+  // La carte fiscale du CTO suit les cours : elle se refait avec le reste.
+  _ctoRenderFisc();
+
   _perfMark('chiffres affichés');
   renderPortfolioChart();
 }
@@ -7704,6 +7942,9 @@ const PEA_ELIGIBLE_SUFFIXES = new Set([
 const PEA_ELIGIBLE_EXCHANGES = ['paris','euronext','amsterdam','brussels','frankfurt','milan','madrid','lisbon','vienna','helsinki','stockholm','oslo','copenhagen'];
 
 function getPeaEligibility(symbol, exchange) {
+  // Sur un compte-titres, la pastille « PEA ✗ » ne dirait rien d'utile : la
+  // ligne est éligible par construction.
+  if (_estCto()) return 'unknown';
   const sym = (symbol || '').toUpperCase();
   const exch = (exchange || '').toLowerCase();
   const suffix = sym.match(/(\.[A-Z]+)$/)?.[1] || '';
@@ -8402,7 +8643,19 @@ function _tickerSuffix(ticker) {
 }
 
 // { level: 'ok' | 'warn' | 'block', msg }
+//
+// Le contrôle n'a de sens que sur un PEA : un compte-titres accepte n'importe
+// quelle place, c'est même sa raison d'être à côté du plan. On garde donc la
+// règle entière, et c'est le compte affiché qui décide si elle s'applique.
 function peaEligibility(ticker, name, quoteType) {
+  if (_estCto()) return { level: 'ok', msg: '' };
+  return peaEligibiliteStricte(ticker, name, quoteType);
+}
+
+// La règle elle-même, sans égard au compte affiché. La restauration d'une
+// sauvegarde l'appelle directement : elle écrit dans le PEA quel que soit
+// l'écran ouvert au moment de l'import.
+function peaEligibiliteStricte(ticker, name, quoteType) {
   const suffix = _tickerSuffix(ticker);
   const isEtf  = quoteType === 'ETF' || quoteType === 'MUTUALFUND' || (typeof isETF === 'function' && isETF(ticker));
 
@@ -14828,6 +15081,7 @@ function initDividendes() {
       <div class="stat-label" style="display:flex;align-items:center;gap:6px">${IC.gift}Dividendes reçus</div>
       <div class="stat-value" style="color:var(--positive);font-size:26px">${totalRecuAuto.toFixed(2)} €</div>
       ${distribRecus > 0 ? `<div style="font-size:10px;color:#a99bff;font-family:var(--mono);margin-top:3px">+ ${distribRecus.toFixed(2)} € d'attributions</div>` : ''}
+      ${_estCto() ? `<div style="font-size:10px;color:var(--text3);font-family:var(--mono);margin-top:3px">${(totalRecuAuto * (1 - CTO_PFU)).toFixed(2)} € nets après flat tax de ${_ctoTauxLabel()}</div>` : ''}
       ${totalVersionts > 0 ? `<div class="stat-change pos">${totalVersionts} versement(s) détecté(s)</div>` : ''}`;
     if (kpiHolding) kpiHolding.innerHTML = `
       <div class="stat-label" style="display:flex;align-items:center;gap:6px">${IC.calendar}Versements pendant détention</div>
@@ -16384,9 +16638,14 @@ function checkPriceAlerts() {
   if (settings.notifSettings?.priceAlerts === false) return;
   const alerts = getAlerts(currentUser);
   if (!alerts.length) return;
+  // Une alerte porte un ticker, pas une enveloppe : elle se déclenche que la
+  // ligne soit au PEA ou au compte-titres. Les collections du CTO peuvent ne
+  // pas être chargées — elles rendent alors un tableau vide, sans lecture.
   const allItems = [
-    ...getPortfolio(currentUser).map(p => ({ ticker: p.ticker, price: p.currentPrice })),
-    ...getWatchlist(currentUser).map(w => ({ ticker: w.ticker, price: w.price }))
+    ...getPortfolio(currentUser, 'pea').map(p => ({ ticker: p.ticker, price: p.currentPrice })),
+    ...getWatchlist(currentUser, 'pea').map(w => ({ ticker: w.ticker, price: w.price })),
+    ...getPortfolio(currentUser, 'cto').map(p => ({ ticker: p.ticker, price: p.currentPrice })),
+    ...getWatchlist(currentUser, 'cto').map(w => ({ ticker: w.ticker, price: w.price })),
   ];
   let changed = false;
   alerts.forEach(alert => {
