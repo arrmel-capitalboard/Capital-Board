@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830x';
+const APP_VERSION = '20260830y';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6225,6 +6225,7 @@ function _markDrawerParents() {
 }
 
 function _drawerOpenSub(key) {
+  if (key === 'cto' && !_isModuleLive('cto')) return;
   const cfg = DRAWER_SUBMENUS[key];
   const dr  = document.querySelector('.mobile-drawer');
   const sub = document.getElementById('drawer-sub');
@@ -6362,7 +6363,11 @@ const FLAGGABLE = ['watchlist','dividendes','avantages','benchmark','projections
 // livrets non encore éprouvés restent marqués « Bientôt » dans le formulaire
 // (`bientot` dans LIV_BAREME), ce qui est plus juste qu'une section entière
 // fermée — le Livret A et le Livret Jeune, eux, sont prêts.
-const BETA_CAPABLE = ['depenses', 'crypto'];
+// Le CTO y figure sans page « Bientôt » : il n'ouvre en bêta que sur son état
+// public, où tout le monde entre. Refermé sur l'admin, son entrée de menu
+// reprend le badge « Bientôt » et le clic ne mène nulle part — c'est
+// `_isModuleLive` qui garde la porte, faute de teaser à montrer.
+const BETA_CAPABLE = ['depenses', 'crypto', 'cto'];
 
 // Sections ouvertes récemment. Leur entrée de menu porte une pastille « New »
 // jusqu'à la première visite : une section qui apparaît sans rien dire passe
@@ -6411,8 +6416,10 @@ function _isFeatureBeta(key) { return BETA_CAPABLE.includes(key) && _betaFlags[k
 // Sections dont la bêta est publique par défaut : elles sont ouvertes à tous
 // sans qu'un réglage ait été posé dans config/app. Dépenses & abonnements y est
 // entré le 31/08 — le module est utilisable, seul son affichage bougera encore.
+// Le compte-titres a suivi le meme jour : ses ecrans sont ceux du PEA, deja
+// eprouves, mais la fiscalite et le second jeu de collections sont neufs.
 // Un `betaPublic: { depenses: false }` en base reprend la main si besoin.
-const BETA_PUBLIQUE_DEFAUT = ['depenses'];
+const BETA_PUBLIQUE_DEFAUT = ['depenses', 'cto'];
 function _isBetaPublique(key) {
   if (!_isFeatureBeta(key)) return false;
   if (_betaPublicFlags[key] !== undefined) return _betaPublicFlags[key] === true;
@@ -6721,6 +6728,9 @@ function _cleCompte(compte) { return (compte || _compte) === 'cto' ? 'cto' : 'po
 // rendu. Les autres vues du PEA gardent le compte courant — passer de
 // Dividendes à Watchlist ne ramène pas au PEA quand on regarde le CTO.
 function _resoudreVue(id) {
+  // Bêta refermée sur l'admin : le CTO n'a pas de page « Bientôt » à montrer,
+  // on reste donc sur le PEA plutôt que d'ouvrir un compte interdit.
+  if (id === 'cto' && !_isModuleLive('cto')) return { compte: 'pea', page: 'portfolio' };
   if (id === 'cto')       return { compte: 'cto', page: 'portfolio' };
   if (id === 'portfolio') return { compte: 'pea', page: 'portfolio' };
   return { compte: PEA_TABS.includes(id) ? _compte : 'pea', page: id };
@@ -6745,6 +6755,9 @@ function _appliquerLibellesCompte() {
     el.textContent = cto ? 'CTO' : 'PEA';
   });
   document.body.classList.toggle('compte-cto', cto);
+  // Bandeau bêta : sur le CTO seulement, et seulement tant que la section l'est.
+  const note = document.getElementById('cto-beta-note');
+  if (note) note.hidden = !(cto && _isFeatureBeta('cto'));
   const fisc = document.getElementById('cto-fisc');
   if (fisc) fisc.hidden = !cto;
   if (cto) _ctoRenderFisc();
@@ -6922,6 +6935,9 @@ function showPage(id) {
   document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
   document.getElementById('page-' + vue.page).classList.add('active');
   event.currentTarget.classList.add('active');
+  // Le clic ne décide pas seul de l'entrée allumée : « Mon CTO » refermé
+  // renvoie sur le PEA, et c'est le PEA qui doit s'allumer.
+  if (vue.page === 'portfolio') _syncNavCompte();
   syncMobileNav(vue.page);
   _syncPeaTabs(vue.page);
   _scrollToTop();
@@ -11296,11 +11312,14 @@ async function renderPortfolioChart() {
     // fausses buildées pendant l'ère proxies CORS morts → priceMap vides).
     const _sig = JSON.stringify({
       v: 2,
+      c: _compte,
       p: data.map(r => r.ticker + ':' + r.qty).sort(),
       t: getTransactions(currentUser).length,
       per: portfolioPeriod,
     });
-    const _cacheKey = 'pfcurve_' + (currentUser || 'anon');
+    // Une clé par compte : les deux courbes se chassaient l'une l'autre du
+    // cache, et chaque bascule PEA ↔ CTO repartait d'un calcul Yahoo complet.
+    const _cacheKey = 'pfcurve_' + (currentUser || 'anon') + (_estCto() ? '_cto' : '');
     let dataset = null;
     let _fromCache = false;
     try {
@@ -11342,6 +11361,19 @@ async function renderPortfolioChart() {
 
     if (!dataset.length) {
       sub.textContent = 'Aucune donnée sur cette période.';
+      // L'en-tête est écrit plus bas, après ce retour : sans effacement il
+      // gardait la performance du rendu précédent — celle de l'autre compte
+      // depuis que les deux partagent l'écran.
+      const pctVide = document.getElementById('portf-pct-display');
+      if (pctVide) {
+        pctVide.textContent = '—';
+        pctVide.style.color = 'var(--text3)';
+        pctVide.onclick = null;
+        delete pctVide.dataset.pct;
+        delete pctVide.dataset.eur;
+      }
+      const tagVide = document.getElementById('portf-tagline');
+      if (tagVide) tagVide.textContent = '';
       if (chartPortfolio) { chartPortfolio.destroy(); chartPortfolio = null; }
       // Show a flat zero line
       const ctx = document.getElementById('chart-portfolio').getContext('2d');
@@ -11383,7 +11415,7 @@ async function renderPortfolioChart() {
         `${nDays} jours investis · votre discipline paie`,
         `+${pct}% · vous faites mieux que la majorité des épargnants`,
         `${xEur} de plus · chaque jour investi compte`,
-        `+${pct}% · votre PEA travaille pendant que vous dormez`,
+        `+${pct}% · votre ${_estCto() ? 'CTO' : 'PEA'} travaille pendant que vous dormez`,
         `${nDays} jours de cap maintenu · bravo`,
         `${xEur} · c'est ça, l'effet du temps en bourse`,
         `"Le risque vient de ne pas savoir ce qu'on fait" — Warren Buffett`,
