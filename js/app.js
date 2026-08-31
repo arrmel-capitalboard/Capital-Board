@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260831a';
+const APP_VERSION = '20260831b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -7093,6 +7093,11 @@ function fmtSerre(n) {
 // `value === null` remet le tiret des portefeuilles vides.
 const _pxFmtSigned = (v) => (v >= 0 ? '+' : '') + fmt(v);
 
+// Génération de rendu. Incrémentée à chaque renderPortfolio() : les défilements
+// de chiffres lancés avant s'arrêtent au lieu de finir leur course sur des
+// valeurs devenues fausses.
+let _pxGen = 0;
+
 function _statSet(el, value, format) {
   if (!el) return;
   format = format || fmt;
@@ -7463,6 +7468,7 @@ function renderPatrimoine() {
 }
 
 function renderPortfolio() {
+  _pxGen++;
   let data = getPortfolio(currentUser);
   // Fusion des doublons hérités, une fois pour toutes : sans elle, une valeur
   // achetée deux fois resterait à vendre en deux opérations.
@@ -7654,6 +7660,21 @@ function renderPortfolio() {
 
   const totalPnl = totalVal - totalInvested;
   const totalPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
+
+  // Un compte sans ligne remet toutes les cases au tiret, y compris celles que
+  // la suite de cette fonction ne recalculerait pas : mélanger les chiffres
+  // d'un compte et le vide de l'autre est pire que ne rien afficher.
+  if (!data.length) {
+    ['stat-total', 'stat-invested', 'stat-pnl', 'stat-networth', 'stat-cash']
+      .forEach(id => { const el = document.getElementById(id); if (el) { el.textContent = '— €'; delete el.dataset.stat; } });
+    ['stat-pnl-pct', 'stat-networth-pct'].forEach(id => {
+      const el = document.getElementById(id); if (el) el.textContent = '—';
+    });
+    const nwSub = document.getElementById('stat-networth-sub');
+    if (nwSub) nwSub.textContent = '';
+    const alloc = document.getElementById('pf-alloc');
+    if (alloc) alloc.innerHTML = '';
+  }
 
   _statSet(document.getElementById('stat-total'), data.length ? totalVal : null);
   document.getElementById('stat-invested').textContent = data.length ? fmt(totalInvested) : '— €';
@@ -12435,7 +12456,12 @@ async function refreshPrices() {
   // Garde anti-ré-entrée : si un refresh précédent traîne (réseau lent),
   // on ne lance pas un 2e par-dessus → pas d'empilement de requêtes.
   if (!currentUser || _refreshingPrices) return;
-  const data = getPortfolio(currentUser);
+  // Le compte est figé ici, pour toute la durée de l'aller-retour réseau. Sans
+  // ça, un rafraîchissement lancé sur le PEA et terminé après une bascule sur
+  // le compte-titres écrivait les lignes du PEA dans `portfolioCto` — et
+  // affichait ses chiffres sur l'écran de l'autre compte.
+  const compte = _compte;
+  const data = getPortfolio(currentUser, compte);
   if (!data.length) return;
   _refreshingPrices = true;
   try {
@@ -12500,11 +12526,15 @@ async function refreshPrices() {
     }
 
     if (changed) {
-      savePortfolio(currentUser, data);
-      renderPortfolio();
+      savePortfolio(currentUser, data, compte);
+      // On ne redessine que si l'écran montre toujours ce compte : sinon le
+      // tableau du compte affiché serait remplacé par celui d'à côté.
+      if (_compte === compte) renderPortfolio();
   }
-    // Scan attributions gratuites / OST (rompus) — 1×/session, prix maintenant à jour.
-    try { scanCorporateActions(); } catch(_) {}
+    // Scan attributions gratuites / OST (rompus) — 1×/session, prix maintenant à
+    // jour. Comme le rendu, il ne vaut que pour le compte qui a lancé le
+    // rafraîchissement : ses questions écrivent dans le portefeuille.
+    if (_compte === compte) { try { scanCorporateActions(); } catch(_) {} }
   } finally {
     _refreshingPrices = false;
   }
@@ -13213,7 +13243,15 @@ function _pxCount(el, from, to, format) {
   if (!el || !isFinite(from) || !isFinite(to) || from === to) return;
   format = format || fmt;
   const t0 = performance.now();
+  // Un défilement de chiffre écrit dans la case à chaque image, pendant une
+  // demi-seconde. Celui d'un rendu précédent finissait donc sa course APRÈS le
+  // rendu suivant, et reposait l'ancien montant par-dessus le nouveau — sur un
+  // changement de compte, les chiffres du PEA revenaient sur l'écran du CTO.
+  // Chaque rendu ouvre une génération : les animations des précédentes
+  // s'arrêtent sans rien réécrire.
+  const gen = _pxGen;
   (function step(now) {
+    if (gen !== _pxGen) return;
     const t = Math.min((now - t0) / PX_COUNT_MS, 1);
     const e = 1 - Math.pow(1 - t, 3);
     el.textContent = format(from + (to - from) * e);
