@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830y';
+const APP_VERSION = '20260830z';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6771,8 +6771,9 @@ async function _runPageHook(id) {
   // collections dédoublées par compte suivent celui qu'on regarde.
   if (PEA_TABS.includes(id)) await assurerCompte(_compte);
   // Le patrimoine additionne les enveloppes : il lui faut le compte-titres,
-  // mais seulement si le membre en a un.
-  if (id === 'patrimoine' && _aUnCto()) await assurerCompte('cto');
+  // mais seulement si le membre en a un. Les avantages actionnaires aussi :
+  // ils comptent les titres des deux comptes.
+  if ((id === 'patrimoine' || id === 'avantages') && _aUnCto()) await assurerCompte('cto');
   const besoins = (_DONNEES_PAGE[id] || []).map(c => COLS_COMPTE.includes(c) ? _col(c) : c);
   if (besoins.length) await assurerDonnees(...besoins);
   // Le CTO n'a pas d'entrée à lui dans la liste des pages : sa pastille
@@ -7110,6 +7111,36 @@ function _startPfChartTick() {
 
 // Valeur du PEA : titres au cours du jour + solde espèces. Même calcul que la
 // page Mon PEA et que les trophées, repris ici pour ne pas diverger.
+/**
+ * Toutes les lignes de titres, PEA et compte-titres confondus, une par valeur.
+ *
+ * Un avantage actionnaire ne regarde pas l'enveloppe : le seuil des 100 actions
+ * se franchit avec 60 au PEA et 40 au CTO, et l'inscription au nominatif porte
+ * sur les titres, pas sur le compte qui les loge. Les quantités s'additionnent
+ * donc, le prix de revient est repondéré, et la ligne retient les comptes d'où
+ * elle vient.
+ */
+function _titresTousComptes() {
+  const par = new Map();
+  [['pea', 'PEA'], ['cto', 'CTO']].forEach(([compte, label]) => {
+    getPortfolio(currentUser, compte).forEach(r => {
+      const cle = String(r.ticker || '').toUpperCase();
+      if (!cle) return;
+      const cur = par.get(cle);
+      if (!cur) { par.set(cle, Object.assign({}, r, { comptes: [label] })); return; }
+      const qte = (cur.qty || 0) + (r.qty || 0);
+      cur.buyPrice = qte
+        ? ((cur.qty || 0) * (cur.buyPrice || 0) + (r.qty || 0) * (r.buyPrice || 0)) / qte
+        : 0;
+      cur.qty = qte;
+      // Le cours est le même des deux côtés ; on garde celui qui est renseigné.
+      cur.currentPrice = cur.currentPrice || r.currentPrice;
+      if (!cur.comptes.includes(label)) cur.comptes.push(label);
+    });
+  });
+  return [...par.values()];
+}
+
 // `compte` est explicite ici : le patrimoine additionne les deux enveloppes,
 // il ne peut pas dépendre de celle qu'on regarde.
 function _peaTotals(compte) {
@@ -15723,7 +15754,10 @@ function initAvantages() {
 
   const el = document.getElementById('avantages-content');
   if (!el) return;
-  const pf     = getPortfolio(currentUser);
+  // Les avantages ne sont plus ceux du seul PEA : un titre logé au
+  // compte-titres ouvre les mêmes droits, et les deux comptes comptent
+  // ensemble pour atteindre un seuil.
+  const pf     = _titresTousComptes();
   const nowY   = new Date().getFullYear();
   const held   = SHAREHOLDER_PERKS
     .map(entry => ({ entry, row: pf.find(r => String(r.ticker).toUpperCase() === entry.ticker) }))
@@ -15816,7 +15850,7 @@ function initAvantages() {
           ${logoHtml(entry.ticker, 30, 'ticker-icon')}
           <div style="flex:1;min-width:0">
             <div style="font-size:14px;font-weight:700;color:var(--text1)">${entry.name}</div>
-            <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${row.qty} action(s) · ${entry.ticker}</div>
+            <div style="font-size:11px;color:var(--text3);font-family:var(--mono)">${row.qty} action(s) · ${entry.ticker}${(row.comptes && row.comptes.length > 1) ? ' · ' + row.comptes.join(' + ') : ''}</div>
           </div>
           ${badge}
         </div>
