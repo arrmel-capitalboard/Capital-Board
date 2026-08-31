@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260830u';
+const APP_VERSION = '20260830v';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6320,7 +6320,16 @@ function _isFeatureBeta(key) { return BETA_CAPABLE.includes(key) && _betaFlags[k
 // Bêta publique : tout le monde entre, le bandeau et la pastille « Bêta »
 // restent. Le module est livré, mais annoncé comme jeune. Il faut le dire
 // explicitement — sans réglage, une bêta reste privée.
-function _isBetaPublique(key) { return _isFeatureBeta(key) && _betaPublicFlags[key] === true; }
+// Sections dont la bêta est publique par défaut : elles sont ouvertes à tous
+// sans qu'un réglage ait été posé dans config/app. Dépenses & abonnements y est
+// entré le 31/08 — le module est utilisable, seul son affichage bougera encore.
+// Un `betaPublic: { depenses: false }` en base reprend la main si besoin.
+const BETA_PUBLIQUE_DEFAUT = ['depenses'];
+function _isBetaPublique(key) {
+  if (!_isFeatureBeta(key)) return false;
+  if (_betaPublicFlags[key] !== undefined) return _betaPublicFlags[key] === true;
+  return BETA_PUBLIQUE_DEFAUT.includes(key);
+}
 // Quatre états pour l'éditeur admin : masqué / bêta / bêta publique / ouvert.
 function _featureState(key) {
   if (!_isFeatureOn(key)) return 'off';
