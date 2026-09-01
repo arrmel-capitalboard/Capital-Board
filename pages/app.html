@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260831k">
+<link rel="stylesheet" href="css/style.css?v=20260831l">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -2002,7 +2002,21 @@
           <div class="table-title">Vos cryptos</div>
           <div class="cry-maj" id="cry-maj"></div>
         </div>
-        <div id="cry-list"></div>
+        <table>
+          <thead>
+            <tr>
+              <th>Crypto</th>
+              <th class="hide-mobile">Qté</th>
+              <th class="hide-mobile" style="white-space:nowrap">Prix achat moyen</th>
+              <th class="hide-mobile">Prix actuel</th>
+              <th>Valeur</th>
+              <th class="hide-mobile">+/- Value</th>
+              <th style="white-space:nowrap">Jour %</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="cry-list"></tbody>
+        </table>
       </div>
 
       <div class="cry-empty" id="cry-empty" hidden>
@@ -4056,7 +4070,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260831k"></script>
+<script src="js/app.js?v=20260831l"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
 <script src="js/onboarding.js?v=20260831c"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->

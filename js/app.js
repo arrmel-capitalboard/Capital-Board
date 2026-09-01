@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260831k';
+const APP_VERSION = '20260831l';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4558,73 +4558,96 @@ function _cryRender() {
     .map(l => ({ l, v: _cryValeur(l) }))
     .sort((a, b) => (b.v || 0) - (a.v || 0))
     .forEach(({ l, v }) => {
-      const info = _cryInfo(l.sym);
+      const info   = _cryInfo(l.sym);
       const invest = _cryInvesti(l);
-      const g = v === null ? null : v - invest;
+      const g      = v === null ? null : v - invest;
+      const pct    = invest > 0 && g !== null ? (g / invest) * 100 : 0;
+      const pos    = g === null || g >= 0;
+      const qte    = Number(l.qte) || 0;
+      const pru    = Number(l.pru) || 0;
+      const cours  = _cryCours[l.sym];
 
-      const row = document.createElement('div');
-      row.className = 'cry-row';
-      row.setAttribute('role', 'button');
-      row.setAttribute('tabindex', '0');
+      // Variation du jour, à partir de la clôture de la veille relevée avec le
+      // cours. Le PEA la tient de `changePct` ; ici elle se recalcule, mais
+      // l'affichage — et sa bascule euro/pourcentage — est le même.
+      const veille = _cryVeille[l.sym];
+      const chg = (Number.isFinite(cours) && Number.isFinite(veille) && veille)
+        ? ((cours - veille) / veille) * 100 : 0;
+      const dayVal    = qte * (Number.isFinite(cours) ? cours : 0) * chg / 100;
+      const dayPctTxt = (chg >= 0 ? '+' : '') + chg.toFixed(2) + '%';
+      const dayEurTxt = (chg >= 0 ? '+' : '') + dayVal.toFixed(2) + '€';
+      const perfJourHtml = chg !== 0
+        ? '<span class="perf-jour-cell ' + (chg >= 0 ? 'perf-pos' : 'perf-neg') + '"'
+          + ' data-pct="' + dayPctTxt + '" data-eur="' + dayEurTxt + '"'
+          + ' onclick="event.stopPropagation();togglePerfJourMode()" style="cursor:pointer">'
+          + (_perfJourMode === 'eur' ? dayEurTxt : dayPctTxt) + '</span>'
+        : '<span style="color:var(--text3);font-size:11px">—</span>';
+
+      const tr = document.createElement('tr');
       // Un clic ouvre un achat sur cette crypto : c'est le geste le plus
       // fréquent, et la vente est à un bouton de là dans la modale.
-      row.addEventListener('click', () => cryOpenModal('achat', l.sym));
-      row.addEventListener('keydown', (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cryOpenModal('achat', l.sym); } });
+      tr.style.cursor = 'pointer';
+      tr.setAttribute('role', 'button');
+      tr.setAttribute('tabindex', '0');
+      tr.addEventListener('click', () => cryOpenModal('achat', l.sym));
+      tr.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cryOpenModal('achat', l.sym); }
+      });
 
-      const pastille = _cryPastille(info);
+      const sym = _attr(l.sym);
+      // La pastille est posée en deux temps : un emplacement dans le HTML, puis
+      // le vrai nœud à la place. `outerHTML` aurait sérialisé l'image mais perdu
+      // son écouteur `error` — celui qui retombe sur les initiales quand le
+      // logo n'existe pas — et la case serait restée vide.
+      tr.innerHTML =
+        '<td>'
+      +   '<div class="ticker-cell"><span data-pastille></span>'
+      +     '<div>'
+      +       '<div class="ticker-name" title="' + _attr(info.nom) + '">' + _attr(info.nom)
+      +         '<span class="badge-crypto">CRYPTO</span></div>'
+      +       '<div class="ticker-sym">' + _attr(info.sym) + '</div>'
+      +     '</div>'
+      +   '</div>'
+      + '</td>'
+      + '<td class="mono hide-mobile">' + _cryQte(qte) + '</td>'
+      + '<td class="mono hide-mobile">' + (pru ? fmt(pru) : '—') + '</td>'
+      + '<td class="mono hide-mobile">' + (Number.isFinite(cours) ? fmt(cours) : '—') + '</td>'
+      + '<td class="mono">'
+      +   '<div style="font-weight:500">' + (v === null ? '—' : fmt(v)) + '</div>'
+      +   (v === null || !invest ? ''
+          : '<div class="perf-total-sub ' + (pos ? 'perf-pos' : 'perf-neg') + '"'
+            + ' data-pct="' + (pos ? '+' : '') + pct.toFixed(2) + '%"'
+            + ' data-eur="' + (pos ? '+' : '') + fmtSerre(Math.abs(g)) + '"'
+            + ' onclick="event.stopPropagation();togglePerfTotalMode()" style="cursor:pointer">'
+            + (_perfTotalMode === 'eur'
+                ? (pos ? '+' : '') + fmtSerre(Math.abs(g))
+                : (pos ? '+' : '') + pct.toFixed(2) + '%')
+            + '</div>')
+      + '</td>'
+      + '<td class="hide-mobile">'
+      +   (v === null || !invest ? '<span style="color:var(--text3);font-size:11px">—</span>'
+          : '<span class="' + (pos ? 'badge-pos' : 'badge-neg') + '">'
+            + (pos ? '▲' : '▼') + ' <span class="bd-eur">' + fmt(Math.abs(g)) + '</span>'
+            + ' (<span class="bd-pct">' + (pos ? '+' : '') + pct.toFixed(2) + '%</span>)</span>')
+      + '</td>'
+      + '<td>' + perfJourHtml + '</td>'
+      + '<td style="text-align:right;padding-right:18px;white-space:nowrap">'
+      +   '<div class="btn-portfolio-actions" style="display:inline-flex;gap:6px;align-items:center">'
+      +     '<button class="btn-edit" title="Acheter" aria-label="Acheter ' + _attr(info.nom) + '"'
+      +       ' onclick="event.stopPropagation();cryOpenModal(&quot;achat&quot;,&quot;' + sym + '&quot;)">'
+      +       '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>'
+      +     '<button class="btn-edit" title="Vendre" aria-label="Vendre ' + _attr(info.nom) + '"'
+      +       ' onclick="event.stopPropagation();cryOpenModal(&quot;vente&quot;,&quot;' + sym + '&quot;)">'
+      +       '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14"/></svg></button>'
+      +     '<button class="btn-del" title="Supprimer" aria-label="Supprimer ' + _attr(info.nom) + '"'
+      +       ' onclick="event.stopPropagation();crySupprimerLigne(&quot;' + sym + '&quot;)">✕</button>'
+      +   '</div>'
+      + '</td>';
 
-      const milieu = document.createElement('span');
-      milieu.className = 'cry-mid';
-      const nom = document.createElement('div');
-      nom.className = 'cry-nom';
-      nom.textContent = info.nom;
-      const sous = document.createElement('div');
-      sous.className = 'cry-sous';
-      sous.textContent = _cryQte(l.qte) + ' ' + info.sym;
-      milieu.appendChild(nom);
-      milieu.appendChild(sous);
+      const emplacement = tr.querySelector('[data-pastille]');
+      if (emplacement) emplacement.replaceWith(_cryPastille(info, 26));
 
-      // Mêmes boutons que la ligne du PEA : acheter, vendre, supprimer.
-      const actions = document.createElement('span');
-      actions.className = 'cry-actions';
-      const bouton = (cls, titre, html, fn) => {
-        const b = document.createElement('button');
-        b.type = 'button';
-        b.className = cls;
-        b.title = titre;
-        b.setAttribute('aria-label', titre + ' ' + info.nom);
-        b.innerHTML = html;
-        b.addEventListener('click', (e) => { e.stopPropagation(); fn(); });
-        return b;
-      };
-      actions.appendChild(bouton('btn-edit', 'Acheter',
-        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg>',
-        () => cryOpenModal('achat', l.sym)));
-      actions.appendChild(bouton('btn-edit', 'Vendre',
-        '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14"/></svg>',
-        () => cryOpenModal('vente', l.sym)));
-      actions.appendChild(bouton('btn-del', 'Supprimer', '✕', () => crySupprimerLigne(l.sym)));
-
-      const droite = document.createElement('span');
-      droite.className = 'cry-right';
-      const val = document.createElement('div');
-      val.className = 'cry-val';
-      val.textContent = v === null ? 'cours indisponible' : fmt(v);
-      if (v === null) val.classList.add('cry-val-off');
-      droite.appendChild(val);
-      if (g !== null && invest) {
-        const pv = document.createElement('div');
-        pv.className = 'cry-pv ' + (g >= 0 ? 'pos' : 'neg');
-        const pct = (g / invest) * 100;
-        pv.textContent = (g >= 0 ? '+' : '−') + Math.abs(pct).toFixed(1).replace('.', ',') + ' %';
-        droite.appendChild(pv);
-      }
-
-      row.appendChild(pastille);
-      row.appendChild(milieu);
-      row.appendChild(droite);
-      row.appendChild(actions);
-      liste.appendChild(row);
+      liste.appendChild(tr);
     });
 }
 

@@ -1120,6 +1120,17 @@ tr:hover td { background: rgba(255,255,255,0.018); }
   font-size: 9px; font-family: var(--mono); font-weight: 700;
   letter-spacing: 0.8px; margin-left: 6px; vertical-align: middle;
 }
+/* Nature de la ligne, comme ACTION et ETF au portefeuille : la crypto se
+   reconnait au meme endroit, dans le meme moule. */
+.badge-crypto {
+  display: inline-flex; align-items: center;
+  background: rgba(247,147,26,0.10); color: #f7931a;
+  border: 1px solid rgba(247,147,26,0.24);
+  padding: 1px 6px; border-radius: 4px;
+  font-size: 9px; font-family: var(--mono); font-weight: 700;
+  letter-spacing: 0.8px; margin-left: 6px; vertical-align: middle;
+}
+
 .mono { font-family: var(--mono); }
 
 .badge-pos {
