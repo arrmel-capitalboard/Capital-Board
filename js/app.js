@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260831d';
+const APP_VERSION = '20260831e';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -3929,7 +3929,10 @@ async function startApp(user) {
     // deja calcule par renderPortfolio ci-dessus (Patrimoine en reprend le
     // total) ; showPageMobile charge les donnees de la page et la rend, sans
     // dependre d'un clic. L'onglet actif est deja pose dans le HTML.
-    try { showPageMobile('patrimoine'); } catch (e) { console.warn('accueil patrimoine:', e); }
+    // Page d'ouverture : la premiere des quatre pages epinglees par
+    // l'utilisateur, Patrimoine par defaut. navPageOuverture() se replie sur
+    // Patrimoine tant que les reglages ne sont pas lus.
+    try { showPageMobile(navPageOuverture()); } catch (e) { console.warn('accueil:', e); }
     // Badge « Boite a idees » des le lancement, sans attendre l'ouverture de
     // l'onglet. Admin uniquement (c'est la file de moderation qu'il compte).
     if (!window.autoRefreshInterval) window.toggleAutoRefresh();
@@ -6538,6 +6541,10 @@ function applyFeatureFlags(features, beta, bareme, betaPublic) {
   // Le module peut venir d'être ouvert ou refermé sous les pieds de l'admin.
   if (document.getElementById('depenses-app')) renderDepenses();
   if (document.getElementById('livrets-app'))  renderLivrets();
+  // Une section qui ferme peut être épinglée dans la barre du bas : la règle
+  // de masquage par `onclick` y laisserait un trou. On rebâtit la barre, qui
+  // écarte les pages non ouvertes et complète avec les suivantes.
+  if (typeof appliquerNavPerso === 'function') appliquerNavPerso();
 }
 
 // Le badge « Bientôt » est écrit en dur dans le menu, sur ordinateur comme dans
@@ -6761,6 +6768,302 @@ function applyNavLayout(nav) {
     _cacheMobNavNodes();
     _renderNavInto(mob, _mobNavNodes, layout, 'mobile-drawer-section', false);
   }
+  // La personnalisation de l'utilisateur se pose par-dessus l'organisation
+  // décidée par l'admin, et donc après elle : `_renderNavInto` vide son
+  // conteneur, ce qui emporterait le groupe épinglé s'il était écrit avant.
+  appliquerNavPerso();
+}
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ONGLETS FAVORIS — quatre pages choisies par l'utilisateur
+//
+// Un seul réglage, `settings.navTabs` : une liste ordonnée de quatre pages,
+// prises dans n'importe quelle catégorie. Elle se lit et s'écrit avec le reste
+// des réglages, dans le document `annexes` déjà chargé au démarrage — la
+// personnalisation ne coûte donc aucune lecture Firestore de plus, ce qui
+// compte sur un quota où les lectures sont le mur.
+//
+// La même liste sert des deux côtés : en mobile elle remplit la barre du bas,
+// sur ordinateur elle remonte les mêmes entrées en tête de la barre latérale.
+// La première page est celle sur laquelle l'app s'ouvre.
+// ═══════════════════════════════════════════════════════════════════════════
+const NAV_TABS_DEFAUT = ['patrimoine', 'portfolio', 'crypto', 'depenses'];
+const NAV_TABS_MAX = 4;
+
+// Libellés courts, réservés à la barre du bas. Ceux du tiroir tiennent dans une
+// case de 84 px, pas dans un cinquième de barre : « Immobilier & SCPI » y
+// passerait sur trois lignes ou serait coupé.
+const NAV_LABELS_COURTS = {
+  patrimoine: 'Patrimoine', portfolio: 'PEA',      cto: 'CTO',
+  crypto: 'Crypto',         av: 'Assurance',       per: 'PER',
+  livrets: 'Livrets',       immo: 'Immo',          or: 'Or & métaux',
+  nonco: 'Non coté',        depenses: 'Dépenses',  fiscalite: 'Fiscal',
+  actualites: 'Actus',      favoris: 'Favoris',    notifications: 'Alertes',
+  idees: 'Idées',           support: 'Support',    admin: 'Admin',
+};
+
+// Icône de l'entrée « Tout », seule case de la barre qui n'est pas une page.
+const NAV_ICONE_TOUT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="7" height="7" rx="1.6"/><rect x="14" y="3" width="7" height="7" rx="1.6"/><rect x="3" y="14" width="7" height="7" rx="1.6"/><rect x="14" y="14" width="7" height="7" rx="1.6"/></svg>';
+
+// Une page est choisissable si elle mène quelque part : les liens externes n'en
+// sont pas, l'admin n'existe que pour l'équipe, et une section fermée ou en
+// bêta privée n'a rien à montrer. Épingler un « Bientôt » donnerait un onglet
+// qui ouvre un teaser.
+function _navEligible(key) {
+  if (!key || SOCIAL_KEYS.includes(key)) return false;
+  if (ADMIN_ONLY_KEYS.includes(key) && !isAdmin()) return false;
+  if (FLAGGABLE.includes(key) && !_isModuleLive(key)) return false;
+  _cacheMobNavNodes();
+  return !!(_mobNavNodes && _mobNavNodes[key]);
+}
+
+// Toutes les pages épinglables, dans l'ordre du menu — celui que l'utilisateur
+// a sous les yeux dans le tiroir.
+function navPagesEligibles() {
+  const vues = [];
+  DEFAULT_NAV.forEach(cat => (cat.items || []).forEach(k => {
+    if (_navEligible(k) && !vues.includes(k)) vues.push(k);
+  }));
+  return vues;
+}
+
+// La liste enregistrée n'est jamais reprise telle quelle : une section peut
+// avoir été refermée depuis, ou l'utilisateur avoir perdu son rôle admin. On
+// filtre, on dédoublonne, puis on complète — une barre à trois entrées laisserait
+// un trou, et la valeur par défaut est toujours meilleure que le vide.
+function navTabs() {
+  const dispo = navPagesEligibles();
+  const out = [];
+  const pousser = (k) => {
+    if (out.length < NAV_TABS_MAX && dispo.includes(k) && !out.includes(k)) out.push(k);
+  };
+  (getUserSettings().navTabs || []).forEach(pousser);
+  NAV_TABS_DEFAUT.forEach(pousser);
+  dispo.forEach(pousser);
+  return out;
+}
+
+// Page d'ouverture : la première de la liste. Le repli sur Patrimoine couvre le
+// cas où les réglages ne sont pas encore lus au moment de l'appel.
+function navPageOuverture() { return navTabs()[0] || 'patrimoine'; }
+
+// La teinte de chaque onglet vient de l'icône du tiroir, où elle est déjà
+// écrite. La relire évite une seconde table de couleurs à tenir à jour en
+// parallèle de la première, et une page ajoutée au menu arrive avec la sienne.
+function _navCouleur(key) {
+  _cacheMobNavNodes();
+  const svg = _mobNavNodes && _mobNavNodes[key] && _mobNavNodes[key].querySelector('.mobile-drawer-icon svg');
+  return (svg && (svg.getAttribute('stroke') || svg.getAttribute('fill'))) || 'var(--accent)';
+}
+
+function _navIcone(key) {
+  _cacheMobNavNodes();
+  const svg = _mobNavNodes && _mobNavNodes[key] && _mobNavNodes[key].querySelector('.mobile-drawer-icon svg');
+  return svg ? svg.outerHTML : '';
+}
+
+function _navLibelle(key) {
+  if (NAV_LABELS_COURTS[key]) return NAV_LABELS_COURTS[key];
+  _cacheMobNavNodes();
+  const el = _mobNavNodes && _mobNavNodes[key];
+  return el ? (el.textContent || '').replace(/Bientôt|Bêta|New/gi, '').trim() : key;
+}
+
+function _navPageCourante() {
+  const active = document.querySelector('.page.active');
+  return active ? active.id.replace('page-', '') : '';
+}
+
+// ─── Barre du bas ──────────────────────────────────────────────────────────
+// Les cinq cases sont reconstruites plutôt qu'écrites dans le HTML : leur
+// contenu dépend d'un réglage, et les icônes existent déjà dans le tiroir.
+// L'attribut `onclick` est posé comme dans le reste du menu — c'est sur lui que
+// `applyFeatureFlags` s'appuie pour masquer une entrée dont la section ferme.
+function renderMobileNavBar() {
+  const inner = document.querySelector('.mobile-nav-inner');
+  if (!inner) return;
+  inner.innerHTML = '';
+
+  navTabs().forEach(key => {
+    const b = document.createElement('button');
+    b.className = 'mobile-nav-item';
+    b.dataset.mob = key;
+    b.setAttribute('onclick', "showPageMobile('" + key + "')");
+    b.style.setProperty('--c', _navCouleur(key));
+    b.innerHTML = '<span>' + _navIcone(key) + '</span>' + _navLibelle(key);
+    inner.appendChild(b);
+  });
+
+  const tout = document.createElement('button');
+  tout.className = 'mobile-nav-item';
+  tout.setAttribute('onclick', 'openMobileDrawer()');
+  tout.innerHTML = '<span>' + NAV_ICONE_TOUT + '</span>Tout';
+  inner.appendChild(tout);
+
+  syncMobileNav(_navPageCourante());
+}
+
+// ─── Barre latérale ────────────────────────────────────────────────────────
+// Sur ordinateur il n'y a pas de barre du bas : les quatre pages y remontent
+// simplement en tête de menu. Elles quittent leur catégorie au lieu d'y être
+// dupliquées — deux entrées « PEA » dans la même liste ne diraient pas
+// laquelle est laquelle.
+function _navHoistSidebar() {
+  const c = document.getElementById('nav-dynamic');
+  if (!c) return;
+  _cacheNavNodes();
+  c.querySelectorAll('.nav-perso-sep, .nav-perso-edit').forEach(n => n.remove());
+
+  const premier = c.firstChild;
+  navTabs().forEach(key => {
+    const el = _navNodes && _navNodes[key];
+    if (el) c.insertBefore(el, premier);
+  });
+
+  const edit = document.createElement('div');
+  edit.className = 'nav-item nav-perso-edit';
+  edit.setAttribute('onclick', 'openNavEditor()');
+  edit.setAttribute('role', 'button');
+  edit.setAttribute('tabindex', '0');
+  edit.innerHTML = '<span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>Organiser le menu';
+  c.insertBefore(edit, premier);
+
+  const sep = document.createElement('div');
+  sep.className = 'nav-perso-sep';
+  c.insertBefore(sep, premier);
+
+  // Une catégorie vidée par la remontée garde son titre, qui n'annonce alors
+  // plus rien : « Administration » ne porte qu'une entrée, l'épingler laissait
+  // un intitulé seul au milieu du menu.
+  c.querySelectorAll('.nav-section-label').forEach(lab => {
+    const suivant = lab.nextElementSibling;
+    if (!suivant || suivant.classList.contains('nav-section-label')) lab.remove();
+  });
+}
+
+function appliquerNavPerso() {
+  try { renderMobileNavBar(); } catch (e) { console.warn('[nav] barre du bas :', e && e.message); }
+  try { _navHoistSidebar(); }   catch (e) { console.warn('[nav] barre latérale :', e && e.message); }
+}
+window.appliquerNavPerso = appliquerNavPerso;
+
+// ─── Éditeur ───────────────────────────────────────────────────────────────
+// Une seule modale pour les deux écrans : le réglage est le même, il n'y avait
+// pas de raison d'en écrire deux. Pas de glisser-déposer — quatre lignes
+// numérotées avec des flèches se manipulent au pouce sans viser, et restent
+// utilisables au clavier.
+let _navBrouillon = null;   // liste en cours d'édition, non enregistrée
+let _navSlotActif = 0;      // ligne qui recevra la prochaine page choisie
+
+window.openNavEditor = function () {
+  _navBrouillon = navTabs().slice();
+  _navSlotActif = 0;
+  _renderNavEditor();
+  const ov = document.getElementById('nav-editor');
+  if (ov) ov.classList.add('open');
+};
+
+window.closeNavEditor = function () {
+  const ov = document.getElementById('nav-editor');
+  if (ov) ov.classList.remove('open');
+  _navBrouillon = null;
+};
+
+// Remet les quatre pages d'origine. Le bouton ne réenregistre rien tout seul :
+// la remise à zéro reste un brouillon tant qu'on n'a pas validé, et « Annuler »
+// la laisse donc sans effet.
+window.resetNavEditor = function () {
+  const dispo = navPagesEligibles();
+  _navBrouillon = NAV_TABS_DEFAUT.filter(k => dispo.includes(k)).slice(0, NAV_TABS_MAX);
+  _navSlotActif = 0;
+  _renderNavEditor();
+};
+
+window.moveNavSlot = function (i, delta) {
+  const j = i + delta;
+  if (!_navBrouillon || j < 0 || j >= _navBrouillon.length) return;
+  const tmp = _navBrouillon[i];
+  _navBrouillon[i] = _navBrouillon[j];
+  _navBrouillon[j] = tmp;
+  _navSlotActif = j;
+  _renderNavEditor();
+};
+
+window.pickNavSlot = function (i) {
+  _navSlotActif = i;
+  _renderNavEditor();
+};
+
+// Poser une page déjà présente ailleurs l'échange avec celle de la ligne visée
+// au lieu de la dupliquer : sans ça, deux lignes portaient « PEA » et la barre
+// perdait une destination.
+window.assignNavPage = function (key) {
+  if (!_navBrouillon) return;
+  const dejaLa = _navBrouillon.indexOf(key);
+  const sortante = _navBrouillon[_navSlotActif];
+  if (dejaLa !== -1) _navBrouillon[dejaLa] = sortante;
+  _navBrouillon[_navSlotActif] = key;
+  _navSlotActif = Math.min(_navSlotActif + 1, _navBrouillon.length - 1);
+  _renderNavEditor();
+};
+
+window.saveNavEditor = async function () {
+  if (!_navBrouillon) return closeNavEditor();
+  const tabs = _navBrouillon.slice(0, NAV_TABS_MAX);
+  const btn = document.getElementById('nav-editor-save');
+  const err = document.getElementById('nav-editor-err');
+  if (err) err.hidden = true;
+  if (btn) { btn.disabled = true; btn.textContent = 'Enregistrement…'; }
+  try {
+    await saveUserSettings(null, { navTabs: tabs });
+    // Le menu se remonte avant la fermeture : le changement est déjà à l'écran
+    // quand la modale s'efface, ce qui vaut mieux qu'un message pour le dire.
+    appliquerNavPerso();
+    closeNavEditor();
+  } catch (e) {
+    console.warn('[nav] enregistrement :', e && e.message);
+    if (err) {
+      err.textContent = 'Le menu n’a pas pu être enregistré. Vérifiez votre connexion et réessayez.';
+      err.hidden = false;
+    }
+  } finally {
+    if (btn) { btn.disabled = false; btn.textContent = 'Enregistrer'; }
+  }
+};
+
+function _renderNavEditor() {
+  const slots = document.getElementById('nav-editor-slots');
+  const pool  = document.getElementById('nav-editor-pool');
+  if (!slots || !pool || !_navBrouillon) return;
+
+  slots.innerHTML = _navBrouillon.map((key, i) => {
+    const dernier = i === _navBrouillon.length - 1;
+    return '<div class="nav-slot' + (i === _navSlotActif ? ' sel' : '') + '"'
+      + ' onclick="pickNavSlot(' + i + ')" role="button" tabindex="0"'
+      + ' style="--c:' + _navCouleur(key) + '">'
+      + '<span class="nav-slot-n">' + (i + 1) + '</span>'
+      + '<span class="nav-slot-ico">' + _navIcone(key) + '</span>'
+      + '<span class="nav-slot-l">' + _navLibelle(key)
+      + (i === 0 ? '<span class="nav-slot-home">Page d’ouverture</span>' : '')
+      + '</span>'
+      + '<span class="nav-slot-move">'
+      +   '<button type="button" onclick="event.stopPropagation();moveNavSlot(' + i + ',-1)"'
+      +     (i === 0 ? ' disabled' : '') + ' aria-label="Monter">'
+      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>'
+      +   '<button type="button" onclick="event.stopPropagation();moveNavSlot(' + i + ',1)"'
+      +     (dernier ? ' disabled' : '') + ' aria-label="Descendre">'
+      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>'
+      + '</span>'
+      + '</div>';
+  }).join('');
+
+  pool.innerHTML = navPagesEligibles().map(key => {
+    const pris = _navBrouillon.includes(key);
+    return '<button type="button" class="nav-pool-item' + (pris ? ' pris' : '') + '"'
+      + ' onclick="assignNavPage(\'' + key + '\')" style="--c:' + _navCouleur(key) + '">'
+      + '<span class="nav-pool-ico">' + _navIcone(key) + '</span>'
+      + '<span>' + _navLibelle(key) + '</span></button>';
+  }).join('');
 }
 
 // Les dix vues du PEA, regroupées derrière une seule entrée de menu. L'ordre

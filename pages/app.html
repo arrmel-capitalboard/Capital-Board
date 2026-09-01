@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260831d">
+<link rel="stylesheet" href="css/style.css?v=20260831e">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -461,6 +461,10 @@
     </div>
   </div>
 
+  <!-- Les cinq cases sont reconstruites par renderMobileNavBar() a partir des
+       quatre pages epinglees par l'utilisateur. Ce qui suit est l'etat de
+       repli : il s'affiche le temps que la configuration arrive, et reste en
+       place si elle n'arrive jamais. -->
   <nav class="mobile-nav">
     <div class="mobile-nav-inner">
       <button class="mobile-nav-item" data-mob="patrimoine" onclick="showPageMobile('patrimoine')">
@@ -485,6 +489,13 @@
   <div class="mobile-drawer-overlay" id="mobile-drawer-overlay" onclick="if(event.target===this)closeMobileDrawer()">
     <div class="mobile-drawer">
       <div class="mobile-drawer-handle"></div>
+      <!-- Premiere case du tiroir, sur toute la largeur de la grille : le
+           reglage porte sur la barre du bas, c'est donc dans le menu que cette
+           barre ouvre qu'on vient le chercher. -->
+      <button type="button" class="drawer-edit" onclick="closeMobileDrawer();openNavEditor()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        Organiser mes onglets
+      </button>
       <div id="mobile-nav-dynamic">
       <div class="mobile-drawer-section">Mes comptes</div>
       <!-- Entree unique : les dix vues du PEA sont devenues des sous-onglets. -->
@@ -4008,7 +4019,30 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260831d"></script>
+<!-- ─── EDITEUR DES ONGLETS FAVORIS ───────────────────────
+     Une seule modale pour le telephone et l'ordinateur : le reglage est le
+     meme des deux cotes. Le contenu est rendu par _renderNavEditor(). -->
+<div class="modal-overlay" id="nav-editor" onclick="if(event.target===this)closeNavEditor()" role="dialog" aria-modal="true" aria-labelledby="nav-editor-title">
+  <div class="modal nav-editor-modal">
+    <div class="modal-title" id="nav-editor-title">Organiser le menu</div>
+    <div class="modal-sub">Quatre pages, dans l’ordre que vous voulez. Sur téléphone elles remplissent la barre du bas, sur ordinateur elles passent en tête du menu.</div>
+
+    <div class="nav-slots" id="nav-editor-slots"></div>
+
+    <div class="nav-pool-label">Choisir une page</div>
+    <div class="nav-pool" id="nav-editor-pool"></div>
+
+    <p class="nav-editor-err" id="nav-editor-err" hidden></p>
+
+    <div class="modal-footer">
+      <button type="button" class="btn-secondary" onclick="resetNavEditor()">Réinitialiser</button>
+      <button type="button" class="btn-secondary" onclick="closeNavEditor()">Annuler</button>
+      <button type="button" class="btn-primary" id="nav-editor-save" onclick="saveNavEditor()">Enregistrer</button>
+    </div>
+  </div>
+</div>
+
+<script src="js/app.js?v=20260831e"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
 <script src="js/onboarding.js?v=20260831c"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->

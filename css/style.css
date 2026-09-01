@@ -2308,14 +2308,12 @@ body.sb-collapsed .main { margin-left: 58px; }
    au repos : quatre couleurs vives allumées en permanence, où l'onglet actif ne
    se distinguait plus de ses voisins. Elles passent en `currentColor`, et c'est
    l'activation qui rend la couleur — la barre dit alors où l'on se trouve.
-   `--c` est déclarée par onglet plutôt qu'en quatre règles `.active` : une seule
-   règle d'activation à maintenir, et une couleur à changer au même endroit que
-   l'onglet. `--accent` sert de repli pour « Tout », qui n'a pas de section. */
+   `--c` est posée sur chaque case au moment du rendu, à partir de la teinte
+   déjà écrite sur l'icône du tiroir : la barre étant devenue personnalisable,
+   une table de couleurs en CSS serait une seconde liste à tenir à jour, et une
+   page nouvellement épinglée y manquerait. `--accent` sert de repli pour
+   « Tout », qui n'est pas une section. */
 .mobile-nav-item { --c: var(--accent); }
-.mobile-nav-item[data-mob="patrimoine"] { --c: #00e09e; }
-.mobile-nav-item[data-mob="portfolio"]  { --c: #7c6df5; }
-.mobile-nav-item[data-mob="crypto"]     { --c: #f7931a; }
-.mobile-nav-item[data-mob="depenses"]   { --c: #00cec9; }
 .mobile-nav-item svg { stroke: currentColor; }
 .mobile-nav-item.active {
   color: var(--c);
@@ -4224,7 +4222,6 @@ body.has-demo-banner { padding-top: 40px; }
 
 @media (prefers-reduced-motion: reduce) {
   .pea-fab-veil, .pea-sheet { transition: none; }
-}
 }
 
 /* ═══════════════════════════════════════════════════
@@ -6278,4 +6275,116 @@ body.has-demo-banner { padding-top: 40px; }
   .cry-actions { opacity: 1; }
   .cry-watch-form { padding: 0 14px 14px; max-width: none; }
   .cry-unite button { padding: 7px 10px; }
+}
+
+/* ═══════════════════════════════════════════════════
+   ONGLETS FAVORIS — barre du bas et tête de menu
+   Quatre pages choisies par l'utilisateur, dans son ordre. La barre du bas les
+   affiche telles quelles ; sur ordinateur elles remontent simplement en tête
+   du menu. Un seul réglage, un seul éditeur.
+   ═══════════════════════════════════════════════════ */
+
+/* Ouverture de l'éditeur depuis le tiroir. Sur toute la largeur de la grille :
+   ce n'est pas une destination, elle n'a rien à faire dans une case de menu. */
+.drawer-edit {
+  grid-column: 1 / -1;
+  display: flex; align-items: center; justify-content: center; gap: 7px;
+  margin-bottom: 2px; padding: 9px 10px;
+  background: var(--s2); border: 1px dashed var(--border2); border-radius: 12px;
+  color: var(--text2); font-family: var(--sans); font-size: 11px; font-weight: 600;
+  cursor: pointer; transition: color 0.15s, border-color 0.15s, background 0.15s;
+  -webkit-tap-highlight-color: transparent;
+}
+.drawer-edit:hover, .drawer-edit:active {
+  color: var(--accent); border-color: rgba(124,109,245,0.4); background: var(--accent-d);
+}
+
+/* Tête de la barre latérale : un filet sépare les épinglées du menu complet,
+   sans titre de section — ce sont les mêmes entrées, simplement remontées. */
+.nav-perso-sep { height: 1px; background: var(--border); margin: 10px 10px 12px; }
+.nav-perso-edit { color: var(--text3); font-size: 12px; }
+.nav-perso-edit:hover { color: var(--text2); }
+
+/* ─── Éditeur ─── */
+.nav-editor-modal { width: 470px; }
+.nav-slots { display: flex; flex-direction: column; gap: 6px; }
+.nav-slot {
+  display: flex; align-items: center; gap: 10px;
+  padding: 9px 11px; border-radius: 12px;
+  background: var(--s2); border: 1px solid var(--border);
+  cursor: pointer; transition: border-color 0.15s, background 0.15s;
+}
+.nav-slot.sel {
+  border-color: var(--c);
+  background: var(--s3);
+  background: color-mix(in srgb, var(--c) 11%, var(--s2));
+}
+.nav-slot-n {
+  flex: none; width: 20px; height: 20px; border-radius: 6px;
+  display: grid; place-items: center;
+  background: var(--s4); color: var(--text3);
+  font-family: var(--mono); font-size: 10px; font-weight: 700;
+}
+.nav-slot.sel .nav-slot-n { background: var(--c); color: var(--s1); }
+.nav-slot-ico { flex: none; display: grid; place-items: center; width: 20px; height: 20px; }
+.nav-slot-ico svg { width: 16px; height: 16px; }
+.nav-slot-l {
+  flex: 1 1 auto; min-width: 0;
+  font-size: 13px; font-weight: 600; color: var(--text);
+  display: flex; align-items: baseline; gap: 8px; flex-wrap: wrap;
+}
+/* La première ligne dit ce qu'elle est. Sans cette mention, l'ordre paraissait
+   décoratif et rien n'annonçait la page d'ouverture. */
+.nav-slot-home {
+  font-family: var(--mono); font-size: 8.5px; font-weight: 500;
+  letter-spacing: 0.06em; text-transform: uppercase;
+  color: var(--accent); border: 1px solid rgba(124,109,245,0.35);
+  padding: 1px 5px; border-radius: 5px; white-space: nowrap;
+}
+.nav-slot-move { flex: none; display: flex; gap: 3px; }
+.nav-slot-move button {
+  width: 26px; height: 26px; border-radius: 7px; cursor: pointer;
+  background: var(--s3); border: 1px solid var(--border2); color: var(--text2);
+  display: grid; place-items: center; transition: color 0.15s, border-color 0.15s;
+}
+.nav-slot-move button:hover:not(:disabled) { color: var(--text); border-color: var(--border3); }
+.nav-slot-move button:disabled { opacity: 0.3; cursor: not-allowed; }
+
+.nav-pool-label {
+  margin: 18px 0 8px;
+  font-family: var(--mono); font-size: 9px; font-weight: 600;
+  letter-spacing: 2px; text-transform: uppercase; color: var(--text3);
+}
+.nav-pool {
+  display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px;
+  max-height: 210px; overflow-y: auto;
+}
+.nav-pool-item {
+  display: flex; flex-direction: column; align-items: center; justify-content: center;
+  gap: 5px; text-align: center; overflow-wrap: anywhere;
+  padding: 9px 3px; border-radius: 11px; cursor: pointer;
+  background: var(--s2); border: 1px solid var(--border); color: var(--text2);
+  font-family: var(--sans); font-size: 10px; font-weight: 600; line-height: 1.2;
+  transition: background 0.12s, border-color 0.12s;
+  -webkit-tap-highlight-color: transparent;
+}
+.nav-pool-item:hover { background: var(--s3); border-color: var(--border2); }
+.nav-pool-ico { display: grid; place-items: center; height: 18px; }
+.nav-pool-ico svg { width: 15px; height: 15px; }
+/* Une page déjà épinglée reste cliquable : la reposer ailleurs l'échange avec
+   la ligne visée. Le liseré dit qu'elle est prise, sans l'éteindre. */
+.nav-pool-item.pris { border-color: var(--c); color: var(--text); }
+
+.nav-editor-err {
+  margin-top: 14px; font-size: 12px; color: var(--negative);
+  background: var(--negative-d); border: 1px solid rgba(255,77,106,0.25);
+  border-radius: 9px; padding: 9px 11px;
+}
+
+/* Trois boutons en pied de modale : à 92 vw ils ne tiennent plus sur une
+   ligne, « Réinitialiser » passe alors seul au-dessus des deux autres. */
+@media (max-width: 768px) {
+  .nav-editor-modal .modal-footer { flex-wrap: wrap; }
+  .nav-editor-modal .modal-footer .btn-secondary:first-child { flex: 1 1 100%; }
+  .nav-pool { grid-template-columns: repeat(3, 1fr); max-height: 34vh; }
 }
