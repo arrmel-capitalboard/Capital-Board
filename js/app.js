@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260831c';
+const APP_VERSION = '20260831d';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6919,7 +6919,12 @@ function _scrollToTop() {
 // et n'est donc pas un conteneur de défilement. Un seul écouteur passif sur
 // `window` suffit, et rien du layout n'a à bouger — le `padding-bottom` de
 // `.main` reste nécessaire, la barre revenant se poser sur le bas de la page.
-const _NAV_SEUIL = 10;   // px avant de basculer : en dessous, c'est le tremblement du doigt
+// Les deux sens n'ont pas le même seuil. Effacer la barre est une décision
+// qu'on prend pour l'utilisateur : elle attend un vrai geste vers le bas, pas
+// les quelques pixels d'un doigt qui se pose. La ramener est une demande
+// explicite, et répond donc au premier mouvement vers le haut.
+const _NAV_SEUIL_SORTIE = 26;  // px de descente avant d'effacer la barre
+const _NAV_SEUIL_RETOUR = 10;  // px de remontée avant de la ramener
 const _NAV_BORD  = 4;    // tolérance pour « en haut » et « en bas » de page
 let _navDernierY = 0;
 let _navAttente  = false;
@@ -6957,8 +6962,8 @@ function _navAuDefilement() {
   // sans plus rien à défiler pour la faire revenir.
   if (y <= _NAV_BORD || max - y <= _NAV_BORD) { _navShow(); return; }
 
-  if (dy > _NAV_SEUIL)       { _navHide(); _navDernierY = y; }
-  else if (dy < -_NAV_SEUIL) { _navShow(); }
+  if (dy > _NAV_SEUIL_SORTIE)       { _navHide(); _navDernierY = y; }
+  else if (dy < -_NAV_SEUIL_RETOUR) { _navShow(); }
 }
 
 // L'écouteur ne fait que demander une image : la lecture de `scrollY` et

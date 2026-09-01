@@ -2264,19 +2264,32 @@ body.sb-collapsed .main { margin-left: 58px; }
    elle rendait 76 px de hauteur à rien d'autre qu'à elle-même.
    `translateY(100%)` déplace la barre de sa hauteur bordures et réserve de
    gestes comprises : elle sort donc entièrement de l'écran, sans qu'aucune
-   valeur en dur n'ait à suivre les changements de padding. */
+   valeur en dur n'ait à suivre les changements de padding.
+
+   La sortie et le retour n'ont pas la même durée. La transition appliquée est
+   celle de l'état visé : la règle de base sert au retour, celle de `.nav-hidden`
+   au départ. La barre s'en va donc en 0,42 s, assez lentement pour qu'on la voie
+   partir et qu'on comprenne où la retrouver, et revient en 0,3 s — un retour
+   demandé au doigt ne doit pas se faire attendre. */
 .mobile-nav {
   transition: transform 0.3s cubic-bezier(0.32,0.72,0,1), opacity 0.22s ease;
   will-change: transform;
 }
-.mobile-nav.nav-hidden { transform: translateY(calc(100% + 4px)); opacity: 0; }
+.mobile-nav.nav-hidden {
+  transform: translateY(calc(100% + 4px));
+  opacity: 0;
+  transition: transform 0.42s cubic-bezier(0.4,0,0.2,1), opacity 0.3s ease;
+}
 /* La barre elle-même est déjà traversante ; c'est la pilule qui reçoit les
    clics, et c'est donc elle qu'il faut désarmer une fois la barre sortie —
    sinon un doigt posé sur le bas de l'écran touche encore un onglet invisible
-   pendant les 300 ms de la sortie. */
+   pendant les 420 ms de la sortie. */
 .mobile-nav.nav-hidden .mobile-nav-inner { pointer-events: none; }
 @media (prefers-reduced-motion: reduce) {
-  .mobile-nav { transition: opacity 0.15s ease; }
+  /* Les deux états sont repris, `.nav-hidden` portant désormais sa propre
+     transition : la neutraliser sur la seule règle de base ne suffirait plus. */
+  .mobile-nav,
+  .mobile-nav.nav-hidden { transition: opacity 0.15s ease; }
   .mobile-nav.nav-hidden { transform: none; }
 }
 
