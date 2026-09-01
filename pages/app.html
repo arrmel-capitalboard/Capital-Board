@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260831b">
+<link rel="stylesheet" href="css/style.css?v=20260831c">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -463,12 +463,6 @@
 
   <nav class="mobile-nav">
     <div class="mobile-nav-inner">
-      <!-- Déclencheur d'ajout : posé sur le coin de l'onglet PEA, hors du
-           bouton pour rester du HTML valide. Les cinq entrées ayant la même
-           largeur, la deuxième occupe 20 % à 40 % de la barre : son coin haut
-           droit est donc à 40 %, quel que soit l'écran. -->
-      <span class="nav-add-badge" id="nav-add-btn" role="button" tabindex="0" aria-label="Ajouter"
-            onclick="togglePeaFab()"><svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg></span>
       <button class="mobile-nav-item" data-mob="patrimoine" onclick="showPageMobile('patrimoine')">
         <span><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#00e09e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21V8l9-5 9 5v13"/><path d="M9 21v-7h6v7"/></svg></span>Patrimoine
       </button>
@@ -4014,9 +4008,9 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260831b"></script>
+<script src="js/app.js?v=20260831c"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
-<script src="js/onboarding.js?v=20260831b"></script>
+<script src="js/onboarding.js?v=20260831c"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->
 <script src="js/import.js?v=20260831b"></script>
 

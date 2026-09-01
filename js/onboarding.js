@@ -165,7 +165,10 @@
       page: 'portfolio',
     },
     {
-      target: () => (mobile() ? q('#nav-add-btn') : q('.table-header .btn-add:last-of-type')),
+      // Le badge « + » de la barre du bas a été retiré : les deux largeurs
+      // désignent maintenant le même bouton, celui de l'en-tête « Mes titres »,
+      // qui reste affiché en mobile.
+      target: () => q('.table-header .btn-add:last-of-type'),
       title: 'Ajouter une ligne',
       text: 'Pour l’instant, la saisie est manuelle : un titre, une quantité, un prix d’achat, et la performance se calcule toute seule ensuite. L’import depuis les données exportables de votre courtier arrive bientôt.',
       page: 'portfolio',

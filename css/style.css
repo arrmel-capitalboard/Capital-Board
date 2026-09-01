@@ -2259,6 +2259,27 @@ body.sb-collapsed .main { margin-left: 58px; }
   box-shadow: 0 10px 30px rgba(0,0,0,0.42), 0 2px 6px rgba(0,0,0,0.24);
 }
 
+/* Effacement au défilement. La barre part quand on descend et revient dès qu'on
+   remonte : sur les longues listes — les titres du PEA, les dépenses du mois —
+   elle rendait 76 px de hauteur à rien d'autre qu'à elle-même.
+   `translateY(100%)` déplace la barre de sa hauteur bordures et réserve de
+   gestes comprises : elle sort donc entièrement de l'écran, sans qu'aucune
+   valeur en dur n'ait à suivre les changements de padding. */
+.mobile-nav {
+  transition: transform 0.3s cubic-bezier(0.32,0.72,0,1), opacity 0.22s ease;
+  will-change: transform;
+}
+.mobile-nav.nav-hidden { transform: translateY(calc(100% + 4px)); opacity: 0; }
+/* La barre elle-même est déjà traversante ; c'est la pilule qui reçoit les
+   clics, et c'est donc elle qu'il faut désarmer une fois la barre sortie —
+   sinon un doigt posé sur le bas de l'écran touche encore un onglet invisible
+   pendant les 300 ms de la sortie. */
+.mobile-nav.nav-hidden .mobile-nav-inner { pointer-events: none; }
+@media (prefers-reduced-motion: reduce) {
+  .mobile-nav { transition: opacity 0.15s ease; }
+  .mobile-nav.nav-hidden { transform: none; }
+}
+
 .mobile-nav-item {
   display: flex; flex-direction: column; align-items: center; gap: 3px;
   padding: 6px 4px; border-radius: 10px;
@@ -2269,10 +2290,29 @@ body.sb-collapsed .main { margin-left: 58px; }
   -webkit-tap-highlight-color: transparent;
 }
 .mobile-nav-item span { font-size: 20px; line-height: 1; transition: transform 0.2s cubic-bezier(0.34,1.56,0.64,1); }
+
+/* Couleur de section. Les icônes portaient leur teinte de marque en dur, même
+   au repos : quatre couleurs vives allumées en permanence, où l'onglet actif ne
+   se distinguait plus de ses voisins. Elles passent en `currentColor`, et c'est
+   l'activation qui rend la couleur — la barre dit alors où l'on se trouve.
+   `--c` est déclarée par onglet plutôt qu'en quatre règles `.active` : une seule
+   règle d'activation à maintenir, et une couleur à changer au même endroit que
+   l'onglet. `--accent` sert de repli pour « Tout », qui n'a pas de section. */
+.mobile-nav-item { --c: var(--accent); }
+.mobile-nav-item[data-mob="patrimoine"] { --c: #00e09e; }
+.mobile-nav-item[data-mob="portfolio"]  { --c: #7c6df5; }
+.mobile-nav-item[data-mob="crypto"]     { --c: #f7931a; }
+.mobile-nav-item[data-mob="depenses"]   { --c: #00cec9; }
+.mobile-nav-item svg { stroke: currentColor; }
 .mobile-nav-item.active {
-  color: var(--accent);
+  color: var(--c);
+  /* Repli d'abord, pour les navigateurs sans `color-mix` : le fond violet vaut
+     mieux qu'un fond transparent, la couleur du texte suffisant à distinguer
+     l'onglet actif. */
   background: var(--accent-d);
+  background: color-mix(in srgb, var(--c) 13%, transparent);
 }
+.mobile-nav-item.active svg { stroke: var(--c); }
 .mobile-nav-item.active span { transform: scale(1.15); }
 
 /* ─── MOBILE DRAWER (pages secondaires) ─── */
@@ -4119,42 +4159,19 @@ body.has-demo-banner { padding-top: 40px; }
 
 /* ═══════════════════════════════════════════════════
    AJOUT RAPIDE — MOBILE, PAGE MON PEA
-   Le déclencheur est une entrée de la barre : il ne prend aucune hauteur, et
-   la feuille s'arrête au bord supérieur de la barre. Rien ne flotte au-dessus
-   du contenu.
+   Le badge « + » accroché au coin de l'onglet PEA a été retiré : il chargeait
+   la barre d'une action au milieu de destinations, et son ancrage à 40 % de la
+   largeur devait être recalculé à chaque changement du nombre d'entrées.
+   Les trois actions de la feuille restent atteignables sur la page elle-même :
+   « ＋ Versement » dans la carte Solde espèces, « ＋ Ajouter une ligne » et
+   l'import dans l'en-tête « Mes titres ».
+   La feuille et son voile survivent sans déclencheur — à retirer avec
+   `togglePeaFab()` et `_movePeaBadge()` si la décision se confirme.
    ═══════════════════════════════════════════════════ */
 #pea-fab { display: none; }
-.nav-add-badge { display: none; }
 
 @media (max-width: 768px) {
   #pea-fab.on { display: block; }
-
-  /* Le déclencheur est un badge accroché au coin de l'onglet : il n'occupe
-     aucune place dans la barre, qui garde ses cinq entrées et leur largeur.
-     La bordure reprend le fond de la barre pour le détacher de l'onglet. */
-  .mobile-nav-inner { position: relative; }
-  .nav-add-badge {
-    position: absolute; top: -9px; left: calc(40% - 17px);
-    width: 26px; height: 26px; border-radius: 50%;
-    background: linear-gradient(135deg, var(--accent), #6b5ee8);
-    color: #fff; border: 2px solid var(--s1);
-    display: none; place-items: center; cursor: pointer; z-index: 3;
-    box-shadow: 0 2px 8px rgba(124,109,245,.5);
-    /* `top` et `left` s'animent : à l'ouverture, le bouton rejoint le coin de
-       la feuille, calculé en JS puisque sa hauteur dépend du nombre d'entrées. */
-    transition: transform .22s cubic-bezier(.32,.72,0,1), top .26s cubic-bezier(.32,.72,0,1), left .26s cubic-bezier(.32,.72,0,1);
-  }
-  #pea-fab.on ~ .mobile-nav .nav-add-badge,
-  /* déplacé dans le conteneur de la feuille pendant l'ouverture */
-  #pea-fab.open > .nav-add-badge { display: grid; }
-  /* Une fois posé sur la feuille, le bouton grandit d'un cinquième : il devient
-     la cible de fermeture, et n'a plus à se faire discret sur un onglet :
-     26px qui en paraissent 38, largement au-dessus des 44px recommandés une
-     fois la zone tactile comptée.
-     L'agrandissement passe par `scale` et non par la largeur, pour ne pas
-     fausser les coordonnées calculées avant le déplacement. */
-  #pea-fab.open ~ .mobile-nav .nav-add-badge,
-  #pea-fab.open > .nav-add-badge { transform: rotate(45deg) scale(1.45); }
 
   .pea-fab-veil {
     position: fixed; inset: 0; z-index: 190;
@@ -4193,7 +4210,7 @@ body.has-demo-banner { padding-top: 40px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .pea-fab-veil, .pea-sheet, .nav-add-badge { transition: none; }
+  .pea-fab-veil, .pea-sheet { transition: none; }
 }
 }
 

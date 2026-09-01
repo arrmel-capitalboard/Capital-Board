@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260831b';
+const APP_VERSION = '20260831c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6904,7 +6904,73 @@ function _scrollToTop() {
   window.scrollTo(0, 0);
   const main = document.querySelector('.main');
   if (main && main.scrollTop) main.scrollTop = 0;
+  // Changer de page ramène la barre : on arrive en haut d'une page, la
+  // navigation doit y être, même si on l'avait effacée sur la précédente.
+  _navShow();
 }
+
+// ─── BARRE MOBILE : EFFACEMENT AU DÉFILEMENT ─────────────────────────────
+// Descendre efface la barre, remonter la ramène. Sur les longues listes — les
+// titres du PEA, les dépenses du mois — elle occupait en permanence 76 px du
+// bas de l'écran sans rien y apporter, et le retour se fait d'un geste au lieu
+// d'obliger à remonter toute la page.
+//
+// Le défilement lu est celui du document : `.main` ne déclare aucun `overflow`
+// et n'est donc pas un conteneur de défilement. Un seul écouteur passif sur
+// `window` suffit, et rien du layout n'a à bouger — le `padding-bottom` de
+// `.main` reste nécessaire, la barre revenant se poser sur le bas de la page.
+const _NAV_SEUIL = 10;   // px avant de basculer : en dessous, c'est le tremblement du doigt
+const _NAV_BORD  = 4;    // tolérance pour « en haut » et « en bas » de page
+let _navDernierY = 0;
+let _navAttente  = false;
+
+function _navBarre() { return document.querySelector('.mobile-nav'); }
+
+function _navShow() {
+  const nav = _navBarre();
+  if (nav) nav.classList.remove('nav-hidden');
+  _navDernierY = window.scrollY;
+}
+
+function _navHide() {
+  const nav = _navBarre();
+  if (nav) nav.classList.add('nav-hidden');
+}
+
+// Un panneau ouvert verrouille la page derrière lui : le défilement qu'on y lit
+// n'est plus celui du contenu, et effacer la barre à ce moment la ferait
+// disparaître sous le panneau, pour la retrouver absente à la fermeture.
+// La visite guidée s'ajoute à la liste : elle amène ses cibles à l'écran avec
+// `scrollIntoView`, et deux de ses étapes désignent la barre elle-même — sans
+// ce garde-fou, le défilement qui vient la montrer l'effacerait.
+function _navPanneauOuvert() {
+  return !!document.querySelector('.mobile-drawer-overlay.open, #pea-fab.open, .modal-overlay.open, .ob-tour, .ob-overlay');
+}
+
+function _navAuDefilement() {
+  const y   = window.scrollY;
+  const max = document.documentElement.scrollHeight - window.innerHeight;
+  const dy  = y - _navDernierY;
+
+  // Haut de page et fin de page : la barre est toujours là. Sans le second cas,
+  // une page qui se termine en pleine descente laisserait la barre effacée,
+  // sans plus rien à défiler pour la faire revenir.
+  if (y <= _NAV_BORD || max - y <= _NAV_BORD) { _navShow(); return; }
+
+  if (dy > _NAV_SEUIL)       { _navHide(); _navDernierY = y; }
+  else if (dy < -_NAV_SEUIL) { _navShow(); }
+}
+
+// L'écouteur ne fait que demander une image : la lecture de `scrollY` et
+// `scrollHeight` force un recalcul de mise en page, à ne pas payer à chaque
+// événement de défilement.
+window.addEventListener('scroll', () => {
+  if (!window.matchMedia('(max-width: 768px)').matches) return;
+  if (_navPanneauOuvert()) return;
+  if (_navAttente) return;
+  _navAttente = true;
+  requestAnimationFrame(() => { _navAttente = false; _navAuDefilement(); });
+}, { passive: true });
 
 // Affiche la barre de sous-onglets quand la page active appartient au PEA, et
 // y marque l'onglet courant. Un onglet dont la section est désactivée par
@@ -6925,6 +6991,9 @@ window.togglePeaFab = function (force) {
 // coordonnées se mesurent, elles ne peuvent pas s'écrire en CSS. Le passage en
 // position fixe se fait d'abord sur place, pour que le déplacement s'anime au
 // lieu de sauter.
+// Dormante depuis le retrait du badge « + » : `#nav-add-btn` n'existe plus, la
+// fonction sort au premier test. Elle reste avec `togglePeaFab()` et la feuille
+// tant que la décision n'est pas confirmée — à retirer ensemble.
 function _movePeaBadge(open) {
   const badge = document.getElementById('nav-add-btn');
   const fab   = document.getElementById('pea-fab');
