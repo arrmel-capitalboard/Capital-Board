@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260831e';
+const APP_VERSION = '20260831f';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -7726,38 +7726,174 @@ function _alertBtnHtml(ticker, size) {
 }
 
 let _patriChart = null;
+
+// ─── Enveloppes retirées du total ──────────────────────────────────────────
+// Tout compte par défaut : la liste ne retient que ce que l'utilisateur a
+// explicitement sorti. Un réglage vide vaut donc « tout branché », y compris
+// pour une enveloppe ajoutée après coup — l'inverse aurait obligé à
+// réenregistrer le réglage à chaque nouveau module.
+function patriExclus() {
+  const l = getUserSettings().patriExclus;
+  return Array.isArray(l) ? l : [];
+}
+function patriEstCompte(key) { return !patriExclus().includes(key); }
+
+window.togglePatriEnveloppe = function (key) {
+  const l = patriExclus();
+  const suite = l.includes(key) ? l.filter(k => k !== key) : l.concat(key);
+  // `saveUserSettings` écrit le cache local avant son premier `await`, donc
+  // avant de rendre la main : au retour de l'appel le réglage est déjà à jour,
+  // et le rendu qui suit lit la bonne valeur sans attendre le réseau. Écrire le
+  // cache soi-même n'aurait pas marché — `getUserSettings()` rend un objet neuf
+  // quand rien n'est encore chargé, et la modification serait tombée à côté.
+  const ecriture = saveUserSettings(null, { patriExclus: suite });
+  renderPatrimoine();
+  ecriture.catch(e => console.warn('[patrimoine] réglage non enregistré :', e && e.message));
+};
+
+// Éclaircir ou assombrir une couleur. Le dégradé d'un segment lui donne un
+// relief que neuf aplats côte à côte n'ont pas, sans déplacer la teinte.
+function _teinte(hex, t, vers) {
+  const n = parseInt(hex.slice(1), 16);
+  const c = [(n >> 16) & 255, (n >> 8) & 255, n & 255];
+  return '#' + c.map(x => Math.round(vers ? x + (255 - x) * t : x * (1 - t))
+    .toString(16).padStart(2, '0')).join('');
+}
+
+// Sous ce seuil, l'étiquette ne trouve pas la place de se poser sans écraser sa
+// voisine : l'enveloppe garde sa tranche, son nom se lit dans la liste dessous.
+const PATRI_SEUIL_ETIQUETTE = 8;
+
+// Les étiquettes sont posées à la hauteur du milieu de leur tranche, ce qui les
+// superpose dès que deux tranches se suivent. On les écarte d'un pas minimum,
+// colonne par colonne : on repousse vers le bas, puis on rattrape vers le haut
+// si la dernière dépasse — sans quoi le bas de la colonne sortait du cadre.
+function _repartirEtiquettes(list, pas, yMin, yMax) {
+  list.sort((a, b) => a.y - b.y);
+  for (let i = 1; i < list.length; i++) {
+    if (list[i].y - list[i - 1].y < pas) list[i].y = list[i - 1].y + pas;
+  }
+  if (list.length && list[list.length - 1].y > yMax) {
+    for (let i = list.length - 1; i >= 0; i--) {
+      list[i].y = Math.min(list[i].y, yMax - (list.length - 1 - i) * pas);
+    }
+  }
+  list.forEach(l => { l.y = Math.max(l.y, yMin); });
+  return list;
+}
+
+// L'anneau est dessiné en SVG et non plus dans un canvas Chart.js. Trois
+// raisons : les couleurs du thème s'appliquent d'elles-mêmes, là où le texte
+// central était écrit en dur et restait clair sur fond clair ; les étiquettes
+// se posent autour du disque, ce qu'un greffon de canvas rendait laborieux ; et
+// il n'y a plus d'instance à détruire à chaque rendu.
+function _patriAnneau(actives, total, eur) {
+  const CX = 130, CY = 100, R = 62, W = 19, GAP = 7;
+  const C = 2 * Math.PI * R;
+  const part = v => total > 0 ? (v / total * 100) : 0;
+
+  let defs = '', segs = '', pos = 0;
+  const gauche = [], droite = [];
+
+  actives.forEach((r, i) => {
+    const brut = (r.montant / total) * C;
+    // `stroke-dasharray` sur un cercle plutôt qu'un chemin par tranche : les
+    // bouts arrondis viennent avec, et une part minuscule devient un point rond
+    // au lieu d'un éclat de triangle illisible.
+    const len = Math.max(brut - GAP - W, 0.6);
+    defs += '<linearGradient id="patri-g' + i + '" x1="0" y1="0" x2="0.6" y2="1">'
+      + '<stop offset="0" stop-color="' + _teinte(r.color, 0.22, true) + '"/>'
+      + '<stop offset="1" stop-color="' + _teinte(r.color, 0.12, false) + '"/></linearGradient>';
+    segs += '<circle class="patri-seg" cx="' + CX + '" cy="' + CY + '" r="' + R + '" fill="none"'
+      + ' stroke="url(#patri-g' + i + ')" stroke-width="' + W + '" stroke-linecap="round"'
+      + ' stroke-dasharray="' + len.toFixed(2) + ' ' + (C - len).toFixed(2) + '"'
+      + ' stroke-dashoffset="' + (-(pos + GAP / 2 + W / 2)).toFixed(2) + '"'
+      + ' transform="rotate(-90 ' + CX + ' ' + CY + ')">'
+      + '<title>' + _attr(r.label) + ' — ' + eur(r.montant) + '</title></circle>';
+
+    if (part(r.montant) >= PATRI_SEUIL_ETIQUETTE) {
+      const mid = (-Math.PI / 2) + ((pos + brut / 2) / C) * Math.PI * 2;
+      const cible = { r: r, y: CY + Math.sin(mid) * (R + 10), droite: Math.cos(mid) >= 0 };
+      (cible.droite ? droite : gauche).push(cible);
+    }
+    pos += brut;
+  });
+
+  _repartirEtiquettes(gauche, 26, 14, 186);
+  _repartirEtiquettes(droite, 26, 14, 186);
+
+  const etiquette = (e) => {
+    const x = e.droite ? 254 : 6;
+    const xTrait = e.droite ? CX + R + 12 : CX - R - 12;
+    return '<polyline points="' + xTrait + ',' + e.y.toFixed(1) + ' '
+      + (e.droite ? x - 4 : x + 4) + ',' + e.y.toFixed(1) + '" fill="none"'
+      + ' stroke="' + e.r.color + '" stroke-width="1" stroke-opacity=".45"/>'
+      + '<text class="patri-etq-n" x="' + x + '" y="' + (e.y - 2).toFixed(1) + '"'
+      + ' text-anchor="' + (e.droite ? 'end' : 'start') + '">' + _attr(e.r.label) + '</text>'
+      + '<text class="patri-etq-v" x="' + x + '" y="' + (e.y + 9).toFixed(1) + '"'
+      + ' text-anchor="' + (e.droite ? 'end' : 'start') + '">'
+      + part(e.r.montant).toFixed(1) + ' %</text>';
+  };
+
+  return '<div class="patri-anneau">'
+    + '<svg viewBox="0 0 260 200" role="img" aria-label="Répartition du patrimoine par enveloppe">'
+    + '<defs>' + defs + '</defs>'
+    + '<circle class="patri-track" cx="' + CX + '" cy="' + CY + '" r="' + R + '" fill="none" stroke-width="' + W + '"/>'
+    + segs
+    + gauche.concat(droite).map(etiquette).join('')
+    + '<text class="patri-centre-l" x="' + CX + '" y="' + (CY - 9) + '" text-anchor="middle">TOTAL</text>'
+    + '<text class="patri-centre-v" x="' + CX + '" y="' + (CY + 11) + '" text-anchor="middle">'
+    + _attr(eur(total)) + '</text>'
+    + '</svg></div>';
+}
+
 function renderPatrimoine() {
   const el = document.getElementById('patrimoine-content');
   if (!el) return;
 
-  const pea  = _peaTotals('pea');
-  const rows = PATRIMOINE_ENVELOPPES.map(e => Object.assign({}, e, { montant: e.value() }));
-  const actives = rows.filter(r => r.montant !== null && r.montant > 0);
+  // Le camembert de Chart.js a laissé place à un SVG. Une instance peut rester
+  // d'un rendu antérieur au déploiement : on la ferme, sinon elle continue de
+  // tenir son canvas et ses écouteurs.
+  if (_patriChart) { try { _patriChart.destroy(); } catch (_) {} _patriChart = null; }
+
+  const pea = _peaTotals('pea');
+  const rows = PATRIMOINE_ENVELOPPES.map(e => {
+    const montant = e.value();
+    const dispo = montant !== null && montant > 0;
+    return Object.assign({}, e, {
+      montant: montant,
+      dispo: dispo,
+      compte: dispo && patriEstCompte(e.key),
+    });
+  });
+  const actives = rows.filter(r => r.compte);
   const total   = actives.reduce((s, r) => s + r.montant, 0);
-  const attente = rows.length - actives.length;
+  const attente = rows.filter(r => !r.dispo).length;
+  const retires = rows.filter(r => r.dispo && !r.compte).length;
 
   const eur = v => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
   const part = v => total > 0 ? (v / total * 100) : 0;
 
-  // Répartition : camembert (anneau) plutôt qu'une barre — la part de chaque
-  // enveloppe se lit d'un coup d'œil, et le total tient au centre.
-  const donut = actives.length
-    ? '<div class="patri-donut-wrap"><canvas id="patri-donut"></canvas></div>'
-      + '<div class="patri-legend">'
-      + actives.map(r => '<span class="patri-leg"><i style="background:' + r.color + '"></i>'
-          + r.label + ' <b>' + part(r.montant).toFixed(1) + ' %</b></span>').join('')
-      + '</div>'
-    : '';
+  const anneau = actives.length ? _patriAnneau(actives, total, eur) : '';
 
+  // La ligne mène à sa page ; l'interrupteur la sort du total sans y aller.
+  // D'où le stopPropagation : sans lui, retirer une enveloppe changeait de page.
   const ligne = (r) => {
-    const dispo = r.montant !== null && r.montant > 0;
-    return '<div class="patri-row" onclick="showPage(&quot;' + r.key + '&quot;)">'
-      + '<span style="width:10px;height:10px;border-radius:3px;background:' + r.color + ';opacity:' + (dispo ? '1' : '.35') + ';flex-shrink:0"></span>'
-      + '<span style="flex:1;min-width:0;font-size:13px;font-weight:600;color:' + (dispo ? 'var(--text)' : 'var(--text3)') + '">' + r.label + '</span>'
-      + (dispo
-        ? '<span style="text-align:right"><span style="display:block;font-family:var(--mono);font-size:13px;font-weight:700">' + eur(r.montant) + '</span>'
-          + '<span style="display:block;font-size:10.5px;color:var(--text3);font-family:var(--mono)">' + part(r.montant).toFixed(1) + ' % du total</span></span>'
-        : '<span style="font-size:10px;color:var(--text3);border:1px solid var(--border);border-radius:5px;padding:2px 8px;white-space:nowrap">à venir</span>')
+    const bascule = r.dispo
+      ? '<button type="button" class="patri-switch' + (r.compte ? ' on' : '') + '"'
+        + ' role="switch" aria-checked="' + (r.compte ? 'true' : 'false') + '"'
+        + ' aria-label="Compter ' + _attr(r.label) + ' dans le total"'
+        + ' onclick="event.stopPropagation();togglePatriEnveloppe(&quot;' + r.key + '&quot;)"></button>'
+      : '';
+    return '<div class="patri-row' + (r.dispo && !r.compte ? ' retiree' : '') + '"'
+      + ' onclick="showPage(&quot;' + r.key + '&quot;)">'
+      + '<span class="patri-puce" style="background:' + r.color + '"></span>'
+      + '<span class="patri-nom">' + _attr(r.label) + '</span>'
+      + (r.dispo
+        ? '<span class="patri-val"><span class="m">' + eur(r.montant) + '</span>'
+          + '<span class="p">' + (r.compte ? part(r.montant).toFixed(1) + ' % du total' : 'hors total') + '</span></span>'
+        : '<span class="patri-soon">à venir</span>')
+      + bascule
       + '</div>';
   };
 
@@ -7771,17 +7907,21 @@ function renderPatrimoine() {
     +   '<div style="font-size:12px;color:' + latentCol + ';margin-top:2px">'
     +     (pea.latent >= 0 ? '+' : '') + eur(pea.latent) + ' de plus-value latente'
     +     (pea.investi > 0 ? ' · ' + (latentPct >= 0 ? '+' : '') + latentPct.toFixed(2) + ' %' : '')
-    +   '</div>' + donut
+    +   '</div>' + anneau
     + '</div>'
 
     + '<div class="section-card" style="margin-bottom:18px">'
     +   '<div class="section-title">Par enveloppe</div>'
     +   rows.map(ligne).join('')
-    +   (attente
-        ? '<div style="font-size:11px;color:var(--text3);margin-top:12px;line-height:1.55">'
-          + attente + ' enveloppes attendent leur module. Leur montant viendra s\'ajouter ici '
-          + 'automatiquement, sans rien à ressaisir.</div>'
+    +   '<div class="patri-note">'
+    +     'Tout est compté par défaut. L’interrupteur d’une ligne la sort du total '
+    +     'et de l’anneau, sans rien effacer.'
+    +     (retires ? ' ' + retires + (retires > 1 ? ' enveloppes sont retirées' : ' enveloppe est retirée') + '.' : '')
+    +     (attente
+        ? ' ' + attente + ' enveloppes attendent leur module : leur montant viendra s’ajouter ici '
+          + 'automatiquement, sans rien à ressaisir.'
         : '')
+    +   '</div>'
     + '</div>'
 
     + '<div class="section-card">'
@@ -7793,55 +7933,6 @@ function renderPatrimoine() {
     +     '<div><span>Versements cumulés</span><b>' + eur(pea.versements) + '</b></div>'
     +   '</div>'
     + '</div>';
-
-  // Le camembert se construit après l'injection du HTML : son canvas doit
-  // exister. L'instance précédente est détruite, sinon Chart.js empile.
-  if (actives.length && window.Chart) {
-    const ctx = document.getElementById('patri-donut');
-    if (ctx) {
-      if (_patriChart) { _patriChart.destroy(); _patriChart = null; }
-      _patriChart = new Chart(ctx.getContext('2d'), {
-        type: 'doughnut',
-        data: {
-          labels: actives.map(r => r.label),
-          datasets: [{
-            data: actives.map(r => r.montant),
-            backgroundColor: actives.map(r => r.color),
-            borderColor: 'transparent', borderWidth: 0, hoverOffset: 6,
-          }],
-        },
-        options: {
-          responsive: true, maintainAspectRatio: false, cutout: '68%',
-          plugins: {
-            legend: { display: false },
-            tooltip: {
-              backgroundColor: '#10121c', borderColor: 'rgba(255,255,255,.06)', borderWidth: 1,
-              padding: 10, cornerRadius: 8,
-              callbacks: { label: c => ' ' + eur(c.parsed) + ' · ' + part(c.parsed).toFixed(1) + ' %' },
-            },
-          },
-        },
-        plugins: [{
-          id: 'patriCenter',
-          afterDraw(chart) {
-            const { ctx: c, chartArea } = chart;
-            if (!chartArea) return;
-            const x = (chartArea.left + chartArea.right) / 2;
-            const y = (chartArea.top + chartArea.bottom) / 2;
-            c.save();
-            c.textAlign = 'center'; c.textBaseline = 'middle';
-            c.fillStyle = '#8892a8';
-            c.font = "600 10px 'JetBrains Mono', monospace";
-            c.fillText('TOTAL', x, y - 12);
-            c.fillStyle = '#edf0f7';
-            c.font = "700 16px 'JetBrains Mono', monospace";
-            c.fillText(eur(total), x, y + 6);
-            c.restore();
-          },
-        }],
-      });
-    }
-  }
 }
 
 function renderPortfolio() {
