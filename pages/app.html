@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260831i">
+<link rel="stylesheet" href="css/style.css?v=20260831j">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -700,7 +700,7 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
       </button>
       <div class="sidebar-extra" id="sidebar-extra">
-      <button type="button" class="sidebar-home-btn sidebar-organiser" onclick="openNavEditor()" title="Choisir les onglets de la barre du bas">
+      <button type="button" class="sidebar-home-btn sidebar-organiser" onclick="openNavEditor()" title="Ranger le menu et choisir les onglets de la barre du bas">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
         <span>Organiser le menu</span>
       </button>
@@ -4029,12 +4029,22 @@
 <div class="modal-overlay" id="nav-editor" onclick="if(event.target===this)closeNavEditor()" role="dialog" aria-modal="true" aria-labelledby="nav-editor-title">
   <div class="modal nav-editor-modal">
     <div class="modal-title" id="nav-editor-title">Organiser le menu</div>
-    <div class="modal-sub">Quatre pages, dans l’ordre que vous voulez. Sur téléphone elles remplissent la barre du bas, sur ordinateur elles passent en tête du menu.</div>
+    <div class="modal-sub">Deux réglages indépendants : les quatre onglets de la barre du bas sur téléphone, et l’ordre du menu sur ordinateur. Changer l’un ne touche pas l’autre.</div>
 
-    <div class="nav-slots" id="nav-editor-slots"></div>
+    <div class="nav-tabs" role="tablist">
+      <button type="button" class="nav-tab" data-onglet="mobile" role="tab" aria-selected="true" onclick="navEditorOnglet('mobile')">Barre du bas</button>
+      <button type="button" class="nav-tab" data-onglet="pc" role="tab" aria-selected="false" onclick="navEditorOnglet('pc')">Menu ordinateur</button>
+    </div>
 
-    <div class="nav-pool-label">Choisir une page</div>
-    <div class="nav-pool" id="nav-editor-pool"></div>
+    <div id="nav-panel-mobile">
+      <div class="nav-slots" id="nav-editor-slots"></div>
+      <div class="nav-pool-label">Choisir une page</div>
+      <div class="nav-pool" id="nav-editor-pool"></div>
+    </div>
+
+    <div id="nav-panel-pc" hidden>
+      <div class="nav-menu-list" id="nav-editor-menu"></div>
+    </div>
 
     <p class="nav-editor-err" id="nav-editor-err" hidden></p>
 
@@ -4046,7 +4056,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260831i"></script>
+<script src="js/app.js?v=20260831j"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
 <script src="js/onboarding.js?v=20260831c"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->

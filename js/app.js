@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260831i';
+const APP_VERSION = '20260831j';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6751,28 +6751,101 @@ function _renderNavInto(container, nodes, layout, labelCls, spaced) {
   });
 }
 
+// ─── Organisation personnelle du menu d'ordinateur ─────────────────────────
+// Réglage distinct de `navTabs` : le téléphone et l'ordinateur ne montrent pas
+// le même menu, il n'y avait pas de raison de leur imposer le même ordre. La
+// barre du bas garde ses quatre onglets, la barre latérale son classement, et
+// changer l'un ne touche pas l'autre. Le tiroir mobile, lui, suit l'admin :
+// c'est la liste de référence, celle où l'on va chercher ce que la barre ne
+// montre pas.
+//
+// Le réglage ne fait que ranger. Il ne peut ni ressusciter une entrée que
+// l'admin a retirée, ni ouvrir une catégorie qu'il a masquée : ce que l'admin
+// laisse voir fait autorité, et le rangement s'applique dessus.
+function _navLayoutPerso(base) {
+  const perso = getUserSettings().navMenuPc;
+  if (!Array.isArray(perso) || !perso.length) return base;
+
+  const permis = new Set();
+  base.forEach(cat => { if (!cat.hidden) (cat.items || []).forEach(k => permis.add(k)); });
+
+  const vus = new Set();
+  const sortie = perso.map(cat => ({
+    title: cat.title,
+    items: (cat.items || []).filter(k => {
+      if (!permis.has(k) || vus.has(k)) return false;
+      vus.add(k);
+      return true;
+    }),
+  }));
+
+  // Entrées apparues depuis le dernier rangement — une section ouverte, un
+  // module publié : elles rejoignent la catégorie de même titre, ou une
+  // nouvelle en fin de menu. Sans ça, ouvrir une section ne la montrait plus à
+  // qui avait rangé son menu une fois.
+  base.forEach(cat => {
+    if (cat.hidden) return;
+    const manquantes = (cat.items || []).filter(k => !vus.has(k));
+    if (!manquantes.length) return;
+    manquantes.forEach(k => vus.add(k));
+    const cible = sortie.find(c => (c.title || '') === (cat.title || ''));
+    if (cible) cible.items.push(...manquantes);
+    else sortie.push({ title: cat.title, items: manquantes });
+  });
+
+  // Les catégories masquées par l'admin sont reportées telles quelles. Elles ne
+  // s'affichent pas, mais leur présence empêche `_renderNavInto` de prendre
+  // leurs entrées pour des orphelines et de les remettre au menu.
+  base.forEach(cat => {
+    if (cat.hidden) sortie.push({ title: cat.title, hidden: true, items: [...(cat.items || [])] });
+  });
+
+  return sortie;
+}
+
+// La dernière organisation reçue de l'admin, gardée pour pouvoir redessiner le
+// menu quand c'est le rangement personnel qui change, sans refaire un aller à
+// la base.
+let _navAdminBrut = null;
+
 function applyNavLayout(nav) {
+  // Appelée sans argument, la fonction redessine avec ce qu'elle a déjà :
+  // c'est ce que fait l'éditeur après un enregistrement. `null` reste une
+  // valeur signifiante — aucune organisation en base, on retombe sur
+  // DEFAULT_NAV — d'où le test sur `undefined` et non sur la vérité de `nav`.
+  if (nav !== undefined) _navAdminBrut = nav;
+
   // _mergeNavOrphans : si une config est sauvegardée en base (édition admin),
   // elle peut précéder l'ajout de nouvelles entrées (ex : Facebook). On y
   // rajoute donc les clés DEFAULT_NAV manquantes pour qu'elles apparaissent
   // live sans devoir ré-enregistrer le menu côté admin.
-  const layout = (Array.isArray(nav) && nav.length) ? _mergeNavOrphans(nav) : DEFAULT_NAV;
+  const layout = (Array.isArray(_navAdminBrut) && _navAdminBrut.length)
+    ? _mergeNavOrphans(_navAdminBrut) : DEFAULT_NAV;
+
+  // Barre latérale : l'organisation de l'utilisateur, posée sur celle de l'admin.
   const container = document.getElementById('nav-dynamic');
   if (container) {
     _cacheNavNodes();
-    _renderNavInto(container, _navNodes, layout, 'nav-section-label', true);
+    _renderNavInto(container, _navNodes, _navLayoutPerso(layout), 'nav-section-label', true);
   }
-  // Le tiroir mobile suit la même config : même ordre, mêmes entrées admin.
+  // Tiroir mobile : l'organisation de l'admin, telle quelle. C'est la liste de
+  // référence ; la personnalisation du téléphone tient dans la barre du bas.
   const mob = document.getElementById('mobile-nav-dynamic');
   if (mob) {
     _cacheMobNavNodes();
     _renderNavInto(mob, _mobNavNodes, layout, 'mobile-drawer-section', false);
   }
-  // La personnalisation de l'utilisateur se pose par-dessus l'organisation
-  // décidée par l'admin, et donc après elle : `_renderNavInto` vide son
-  // conteneur, ce qui emporterait le groupe épinglé s'il était écrit avant.
-  appliquerNavPerso();
+
+  try { renderMobileNavBar(); } catch (e) { console.warn('[nav] barre du bas :', e && e.message); }
 }
+
+// Redessine tout le menu à partir de ce que l'admin a déjà envoyé. Un simple
+// alias, gardé parce que `applyFeatureFlags` l'appelle et que le nom dit
+// pourquoi : c'est la personnalisation qui vient de changer, pas la base.
+function appliquerNavPerso() {
+  try { applyNavLayout(); } catch (e) { console.warn('[nav] menu :', e && e.message); }
+}
+window.appliquerNavPerso = appliquerNavPerso;
 
 // ═══════════════════════════════════════════════════════════════════════════
 // ONGLETS FAVORIS — quatre pages choisies par l'utilisateur
@@ -6923,29 +6996,46 @@ function renderMobileNavBar() {
   syncMobileNav(_navPageCourante());
 }
 
-// ─── Barre latérale ────────────────────────────────────────────────────────
-// Rien à faire ici : sur ordinateur le menu garde ses catégories et son ordre.
-// Les quatre pages épinglées ne concernent que la barre du bas ; les remonter
-// en tête de la barre latérale les sortait de leur catégorie et laissait des
-// intitulés orphelins. L'éditeur s'ouvre depuis « Organiser le menu », posé
-// au-dessus de « Voir la présentation ».
-
-function appliquerNavPerso() {
-  try { renderMobileNavBar(); } catch (e) { console.warn('[nav] barre du bas :', e && e.message); }
-}
-window.appliquerNavPerso = appliquerNavPerso;
-
 // ─── Éditeur ───────────────────────────────────────────────────────────────
-// Une seule modale pour les deux écrans : le réglage est le même, il n'y avait
-// pas de raison d'en écrire deux. Pas de glisser-déposer — quatre lignes
-// numérotées avec des flèches se manipulent au pouce sans viser, et restent
-// utilisables au clavier.
-let _navBrouillon = null;   // liste en cours d'édition, non enregistrée
-let _navSlotActif = 0;      // ligne qui recevra la prochaine page choisie
+// Une seule modale, deux onglets, deux réglages qui ne se parlent pas : les
+// quatre onglets de la barre du bas d'un côté, l'ordre du menu d'ordinateur de
+// l'autre. Les deux s'éditent depuis n'importe quel écran — on peut ranger son
+// menu d'ordinateur depuis son téléphone, ce qui n'a rien d'absurde quand on
+// vient d'y penser.
+//
+// Pas de glisser-déposer : deux flèches par ligne se manipulent au pouce sans
+// viser, restent utilisables au clavier, et disent exactement ce qu'elles font.
+let _navBrouillon = null;      // les quatre onglets, en cours d'édition
+let _navSlotActif = 0;         // ligne qui recevra la prochaine page choisie
+let _navMenuBrouillon = null;  // l'organisation du menu d'ordinateur
+let _navOnglet = 'mobile';
+
+// L'organisation d'ordinateur telle qu'elle s'applique aujourd'hui, servie à
+// l'éditeur : le rangement personnel s'il existe, sinon celui de l'admin.
+function _navMenuCourant() {
+  const base = (Array.isArray(_navAdminBrut) && _navAdminBrut.length)
+    ? _mergeNavOrphans(_navAdminBrut) : DEFAULT_NAV;
+  const vu = _navLayoutPerso(base);
+  return vu
+    .filter(cat => !cat.hidden)
+    .map(cat => ({
+      title: cat.title,
+      // Les entrées réservées à l'admin ne se rangent pas par qui ne les voit
+      // pas : elles ne doivent ni s'afficher dans l'éditeur, ni disparaître du
+      // réglage au premier enregistrement.
+      items: (cat.items || []).filter(k => _navNodes && _navNodes[k]
+        && !(ADMIN_ONLY_KEYS.includes(k) && !isAdmin())),
+    }));
+}
 
 window.openNavEditor = function () {
+  _cacheNavNodes();
   _navBrouillon = navTabs().slice();
   _navSlotActif = 0;
+  _navMenuBrouillon = _navMenuCourant();
+  // L'onglet ouvert est celui de l'écran où l'on se trouve : c'est presque
+  // toujours celui qu'on vient régler.
+  _navOnglet = window.matchMedia('(max-width: 768px)').matches ? 'mobile' : 'pc';
   _renderNavEditor();
   const ov = document.getElementById('nav-editor');
   if (ov) ov.classList.add('open');
@@ -6955,18 +7045,36 @@ window.closeNavEditor = function () {
   const ov = document.getElementById('nav-editor');
   if (ov) ov.classList.remove('open');
   _navBrouillon = null;
+  _navMenuBrouillon = null;
 };
 
-// Remet les quatre pages d'origine. Le bouton ne réenregistre rien tout seul :
-// la remise à zéro reste un brouillon tant qu'on n'a pas validé, et « Annuler »
-// la laisse donc sans effet.
-window.resetNavEditor = function () {
-  const dispo = navPagesEligibles();
-  _navBrouillon = NAV_TABS_DEFAUT.filter(k => dispo.includes(k)).slice(0, NAV_TABS_MAX);
-  _navSlotActif = 0;
+window.navEditorOnglet = function (nom) {
+  _navOnglet = nom;
   _renderNavEditor();
 };
 
+// Remet l'onglet ouvert dans son état d'origine, et lui seul : réinitialiser sa
+// barre du bas ne doit pas défaire le rangement de son menu. Rien n'est
+// enregistré tant qu'on n'a pas validé, « Annuler » laisse donc la remise à
+// zéro sans effet.
+window.resetNavEditor = function () {
+  if (_navOnglet === 'pc') {
+    const base = (Array.isArray(_navAdminBrut) && _navAdminBrut.length)
+      ? _mergeNavOrphans(_navAdminBrut) : DEFAULT_NAV;
+    _navMenuBrouillon = base.filter(cat => !cat.hidden).map(cat => ({
+      title: cat.title,
+      items: (cat.items || []).filter(k => _navNodes && _navNodes[k]
+        && !(ADMIN_ONLY_KEYS.includes(k) && !isAdmin())),
+    }));
+  } else {
+    const dispo = navPagesEligibles();
+    _navBrouillon = NAV_TABS_DEFAUT.filter(k => dispo.includes(k)).slice(0, NAV_TABS_MAX);
+    _navSlotActif = 0;
+  }
+  _renderNavEditor();
+};
+
+/* ── Barre du bas ── */
 window.moveNavSlot = function (i, delta) {
   const j = i + delta;
   if (!_navBrouillon || j < 0 || j >= _navBrouillon.length) return;
@@ -6995,17 +7103,50 @@ window.assignNavPage = function (key) {
   _renderNavEditor();
 };
 
+/* ── Menu d'ordinateur ── */
+// Une entrée se déplace dans une seule suite, catégories traversées : arrivée en
+// haut de sa catégorie, la flèche du haut la fait passer à la fin de la
+// précédente. Deux boutons suffisent donc à la mettre n'importe où, sans
+// glisser-déposer et sans menu « changer de catégorie ».
+window.moveNavMenuItem = function (ci, ii, delta) {
+  const L = _navMenuBrouillon;
+  if (!L || !L[ci]) return;
+  const items = L[ci].items;
+  const voisin = ii + delta;
+  if (voisin >= 0 && voisin < items.length) {
+    const t = items[ii]; items[ii] = items[voisin]; items[voisin] = t;
+    _renderNavEditor();
+    return;
+  }
+  const vers = ci + delta;
+  if (vers < 0 || vers >= L.length) return;
+  const cle = items.splice(ii, 1)[0];
+  if (delta < 0) L[vers].items.push(cle); else L[vers].items.unshift(cle);
+  _renderNavEditor();
+};
+
+window.moveNavMenuCat = function (ci, delta) {
+  const L = _navMenuBrouillon;
+  const j = ci + delta;
+  if (!L || j < 0 || j >= L.length) return;
+  const t = L[ci]; L[ci] = L[j]; L[j] = t;
+  _renderNavEditor();
+};
+
 window.saveNavEditor = async function () {
-  if (!_navBrouillon) return closeNavEditor();
-  const tabs = _navBrouillon.slice(0, NAV_TABS_MAX);
+  if (!_navBrouillon || !_navMenuBrouillon) return closeNavEditor();
+  const reglage = {
+    navTabs: _navBrouillon.slice(0, NAV_TABS_MAX),
+    navMenuPc: _navMenuBrouillon.map(c => ({ title: c.title, items: c.items.slice() })),
+  };
   const btn = document.getElementById('nav-editor-save');
   const err = document.getElementById('nav-editor-err');
   if (err) err.hidden = true;
   if (btn) { btn.disabled = true; btn.textContent = 'Enregistrement…'; }
   try {
-    await saveUserSettings(null, { navTabs: tabs });
-    // Le menu se remonte avant la fermeture : le changement est déjà à l'écran
-    // quand la modale s'efface, ce qui vaut mieux qu'un message pour le dire.
+    await saveUserSettings(null, reglage);
+    // Le menu se redessine avant la fermeture : le changement est déjà à
+    // l'écran quand la modale s'efface, ce qui vaut mieux qu'un message.
     appliquerNavPerso();
     closeNavEditor();
   } catch (e) {
@@ -7019,7 +7160,24 @@ window.saveNavEditor = async function () {
   }
 };
 
+const _NAV_FLECHE_HAUT = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg>';
+const _NAV_FLECHE_BAS  = '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg>';
+
 function _renderNavEditor() {
+  const pc = _navOnglet === 'pc';
+  document.querySelectorAll('#nav-editor [data-onglet]').forEach(b => {
+    b.setAttribute('aria-selected', String(b.dataset.onglet === _navOnglet));
+    b.classList.toggle('on', b.dataset.onglet === _navOnglet);
+  });
+  const pMob = document.getElementById('nav-panel-mobile');
+  const pPc  = document.getElementById('nav-panel-pc');
+  if (pMob) pMob.hidden = pc;
+  if (pPc)  pPc.hidden  = !pc;
+
+  if (pc) _renderNavMenu(); else _renderNavSlots();
+}
+
+function _renderNavSlots() {
   const slots = document.getElementById('nav-editor-slots');
   const pool  = document.getElementById('nav-editor-pool');
   if (!slots || !pool || !_navBrouillon) return;
@@ -7036,11 +7194,9 @@ function _renderNavEditor() {
       + '</span>'
       + '<span class="nav-slot-move">'
       +   '<button type="button" onclick="event.stopPropagation();moveNavSlot(' + i + ',-1)"'
-      +     (i === 0 ? ' disabled' : '') + ' aria-label="Monter">'
-      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m18 15-6-6-6 6"/></svg></button>'
+      +     (i === 0 ? ' disabled' : '') + ' aria-label="Monter">' + _NAV_FLECHE_HAUT + '</button>'
       +   '<button type="button" onclick="event.stopPropagation();moveNavSlot(' + i + ',1)"'
-      +     (dernier ? ' disabled' : '') + ' aria-label="Descendre">'
-      +     '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>'
+      +     (dernier ? ' disabled' : '') + ' aria-label="Descendre">' + _NAV_FLECHE_BAS + '</button>'
       + '</span>'
       + '</div>';
   }).join('');
@@ -7059,388 +7215,44 @@ function _renderNavEditor() {
   }).join('');
 }
 
-// Les dix vues du PEA, regroupées derrière une seule entrée de menu. L'ordre
-// fait foi pour la barre de sous-onglets.
-const PEA_TABS = ['portfolio', 'activite', 'dividendes', 'avantages', 'watchlist',
-                  'benchmark', 'projections', 'earnings', 'recap'];
+function _renderNavMenu() {
+  const hote = document.getElementById('nav-editor-menu');
+  if (!hote || !_navMenuBrouillon) return;
+  const L = _navMenuBrouillon;
 
-// Libellés du second niveau du tiroir. Plus courts que ceux de la barre du
-// haut : « Calendrier résultats » déborde d'une case de grille.
-const PEA_TAB_LABELS = {
-  portfolio: 'Mon PEA',       activite: 'Activité',    dividendes: 'Dividendes',
-  avantages: 'Avantages',
-  watchlist: 'Watchlist',     benchmark: 'Benchmark',
-  projections: 'Projections', earnings: 'Résultats',   recap: 'Récap du jour',
-};
+  hote.innerHTML = L.map((cat, ci) => {
+    const entetes = '<div class="nav-menu-cat">'
+      + '<span class="nav-menu-cat-t">' + _attr(cat.title || 'Sans titre') + '</span>'
+      + '<span class="nav-slot-move">'
+      +   '<button type="button" onclick="moveNavMenuCat(' + ci + ',-1)"'
+      +     (ci === 0 ? ' disabled' : '') + ' aria-label="Monter la catégorie">' + _NAV_FLECHE_HAUT + '</button>'
+      +   '<button type="button" onclick="moveNavMenuCat(' + ci + ',1)"'
+      +     (ci === L.length - 1 ? ' disabled' : '') + ' aria-label="Descendre la catégorie">' + _NAV_FLECHE_BAS + '</button>'
+      + '</span></div>';
 
-// Icônes des mêmes vues. Les onglets du haut sont en texte seul : il a fallu
-// les dessiner ici pour que le menu garde une grille homogène. Mêmes tracés à
-// 16 px et mêmes teintes que les entrées voisines — le portefeuille reprend le
-// violet de « Mon PEA », les dividendes le cyan qu'ils avaient dans l'ancienne
-// barre du bas, les alertes le rouge des notifications.
-const _peaIcon = (color, body) =>
-  '<svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="' + color
-  + '" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">' + body + '</svg>';
+    const lignes = cat.items.length
+      ? cat.items.map((k, ii) => {
+          // Les flèches ne se grisent qu'aux deux bouts du menu entier, pas à
+          // ceux d'une catégorie : c'est là que passe la frontière qu'on peut
+          // franchir.
+          const toutEnHaut = ci === 0 && ii === 0;
+          const toutEnBas  = ci === L.length - 1 && ii === cat.items.length - 1;
+          const etat = _navEtatCourt(k);
+          return '<div class="nav-menu-item" style="--c:' + _navCouleur(k) + '">'
+            + '<span class="nav-menu-ico">' + _navIcone(k) + '</span>'
+            + '<span class="nav-menu-n">' + _navLibelle(k) + '</span>'
+            + (etat ? '<span class="nav-pool-etat">' + etat + '</span>' : '')
+            + '<span class="nav-slot-move">'
+            +   '<button type="button" onclick="moveNavMenuItem(' + ci + ',' + ii + ',-1)"'
+            +     (toutEnHaut ? ' disabled' : '') + ' aria-label="Monter">' + _NAV_FLECHE_HAUT + '</button>'
+            +   '<button type="button" onclick="moveNavMenuItem(' + ci + ',' + ii + ',1)"'
+            +     (toutEnBas ? ' disabled' : '') + ' aria-label="Descendre">' + _NAV_FLECHE_BAS + '</button>'
+            + '</span></div>';
+        }).join('')
+      : '<div class="nav-menu-vide">Catégorie vide — elle ne s’affichera pas.</div>';
 
-const PEA_TAB_ICONS = {
-  portfolio:   _peaIcon('#7c6df5', '<rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/>'),
-  activite:    _peaIcon('#5b8dee', '<path d="M4 6h16"/><path d="M4 12h16"/><path d="M4 18h10"/>'),
-  dividendes:  _peaIcon('#00cec9', '<path d="M21 12V7H5a2 2 0 0 1 0-4h14v4"/><path d="M3 5v14a2 2 0 0 0 2 2h16v-5"/><path d="M18 12a2 2 0 0 0 0 4h4v-4h-4z"/>'),
-  avantages:   _peaIcon('#a99bff', '<path d="M20 12v9H4v-9"/><rect x="2" y="7" width="20" height="5" rx="1"/><path d="M12 21V7"/><path d="M12 7H7.5a2.5 2.5 0 0 1 0-5C11 2 12 7 12 7z"/><path d="M12 7h4.5a2.5 2.5 0 0 0 0-5C13 2 12 7 12 7z"/>'),
-  watchlist:   _peaIcon('#5b8dee', '<path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/>'),
-  benchmark:   _peaIcon('#a29bfe', '<path d="M3 21V10"/><path d="M9.5 21V4"/><path d="M16 21v-8"/><path d="M22 21V7"/>'),
-  projections: _peaIcon('#f5b731', '<path d="M3 17l6-6 4 4 8-8"/><path d="M17 7h4v4"/>'),
-  earnings:    _peaIcon('#ff9f43', '<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18"/><path d="M8 3v4"/><path d="M16 3v4"/>'),
-  recap:       _peaIcon('#00cec9', '<path d="M14 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V9z"/><path d="M14 3v6h6"/><path d="M8 14h8"/><path d="M8 17h5"/>'),
-};
-
-// Nom du compte tel qu'il s'affiche, et clé de son entrée de menu.
-function _nomCompte(compte) { return (compte || _compte) === 'cto' ? 'Mon CTO' : 'Mon PEA'; }
-function _cleCompte(compte) { return (compte || _compte) === 'cto' ? 'cto' : 'portfolio'; }
-
-// « cto » n'est pas une page : c'est le PEA ouvert sur l'autre compte. On
-// traduit donc l'identifiant demandé en couple (compte, page) avant tout
-// rendu. Les autres vues du PEA gardent le compte courant — passer de
-// Dividendes à Watchlist ne ramène pas au PEA quand on regarde le CTO.
-function _resoudreVue(id) {
-  // Bêta refermée sur l'admin : le CTO n'a pas de page « Bientôt » à montrer,
-  // on reste donc sur le PEA plutôt que d'ouvrir un compte interdit.
-  if (id === 'cto' && !_isModuleLive('cto')) return { compte: 'pea', page: 'portfolio' };
-  if (id === 'cto')       return { compte: 'cto', page: 'portfolio' };
-  if (id === 'portfolio') return { compte: 'pea', page: 'portfolio' };
-  return { compte: PEA_TABS.includes(id) ? _compte : 'pea', page: id };
-}
-
-// Ce que le compte affiché change à l'écran : deux titres, un bandeau fiscal,
-// et une classe sur le corps de page pour ce que le CSS doit masquer.
-function _appliquerLibellesCompte() {
-  const cto = _estCto();
-  const titre = document.getElementById('pf-titre');
-  if (titre) titre.textContent = _nomCompte();
-  const bar = document.getElementById('pea-tabs');
-  if (bar) {
-    bar.setAttribute('aria-label', cto ? 'Sections du compte-titres' : 'Sections du PEA');
-    const onglet = bar.querySelector('.pea-tab[data-tab="portfolio"]');
-    if (onglet) onglet.textContent = _nomCompte();
-  }
-  // Les pages partagées nomment le compte au fil de leurs phrases (« votre PEA
-  // face aux grands indices »). Le mot est isolé dans un span plutôt que la
-  // phrase entière : un seul mot change, pas la tournure.
-  document.querySelectorAll('.js-nom-compte').forEach(el => {
-    el.textContent = cto ? 'CTO' : 'PEA';
-  });
-  document.body.classList.toggle('compte-cto', cto);
-  // Bandeau bêta : sur le CTO seulement, et seulement tant que la section l'est.
-  const note = document.getElementById('cto-beta-note');
-  if (note) note.hidden = !(cto && _isFeatureBeta('cto'));
-  const fisc = document.getElementById('cto-fisc');
-  if (fisc) fisc.hidden = !cto;
-  if (cto) _ctoRenderFisc();
-}
-
-// Rendu différé propre à une page. Extrait des trois fonctions de navigation
-// qui en avaient chacune une copie.
-async function _runPageHook(id) {
-  // La page ne peut pas se rendre avant que ses données soient là : depuis le
-  // chargement à la demande, la moitié des collections n'est lue qu'ici. Les
-  // collections dédoublées par compte suivent celui qu'on regarde.
-  if (PEA_TABS.includes(id)) await assurerCompte(_compte);
-  // Le patrimoine additionne les enveloppes : il lui faut le compte-titres,
-  // mais seulement si le membre en a un. Les avantages actionnaires aussi :
-  // ils comptent les titres des deux comptes.
-  if ((id === 'patrimoine' || id === 'avantages') && _aUnCto()) await assurerCompte('cto');
-  const besoins = (_DONNEES_PAGE[id] || []).map(c => COLS_COMPTE.includes(c) ? _col(c) : c);
-  if (besoins.length) await assurerDonnees(...besoins);
-  // Le CTO n'a pas d'entrée à lui dans la liste des pages : sa pastille
-  // s'éteint quand on ouvre ses écrans.
-  if (PEA_TABS.includes(id) && _estCto()) _navMarquerVue('cto');
-  // Le tableau est rendu au chargement pour le PEA seul. En passant d'un compte
-  // à l'autre il montrerait les lignes du précédent : on le refait, et on va
-  // chercher les cours du compte qu'on découvre.
-  if (id === 'portfolio' && _compteRendu !== _compte) {
-    _compteRendu = _compte;
-    renderPortfolio();
-    refreshPrices();
-  }
-
-  if (id === 'activite')    renderActivite();
-  if (id === 'graphiques')  initCharts();
-  if (id === 'recap')       renderRecapPage();
-  if (id === 'actualites')  renderActualites();
-  if (id === 'favoris')     renderFavoris();
-  if (id === 'support')     renderSupportPage();
-  if (id === 'notifications') renderPushSettings();
-  if (id === 'idees')       renderIdeasPage();
-  if (id === 'earnings')    renderEarningsCalendar();
-  if (id === 'admin')       renderAdminPage();
-  // Ces rendus étaient ajoutés plus bas en enveloppant showPage() et
-  // showPageMobile(). Une troisième porte d'entrée est apparue avec les
-  // sous-onglets du PEA, qui ne passait pas par ces enveloppes : les pages
-  // Dividendes, Performance et Benchmark restaient vides. Tout est ici
-  // désormais, une seule liste pour les trois chemins.
-  if (id === 'watchlist')     renderWatchlist();
-  if (id === 'benchmark')     initBenchmark();
-  if (id === 'projections')   initProjections();
-  if (id === 'bilan')         initBilan();
-  if (id === 'dividendes')    initDividendes();
-  if (id === 'avantages')     initAvantages();
-  if (id === 'patrimoine')    renderPatrimoine();
-  if (id === 'depenses')      renderDepenses();
-  if (id === 'livrets')       renderLivrets();
-  if (id === 'crypto')        renderCrypto();
-  // La pastille « New » s'éteint à la première ouverture, pas au bout d'un
-  // délai : elle a rempli son office dès que la page a été vue.
-  _navMarquerVue(id);
-}
-
-// Changer de page sans remonter laissait l'utilisateur au milieu de la
-// nouvelle : en arrivant du tiroir sur « Mon PEA », la barre de sous-onglets
-// était déjà passée au-dessus de l'écran et semblait absente.
-function _scrollToTop() {
-  window.scrollTo(0, 0);
-  const main = document.querySelector('.main');
-  if (main && main.scrollTop) main.scrollTop = 0;
-  // Changer de page ramène la barre : on arrive en haut d'une page, la
-  // navigation doit y être, même si on l'avait effacée sur la précédente.
-  _navShow();
-}
-
-// ─── BARRE MOBILE : EFFACEMENT AU DÉFILEMENT ─────────────────────────────
-// Descendre efface la barre, remonter la ramène. Sur les longues listes — les
-// titres du PEA, les dépenses du mois — elle occupait en permanence 76 px du
-// bas de l'écran sans rien y apporter, et le retour se fait d'un geste au lieu
-// d'obliger à remonter toute la page.
-//
-// Le défilement lu est celui du document : `.main` ne déclare aucun `overflow`
-// et n'est donc pas un conteneur de défilement. Un seul écouteur passif sur
-// `window` suffit, et rien du layout n'a à bouger — le `padding-bottom` de
-// `.main` reste nécessaire, la barre revenant se poser sur le bas de la page.
-// Les deux sens n'ont pas le même seuil. Effacer la barre est une décision
-// qu'on prend pour l'utilisateur : elle attend un vrai geste vers le bas, pas
-// les quelques pixels d'un doigt qui se pose. La ramener est une demande
-// explicite, et répond donc au premier mouvement vers le haut.
-const _NAV_SEUIL_SORTIE = 26;  // px de descente avant d'effacer la barre
-const _NAV_SEUIL_RETOUR = 10;  // px de remontée avant de la ramener
-const _NAV_BORD  = 4;    // tolérance pour « en haut » et « en bas » de page
-let _navDernierY = 0;
-let _navAttente  = false;
-
-function _navBarre() { return document.querySelector('.mobile-nav'); }
-
-function _navShow() {
-  const nav = _navBarre();
-  if (nav) nav.classList.remove('nav-hidden');
-  _navDernierY = window.scrollY;
-}
-
-function _navHide() {
-  const nav = _navBarre();
-  if (nav) nav.classList.add('nav-hidden');
-}
-
-// Un panneau ouvert verrouille la page derrière lui : le défilement qu'on y lit
-// n'est plus celui du contenu, et effacer la barre à ce moment la ferait
-// disparaître sous le panneau, pour la retrouver absente à la fermeture.
-// La visite guidée s'ajoute à la liste : elle amène ses cibles à l'écran avec
-// `scrollIntoView`, et deux de ses étapes désignent la barre elle-même — sans
-// ce garde-fou, le défilement qui vient la montrer l'effacerait.
-function _navPanneauOuvert() {
-  return !!document.querySelector('.mobile-drawer-overlay.open, #pea-fab.open, .modal-overlay.open, .ob-tour, .ob-overlay');
-}
-
-function _navAuDefilement() {
-  const y   = window.scrollY;
-  const max = document.documentElement.scrollHeight - window.innerHeight;
-  const dy  = y - _navDernierY;
-
-  // Haut de page et fin de page : la barre est toujours là. Sans le second cas,
-  // une page qui se termine en pleine descente laisserait la barre effacée,
-  // sans plus rien à défiler pour la faire revenir.
-  if (y <= _NAV_BORD || max - y <= _NAV_BORD) { _navShow(); return; }
-
-  if (dy > _NAV_SEUIL_SORTIE)       { _navHide(); _navDernierY = y; }
-  else if (dy < -_NAV_SEUIL_RETOUR) { _navShow(); }
-}
-
-// L'écouteur ne fait que demander une image : la lecture de `scrollY` et
-// `scrollHeight` force un recalcul de mise en page, à ne pas payer à chaque
-// événement de défilement.
-window.addEventListener('scroll', () => {
-  if (!window.matchMedia('(max-width: 768px)').matches) return;
-  if (_navPanneauOuvert()) return;
-  if (_navAttente) return;
-  _navAttente = true;
-  requestAnimationFrame(() => { _navAttente = false; _navAuDefilement(); });
-}, { passive: true });
-
-// Affiche la barre de sous-onglets quand la page active appartient au PEA, et
-// y marque l'onglet courant. Un onglet dont la section est désactivée par
-// l'admin disparaît de la barre.
-// Bouton d'ajout rapide : présent sur la seule page Mon PEA, en mobile.
-// Le repli à chaque changement de page évite de le retrouver ouvert ailleurs.
-window.togglePeaFab = function (force) {
-  const el = document.getElementById('pea-fab');
-  if (!el) return;
-  const open = force === undefined ? !el.classList.contains('open') : !!force;
-  el.classList.toggle('open', open);
-  el.setAttribute('aria-hidden', open ? 'false' : 'true');
-  _movePeaBadge(open);
-};
-
-// À l'ouverture, le déclencheur quitte le coin de l'onglet pour celui de la
-// feuille. La hauteur de la feuille dépend du nombre d'entrées : ses
-// coordonnées se mesurent, elles ne peuvent pas s'écrire en CSS. Le passage en
-// position fixe se fait d'abord sur place, pour que le déplacement s'anime au
-// lieu de sauter.
-// Dormante depuis le retrait du badge « + » : `#nav-add-btn` n'existe plus, la
-// fonction sort au premier test. Elle reste avec `togglePeaFab()` et la feuille
-// tant que la décision n'est pas confirmée — à retirer ensemble.
-function _movePeaBadge(open) {
-  const badge = document.getElementById('nav-add-btn');
-  const fab   = document.getElementById('pea-fab');
-  const sheet = fab && fab.querySelector('.pea-sheet');
-  const home  = document.querySelector('.mobile-nav-inner');
-  if (!badge || !sheet || !home) return;
-
-  if (!open) {
-    badge.style.position = ''; badge.style.left = ''; badge.style.top = ''; badge.style.zIndex = '';
-    if (badge.parentElement !== home) home.appendChild(badge);
-    return;
-  }
-
-  // La barre porte un z-index et forme donc son propre contexte d'empilement :
-  // depuis l'intérieur, le badge ne peut pas passer devant la feuille, quelle
-  // que soit sa valeur. Il déménage dans le conteneur de la feuille le temps de
-  // l'ouverture. Le passage en position fixe se fait sur les coordonnées
-  // relevées avant le déplacement, pour que rien ne saute.
-  const from = badge.getBoundingClientRect();
-  badge.style.position = 'fixed';
-  badge.style.left = from.left + 'px';
-  badge.style.top  = from.top + 'px';
-  badge.style.zIndex = '210';
-  if (badge.parentElement !== fab) fab.appendChild(badge);
-  void badge.offsetWidth;                     // fige le point de départ
-  requestAnimationFrame(() => {
-    const r = sheet.getBoundingClientRect();
-    badge.style.left = (r.right - from.width / 2 - 6) + 'px';
-    badge.style.top  = (r.top - from.height / 2) + 'px';
-  });
-}
-
-function _syncPeaFab(id) {
-  const el = document.getElementById('pea-fab');
-  const on = id === 'portfolio';
-  if (!el) return;
-  el.classList.toggle('on', on);
-  if (!on) togglePeaFab(false);
-}
-
-// Vues qui n'ont pas de sens sur le compte-titres. Le Benchmark compare une
-// série quotidienne qui n'est écrite que pour le PEA : affiché ici, il
-// montrerait un écran vide. Le Récap, lui, couvre désormais les trois
-// enveloppes — il est le même des deux côtés, et reste donc accessible.
-const TABS_HORS_CTO = ['benchmark'];
-function _tabHorsCompte(key) { return _estCto() && TABS_HORS_CTO.includes(key); }
-
-function _syncPeaTabs(id) {
-  _syncPeaFab(id);
-  const bar = document.getElementById('pea-tabs');
-  if (!bar) return;
-  const inPea = PEA_TABS.includes(id);
-  bar.hidden = !inPea;
-  if (inPea) _appliquerLibellesCompte();
-  bar.querySelectorAll('.pea-tab').forEach(btn => {
-    const key = btn.dataset.tab;
-    const off = (FLAGGABLE.includes(key) && !_isFeatureOn(key)) || _tabHorsCompte(key);
-    btn.style.display = off ? 'none' : '';
-    btn.classList.toggle('active', key === id);
-    btn.setAttribute('aria-current', key === id ? 'page' : 'false');
-  });
-}
-
-// Bascule d'un sous-onglet à l'autre. L'entrée « Mon PEA » du menu garde son
-// état actif : elle n'est pas la cible du clic, contrairement à showPage().
-function showPeaTab(id, compte) {
-  if (FLAGGABLE.includes(id) && !_isFeatureOn(id)) return;
-  if (compte === 'cto' && TABS_HORS_CTO.includes(id)) id = 'portfolio';
-  const page = document.getElementById('page-' + id);
-  if (!page) return;
-  // Le sous-menu du tiroir nomme son compte : c'est la seule porte par laquelle
-  // on peut changer de compte sans repasser par l'entrée de menu.
-  if (compte) _compte = compte === 'cto' ? 'cto' : 'pea';
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  page.classList.add('active');
-  _syncNavCompte();
-  syncMobileNav(id);
-  _syncPeaTabs(id);
-  _scrollToTop();
-  _runPageHook(id);
-}
-
-function showPage(id) {
-  if (FLAGGABLE.includes(id) && !_isFeatureOn(id)) return; // section désactivée
-  const vue = _resoudreVue(id);
-  _compte = vue.compte;
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  document.getElementById('page-' + vue.page).classList.add('active');
-  event.currentTarget.classList.add('active');
-  // Le clic ne décide pas seul de l'entrée allumée : « Mon CTO » refermé
-  // renvoie sur le PEA, et c'est le PEA qui doit s'allumer.
-  if (vue.page === 'portfolio') _syncNavCompte();
-  syncMobileNav(vue.page);
-  _syncPeaTabs(vue.page);
-  _scrollToTop();
-  _runPageHook(vue.page);
-}
-
-// Marque l'entrée de menu du compte affiché. Les sous-onglets ne sont pas des
-// entrées : sans ça, ouvrir Dividendes depuis le CTO rallumait « Mon PEA ».
-function _syncNavCompte() {
-  const cle = _cleCompte();
-  document.querySelectorAll('.nav-item').forEach(n => {
-    const oc = n.getAttribute('onclick') || '';
-    if (oc.includes("showPage('portfolio')") || oc.includes("showPage('cto')")) {
-      n.classList.toggle('active', oc.includes("showPage('" + cle + "')"));
-    }
-  });
-}
-
-function _renderDemoBlocked(pageId, sectionTitle) {
-  const el = document.getElementById(pageId);
-  if (!el) return;
-  el.innerHTML =
-    '<div style="display:flex;align-items:center;justify-content:center;min-height:60vh;padding:32px">'
-    + '<div style="text-align:center;max-width:520px;padding:48px 32px;background:var(--s1);border:1px solid var(--border2);border-radius:20px">'
-    + '<div style="width:64px;height:64px;margin:0 auto 20px;border-radius:50%;background:rgba(245,183,49,0.15);display:flex;align-items:center;justify-content:center">'
-    + '<svg width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="#f5b731" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>'
-    + '</div>'
-    + '<div style="font-size:20px;color:var(--text);font-weight:700;margin-bottom:10px">' + sectionTitle + ' indisponible</div>'
-    + '<div style="font-size:14px;color:var(--text2);line-height:1.7;margin-bottom:24px">Cette section nécessite vos vraies données et un import CSV de votre courtier.<br><br>Créez un compte gratuit pour y accéder.</div>'
-    + '<a href="app.html?signup=1" class="btn btn-primary" style="padding:12px 28px;font-size:14px">Créer un compte gratuit →</a>'
-    + '</div></div>';
-}
-
-function showPageMobile(id) {
-  if (FLAGGABLE.includes(id) && !_isFeatureOn(id)) return; // section désactivée
-  const vue = _resoudreVue(id);
-  _compte = vue.compte;
-  id = vue.page;
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page-' + id).classList.add('active');
-  syncMobileNav(id);
-  // Sync sidebar nav
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  // Les sous-onglets du PEA n'ont pas d'entrée propre : c'est « Mon PEA » qui
-  // reste marquée, sinon la barre latérale n'indiquait plus rien.
-  const navKey = PEA_TABS.includes(id) ? _cleCompte() : id;
-  document.querySelectorAll('.nav-item').forEach(n => {
-    const onclick = n.getAttribute('onclick') || '';
-    if (onclick.includes("'" + navKey + "'")) n.classList.add('active');
-  });
-  _syncPeaTabs(id);
-  _scrollToTop();
-  _runPageHook(id);
+    return '<div class="nav-menu-bloc">' + entetes + lignes + '</div>';
+  }).join('');
 }
 
 // ─── PORTFOLIO ────────────────────────────────────────
