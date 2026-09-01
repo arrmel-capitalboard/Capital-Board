@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260831f';
+const APP_VERSION = '20260831g';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -7698,17 +7698,17 @@ function _ctoRenderFisc() {
 // Les enveloppes, dans l'ordre d'affichage. `value` renvoie null tant qu'aucun
 // module ne l'alimente : la page l'affiche alors comme à venir.
 const PATRIMOINE_ENVELOPPES = [
-  { key: 'portfolio', label: 'PEA',                     color: '#7c6df5', value: () => _peaTotals('pea').total },
+  { key: 'portfolio', label: 'PEA',                     court: 'PEA', color: '#7c6df5', value: () => _peaTotals('pea').total },
   // Un compte-titres vide vaut 0 et non « à venir » : la nuance dit si le
   // module existe. Tant qu'aucune ligne n'y est saisie, on le laisse annoncé.
-  { key: 'cto',       label: 'Compte-titres',           color: '#5b8dee', value: () => _peaTotals('cto').total || null },
-  { key: 'av',        label: 'Assurance-vie',           color: '#00cec9', value: () => null },
-  { key: 'per',       label: 'PER',                     color: '#00e09e', value: () => null },
-  { key: 'crypto',    label: 'Crypto',                  color: '#f5b731', value: () => _cryTotal() },
-  { key: 'livrets',   label: 'Livrets & épargne',       color: '#ff9f43', value: () => _livTotal() || null },
-  { key: 'immo',      label: 'Immobilier & SCPI',       color: '#a29bfe', value: () => null },
-  { key: 'or',        label: 'Or & métaux',             color: '#ffd166', value: () => null },
-  { key: 'nonco',     label: 'Crowdfunding & non coté', color: '#ff4d6a', value: () => null },
+  { key: 'cto',       label: 'Compte-titres',           court: 'Compte-titres', color: '#5b8dee', value: () => _peaTotals('cto').total || null },
+  { key: 'av',        label: 'Assurance-vie',           court: 'Assurance-vie', color: '#00cec9', value: () => null },
+  { key: 'per',       label: 'PER',                     court: 'PER', color: '#00e09e', value: () => null },
+  { key: 'crypto',    label: 'Crypto',                  court: 'Crypto', color: '#f5b731', value: () => _cryTotal() },
+  { key: 'livrets',   label: 'Livrets & épargne',       court: 'Livrets', color: '#ff9f43', value: () => _livTotal() || null },
+  { key: 'immo',      label: 'Immobilier & SCPI',       court: 'Immobilier', color: '#a29bfe', value: () => null },
+  { key: 'or',        label: 'Or & métaux',             court: 'Or & métaux', color: '#ffd166', value: () => null },
+  { key: 'nonco',     label: 'Crowdfunding & non coté', court: 'Non coté', color: '#ff4d6a', value: () => null },
 ];
 
 // Bouton cloche d'une ligne : ouvre la modale sur ce ticker, et affiche le
@@ -7788,7 +7788,15 @@ function _repartirEtiquettes(list, pas, yMin, yMax) {
 // se posent autour du disque, ce qu'un greffon de canvas rendait laborieux ; et
 // il n'y a plus d'instance à détruire à chaque rendu.
 function _patriAnneau(actives, total, eur) {
-  const CX = 130, CY = 100, R = 62, W = 19, GAP = 7;
+  // Le cadre est large et l'anneau petit : ce sont les colonnes de texte qui
+  // commandent, pas le disque. À 340 px de large avec un anneau de 62 de rayon,
+  // il ne restait que 60 px de chaque côté — « Livrets & épargne » n'y tenait
+  // pas et repassait par-dessus les tranches.
+  const VW = 380, VH = 212;
+  const CX = 190, CY = 102, R = 62, W = 13, GAP = 6;
+  const MARGE = 15;                       // entre le bord de l'anneau et le texte
+  const XG = CX - R - W / 2 - MARGE;      // les noms de gauche finissent ici
+  const XD = CX + R + W / 2 + MARGE;      // ceux de droite commencent ici
   const C = 2 * Math.PI * R;
   const part = v => total > 0 ? (v / total * 100) : 0;
 
@@ -7801,9 +7809,9 @@ function _patriAnneau(actives, total, eur) {
     // bouts arrondis viennent avec, et une part minuscule devient un point rond
     // au lieu d'un éclat de triangle illisible.
     const len = Math.max(brut - GAP - W, 0.6);
-    defs += '<linearGradient id="patri-g' + i + '" x1="0" y1="0" x2="0.6" y2="1">'
-      + '<stop offset="0" stop-color="' + _teinte(r.color, 0.22, true) + '"/>'
-      + '<stop offset="1" stop-color="' + _teinte(r.color, 0.12, false) + '"/></linearGradient>';
+    defs += '<linearGradient id="patri-g' + i + '" x1="0" y1="0" x2="0.55" y2="1">'
+      + '<stop offset="0" stop-color="' + _teinte(r.color, 0.30, true) + '"/>'
+      + '<stop offset="1" stop-color="' + _teinte(r.color, 0.16, false) + '"/></linearGradient>';
     segs += '<circle class="patri-seg" cx="' + CX + '" cy="' + CY + '" r="' + R + '" fill="none"'
       + ' stroke="url(#patri-g' + i + ')" stroke-width="' + W + '" stroke-linecap="round"'
       + ' stroke-dasharray="' + len.toFixed(2) + ' ' + (C - len).toFixed(2) + '"'
@@ -7812,38 +7820,62 @@ function _patriAnneau(actives, total, eur) {
       + '<title>' + _attr(r.label) + ' — ' + eur(r.montant) + '</title></circle>';
 
     if (part(r.montant) >= PATRI_SEUIL_ETIQUETTE) {
-      const mid = (-Math.PI / 2) + ((pos + brut / 2) / C) * Math.PI * 2;
-      const cible = { r: r, y: CY + Math.sin(mid) * (R + 10), droite: Math.cos(mid) >= 0 };
-      (cible.droite ? droite : gauche).push(cible);
+      const a = (-Math.PI / 2) + ((pos + brut / 2) / C) * Math.PI * 2;
+      const droit = Math.cos(a) >= 0;
+      (droit ? droite : gauche).push({
+        r: r, droite: droit, a: a,
+        // Point d'attache réel sur le bord extérieur de la tranche. C'est de là
+        // que part le filet — la version précédente le faisait démarrer d'une
+        // abscisse fixe à la hauteur de l'étiquette, si bien qu'il ne désignait
+        // aucune tranche et que le nom semblait posé au hasard.
+        ax: CX + Math.cos(a) * (R + W / 2),
+        ay: CY + Math.sin(a) * (R + W / 2),
+        y:  CY + Math.sin(a) * (R + W / 2 + 10),
+      });
     }
     pos += brut;
   });
 
-  _repartirEtiquettes(gauche, 26, 14, 186);
-  _repartirEtiquettes(droite, 26, 14, 186);
+  _repartirEtiquettes(gauche, 24, 16, VH - 16);
+  _repartirEtiquettes(droite, 24, 16, VH - 16);
 
+  // Filet en deux temps : une amorce radiale qui prolonge la tranche, puis une
+  // oblique jusqu'au nom. Le premier segment dit de quelle tranche il s'agit,
+  // le second rattrape le décalage vertical imposé par l'écartement.
   const etiquette = (e) => {
-    const x = e.droite ? 254 : 6;
-    const xTrait = e.droite ? CX + R + 12 : CX - R - 12;
-    return '<polyline points="' + xTrait + ',' + e.y.toFixed(1) + ' '
-      + (e.droite ? x - 4 : x + 4) + ',' + e.y.toFixed(1) + '" fill="none"'
-      + ' stroke="' + e.r.color + '" stroke-width="1" stroke-opacity=".45"/>'
-      + '<text class="patri-etq-n" x="' + x + '" y="' + (e.y - 2).toFixed(1) + '"'
-      + ' text-anchor="' + (e.droite ? 'end' : 'start') + '">' + _attr(e.r.label) + '</text>'
-      + '<text class="patri-etq-v" x="' + x + '" y="' + (e.y + 9).toFixed(1) + '"'
-      + ' text-anchor="' + (e.droite ? 'end' : 'start') + '">'
-      + part(e.r.montant).toFixed(1) + ' %</text>';
+    const rx = CX + Math.cos(e.a) * (R + W / 2 + 9);
+    const ry = CY + Math.sin(e.a) * (R + W / 2 + 9);
+    const xTexte = e.droite ? XD : XG;
+    const xFin = e.droite ? xTexte - 5 : xTexte + 5;
+    return '<g class="patri-etq">'
+      + '<circle cx="' + e.ax.toFixed(1) + '" cy="' + e.ay.toFixed(1) + '" r="1.7" fill="' + e.r.color + '"/>'
+      + '<polyline points="' + e.ax.toFixed(1) + ',' + e.ay.toFixed(1) + ' '
+      + rx.toFixed(1) + ',' + ry.toFixed(1) + ' ' + xFin + ',' + e.y.toFixed(1) + '"'
+      + ' fill="none" stroke="' + e.r.color + '" stroke-width="1.1" stroke-opacity=".55"'
+      + ' stroke-linejoin="round" stroke-linecap="round"/>'
+      + '<text class="patri-etq-n" x="' + xTexte + '" y="' + (e.y - 2).toFixed(1) + '"'
+      + ' text-anchor="' + (e.droite ? 'start' : 'end') + '">' + _attr(e.r.court || e.r.label) + '</text>'
+      + '<text class="patri-etq-v" x="' + xTexte + '" y="' + (e.y + 9).toFixed(1) + '"'
+      + ' text-anchor="' + (e.droite ? 'start' : 'end') + '">'
+      + part(e.r.montant).toFixed(1) + ' %</text>'
+      + '</g>';
   };
 
+  // Le centre ne reprend plus le total : il est déjà écrit en gros juste
+  // au-dessus, et « 184 320,45 € » est plus large que le trou de l'anneau — il
+  // débordait sur les tranches. Il porte le nombre d'enveloppes comptées, qui
+  // n'est écrit nulle part ailleurs et ne peut pas déborder.
+  const n = actives.length;
+
   return '<div class="patri-anneau">'
-    + '<svg viewBox="0 0 260 200" role="img" aria-label="Répartition du patrimoine par enveloppe">'
+    + '<svg viewBox="0 0 ' + VW + ' ' + VH + '" role="img"'
+    + ' aria-label="Répartition du patrimoine par enveloppe">'
     + '<defs>' + defs + '</defs>'
-    + '<circle class="patri-track" cx="' + CX + '" cy="' + CY + '" r="' + R + '" fill="none" stroke-width="' + W + '"/>'
     + segs
     + gauche.concat(droite).map(etiquette).join('')
-    + '<text class="patri-centre-l" x="' + CX + '" y="' + (CY - 9) + '" text-anchor="middle">TOTAL</text>'
-    + '<text class="patri-centre-v" x="' + CX + '" y="' + (CY + 11) + '" text-anchor="middle">'
-    + _attr(eur(total)) + '</text>'
+    + '<text class="patri-centre-v" x="' + CX + '" y="' + (CY + 1) + '" text-anchor="middle">' + n + '</text>'
+    + '<text class="patri-centre-l" x="' + CX + '" y="' + (CY + 15) + '" text-anchor="middle">'
+    + (n > 1 ? 'ENVELOPPES' : 'ENVELOPPE') + '</text>'
     + '</svg></div>';
 }
 

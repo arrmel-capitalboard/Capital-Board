@@ -4288,36 +4288,32 @@ body.has-demo-banner { padding-top: 40px; }
    Dessiné en SVG, plus dans un canvas : le texte central suit le thème au lieu
    d'être écrit en dur, et les noms se posent autour du disque plutôt que dans
    une légende qu'il fallait relire ligne à ligne pour retrouver une couleur.
-   La largeur est bornée : sur un grand écran, un cercle de 700 px de large ne
-   dit rien de plus qu'un de 340. */
-.patri-anneau { margin: 14px auto 4px; max-width: 340px; }
+   Le cadre est borné en largeur : sur un grand écran, un cercle de 700 px ne
+   dit rien de plus qu'un de 420. Il n'y a pas de piste grise derrière les
+   tranches — elle transparaissait dans les intervalles et y dessinait des coins
+   gris qu'on prenait pour des parts. */
+.patri-anneau { margin: 14px auto 4px; max-width: 420px; }
 .patri-anneau svg { display: block; width: 100%; height: auto; overflow: visible; }
-.patri-track { stroke: var(--s3); }
 .patri-seg { transition: opacity .18s; }
-.patri-anneau svg:hover .patri-seg { opacity: .55; }
+.patri-anneau svg:hover .patri-seg { opacity: .5; }
 .patri-anneau svg .patri-seg:hover { opacity: 1; }
 @media (prefers-reduced-motion: reduce) {
   .patri-seg, .patri-anneau svg:hover .patri-seg { transition: none; opacity: 1; }
 }
 .patri-etq-n {
-  font-family: var(--sans); font-size: 10px; font-weight: 700;
+  font-family: var(--sans); font-size: 11px; font-weight: 700;
   fill: var(--text);
 }
 .patri-etq-v {
-  font-family: var(--mono); font-size: 9px; fill: var(--text3);
+  font-family: var(--mono); font-size: 9.5px; fill: var(--text3);
+}
+/* Le centre porte le nombre d'enveloppes comptées, pas le total : celui-ci est
+   déjà écrit en gros juste au-dessus, et il débordait du trou de l'anneau. */
+.patri-centre-v {
+  font-family: var(--mono); font-size: 21px; font-weight: 700; fill: var(--text);
 }
 .patri-centre-l {
-  font-family: var(--mono); font-size: 9px; letter-spacing: 1.4px; fill: var(--text3);
-}
-.patri-centre-v {
-  font-family: var(--mono); font-size: 17px; font-weight: 700; fill: var(--text);
-}
-/* Sur un écran étroit, les colonnes d'étiquettes mangent le disque : elles
-   rétrécissent avec lui plutôt que de le comprimer. */
-@media (max-width: 420px) {
-  .patri-etq-n { font-size: 9px; }
-  .patri-etq-v { font-size: 8px; }
-  .patri-centre-v { font-size: 15px; }
+  font-family: var(--mono); font-size: 8px; letter-spacing: 1.3px; fill: var(--text3);
 }
 
 /* Bouton d'alerte d'une ligne : la pastille compte les alertes posées. */
