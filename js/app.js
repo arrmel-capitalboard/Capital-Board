@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260831g';
+const APP_VERSION = '20260831h';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6809,12 +6809,32 @@ const NAV_ICONE_TOUT = '<svg width="16" height="16" viewBox="0 0 24 24" fill="no
 // sont pas, l'admin n'existe que pour l'équipe, et une section fermée ou en
 // bêta privée n'a rien à montrer. Épingler un « Bientôt » donnerait un onglet
 // qui ouvre un teaser.
+// L'état d'ouverture d'une section ne décide pas de ce qu'on peut épingler.
+// Une page en bêta, ou dont le module n'est pas encore public, reste une page :
+// la refuser au choix revenait à décider à la place de l'utilisateur, et son
+// réglage sautait dès qu'une section changeait d'état. Seules deux exclusions
+// restent, et aucune ne tient à l'avancement d'un module : les entrées de
+// réseaux sociaux, qui ouvrent un lien externe et ne sont pas des destinations,
+// et l'entrée Admin pour qui n'est pas admin — une permission, pas une bêta.
+//
+// Une section refermée par l'admin voit son entrée masquée par
+// `applyFeatureFlags`, dans la barre comme partout ailleurs. Les cases étant en
+// `flex: 1 1 0`, les autres se répartissent la place : il n'y a pas de trou, et
+// le réglage retrouve son onglet dès la réouverture.
 function _navEligible(key) {
   if (!key || SOCIAL_KEYS.includes(key)) return false;
   if (ADMIN_ONLY_KEYS.includes(key) && !isAdmin()) return false;
-  if (FLAGGABLE.includes(key) && !_isModuleLive(key)) return false;
   _cacheMobNavNodes();
   return !!(_mobNavNodes && _mobNavNodes[key]);
+}
+
+// Sert au seul affichage, dans l'éditeur : dire qu'une page n'est pas encore
+// ouverte, sans l'empêcher d'être choisie.
+function _navEtatCourt(key) {
+  if (!FLAGGABLE.includes(key)) return '';
+  if (!_isFeatureOn(key)) return 'Fermée';
+  if (_isFeatureBeta(key)) return 'Bêta';
+  return '';
 }
 
 // Toutes les pages épinglables, dans l'ordre du menu — celui que l'utilisateur
@@ -7059,10 +7079,15 @@ function _renderNavEditor() {
 
   pool.innerHTML = navPagesEligibles().map(key => {
     const pris = _navBrouillon.includes(key);
+    // L'état est écrit, pas opposé : la page reste choisissable, on dit
+    // seulement où elle en est.
+    const etat = _navEtatCourt(key);
     return '<button type="button" class="nav-pool-item' + (pris ? ' pris' : '') + '"'
       + ' onclick="assignNavPage(\'' + key + '\')" style="--c:' + _navCouleur(key) + '">'
       + '<span class="nav-pool-ico">' + _navIcone(key) + '</span>'
-      + '<span>' + _navLibelle(key) + '</span></button>';
+      + '<span>' + _navLibelle(key) + '</span>'
+      + (etat ? '<span class="nav-pool-etat">' + etat + '</span>' : '')
+      + '</button>';
   }).join('');
 }
 
