@@ -4248,6 +4248,7 @@ body.has-demo-banner { padding-top: 40px; }
 .patri-row.retiree .patri-puce { opacity: .3; }
 .patri-row.retiree .patri-nom,
 .patri-row.retiree .patri-val .m { color: var(--text3); font-weight: 600; }
+.patri-row.retiree .patri-soon { opacity: .5; }
 
 /* Interrupteur de comptage. Assez grand pour le pouce, et posé après le
    montant : la ligne se lit d'abord, elle se règle ensuite. */
@@ -6361,11 +6362,12 @@ body.has-demo-banner { padding-top: 40px; }
   color: var(--accent); border-color: rgba(124,109,245,0.4); background: var(--accent-d);
 }
 
-/* Tête de la barre latérale : un filet sépare les épinglées du menu complet,
-   sans titre de section — ce sont les mêmes entrées, simplement remontées. */
-.nav-perso-sep { height: 1px; background: var(--border); margin: 10px 10px 12px; }
-.nav-perso-edit { color: var(--text3); font-size: 12px; }
-.nav-perso-edit:hover { color: var(--text2); }
+/* L'éditeur s'ouvre depuis la barre latérale, au-dessus de « Voir la
+   présentation ». Le bouton reprend l'allure de ses voisins : c'est un réglage,
+   pas une destination, et il n'a rien à faire dans la liste des pages.
+   Le fond et la bordure viennent de `.sidebar-home-btn` : seul ce qu'un
+   `<button>` n'hérite pas est repris ici. */
+.sidebar-organiser { cursor: pointer; font-family: var(--sans); }
 
 /* ─── Éditeur ─── */
 .nav-editor-modal { width: 470px; }

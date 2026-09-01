@@ -55,7 +55,7 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@300;400;500&family=Inter:wght@300;400;500;600&family=Outfit:wght@500;700;800&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="css/style.css?v=20260831h">
+<link rel="stylesheet" href="css/style.css?v=20260831i">
 <script src="https://challenges.cloudflare.com/turnstile/v0/api.js" async defer></script>
 <script src="https://accounts.google.com/gsi/client" async defer></script>
 </head>
@@ -700,6 +700,10 @@
         <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true"><circle cx="5" cy="12" r="2"/><circle cx="12" cy="12" r="2"/><circle cx="19" cy="12" r="2"/></svg>
       </button>
       <div class="sidebar-extra" id="sidebar-extra">
+      <button type="button" class="sidebar-home-btn sidebar-organiser" onclick="openNavEditor()" title="Choisir les onglets de la barre du bas">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>
+        <span>Organiser le menu</span>
+      </button>
       <a href="index.html?stay=1" class="sidebar-home-btn external-presentation desktop-only" target="_blank" rel="noopener" title="Voir la présentation du projet (nouvel onglet)">
         <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="12" y1="16" x2="12" y2="12"/><line x1="12" y1="8" x2="12.01" y2="8"/></svg>
         <span>Voir la présentation</span>
@@ -4042,7 +4046,7 @@
   </div>
 </div>
 
-<script src="js/app.js?v=20260831h"></script>
+<script src="js/app.js?v=20260831i"></script>
 <!-- Chargé après app.js : s'appuie sur ses globales (db, currentUser…). -->
 <script src="js/onboarding.js?v=20260831c"></script>
 <!-- Import de relevés. Après app.js également : il utilise _attr et _depParse. -->

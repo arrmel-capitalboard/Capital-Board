@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260831h';
+const APP_VERSION = '20260831i';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6924,46 +6924,14 @@ function renderMobileNavBar() {
 }
 
 // ─── Barre latérale ────────────────────────────────────────────────────────
-// Sur ordinateur il n'y a pas de barre du bas : les quatre pages y remontent
-// simplement en tête de menu. Elles quittent leur catégorie au lieu d'y être
-// dupliquées — deux entrées « PEA » dans la même liste ne diraient pas
-// laquelle est laquelle.
-function _navHoistSidebar() {
-  const c = document.getElementById('nav-dynamic');
-  if (!c) return;
-  _cacheNavNodes();
-  c.querySelectorAll('.nav-perso-sep, .nav-perso-edit').forEach(n => n.remove());
-
-  const premier = c.firstChild;
-  navTabs().forEach(key => {
-    const el = _navNodes && _navNodes[key];
-    if (el) c.insertBefore(el, premier);
-  });
-
-  const edit = document.createElement('div');
-  edit.className = 'nav-item nav-perso-edit';
-  edit.setAttribute('onclick', 'openNavEditor()');
-  edit.setAttribute('role', 'button');
-  edit.setAttribute('tabindex', '0');
-  edit.innerHTML = '<span class="nav-icon"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 20h9"/><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg></span>Organiser le menu';
-  c.insertBefore(edit, premier);
-
-  const sep = document.createElement('div');
-  sep.className = 'nav-perso-sep';
-  c.insertBefore(sep, premier);
-
-  // Une catégorie vidée par la remontée garde son titre, qui n'annonce alors
-  // plus rien : « Administration » ne porte qu'une entrée, l'épingler laissait
-  // un intitulé seul au milieu du menu.
-  c.querySelectorAll('.nav-section-label').forEach(lab => {
-    const suivant = lab.nextElementSibling;
-    if (!suivant || suivant.classList.contains('nav-section-label')) lab.remove();
-  });
-}
+// Rien à faire ici : sur ordinateur le menu garde ses catégories et son ordre.
+// Les quatre pages épinglées ne concernent que la barre du bas ; les remonter
+// en tête de la barre latérale les sortait de leur catégorie et laissait des
+// intitulés orphelins. L'éditeur s'ouvre depuis « Organiser le menu », posé
+// au-dessus de « Voir la présentation ».
 
 function appliquerNavPerso() {
   try { renderMobileNavBar(); } catch (e) { console.warn('[nav] barre du bas :', e && e.message); }
-  try { _navHoistSidebar(); }   catch (e) { console.warn('[nav] barre latérale :', e && e.message); }
 }
 window.appliquerNavPerso = appliquerNavPerso;
 
@@ -7720,17 +7688,23 @@ function _ctoRenderFisc() {
     'Vous pouvez lui préférer le barème progressif.';
 }
 
-// Les enveloppes, dans l'ordre d'affichage. `value` renvoie null tant qu'aucun
-// module ne l'alimente : la page l'affiche alors comme à venir.
+// Les enveloppes, dans l'ordre d'affichage.
+//
+// `value` renvoie null dans deux cas que rien ne distinguait : l'enveloppe
+// n'a pas encore de module, ou son module est en place mais vide. La crypto
+// en faisait les frais — annoncée « à venir » alors qu'elle est ouverte, dès
+// lors qu'aucune position n'y était saisie. D'où `actif`, qui dit si le module
+// existe ; `value` ne dit plus que ce qu'il y a dedans.
 const PATRIMOINE_ENVELOPPES = [
-  { key: 'portfolio', label: 'PEA',                     court: 'PEA', color: '#7c6df5', value: () => _peaTotals('pea').total },
-  // Un compte-titres vide vaut 0 et non « à venir » : la nuance dit si le
-  // module existe. Tant qu'aucune ligne n'y est saisie, on le laisse annoncé.
-  { key: 'cto',       label: 'Compte-titres',           court: 'Compte-titres', color: '#5b8dee', value: () => _peaTotals('cto').total || null },
+  { key: 'portfolio', label: 'PEA',                     court: 'PEA', actif: true, color: '#7c6df5', value: () => _peaTotals('pea').total },
+  // Le compte-titres rend null tant qu'aucune ligne n'y est saisie. C'est
+  // `actif` qui dit que son module existe : la ligne s'affiche donc vide, et
+  // non « à venir ».
+  { key: 'cto',       label: 'Compte-titres',           court: 'Compte-titres', actif: true, color: '#5b8dee', value: () => _peaTotals('cto').total || null },
   { key: 'av',        label: 'Assurance-vie',           court: 'Assurance-vie', color: '#00cec9', value: () => null },
   { key: 'per',       label: 'PER',                     court: 'PER', color: '#00e09e', value: () => null },
-  { key: 'crypto',    label: 'Crypto',                  court: 'Crypto', color: '#f5b731', value: () => _cryTotal() },
-  { key: 'livrets',   label: 'Livrets & épargne',       court: 'Livrets', color: '#ff9f43', value: () => _livTotal() || null },
+  { key: 'crypto',    label: 'Crypto',                  court: 'Crypto', actif: true, color: '#f5b731', value: () => _cryTotal() },
+  { key: 'livrets',   label: 'Livrets & épargne',       court: 'Livrets', actif: true, color: '#ff9f43', value: () => _livTotal() || null },
   { key: 'immo',      label: 'Immobilier & SCPI',       court: 'Immobilier', color: '#a29bfe', value: () => null },
   { key: 'or',        label: 'Or & métaux',             court: 'Or & métaux', color: '#ffd166', value: () => null },
   { key: 'nonco',     label: 'Crowdfunding & non coté', court: 'Non coté', color: '#ff4d6a', value: () => null },
@@ -7916,17 +7890,21 @@ function renderPatrimoine() {
   const pea = _peaTotals('pea');
   const rows = PATRIMOINE_ENVELOPPES.map(e => {
     const montant = e.value();
-    const dispo = montant !== null && montant > 0;
     return Object.assign({}, e, {
       montant: montant,
-      dispo: dispo,
-      compte: dispo && patriEstCompte(e.key),
+      // Trois états distincts, là où il n'y en avait que deux : le module
+      // n'existe pas encore, il existe et il est vide, il existe et il porte
+      // un montant. Seul le troisième entre dans le total et dans l'anneau —
+      // une part nulle y dessinerait un point sans rien représenter.
+      actif:  !!e.actif,
+      retenu: patriEstCompte(e.key),
+      compte: !!e.actif && montant !== null && montant > 0 && patriEstCompte(e.key),
     });
   });
   const actives = rows.filter(r => r.compte);
   const total   = actives.reduce((s, r) => s + r.montant, 0);
-  const attente = rows.filter(r => !r.dispo).length;
-  const retires = rows.filter(r => r.dispo && !r.compte).length;
+  const attente = rows.filter(r => !r.actif).length;
+  const retires = rows.filter(r => !r.retenu).length;
 
   const eur = v => v.toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 }) + ' €';
   const part = v => total > 0 ? (v / total * 100) : 0;
@@ -7936,20 +7914,34 @@ function renderPatrimoine() {
   // La ligne mène à sa page ; l'interrupteur la sort du total sans y aller.
   // D'où le stopPropagation : sans lui, retirer une enveloppe changeait de page.
   const ligne = (r) => {
-    const bascule = r.dispo
-      ? '<button type="button" class="patri-switch' + (r.compte ? ' on' : '') + '"'
-        + ' role="switch" aria-checked="' + (r.compte ? 'true' : 'false') + '"'
-        + ' aria-label="Compter ' + _attr(r.label) + ' dans le total"'
-        + ' onclick="event.stopPropagation();togglePatriEnveloppe(&quot;' + r.key + '&quot;)"></button>'
-      : '';
-    return '<div class="patri-row' + (r.dispo && !r.compte ? ' retiree' : '') + '"'
+    // L'interrupteur est sur toutes les lignes, y compris celles dont le module
+    // n'est pas encore là. L'avancement d'une enveloppe ne décide pas de ce que
+    // l'utilisateur a le droit de régler, et le choix posé d'avance vaudra le
+    // jour où le module arrivera, sans qu'il ait à y repenser.
+    const bascule = '<button type="button" class="patri-switch' + (r.retenu ? ' on' : '') + '"'
+      + ' role="switch" aria-checked="' + (r.retenu ? 'true' : 'false') + '"'
+      + ' aria-label="Compter ' + _attr(r.label) + ' dans le total"'
+      + ' onclick="event.stopPropagation();togglePatriEnveloppe(&quot;' + r.key + '&quot;)"></button>';
+
+    let valeur;
+    if (!r.actif) {
+      valeur = '<span class="patri-soon">à venir</span>';
+    } else if (r.montant === null || r.montant === 0) {
+      // Module ouvert, rien dedans. Écrire « 0,00 € » laisserait croire à un
+      // solde calculé ; le tiret dit qu'il n'y a rien à calculer.
+      valeur = '<span class="patri-val"><span class="m">—</span>'
+        + '<span class="p">rien pour l’instant</span></span>';
+    } else {
+      valeur = '<span class="patri-val"><span class="m">' + eur(r.montant) + '</span>'
+        + '<span class="p">' + (r.retenu ? part(r.montant).toFixed(1) + ' % du total' : 'hors total')
+        + '</span></span>';
+    }
+
+    return '<div class="patri-row' + (r.retenu ? '' : ' retiree') + '"'
       + ' onclick="showPage(&quot;' + r.key + '&quot;)">'
       + '<span class="patri-puce" style="background:' + r.color + '"></span>'
       + '<span class="patri-nom">' + _attr(r.label) + '</span>'
-      + (r.dispo
-        ? '<span class="patri-val"><span class="m">' + eur(r.montant) + '</span>'
-          + '<span class="p">' + (r.compte ? part(r.montant).toFixed(1) + ' % du total' : 'hors total') + '</span></span>'
-        : '<span class="patri-soon">à venir</span>')
+      + valeur
       + bascule
       + '</div>';
   };
@@ -7972,11 +7964,12 @@ function renderPatrimoine() {
     +   rows.map(ligne).join('')
     +   '<div class="patri-note">'
     +     'Tout est compté par défaut. L’interrupteur d’une ligne la sort du total '
-    +     'et de l’anneau, sans rien effacer.'
+    +     'et de l’anneau, sans rien effacer — y compris pour une enveloppe dont le '
+    +     'module n’est pas encore là : le choix vaudra dès son arrivée.'
     +     (retires ? ' ' + retires + (retires > 1 ? ' enveloppes sont retirées' : ' enveloppe est retirée') + '.' : '')
     +     (attente
-        ? ' ' + attente + ' enveloppes attendent leur module : leur montant viendra s’ajouter ici '
-          + 'automatiquement, sans rien à ressaisir.'
+        ? ' ' + attente + (attente > 1 ? ' enveloppes attendent leur module' : ' enveloppe attend son module')
+          + ' : leur montant viendra s’ajouter ici automatiquement, sans rien à ressaisir.'
         : '')
     +   '</div>'
     + '</div>'
