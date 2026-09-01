@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260831l';
+const APP_VERSION = '20260831m';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4553,12 +4553,29 @@ function _cryRender() {
 
   // Les lignes. Construites par le DOM : `lieu` est un texte libre du membre.
   if (!liste) return;
+  // Les courbes ouvertes tiennent une instance Chart.js sur un canvas que le
+  // vidage qui suit va détruire. Sans les fermer, `toggleWatchlistChart` les
+  // croirait encore vivantes au prochain déploiement et ne redessinerait rien :
+  // la ligne s'ouvrirait sur un cadre vide.
+  Object.keys(_wlChartInstances)
+    .filter(k => k.startsWith('cp'))
+    .forEach(k => {
+      try { _wlChartInstances[k].destroy(); } catch (_) {}
+      delete _wlChartInstances[k];
+    });
   liste.innerHTML = '';
   all
     .map(l => ({ l, v: _cryValeur(l) }))
     .sort((a, b) => (b.v || 0) - (a.v || 0))
-    .forEach(({ l, v }) => {
+    .forEach(({ l, v }, n) => {
       const info   = _cryInfo(l.sym);
+      // Clé de courbe, dans le gabarit de `toggleWatchlistChart` : « cp » pour
+      // les positions crypto, comme « pf » au portefeuille et « cw » à la
+      // watchlist crypto. Elle ne commence pas par « pf », la courbe suit donc
+      // le comportement de la watchlist — période d'un mois par défaut, pas de
+      // mémorisation entre deux rendus. Le tableau ne se reconstruit qu'après
+      // une action de l'utilisateur, jamais sous ses yeux.
+      const cle = 'cp' + n;
       const invest = _cryInvesti(l);
       const g      = v === null ? null : v - invest;
       const pct    = invest > 0 && g !== null ? (g / invest) * 100 : 0;
@@ -4633,6 +4650,12 @@ function _cryRender() {
       + '<td>' + perfJourHtml + '</td>'
       + '<td style="text-align:right;padding-right:18px;white-space:nowrap">'
       +   '<div class="btn-portfolio-actions" style="display:inline-flex;gap:6px;align-items:center">'
+      +     (info.y
+          ? '<button class="btn-edit" title="Voir la courbe" aria-label="Voir la courbe de ' + _attr(info.nom) + '"'
+            + ' style="display:inline-flex;align-items:center;justify-content:center"'
+            + ' onclick="event.stopPropagation();toggleWatchlistChart(&quot;' + cle + '&quot;,&quot;' + _attr(info.y) + '&quot;)">'
+            + IC.chartLine + '</button>'
+          : '')
       +     '<button class="btn-edit" title="Acheter" aria-label="Acheter ' + _attr(info.nom) + '"'
       +       ' onclick="event.stopPropagation();cryOpenModal(&quot;achat&quot;,&quot;' + sym + '&quot;)">'
       +       '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>'
@@ -4646,8 +4669,42 @@ function _cryRender() {
 
       const emplacement = tr.querySelector('[data-pastille]');
       if (emplacement) emplacement.replaceWith(_cryPastille(info, 26));
+      tr.id = 'wl-row-' + cle;   // marquée « expanded » quand sa courbe est ouverte
 
       liste.appendChild(tr);
+
+      // La ligne de courbe, repliée, sous sa position. Mêmes classes et mêmes
+      // identifiants qu'au portefeuille et à la watchlist : `loadWlChart` les
+      // retrouve sans rien savoir de la crypto, et les trois tableaux ne
+      // peuvent plus diverger.
+      if (!info.y) return;
+      const chartTr = document.createElement('tr');
+      chartTr.id = 'wl-chart-row-' + cle;
+      chartTr.className = 'wl-chart-row';
+      chartTr.style.display = 'none';
+      chartTr.innerHTML =
+        '<td colspan="8">'
+      +   '<div class="wl-chart-wrap">'
+      +     '<div class="wl-chart-header">'
+      +       '<div class="wl-chart-info">'
+      +         '<div class="wl-chart-price" id="wl-cprice-' + cle + '">—</div>'
+      +         '<div class="wl-chart-change" id="wl-cchange-' + cle + '"></div>'
+      +       '</div>'
+      +       '<div class="wl-period-bar" id="wl-pbar-' + cle + '">'
+      +         ['1J','5J','1M','6M','AAJ','1A','5A','ALL'].map((p) =>
+                  '<button class="wl-period-btn' + (p === '1M' ? ' active' : '') + '"'
+                  + ' onclick="event.stopPropagation();wlSetPeriod(&quot;' + cle + '&quot;,&quot;'
+                  + _attr(info.y) + '&quot;,&quot;' + p + '&quot;,this)">' + p + '</button>'
+                ).join('')
+      +       '</div>'
+      +     '</div>'
+      +     '<div class="wl-chart-canvas-wrap">'
+      +       '<div class="wl-chart-loading" id="wl-cloading-' + cle + '">Chargement…</div>'
+      +       '<canvas id="wl-canvas-' + cle + '" style="display:none"></canvas>'
+      +     '</div>'
+      +   '</div>'
+      + '</td>';
+      liste.appendChild(chartTr);
     });
 }
 
