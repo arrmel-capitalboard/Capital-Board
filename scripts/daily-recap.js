@@ -8,7 +8,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import { initializeApp, cert } from 'firebase-admin/app';
-import { getFirestore }        from 'firebase-admin/firestore';
+import { getFirestore, FieldValue } from 'firebase-admin/firestore';
 import { getAuth }             from 'firebase-admin/auth';
 import { getMessaging }        from 'firebase-admin/messaging';
 import { readFileSync }        from 'fs';
@@ -154,12 +154,84 @@ const MISTRAL_ALERT_THRESHOLD = 100;
 let _tavilyCalls = 0;
 let _mistralCalls = 0;
 
+// ─── PLAFOND MENSUEL TAVILY ──────────────────────────────────
+// Le seuil du dessus prévient après coup : il écrit une alerte une fois le run
+// terminé, quand les appels sont déjà partis. Celui-ci arrête les appels.
+//
+// La consommation suit le nombre de tickers DISTINCTS détenus par l'ensemble
+// des utilisateurs — un appel par ticker et par jour, mutualisé par le cache.
+// Elle grandit donc avec les inscriptions, sans que personne n'ait rien changé :
+// vingt tickers distincts font 440 appels par mois, quatre-vingts en font 1760.
+// Le plan gratuit s'arrête à 1000.
+//
+// Passé le plafond, `searchWeb` rend une liste vide plutôt qu'une erreur : le
+// récap se rédige alors sur les seules variations de cours (le modèle sait
+// écrire « aucun résultat web »). Un récap sans actualité vaut mieux qu'un
+// récap absent, et mieux qu'une facture surprise.
+const TAVILY_BUDGET_MOIS = Number(process.env.TAVILY_BUDGET_MOIS || 900);
+const moisIso = todayIso.slice(0, 7);            // AAAA-MM
+let _tavilyMois = 0;                             // appels déjà faits ce mois-ci
+let _plafondAtteintSignale = false;
+
+async function chargerConsommationDuMois() {
+  try {
+    const snap = await db.doc(`apiUsage/mois-${moisIso}`).get();
+    _tavilyMois = Number(snap.exists ? snap.data().tavilyCalls : 0) || 0;
+  } catch (e) {
+    // Compteur illisible : on ne bloque pas le récap pour autant, le seuil du
+    // run en cours reste là pour prévenir.
+    console.warn('Compteur mensuel Tavily illisible :', e.message);
+    _tavilyMois = 0;
+  }
+  console.log(`Tavily : ${_tavilyMois} appel(s) ce mois-ci, plafond ${TAVILY_BUDGET_MOIS}`);
+}
+
+async function alerteOps(texte) {
+  try {
+    const id = `${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+    await db.doc(`opsAlerts/${id}`).set({ type: 'api-quota', texte, createdAt: Date.now() });
+  } catch (e) { console.warn('opsAlerts write error:', e.message); }
+}
+
+/** Reste-t-il du budget ? Prévient une fois, au moment où il s'épuise. */
+async function budgetTavilyDisponible() {
+  if (_tavilyMois + _tavilyCalls < TAVILY_BUDGET_MOIS) return true;
+  if (!_plafondAtteintSignale) {
+    _plafondAtteintSignale = true;
+    await alerteOps(
+      `Récap quotidien — plafond Tavily atteint : ${_tavilyMois + _tavilyCalls} appels ce mois-ci `
+      + `(plafond ${TAVILY_BUDGET_MOIS}). Les récaps continuent, sans actualité web, `
+      + `jusqu'au 1er du mois prochain.`,
+    );
+  }
+  return false;
+}
+
 async function checkApiQuotaAndAlert() {
   try {
     await db.doc(`apiUsage/${todayIso}`).set({
       tavilyCalls: _tavilyCalls, mistralCalls: _mistralCalls, at: new Date().toISOString(),
     }, { merge: true });
   } catch (e) { console.warn('apiUsage write error:', e.message); }
+
+  // Compteur mensuel : c'est lui qui commande le plafond, il doit refléter
+  // le run même si l'écriture du compteur du jour a échoué.
+  try {
+    await db.doc(`apiUsage/mois-${moisIso}`).set(
+      { tavilyCalls: FieldValue.increment(_tavilyCalls), at: new Date().toISOString() },
+      { merge: true },
+    );
+  } catch (e) { console.warn('apiUsage mensuel write error:', e.message); }
+
+  // Prévenir AVANT de buter dessus : à 80 % du plafond, il reste quelques
+  // jours pour prendre un plan payant ou réduire la voilure.
+  const totalMois = _tavilyMois + _tavilyCalls;
+  if (!_plafondAtteintSignale && totalMois >= TAVILY_BUDGET_MOIS * 0.8) {
+    await alerteOps(
+      `Récap quotidien — Tavily à ${totalMois} appels ce mois-ci, plafond ${TAVILY_BUDGET_MOIS}. `
+      + `Au rythme actuel, l'actualité web s'arrêtera avant la fin du mois.`,
+    );
+  }
 
   const overages = [];
   if (_tavilyCalls  > TAVILY_ALERT_THRESHOLD)  overages.push(`Tavily : ${_tavilyCalls} appels (seuil ${TAVILY_ALERT_THRESHOLD})`);
@@ -179,6 +251,7 @@ async function checkApiQuotaAndAlert() {
 // ─── RECHERCHE WEB (Tavily) ──────────────────────────────────
 // Renvoie des résultats web récents (titres + extraits) pour une requête.
 async function searchWeb(query) {
+  if (!(await budgetTavilyDisponible())) return [];
   _tavilyCalls++;
   try {
     const res = await fetch('https://api.tavily.com/search', {
@@ -559,6 +632,8 @@ async function main() {
   else console.log(`Envoi à tous les utilisateurs\n`);
 
   // 1. Récupérer tous les utilisateurs
+  await chargerConsommationDuMois();
+
   let users = await getAllUsers();
   if (targetUid) users = users.filter(u => u.uid === targetUid);
   console.log(`${users.length} utilisateur(s) traité(s)`);
