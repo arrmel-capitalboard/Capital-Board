@@ -283,7 +283,7 @@ async function searchWeb(query) {
 // Firestore : tavilyCache/{date}/tickers/{ticker}
 // Champs : daily (résultats query quotidienne), weekly (query hebdo), cachedAt.
 // Partagé entre tous les users → 1 appel Tavily par ticker unique par jour.
-async function getOrFetchTavily(ticker, name, type = 'daily') {
+async function getOrFetchTavily(ticker, name, type = 'daily', { cacheSeul = false } = {}) {
   const field = type === 'weekly' ? 'weekly' : 'daily';
   const query = type === 'weekly'
     ? `${name} bourse actualité semaine`
@@ -301,6 +301,10 @@ async function getOrFetchTavily(ticker, name, type = 'daily') {
   } catch(e) {
     console.warn(`Cache Tavily read error (${ticker}):`, e.message);
   }
+  /* Ligne calme : on prend ce qu'un autre portefeuille a déjà payé aujourd'hui,
+     mais on ne tire pas de crédit pour elle. */
+  if (cacheSeul) return [];
+
   const results = await searchWeb(query);
   try {
     await cacheRef.set({ [field]: results, cachedAt: new Date().toISOString() }, { merge: true });
@@ -391,13 +395,48 @@ function stripUnknownLines(text, lines, keepTitles) {
   return out.join('\n').replace(/\n{3,}/g, '\n\n').trim();
 }
 
+// ─── QUELLES LIGNES MÉRITENT UNE RECHERCHE ───────────────────
+// Un crédit par ligne et par jour, c'était payer pour apprendre qu'une ligne à
+// +0,1 % n'a pas d'actualité. Trois filtres, dans cet ordre :
+//
+//   1. une ligne qui a bougé d'au moins SEUIL_MOUVEMENT % ;
+//   2. sinon, les TOP_MOUVEMENTS plus gros mouvements du jour, même petits,
+//      pour qu'un jour calme ne donne pas un récap sans une seule actualité ;
+//   3. le tout plafonné à MAX_RECHERCHES lignes par portefeuille.
+//
+// Les lignes écartées ne sont pas muettes : leur cache du jour est relu sans
+// tirer de crédit, et il est souvent rempli — un ticker courant a déjà été
+// cherché pour un autre portefeuille.
+const SEUIL_MOUVEMENT = Number(process.env.TAVILY_SEUIL_MOUVEMENT || 1.5);
+const TOP_MOUVEMENTS  = Number(process.env.TAVILY_TOP_MOUVEMENTS  || 3);
+const MAX_RECHERCHES  = Number(process.env.TAVILY_MAX_PAR_RUN     || 8);
+
+function lignesACherher(lines) {
+  const parAmplitude = [...lines].sort((a, b) => Math.abs(b.changePct) - Math.abs(a.changePct));
+  const retenus = new Set(
+    parAmplitude.filter(l => Math.abs(l.changePct) >= SEUIL_MOUVEMENT).map(l => l.ticker),
+  );
+  for (const l of parAmplitude.slice(0, TOP_MOUVEMENTS)) retenus.add(l.ticker);
+
+  // Plafond : on garde les plus gros mouvements, ce sont ceux qui ont une
+  // actualité à expliquer.
+  return new Set(
+    parAmplitude.filter(l => retenus.has(l.ticker)).slice(0, MAX_RECHERCHES).map(l => l.ticker),
+  );
+}
+
 // ─── RAPPORT QUOTIDIEN ───────────────────────────────────────
 // 1) Tavily cherche l'actualité réelle de chaque ligne.
 // 2) Mistral rédige le rapport en s'appuyant UNIQUEMENT sur ces résultats.
 async function generateReport(lines, totalPct) {
   // 1. Recherche web par ligne (cache Tavily partagé entre users)
+  const aChercher = lignesACherher(lines);
+  console.log(`    Recherche web : ${aChercher.size}/${lines.length} ligne(s)`);
+
   const searchPairs = await Promise.all(lines.map(async l => {
-    const results = await getOrFetchTavily(l.ticker, l.name, 'daily');
+    const results = await getOrFetchTavily(l.ticker, l.name, 'daily', {
+      cacheSeul: !aChercher.has(l.ticker),
+    });
     return [l.ticker, results];
   }));
   const webByTicker = Object.fromEntries(searchPairs);
@@ -408,7 +447,9 @@ async function generateReport(lines, totalPct) {
     return `### ${l.name} (${l.ticker}) — ${ENV_LABELS[l.env] || 'PEA'} — variation du jour : ${fmtp(l.changePct)}\n`
       + (r.length
         ? r.map(x => `- ${x.title} : ${x.content}`).join('\n')
-        : '- (aucun résultat web)');
+        : aChercher.has(l.ticker)
+          ? '- (aucun résultat web)'
+          : '- (variation faible : pas de recherche, commente le seul mouvement)');
   }).join('\n\n');
 
   const prompt = `Tu es analyste financier. Rédige le rapport quotidien de ce patrimoine, daté du ${today}.
@@ -527,13 +568,49 @@ async function upcomingDividends(portfolio) {
   return out;
 }
 
-// Rapport hebdo : 6 sections, ancré sur la recherche web Tavily.
+// ─── ACTUALITÉ DE LA SEMAINE, SANS RECHERCHE NEUVE ───────────
+// Le rapport hebdo tirait une requête par ligne, en plus de celle du jour :
+// le vendredi coûtait le double. Or la semaine a déjà été cherchée, jour après
+// jour, et ces résultats dorment dans le cache. On les relit et on les
+// fusionne — deux articles du mardi et un du jeudi valent mieux qu'une
+// requête neuve, et ne coûtent rien.
+async function actualiteDeLaSemaine(ticker) {
+  const vus = new Set();
+  const fusion = [];
+  for (let i = 0; i < 7; i++) {
+    const jour = new Date(Date.now() - i * 86400000).toISOString().slice(0, 10);
+    try {
+      const snap = await db.doc(`tavilyCache/${jour}/tickers/${ticker}`).get();
+      if (!snap.exists) continue;
+      for (const r of (snap.data().daily || [])) {
+        const cle = (r.title || '').toLowerCase();
+        if (!cle || vus.has(cle)) continue;
+        vus.add(cle);
+        fusion.push(r);
+      }
+    } catch (e) {
+      console.warn(`Cache semaine illisible (${ticker}, ${jour}):`, e.message);
+    }
+    if (fusion.length >= 8) break;
+  }
+  return fusion.slice(0, 8);
+}
+
+// Rapport hebdo : 6 sections, ancré sur ce que la semaine a déjà appris.
 async function generateWeeklyReport(weekLines, weekPct, dividends) {
+  /* Une requête hebdo n'est tirée que pour les lignes dont la semaine n'a rien
+     retenu, et seulement pour les plus gros mouvements : c'est là qu'une
+     absence d'actualité se remarque. */
+  const aChercher = lignesACherher(weekLines.map(l => ({ ...l, changePct: l.weekPct })));
+
   const searchPairs = await Promise.all(weekLines.map(async l => {
-    const results = await getOrFetchTavily(l.ticker, l.name, 'weekly');
-    return [l.ticker, results];
+    const cache = await actualiteDeLaSemaine(l.ticker);
+    if (cache.length >= 3 || !aChercher.has(l.ticker)) return [l.ticker, cache];
+    const neuf = await getOrFetchTavily(l.ticker, l.name, 'weekly');
+    return [l.ticker, neuf.length ? neuf : cache];
   }));
   const webByTicker = Object.fromEntries(searchPairs);
+  console.log(`    Hebdo : ${searchPairs.filter(([, r]) => r.length).length}/${weekLines.length} ligne(s) documentée(s)`);
 
   const ctx = weekLines.map(l => {
     const r = webByTicker[l.ticker] || [];

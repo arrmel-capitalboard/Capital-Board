@@ -50,6 +50,12 @@ jobs:
           # déclencher une facture. Variable de dépôt pour pouvoir la monter
           # sans toucher au code le jour où le plan change.
           TAVILY_BUDGET_MOIS: ${{ vars.TAVILY_BUDGET_MOIS || 900 }}
+          # Réglages de la recherche web. Par défaut : une ligne est cherchée
+          # si elle a bougé d'au moins 1,5 %, les trois plus gros mouvements
+          # le sont toujours, et huit recherches au maximum par portefeuille.
+          TAVILY_SEUIL_MOUVEMENT: ${{ vars.TAVILY_SEUIL_MOUVEMENT || 1.5 }}
+          TAVILY_TOP_MOUVEMENTS: ${{ vars.TAVILY_TOP_MOUVEMENTS || 3 }}
+          TAVILY_MAX_PAR_RUN: ${{ vars.TAVILY_MAX_PAR_RUN || 8 }}
           TARGET_UID: ${{ github.event.inputs.target_uid }}
           FORCE_WEEKLY: ${{ github.event.inputs.force_weekly }}
         run: |
