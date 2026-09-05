@@ -4,17 +4,21 @@
 //
 //   newsQueue/{id} = {
 //     text,                     // ligne affichée aux membres
-//     source: 'commit'|'manuel',
-//     sha,                      // hash du commit (source commit) ou null
+//     source: 'quotidien'|'manuel',
+//     sha, shas,                // commits couverts par la phrase (ou null)
+//     subject,                  // sujets techniques d'origine, jamais publiés
+//     jour,                     // journée relue (AAAA-MM-JJ), source quotidien
 //     status: 'pending'|'approved'|'rejected',
 //     createdAt, decidedAt, decidedBy, sentAt,
 //     messageId, channelId,     // message de validation Discord
 //   }
 //
-// Flux : un doc « pending » est créé (par le workflow à chaque commit feat,
-// ou par /nouveaute). Le bot poste un message avec ses boutons dans le salon
-// validation : Valider / Rejeter / Modifier le texte. Les nouveautés sont
-// texte seul — aucune image ne peut être jointe.
+// Flux : un doc « pending » est créé, soit par le balayage du matin (10h,
+// scripts/news-daily.mjs relit les commits de la veille et en tire au plus
+// quatre phrases regroupées), soit à la main par /nouveaute. Le bot poste un
+// message avec ses boutons dans le salon validation : Valider / Rejeter /
+// Modifier le texte. Les nouveautés sont texte seul — aucune image ne peut
+// être jointe. Les règles de rédaction sont dans nouveautes.md, à la racine.
 // Le lundi, newsweekly.js publie les « approved » non envoyés et verrouille
 // leur message de validation.
 
@@ -46,7 +50,7 @@ async function addPending(text, { source = 'manuel', sha = null } = {}) {
 }
 
 /** Message de validation, reflétant le statut courant. */
-function validationPayload(id, text, status = 'pending', decidedBy = null) {
+function validationPayload(id, text, status = 'pending', decidedBy = null, subject = null) {
   const approved = status === 'approved';
   const rejected = status === 'rejected';
 
@@ -61,6 +65,13 @@ function validationPayload(id, text, status = 'pending', decidedBy = null) {
     })
     .setTimestamp();
 
+  /* Le ou les sujets de commit d'origine. Ils ne partent jamais aux membres :
+     ils sont là pour juger la reformulation — une phrase peut être jolie et
+     décrire autre chose que ce qui a été fait. */
+  if (subject) {
+    embed.addFields({ name: 'Écrit à partir de', value: `\`${String(subject).slice(0, 1000)}\`` });
+  }
+
   if (decidedBy) embed.addFields({ name: 'Décision', value: `<@${decidedBy}>`, inline: true });
 
   const row = new ActionRowBuilder().addComponents(
@@ -73,7 +84,7 @@ function validationPayload(id, text, status = 'pending', decidedBy = null) {
 
 /** Payload depuis un doc Firestore. */
 function payloadFromDoc(id, data) {
-  return validationPayload(id, data.text, data.status || 'pending', data.decidedBy || null);
+  return validationPayload(id, data.text, data.status || 'pending', data.decidedBy || null, data.subject || null);
 }
 
 /** Message verrouillé après publication (plus de boutons). */

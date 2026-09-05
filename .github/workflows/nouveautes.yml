@@ -1,11 +1,26 @@
-name: File des nouveautés
+name: Nouveautés du jour
 
-# À chaque push sur main, met en file de validation les commits « feat »
-# (voir scripts/queue-feature.mjs). Le bot Discord poste ensuite un message
-# de validation ; l'envoi communautaire a lieu le lundi (côté bot).
+# Tous les matins, relit les commits de la VEILLE et met en file de validation
+# quelques phrases écrites pour les membres (voir scripts/news-daily.mjs et
+# nouveautes.md). Le bot Discord poste un message par proposition dans le salon
+# de validation ; la publication communautaire reste celle du lundi 18h.
+#
+# Avant, ce workflow tournait à chaque push et créait une entrée par commit :
+# onze commits dans la soirée donnaient six messages à valider pour trois
+# vraies nouveautés, écrites dans la langue du dépôt et non dans celle des
+# membres. Une lecture par journée permet de regrouper et d'écarter.
 on:
-  push:
-    branches: [main]
+  schedule:
+    # 08h00 UTC = 10h heure de Paris l'été, 9h l'hiver. Même convention que
+    # les autres tâches du dépôt : on ne cale pas le cron sur le changement
+    # d'heure, la fenêtre lue est celle de la veille entière.
+    - cron: '0 8 * * *'
+  workflow_dispatch:
+    inputs:
+      jour:
+        description: 'Jour à relire (AAAA-MM-JJ). Vide = la veille.'
+        required: false
+        default: ''
 
 # Jeton au strict minimum : lecture seule. Explicite pour rester vrai
 # si le defaut du depot change un jour.
@@ -18,6 +33,10 @@ jobs:
     steps:
       - name: Checkout repo
         uses: actions/checkout@v4
+        with:
+          # Le script lit l'historique d'une journée : un checkout superficiel
+          # ne ramènerait que le dernier commit.
+          fetch-depth: 0
 
       - name: Setup Node.js
         uses: actions/setup-node@v4
@@ -29,12 +48,13 @@ jobs:
           cd scripts
           npm install
 
-      - name: Mettre en file les nouveautés
+      - name: Relire la journée et mettre en file
         env:
           FIREBASE_SERVICE_ACCOUNT: ${{ secrets.FIREBASE_SERVICE_ACCOUNT }}
-          # Réécriture du sujet de commit en phrase lisible par un utilisateur.
-          # Absente, le script retombe sur la traduction mot à mot.
+          # Sans elle, rien n'est mis en file : recopier des sujets de commit
+          # est exactement ce que cette réécriture cherche à éviter.
           MISTRAL_API_KEY: ${{ secrets.MISTRAL_API_KEY }}
+          JOUR_CIBLE: ${{ inputs.jour }}
         run: |
           cd scripts
-          node queue-feature.mjs
+          node news-daily.mjs
