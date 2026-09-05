@@ -2380,6 +2380,15 @@ body.sb-collapsed .main { margin-left: 58px; }
 .mobile-drawer-item {
   display: flex; flex-direction: column; align-items: center; justify-content: center;
   gap: 5px; text-align: center;
+  /* Hauteur fixe, et non dictée par le contenu : une case à libellé sur deux
+     lignes avec sa pastille étirait toute sa rangée, et le menu prenait un
+     rythme de marches d'escalier. Ce qui tient dedans, au pire : icône (18)
+     + libellé sur deux lignes (24) + pastille (12) + trois gouttières (10)
+     + les paddings (18) = 82. */
+  height: 86px;
+  /* Un libellé qui déborderait malgré tout se coupe plutôt que de repousser
+     la case : la grille reste alignée. */
+  overflow: hidden;
   padding: 9px 3px; cursor: pointer; color: var(--text2);
   font-size: 10px; font-weight: 600; line-height: 1.2;
   /* « Crowdfunding » ne rentre pas d'une pièce dans une colonne de 84 px : sans
@@ -2434,6 +2443,14 @@ body.sb-collapsed .main { margin-left: 58px; }
 /* Les vues portent leur icône comme les autres entrées : rien à ajuster,
    sinon un libellé un cheveu plus large, ceux du PEA étant plus longs. */
 .mobile-drawer-item.drawer-view { font-size: 11px; }
+
+/* Écrans étroits : à 380 px, une colonne fait moins de 70 px et « Crowdfunding »
+   passe sur trois lignes. Le libellé rétrécit et la case gagne ce qu'il faut,
+   plutôt que de rogner le texte. */
+@media (max-width: 380px) {
+  .mobile-drawer-item { height: 92px; font-size: 9px; }
+  .mobile-drawer-item.drawer-view { font-size: 10px; }
+}
 
 .perf-jour-cell { font-weight: 600; font-size: 12px; font-family: var(--mono); }
 .perf-pos { color: var(--positive); }
