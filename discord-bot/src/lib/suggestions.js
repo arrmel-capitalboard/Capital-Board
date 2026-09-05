@@ -8,24 +8,46 @@
 //  2) L'utilisateur clique « Proposer une suggestion » → modal (texte + liens
 //     + captures optionnelles).
 //  3) À l'envoi : la suggestion arrive dans le salon de validation avec boutons
-//     Accepter / Refuser, et l'utilisateur reçoit une confirmation en DM.
-//  4) L'équipe clique Accepter/Refuser → modal note (optionnelle) → l'auteur
-//     reçoit la décision (+ note) en DM, et le message de validation est verrouillé.
+//     Accepter / Refuser. L'auteur voit un message de confirmation dans le
+//     salon, éphémère — aucun MP.
+//  4) L'équipe clique Accepter/Refuser → modal note (optionnelle) → la décision
+//     est rangée en base et le message de validation verrouillé. Toujours
+//     aucun MP.
+//  5) Le lundi matin, un seul MP par auteur récapitule tout ce qui a été
+//     décidé pour lui dans la semaine.
 //
-// Pas de stockage : l'id de l'auteur est encodé dans le customId des boutons,
-// et le texte de la suggestion est relu depuis l'embed de validation.
+// Le point 5 est la raison du stockage. Avant, chaque décision partait aussitôt
+// en MP : traiter quinze suggestions d'affilée en envoyait quinze, et la boîte
+// de l'auteur devenait un fil de notifications. Une décision n'a pas besoin
+// d'arriver dans la minute ; elle a besoin d'arriver.
+//
+//   suggestionsDiscord/{id} = {
+//     discordId, auteur,        // qui a proposé
+//     texte, imageUrl,          // la suggestion
+//     statut,                   // 'pending' | 'accepted' | 'rejected'
+//     note,                     // mot de l'équipe, facultatif
+//     createdAt, decidLe, decidePar,
+//     notifieLe,                // quand le récap du lundi est parti (null sinon)
+//   }
 
 const {
   EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle,
   ModalBuilder, LabelBuilder, TextInputBuilder, TextInputStyle, FileUploadBuilder,
   AttachmentBuilder, MessageFlags,
 } = require('discord.js');
+const cron = require('node-cron');
+const { getDb, isConfigured } = require('../firebase');
+const { getUid } = require('./links');
+const appnotif = require('./appnotif');
 
 const REVIEW_CHANNEL     = '1528920650570535132';
+const COL                = 'suggestionsDiscord';
 const FONDATEUR_ROLE     = '1512905140108001391';
 const BRAND              = 0x7c6df5;
 const GREEN              = 0x16a34a;
 const RED                = 0xdc2626;
+
+const col = () => getDb().collection(COL);
 
 function isImageAttachment(att) {
   if (att.contentType && att.contentType.startsWith('image/')) return true;
@@ -91,7 +113,7 @@ function decisionModal(action, userId) {
     .setPlaceholder(action === 'ok' ? "Pourquoi c'est accepté (optionnel)…" : "Pourquoi c'est refusé (optionnel)…");
   const noteLabel = new LabelBuilder()
     .setLabel("Note pour l'auteur (optionnel)")
-    .setDescription("Envoyée en message privé à l'auteur.")
+    .setDescription("Reprise dans le récap du lundi et dans l'app.")
     .setTextInputComponent(note);
 
   return new ModalBuilder()
@@ -157,9 +179,37 @@ async function submitSuggestion(interaction) {
     .setTimestamp();
   if (images.length) embed.setImage(`attachment://${images[0].name}`);
 
+  /* La suggestion est rangée avant d'être postée : c'est son identifiant que
+     portent les boutons, et c'est lui qui permettra au récap du lundi de
+     retrouver l'auteur. Sans base, la décision devait partir sur-le-champ. */
+  let docId = null;
+  if (isConfigured()) {
+    try {
+      const ref = await col().add({
+        discordId: interaction.user.id,
+        auteur: nomAuteur(interaction.user),
+        texte: text.slice(0, 1500),
+        imageUrl: images.length ? files.filter(isImageAttachment)[0].url : null,
+        statut: 'pending',
+        note: null,
+        createdAt: Date.now(),
+        decidLe: null,
+        notifieLe: null,
+      });
+      docId = ref.id;
+    } catch (e) {
+      console.error('[suggestions] enregistrement :', e.message);
+    }
+  }
+
+  /* Sans base — Firestore indisponible — on retombe sur l'identifiant de
+     l'auteur : la décision partira alors en MP tout de suite, comme avant.
+     Mieux vaut un MP de trop qu'une réponse perdue. */
+  const cible = docId || `u${interaction.user.id}`;
+
   const row = new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId(`sugg:ok:${interaction.user.id}`).setLabel('Accepter').setStyle(ButtonStyle.Success).setEmoji('✅'),
-    new ButtonBuilder().setCustomId(`sugg:no:${interaction.user.id}`).setLabel('Refuser').setStyle(ButtonStyle.Danger).setEmoji('❌'),
+    new ButtonBuilder().setCustomId(`sugg:ok:${cible}`).setLabel('Accepter').setStyle(ButtonStyle.Success).setEmoji('✅'),
+    new ButtonBuilder().setCustomId(`sugg:no:${cible}`).setLabel('Refuser').setStyle(ButtonStyle.Danger).setEmoji('❌'),
   );
 
   try {
@@ -171,18 +221,13 @@ async function submitSuggestion(interaction) {
     return;
   }
 
-  // Confirmation DM à l'auteur.
-  try {
-    const dm = new EmbedBuilder()
-      .setColor(BRAND)
-      .setTitle('✅ Suggestion transmise')
-      .setDescription("Merci ! Votre suggestion a bien été transmise à l'équipe Capital Board. "
-        + "Nous allons l'étudier et vous recevrez notre réponse ici même, en message privé.")
-      .setFooter({ text: 'CapitalBoard - https://capitalboard.fr' });
-    await interaction.user.send({ embeds: [dm] });
-  } catch (_) { /* DM fermés : on ignore */ }
-
-  await interaction.editReply('✅ Votre suggestion a été transmise ! La réponse arrivera en message privé.');
+  // Plus de MP de confirmation : le message éphémère ci-dessous dit la même
+  // chose, dans le salon, sans ouvrir un fil privé que l'auteur n'a pas
+  // demandé.
+  await interaction.editReply(
+    '✅ Votre suggestion a été transmise, merci ! Les réponses sont envoyées '
+    + "groupées le lundi, et apparaissent dans l'onglet Notifications de l'app.",
+  );
 }
 
 async function finalizeDecision(interaction) {
@@ -190,42 +235,55 @@ async function finalizeDecision(interaction) {
     await interaction.reply({ content: "Réservé à l'équipe.", flags: MessageFlags.Ephemeral });
     return;
   }
-  const [, action, userId] = interaction.customId.split(':'); // suggdec:ok:uid
+  const [, action, cible] = interaction.customId.split(':'); // suggdec:ok:<id>
   const approved = action === 'ok';
   const note = (interaction.fields.getTextInputValue('note') || '').trim();
   const msg = interaction.message;
   const suggestionText = msg && msg.embeds[0] ? (msg.embeds[0].description || '') : '';
-  // Capture jointe à la suggestion (si présente) → on la remet dans le DM.
-  // On repart de la pièce jointe du message, pas de l'URL de l'embed : celle-ci
-  // vaut « attachment://sugg0.png », une référence interne au message de
-  // validation qui ne veut rien dire ailleurs — d'où l'image vide côté auteur.
-  // Le fichier est donc réenvoyé avec le DM, et l'embed le désigne à son tour.
-  const reviewAtt = msg ? msg.attachments.first() : null;
 
-  // DM à l'auteur.
-  let dmOk = false;
-  try {
-    const user = await interaction.client.users.fetch(userId);
-    const dm = new EmbedBuilder()
-      .setColor(approved ? GREEN : RED)
-      .setTitle(approved ? '✅ Suggestion acceptée' : '❌ Suggestion refusée')
-      .setDescription(
-        (suggestionText ? `**Votre suggestion :**\n> ${suggestionText.slice(0, 400).replace(/\n/g, '\n> ')}\n\n` : '')
-        + (approved
-          ? "Bonne nouvelle : votre suggestion a été retenue par l'équipe. Merci de votre contribution !"
-          : "Votre suggestion n'a pas été retenue cette fois-ci. Merci quand même de votre participation !"),
-      );
-    const dmFiles = [];
-    if (reviewAtt) {
-      const name = `suggestion.${imageExt(reviewAtt)}`;
-      dmFiles.push(new AttachmentBuilder(reviewAtt.url, { name }));
-      dm.setImage(`attachment://${name}`);
+  // `u<id>` : suggestion reçue alors que Firestore ne répondait pas. Rien à
+  // mettre à jour, et rien pour la retrouver lundi — on prévient tout de suite.
+  const sansBase = cible.startsWith('u');
+  let envoiImmediat = false;
+
+  if (sansBase) {
+    envoiImmediat = await prevenirEnMp(interaction.client, cible.slice(1), {
+      approved, note, texte: suggestionText, piece: msg ? msg.attachments.first() : null,
+    });
+  } else {
+    try {
+      const ref = col().doc(cible);
+      const snap = await ref.get();
+      await ref.update({
+        statut: approved ? 'accepted' : 'rejected',
+        note: note || null,
+        decidLe: Date.now(),
+        decidePar: interaction.user.id,
+        // Repêché par le récap du lundi. Un refus sans note n'annonce rien :
+        // il n'y a pas de nouvelle à donner, seulement une absence de suite.
+        notifieLe: (approved || note) ? null : Date.now(),
+      });
+
+      /* L'app d'abord, si le compte Discord y est lié : la réponse attend dans
+         l'onglet Notifications, sans push ni e-mail. Le MP du lundi ne fait
+         que doubler, pour ceux qui vivent sur Discord. */
+      const data = snap.exists ? snap.data() : {};
+      const discordId = data.discordId || null;
+      if (discordId && (approved || note)) {
+        const uid = await getUid(discordId).catch(() => null);
+        if (uid) {
+          await appnotif.ajouter(uid, {
+            type: 'suggestion',
+            title: approved ? 'Votre suggestion a été retenue' : "Votre suggestion n'a pas été retenue",
+            body: (data.texte ? `« ${String(data.texte).slice(0, 200)} »` : '')
+              + (note ? `\n\nRéponse de l'équipe : ${note}` : ''),
+          });
+        }
+      }
+    } catch (e) {
+      console.error('[suggestions] décision :', e.message);
     }
-    if (note) dm.addFields({ name: "Note de l'équipe", value: note });
-    dm.setFooter({ text: 'CapitalBoard - https://capitalboard.fr' });
-    await user.send({ embeds: [dm], files: dmFiles });
-    dmOk = true;
-  } catch (_) { /* DM fermés */ }
+  }
 
   // Verrouille le message de validation.
   try {
@@ -246,15 +304,120 @@ async function finalizeDecision(interaction) {
     console.error('[suggestions] edit review:', e.message);
   }
 
+  const suite = sansBase
+    ? (envoiImmediat
+      ? 'Auteur prévenu en MP (suggestion reçue hors base).'
+      : "MP impossible, et la suggestion n'était pas en base : l'auteur ne saura rien.")
+    : (approved || note
+      ? "L'auteur la verra dans l'app, et dans le récap de lundi."
+      : "Aucune annonce à l'auteur (refus sans note).");
+
   await interaction.reply({
-    content: `Décision enregistrée.${dmOk ? ' Auteur prévenu en DM.' : " (DM impossible — l'auteur a peut-être fermé ses MP.)"}`,
+    content: `Décision enregistrée. ${suite}`,
     flags: MessageFlags.Ephemeral,
   });
+}
+
+/** MP direct — ne sert plus qu'au cas dégradé, quand la base n'a rien gardé. */
+async function prevenirEnMp(client, discordId, { approved, note, texte, piece }) {
+  try {
+    const user = await client.users.fetch(discordId);
+    const dm = new EmbedBuilder()
+      .setColor(approved ? GREEN : RED)
+      .setTitle(approved ? '✅ Suggestion acceptée' : '❌ Suggestion refusée')
+      .setDescription(
+        (texte ? `**Votre suggestion :**\n> ${texte.slice(0, 400).replace(/\n/g, '\n> ')}\n\n` : '')
+        + (approved
+          ? "Bonne nouvelle : votre suggestion a été retenue par l'équipe. Merci de votre contribution !"
+          : "Votre suggestion n'a pas été retenue cette fois-ci. Merci quand même de votre participation !"),
+      );
+    const files = [];
+    if (piece) {
+      const name = `suggestion.${imageExt(piece)}`;
+      files.push(new AttachmentBuilder(piece.url, { name }));
+      dm.setImage(`attachment://${name}`);
+    }
+    if (note) dm.addFields({ name: "Note de l'équipe", value: note });
+    dm.setFooter({ text: 'CapitalBoard - https://capitalboard.fr' });
+    await user.send({ embeds: [dm], files });
+    return true;
+  } catch (_) {
+    return false;   // MP fermés
+  }
+}
+
+// ── Récap du lundi ─────────────────────────────────────────────────────────
+/**
+ * Un seul MP par auteur, avec tout ce qui a été décidé pour lui depuis le
+ * dernier envoi. Les suggestions ne sont marquées annoncées qu'après un envoi
+ * réussi : des MP fermés ce lundi les reportent au suivant, ils ne les perdent
+ * pas.
+ */
+async function recapHebdo(client) {
+  // Un seul `where` : filtrer aussi sur notifieLe demanderait un index
+  // composite, pour un ensemble qui tient de toute façon en mémoire.
+  const snap = await col().where('statut', 'in', ['accepted', 'rejected']).get();
+
+  const parAuteur = new Map();   // discordId → [suggestions]
+  snap.forEach((d) => {
+    const data = d.data();
+    if (data.notifieLe || !data.discordId) return;
+    if (!parAuteur.has(data.discordId)) parAuteur.set(data.discordId, []);
+    parAuteur.get(data.discordId).push({ id: d.id, ...data });
+  });
+  if (!parAuteur.size) return;
+
+  for (const [discordId, items] of parAuteur) {
+    const retenues = items.filter((i) => i.statut === 'accepted');
+    const ecartees = items.filter((i) => i.statut === 'rejected');
+
+    const bloc = (liste) => liste
+      .map((i) => `• ${String(i.texte || '').slice(0, 220)}${i.note ? `\n  ↳ ${i.note.slice(0, 220)}` : ''}`)
+      .join('\n')
+      .slice(0, 1000);
+
+    const embed = new EmbedBuilder()
+      .setColor(retenues.length ? GREEN : BRAND)
+      .setTitle(retenues.length > 1 ? `✅ ${retenues.length} de vos suggestions ont été retenues`
+        : retenues.length === 1 ? '✅ Votre suggestion a été retenue'
+          : 'Vos suggestions ont été étudiées')
+      .setFooter({ text: "CapitalBoard · merci d'aider à faire grandir l'app 💛" })
+      .setTimestamp();
+
+    if (retenues.length) embed.addFields({ name: 'Retenues', value: bloc(retenues) });
+    if (ecartees.length) embed.addFields({ name: 'Non retenues cette fois', value: bloc(ecartees) });
+
+    try {
+      const user = await client.users.fetch(discordId);
+      await user.send({ embeds: [embed] });
+    } catch (e) {
+      console.error(`[suggestions] récap ${discordId} :`, e.message);
+      continue;   // MP fermés : rien n'est marqué, on retentera lundi prochain
+    }
+
+    const batch = getDb().batch();
+    const quand = Date.now();
+    for (const i of items) batch.update(col().doc(i.id), { notifieLe: quand });
+    await batch.commit().catch((e) => console.error('[suggestions] marquage :', e.message));
+  }
+}
+
+function start(client) {
+  if (!isConfigured()) {
+    console.warn('[suggestions] Firestore non configuré : récap hebdo désactivé.');
+    return;
+  }
+  // Cinq minutes après celui des suggestions venues de l'app : deux MP à la
+  // même seconde pour la même personne, c'est un doublon apparent.
+  cron.schedule('5 9 * * 1', () => {
+    recapHebdo(client).catch((e) => console.error('[suggestions] récap :', e.message));
+  }, { timezone: 'Europe/Paris' });
 }
 
 module.exports = {
   // Le panneau est publié par `npm run embed -- suggestion` (voir lib/embeds.js).
   panelPayload,
+  start,
   handleButton,
   handleModal,
   isSuggestionButton: (id) => id.startsWith('sugg:'),

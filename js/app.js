@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260905a';
+const APP_VERSION = '20260905b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -17657,7 +17657,95 @@ function checkPriceAlerts() {
 // Réglages de la page Notifications. Ils ont fait un détour par la fenêtre
 // Profil, où ils se perdaient entre le mot de passe et la sauvegarde ; la page
 // les rend de nouveau atteignables en un geste depuis le menu.
+// ─── VOS MESSAGES (historique in-app) ─────────────────────
+// `users/{uid}/data/notifHistory`, écrit par le serveur : récap du jour,
+// alertes de prix, résultats d'entreprises, et les réponses aux suggestions.
+//
+// Volontairement in-app seulement : une réponse à une suggestion n'a pas à
+// faire vibrer un téléphone ni à remplir une boîte mail, mais elle ne doit pas
+// non plus se perdre. Elle attend ici que la personne passe.
+let _notifItems = null;
+
+const NOTIF_ICONES = {
+  suggestion:  '💡',
+  daily_recap: '📊',
+  price_alert: '📈',
+  earnings:    '🏢',
+};
+
+function _notifQuand(iso) {
+  const d = new Date(iso);
+  if (isNaN(d)) return '';
+  const jours = Math.floor((Date.now() - d.getTime()) / 86400000);
+  if (jours === 0) return "aujourd'hui";
+  if (jours === 1) return 'hier';
+  if (jours < 7) return `il y a ${jours} jours`;
+  return d.toLocaleDateString('fr-FR', { day: 'numeric', month: 'short' });
+}
+
+function _paintNotifs() {
+  const zone = document.getElementById('notif-list');
+  if (!zone) return;
+  const bouton = document.getElementById('btn-notifs-lues');
+
+  if (_notifItems === null) {
+    zone.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:4px 0">Chargement…</div>';
+    return;
+  }
+  if (!_notifItems.length) {
+    zone.innerHTML = '<div style="font-size:12px;color:var(--text3);padding:4px 0">'
+      + 'Rien pour le moment. Les réponses à vos suggestions et vos récaps arriveront ici.</div>';
+    if (bouton) bouton.style.display = 'none';
+    return;
+  }
+
+  const nonLues = _notifItems.filter(n => !n.read).length;
+  if (bouton) bouton.style.display = nonLues ? '' : 'none';
+
+  zone.innerHTML = _notifItems.slice(0, 30).map(n => `
+    <div style="display:flex;gap:10px;padding:10px 0;border-bottom:1px solid var(--border)">
+      <span style="font-size:15px;line-height:1.2;flex-shrink:0">${NOTIF_ICONES[n.type] || '🔔'}</span>
+      <div style="min-width:0;flex:1">
+        <div style="display:flex;align-items:baseline;gap:8px">
+          <span style="font-size:13px;font-weight:600;color:${n.read ? 'var(--text2)' : 'var(--text)'}">${_escapeHtmlChat(n.title || '')}</span>
+          ${n.read ? '' : '<span style="width:6px;height:6px;border-radius:50%;background:var(--accent);flex-shrink:0"></span>'}
+          <span style="font-size:10px;font-family:var(--mono);color:var(--text3);margin-left:auto;flex-shrink:0">${_escapeHtmlChat(_notifQuand(n.timestamp))}</span>
+        </div>
+        ${n.body ? `<div style="font-size:12px;color:var(--text2);line-height:1.5;margin-top:3px;white-space:pre-wrap">${_escapeHtmlChat(n.body)}</div>` : ''}
+      </div>
+    </div>`).join('');
+}
+
+async function _refreshNotifs() {
+  if (window.IS_DEMO) { _notifItems = []; _paintNotifs(); return; }
+  if (!currentUser || !db) { _notifItems = []; _paintNotifs(); return; }
+  try {
+    const snap = await getFirestoreDoc(firestoreDoc(db, 'users', currentUser, 'data', 'notifHistory'));
+    _notifItems = snap.exists() ? (snap.data().items || []) : [];
+  } catch (e) {
+    // Une lecture ratée ne doit pas laisser « Chargement… » à l'écran.
+    _notifItems = [];
+  }
+  _paintNotifs();
+}
+
+// Marquage explicite, et non à l'ouverture de la page : la pastille bleue est
+// ce qui permet de retrouver ce qu'on n'a pas encore lu en revenant.
+window.markNotifsRead = async function() {
+  if (!_notifItems || !_notifItems.length || !currentUser || !db) return;
+  _notifItems = _notifItems.map(n => ({ ...n, read: true }));
+  _paintNotifs();
+  try {
+    await setFirestoreDoc(firestoreDoc(db, 'users', currentUser, 'data', 'notifHistory'),
+      { items: _notifItems }, { merge: true });
+  } catch (e) {
+    console.warn('Marquage des notifications :', e.message);
+  }
+};
+
 function renderPushSettings() {
+  _paintNotifs();
+  _refreshNotifs();
   renderNotifSettings();
   updatePushBtn();
   const hint = document.getElementById('ios-push-hint');

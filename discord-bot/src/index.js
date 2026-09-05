@@ -65,6 +65,7 @@ client.once(Events.ClientReady, (c) => {
   ticketstats.start(c);
   signalements.start(c);
   appsuggestions.start(c);
+  suggestions.start(c);
   opsAlerts.start(c);
   scanPatches.watch(c);
   bareme.start(c);

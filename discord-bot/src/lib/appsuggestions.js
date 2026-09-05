@@ -22,6 +22,7 @@ const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags
 const cron = require('node-cron');
 const { getDb, isConfigured } = require('../firebase');
 const { getDiscordId } = require('./links');
+const appnotif = require('./appnotif');
 
 const CHANNEL = '1528920650570535132';   // même salon de revue que les suggestions Discord
 const COL = 'suggestions';
@@ -104,6 +105,20 @@ async function handleButton(interaction) {
   } catch (e) {
     console.error('[appsuggestions] mise à jour :', e.message);
     return;
+  }
+
+  /* La réponse attend dans l'onglet Notifications de l'app : ni push, ni
+     e-mail. L'auteur écrit depuis l'app, c'est là qu'il revient — le MP du
+     lundi ne fait que doubler pour ceux qui sont aussi sur Discord. */
+  try {
+    const data = (await col().doc(id).get()).data() || {};
+    await appnotif.ajouter(data.uid, {
+      type: 'suggestion',
+      title: accepte ? 'Votre suggestion a été retenue' : "Votre suggestion n'a pas été retenue",
+      body: data.texte ? `« ${String(data.texte).slice(0, 200)} »` : '',
+    });
+  } catch (e) {
+    console.error('[appsuggestions] notification app :', e.message);
   }
 
   const embed = EmbedBuilder.from(interaction.message.embeds[0]);
