@@ -241,13 +241,20 @@ async function finalizeDecision(interaction) {
   const msg = interaction.message;
   const suggestionText = msg && msg.embeds[0] ? (msg.embeds[0].description || '') : '';
 
-  // `u<id>` : suggestion reçue alors que Firestore ne répondait pas. Rien à
-  // mettre à jour, et rien pour la retrouver lundi — on prévient tout de suite.
-  const sansBase = cible.startsWith('u');
+  /* Deux cas se traitent sur-le-champ, en MP, parce qu'il n'y a rien en base
+     pour les retrouver lundi :
+
+       `u<id>`   — suggestion reçue alors que Firestore ne répondait pas ;
+       17 à 20 chiffres — message de validation posté AVANT ce changement :
+                  ses boutons portent l'identifiant Discord de l'auteur, pas
+                  celui d'un document. Sans ce test, la mise à jour échouerait
+                  en silence et l'auteur n'aurait jamais de réponse. */
+  const ancienFormat = /^\d{17,20}$/.test(cible);
+  const sansBase = cible.startsWith('u') || ancienFormat;
   let envoiImmediat = false;
 
   if (sansBase) {
-    envoiImmediat = await prevenirEnMp(interaction.client, cible.slice(1), {
+    envoiImmediat = await prevenirEnMp(interaction.client, ancienFormat ? cible : cible.slice(1), {
       approved, note, texte: suggestionText, piece: msg ? msg.attachments.first() : null,
     });
   } else {
@@ -306,7 +313,7 @@ async function finalizeDecision(interaction) {
 
   const suite = sansBase
     ? (envoiImmediat
-      ? 'Auteur prévenu en MP (suggestion reçue hors base).'
+      ? `Auteur prévenu en MP (${ancienFormat ? 'suggestion postée avant le passage au récap' : 'suggestion reçue hors base'}).`
       : "MP impossible, et la suggestion n'était pas en base : l'auteur ne saura rien.")
     : (approved || note
       ? "L'auteur la verra dans l'app, et dans le récap de lundi."
