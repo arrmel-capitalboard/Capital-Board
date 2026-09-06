@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260905b';
+const APP_VERSION = '20260906';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -6677,7 +6677,7 @@ const SECTION_LABELS = {
   portfolio: 'PEA', cto: 'Mon CTO', crypto: 'Ma crypto', depenses: 'Dépenses & abonnements',
   av: 'Assurance-vie', per: 'PER', livrets: 'Livrets & épargne',
   immo: 'Immobilier & SCPI', or: 'Or & métaux', nonco: 'Crowdfunding & non coté',
-  actualites: 'Actualités', favoris: 'Contenus favoris', idees: 'Boîte à idées', support: 'Support',
+  actualites: 'Actualités', favoris: 'Contenus favoris', idees: 'Boîte à suggestions', support: 'Support',
   notifications: 'Notifications',
   fiscalite: 'Récap fiscal',
   admin: 'Admin', instagram: 'Instagram', tiktok: 'TikTok', youtube: 'YouTube', discord: 'Discord', facebook: 'Facebook', linkedin: 'LinkedIn',
@@ -6951,7 +6951,7 @@ const NAV_LABELS_COURTS = {
   livrets: 'Livrets',       immo: 'Immo',          or: 'Or & métaux',
   nonco: 'Non coté',        depenses: 'Dépenses',  fiscalite: 'Fiscal',
   actualites: 'Actus',      favoris: 'Favoris',    notifications: 'Alertes',
-  idees: 'Idées',           support: 'Support',    admin: 'Admin',
+  idees: 'Suggestions',     support: 'Support',    admin: 'Admin',
 };
 
 // Icône de l'entrée « Tout », seule case de la barre qui n'est pas une page.
@@ -22193,7 +22193,7 @@ function renderDepenses() {
   if (note) {
     note.hidden = !_isFeatureBeta('depenses');
     _depText('dep-beta-txt', _isBetaPublique('depenses')
-      ? 'Module en bêta : vos données sont enregistrées normalement, mais l’affichage et les calculs peuvent encore évoluer. Vos retours nous aident — la boîte à idées est faite pour ça.'
+      ? 'Module en bêta : vos données sont enregistrées normalement, mais l’affichage et les calculs peuvent encore évoluer. Vos retours nous aident — la boîte à suggestions est faite pour ça.'
       : 'Section visible par vous seul. Les autres membres voient encore la page « Bientôt ».');
   }
   if (!_depMonth) _depMonth = _depNowYm();
