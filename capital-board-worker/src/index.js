@@ -4105,38 +4105,6 @@ export default {
         return json({ error: 'logo introuvable' }, 404);
       }
 
-      // ── POST /discord-link ──────────────────────────────────────────────
-      // Lie un compte Discord au compte Capital Board. Le bot crée d'abord
-      // discordLinkRequests/{token} (il connaît le discordId) ; ici on vérifie
-      // l'idToken Firebase (on connaît l'uid) et on écrit le lien. Les deux
-      // côtés sont authentifiés serveur — aucune écriture cliente.
-      if (url.pathname === '/discord-link' && request.method === 'POST') {
-        const { idToken, token } = await request.json();
-        if (!idToken || typeof token !== 'string' || !/^[a-f0-9]{16,64}$/.test(token)) {
-          return json({ ok: false, error: 'Paramètres invalides' }, 400);
-        }
-
-        const user = await verifyIdToken(idToken, env);
-
-        const reqDoc = await firestoreGet(`discordLinkRequests/${token}`, env).catch(() => null);
-        const discordId = reqDoc && fsStr(reqDoc, 'discordId');
-        if (!discordId) return json({ ok: false, error: 'Lien invalide ou expiré' }, 404);
-
-        const expiresAt = fsNum(reqDoc, 'expiresAt');
-        if (expiresAt && expiresAt < Date.now()) {
-          await firestoreDelete(`discordLinkRequests/${token}`, env).catch(() => {});
-          return json({ ok: false, error: 'Lien expiré' }, 410);
-        }
-
-        await firestoreSet(`discordLinks/${discordId}`, {
-          uid: { stringValue: user.localId },
-          linkedAt: { integerValue: String(Date.now()) },
-        }, env);
-        await firestoreDelete(`discordLinkRequests/${token}`, env).catch(() => {});
-
-        return json({ ok: true });
-      }
-
       return json({ error: 'Not found' }, 404);
 
     } catch (e) {

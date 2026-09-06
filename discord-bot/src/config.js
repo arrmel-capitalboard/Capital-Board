@@ -3,7 +3,7 @@
 require('dotenv').config();
 
 const {
-  DISCORD_TOKEN, CLIENT_ID, GUILD_ID, ROLE_COMPTE_LIE, OPS_ALERTS_CHANNEL_ID,
+  DISCORD_TOKEN, CLIENT_ID, GUILD_ID, OPS_ALERTS_CHANNEL_ID,
   GITHUB_DISPATCH_TOKEN, GITHUB_REPO, GITHUB_SECURITY_REPO, DEPOT_SECURITE,
 } = process.env;
 
@@ -14,9 +14,6 @@ module.exports = {
   token: DISCORD_TOKEN,
   clientId: CLIENT_ID,
   guildId: GUILD_ID || null,
-  // Rôle attribué automatiquement aux comptes Capital Board liés (voir lib/rolesync.js).
-  // Surchargeable par ROLE_COMPTE_LIE pour tester sur un serveur de dev.
-  roleCompteLie: ROLE_COMPTE_LIE || '1528779341184635121',
   // Salon des alertes ops (quotas API, etc. — voir lib/ops-alerts.js). Pas de
   // valeur par défaut : sans ID connu, mieux vaut désactiver l'écoute que
   // poster dans le mauvais salon.

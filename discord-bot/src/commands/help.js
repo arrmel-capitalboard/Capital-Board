@@ -6,7 +6,6 @@ const { loadCommands } = require('../loadCommands');
 const E = require('../lib/emojis');
 
 const CATEGORIES = [
-  { name: `${E.ARROW} Capital Board`, cmds: ['link', 'unlink', 'portefeuille', 'watchlist', 'dividendes'] },
   { name: `${E.ARROW} Modération`, cmds: ['role', 'kick', 'ban', 'unban', 'mute', 'warn', 'warnings', 'clearwarns', 'clear', 'lock', 'unlock'] },
   { name: `${E.ARROW} Utilitaires`, cmds: ['help', 'info', 'poll', 'status', 'embed'] },
 ];

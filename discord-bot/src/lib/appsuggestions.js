@@ -9,19 +9,15 @@
 //     createdAt,
 //     posteLe, messageId, channelId,   // posés une fois le message envoyé
 //     decidLe,                  // quand acceptée / refusée
-//     notifieLe,                // quand le récap hebdo a été envoyé (null tant que non)
 //   }
 //
 // Flux : le membre écrit un doc depuis l'app. Le bot l'écoute et le poste dans
-// le salon de revue avec deux boutons ; le fondateur tranche là, sans MP à
-// l'auteur. Chaque lundi, un récap groupe les suggestions acceptées non encore
-// annoncées et les envoie en un seul MP par auteur — sans ça, accepter 100
-// suggestions d'un coup enverrait 100 messages.
+// le salon de revue avec deux boutons ; le fondateur tranche là. La réponse
+// est déposée dans l'onglet Notifications de l'app — ni push, ni e-mail, ni
+// message privé : l'auteur a écrit depuis l'app, c'est là qu'il revient.
 
 const { EmbedBuilder, ActionRowBuilder, ButtonBuilder, ButtonStyle, MessageFlags } = require('discord.js');
-const cron = require('node-cron');
 const { getDb, isConfigured } = require('../firebase');
-const { getDiscordId } = require('./links');
 const appnotif = require('./appnotif');
 
 const CHANNEL = '1528920650570535132';   // même salon de revue que les suggestions Discord
@@ -74,11 +70,6 @@ function start(client) {
     },
     (err) => console.error('[appsuggestions] listener interrompu :', err.message),
   );
-
-  // Récap hebdo : chaque lundi 9h (heure de Paris).
-  cron.schedule('0 9 * * 1', () => {
-    recapHebdo(client).catch((e) => console.error('[appsuggestions] récap :', e.message));
-  }, { timezone: 'Europe/Paris' });
 }
 
 /** true si le customId est un bouton de cette boîte. */
@@ -95,11 +86,7 @@ async function handleButton(interaction) {
   await interaction.deferUpdate();
   const accepte = action === 'ok';
 
-  // notifieLe: null seulement à l'acceptation → repêché par le récap du lundi.
-  // Un refus n'annonce rien, donc pas de champ de suivi à poser.
-  const maj = accepte
-    ? { statut: 'accepted', decidLe: Date.now(), notifieLe: null }
-    : { statut: 'rejected', decidLe: Date.now() };
+  const maj = { statut: accepte ? 'accepted' : 'rejected', decidLe: Date.now() };
   try {
     await col().doc(id).update(maj);
   } catch (e) {
@@ -124,70 +111,12 @@ async function handleButton(interaction) {
   const embed = EmbedBuilder.from(interaction.message.embeds[0]);
   if (accepte) {
     embed.setColor(0x16a34a).setTitle('✅ Suggestion acceptée')
-      .addFields({ name: 'Décision', value: `<@${interaction.user.id}> — récap au prochain lundi` });
+      .addFields({ name: 'Décision', value: `<@${interaction.user.id}> — l'auteur est prévenu dans l'app` });
   } else {
     embed.setColor(0x6b7280).setTitle('🗑️ Suggestion refusée')
       .addFields({ name: 'Décision', value: `<@${interaction.user.id}>` });
   }
   await interaction.editReply({ embeds: [embed], components: [] });
-}
-
-/**
- * Récap hebdo. Regroupe les suggestions acceptées non encore annoncées par
- * auteur, résout le Discord de chacun et envoie un unique MP récapitulatif,
- * puis marque ces suggestions comme annoncées. Un auteur non lié à Discord est
- * simplement sauté (ses suggestions restent à annoncer, reprises dès qu'il lie
- * son compte).
- */
-async function recapHebdo(client, { dry = false } = {}) {
-  // Pas de double `where` (éviterait un index composite) : on filtre notifieLe
-  // en mémoire, l'ensemble accepté restant court.
-  const snap = await col().where('statut', '==', 'accepted').get();
-  const parAuteur = new Map();   // uid → [{ id, texte }]
-  snap.forEach((d) => {
-    const data = d.data();
-    if (data.notifieLe) return;
-    if (!parAuteur.has(data.uid)) parAuteur.set(data.uid, []);
-    parAuteur.get(data.uid).push({ id: d.id, texte: data.texte });
-  });
-  if (parAuteur.size === 0) return;
-
-  for (const [uid, items] of parAuteur) {
-    let discordId;
-    try { discordId = await getDiscordId(uid); } catch { discordId = null; }
-    if (!discordId) {
-      // Compte non lié à Discord : on réessaiera. En simulation on le dit, car
-      // c'est le cas qui explique un récap silencieux.
-      if (dry) console.log(`[dry][app] uid ${uid} — aucun compte Discord lié, sauté.`);
-      continue;
-    }
-
-    try {
-      const user = await client.users.fetch(discordId);
-      if (dry) {
-        console.log(`[dry][app] ${user.tag} (uid ${uid}) — ${items.length} suggestion(s) retenue(s) ; `
-          + 'rien envoyé, rien marqué.');
-        continue;
-      }
-      const liste = items.map((it) => `• ${propre(it.texte).slice(0, 300)}`).join('\n').slice(0, 4000);
-      const embed = new EmbedBuilder()
-        .setColor(0x16a34a)
-        .setTitle(items.length > 1 ? `✅ ${items.length} de vos suggestions ont été retenues` : '✅ Votre suggestion a été retenue')
-        .setDescription(liste)
-        .setFooter({ text: 'Merci d\'aider à faire grandir CapitalBoard 💛' })
-        .setTimestamp();
-      await user.send({ embeds: [embed] });
-    } catch (e) {
-      console.error(`[appsuggestions] MP récap ${uid} :`, e.message);
-      continue;   // MP fermés : on ne marque pas, retenté au prochain lundi
-    }
-
-    // Marquer annoncées seulement après un envoi réussi.
-    const batch = getDb().batch();
-    const t = Date.now();
-    for (const it of items) batch.update(col().doc(it.id), { notifieLe: t });
-    await batch.commit().catch((e) => console.error('[appsuggestions] marquage :', e.message));
-  }
 }
 
 function _millis(v) {
@@ -198,6 +127,4 @@ function _millis(v) {
   return 0;
 }
 
-// recapHebdo est exporté pour `npm run recap` : le cron du lundi est le seul
-// chemin qui annonce une décision, il doit pouvoir être essayé et rejoué.
-module.exports = { start, isButton, handleButton, recapHebdo };
+module.exports = { start, isButton, handleButton };

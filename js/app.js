@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260906b';
+const APP_VERSION = '20260906c';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -80,12 +80,6 @@ const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
 // -> Google -> Web SDK configuration). Public, pas un secret — visible dans
 // le trafic réseau de tout navigateur qui fait le login Google.
 const GOOGLE_CLIENT_ID = '719745213666-t6mh98ubdb8lin37o7ajq0aim4igs0ds.apps.googleusercontent.com';
-
-// Liaison Discord : capture le token avant l'authentification (il survit au login).
-try {
-  const _dl = new URLSearchParams(location.search).get('dl');
-  if (_dl) sessionStorage.setItem('pendingDiscordLink', _dl);
-} catch (_) {}
 
 const _turnstileState = {}; // 'pending' | 'ready' | 'error'
 
@@ -857,60 +851,6 @@ function saveDepenses(user, data) { _fsWrite(user||currentUser, 'depenses', data
 // par an et vaut pour tout le monde. Seul un taux dérogatoire est enregistré.
 function getLivrets(user)  { return _localCache[(user||currentUser) + '_livrets'] || []; }
 function saveLivrets(user, data) { _fsWrite(user||currentUser, 'livrets', data); }
-
-// ─── LIAISON DISCORD ──────────────────────────────────────────────
-// Flux : l'utilisateur tape /link sur Discord → le bot crée
-// discordLinkRequests/{token} et donne un lien capitalboard.fr/app.html?dl=TOKEN.
-// Ouvert ici en étant connecté, on appelle le Worker qui vérifie l'idToken
-// et écrit le lien (discordLinks/{discordId} = {uid}). Aucune écriture cliente.
-async function _processDiscordLink(user) {
-  if (window.IS_DEMO || !user) return;
-  const params = new URLSearchParams(location.search);
-  const token = params.get('dl') || sessionStorage.getItem('pendingDiscordLink');
-  if (!token) return;
-  sessionStorage.removeItem('pendingDiscordLink');
-  // Nettoie l'URL (retire ?dl=...).
-  if (params.get('dl')) {
-    params.delete('dl');
-    const q = params.toString();
-    history.replaceState(null, '', location.pathname + (q ? '?' + q : ''));
-  }
-  try {
-    const idToken = await user.getIdToken();
-    const res = await fetch(WORKER_URL + '/discord-link', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ idToken, token }),
-    });
-    const data = await res.json().catch(() => ({}));
-    const discordIcon = '<svg width="34" height="26" viewBox="0 0 71 55" fill="#5865F2" aria-hidden="true"><path d="M60.1 4.9A58.6 58.6 0 0 0 45.5.36a.22.22 0 0 0-.23.1c-.63 1.12-1.33 2.58-1.82 3.73a54 54 0 0 0-16.23 0 37.4 37.4 0 0 0-1.85-3.73.23.23 0 0 0-.23-.1A58.4 58.4 0 0 0 10.3 4.9a.2.2 0 0 0-.1.08C.96 18.7-1.58 32.15.04 45.43a.24.24 0 0 0 .09.16 58.9 58.9 0 0 0 17.74 8.97.23.23 0 0 0 .25-.08c1.37-1.87 2.59-3.84 3.63-5.92a.22.22 0 0 0-.12-.31 38.8 38.8 0 0 1-5.54-2.64.23.23 0 0 1-.02-.38c.37-.28.74-.57 1.1-.86a.22.22 0 0 1 .23-.03c11.62 5.3 24.2 5.3 35.68 0a.22.22 0 0 1 .23.03c.36.3.73.58 1.1.86a.23.23 0 0 1-.02.38 36.4 36.4 0 0 1-5.54 2.64.22.22 0 0 0-.12.31 46.5 46.5 0 0 0 3.63 5.91.23.23 0 0 0 .25.09 58.7 58.7 0 0 0 17.77-8.97.23.23 0 0 0 .09-.16c1.94-15.35-2.06-28.69-8.7-40.45a.18.18 0 0 0-.09-.09ZM23.73 37.34c-3.5 0-6.38-3.21-6.38-7.15 0-3.95 2.82-7.16 6.38-7.16 3.58 0 6.43 3.24 6.38 7.16 0 3.94-2.83 7.15-6.38 7.15Zm23.59 0c-3.5 0-6.38-3.21-6.38-7.15 0-3.95 2.82-7.16 6.38-7.16 3.59 0 6.43 3.24 6.38 7.16 0 3.94-2.79 7.15-6.38 7.15Z"/></svg>';
-    if (res.ok && data.ok) {
-      showConfirmModal({
-        icon: discordIcon,
-        title: 'Compte Discord lié',
-        body: 'Votre compte Discord est maintenant lié. Utilisez /portefeuille sur le serveur Discord pour consulter vos données.',
-        okLabel: 'Parfait',
-        infoOnly: true,
-      });
-    } else {
-      showConfirmModal({
-        icon: discordIcon,
-        title: 'Liaison Discord échouée',
-        body: data.error || 'Lien invalide ou expiré. Refaites /link sur Discord pour obtenir un nouveau lien.',
-        okLabel: 'OK',
-        infoOnly: true,
-      });
-    }
-  } catch (e) {
-    console.error('discord link', e);
-    showConfirmModal({
-      title: 'Liaison Discord échouée',
-      body: 'Une erreur est survenue. Réessayez dans un instant.',
-      okLabel: 'OK',
-      infoOnly: true,
-    });
-  }
-}
 
 // ─────────────────────────────────────────────────────────────────
 //  EXPORT / IMPORT — sauvegarde complète d'un compte en JSON
@@ -3963,7 +3903,6 @@ async function startApp(user) {
       applyNavLayout(null);
       applyFeatureFlags({}, {}, null, {});
     });
-    try { _processDiscordLink(user); } catch(e) { console.warn('discord link:', e); }
   } catch(e) {
     console.error('startApp error:', e);
   } finally {

@@ -37,8 +37,6 @@ const {
 } = require('discord.js');
 const cron = require('node-cron');
 const { getDb, isConfigured } = require('../firebase');
-const { getUid } = require('./links');
-const appnotif = require('./appnotif');
 
 const REVIEW_CHANNEL     = '1528920650570535132';
 const COL                = 'suggestionsDiscord';
@@ -72,10 +70,8 @@ function panelPayload() {
       "Une idée pour améliorer Capital Board ? Une fonctionnalité qui vous manque ?\n\n"
       + "Cliquez sur le bouton ci-dessous, décrivez votre suggestion (ajoutez vos liens) "
       + "et joignez des captures d'écran si besoin.\n\n"
-      + "Notre équipe l'étudie, puis la réponse vous parvient de deux façons : dans "
-      + "l'onglet **Notifications** de l'application si votre compte Discord y est lié, "
-      + "et en message privé le lundi matin, avec tout ce qui a été décidé pour vous "
-      + "dans la semaine.",
+      + "Notre équipe l'étudie, puis vous répond en message privé le lundi matin, "
+      + "avec tout ce qui a été décidé pour vous dans la semaine.",
     )
     .setFooter({ text: 'CapitalBoard - https://capitalboard.fr' });
 
@@ -116,7 +112,7 @@ function decisionModal(action, userId) {
     .setPlaceholder(action === 'ok' ? "Pourquoi c'est accepté (optionnel)…" : "Pourquoi c'est refusé (optionnel)…");
   const noteLabel = new LabelBuilder()
     .setLabel("Note pour l'auteur (optionnel)")
-    .setDescription("Reprise dans le récap du lundi et dans l'app.")
+    .setDescription('Reprise dans le récap du lundi.')
     .setTextInputComponent(note);
 
   return new ModalBuilder()
@@ -228,8 +224,8 @@ async function submitSuggestion(interaction) {
   // chose, dans le salon, sans ouvrir un fil privé que l'auteur n'a pas
   // demandé.
   await interaction.editReply(
-    '✅ Votre suggestion a été transmise, merci ! Les réponses sont envoyées '
-    + "groupées le lundi, et apparaissent dans l'onglet Notifications de l'app.",
+    '✅ Votre suggestion a été transmise, merci ! Les réponses partent groupées, '
+    + 'en message privé, le lundi matin.',
   );
 }
 
@@ -263,7 +259,6 @@ async function finalizeDecision(interaction) {
   } else {
     try {
       const ref = col().doc(cible);
-      const snap = await ref.get();
       await ref.update({
         statut: approved ? 'accepted' : 'rejected',
         note: note || null,
@@ -273,23 +268,6 @@ async function finalizeDecision(interaction) {
         // il n'y a pas de nouvelle à donner, seulement une absence de suite.
         notifieLe: (approved || note) ? null : Date.now(),
       });
-
-      /* L'app d'abord, si le compte Discord y est lié : la réponse attend dans
-         l'onglet Notifications, sans push ni e-mail. Le MP du lundi ne fait
-         que doubler, pour ceux qui vivent sur Discord. */
-      const data = snap.exists ? snap.data() : {};
-      const discordId = data.discordId || null;
-      if (discordId && (approved || note)) {
-        const uid = await getUid(discordId).catch(() => null);
-        if (uid) {
-          await appnotif.ajouter(uid, {
-            type: 'suggestion',
-            title: approved ? 'Votre suggestion a été retenue' : "Votre suggestion n'a pas été retenue",
-            body: (data.texte ? `« ${String(data.texte).slice(0, 200)} »` : '')
-              + (note ? `\n\nRéponse de l'équipe : ${note}` : ''),
-          });
-        }
-      }
     } catch (e) {
       console.error('[suggestions] décision :', e.message);
     }
@@ -319,7 +297,7 @@ async function finalizeDecision(interaction) {
       ? `Auteur prévenu en MP (${ancienFormat ? 'suggestion postée avant le passage au récap' : 'suggestion reçue hors base'}).`
       : "MP impossible, et la suggestion n'était pas en base : l'auteur ne saura rien.")
     : (approved || note
-      ? "L'auteur la verra dans l'app, et dans le récap de lundi."
+      ? "L'auteur la verra dans le récap de lundi."
       : "Aucune annonce à l'auteur (refus sans note).");
 
   await interaction.reply({
