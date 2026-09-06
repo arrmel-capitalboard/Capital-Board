@@ -162,21 +162,59 @@ function prompt(commits, jour) {
   ].join('\n');
 }
 
+// Attentes entre deux essais, en secondes. Un 429 de Mistral ne dit pas
+// combien de temps patienter ; ces paliers couvrent la fenêtre courte du
+// quota, et le tout reste sous les six minutes du job.
+const ATTENTES = [5, 20, 60, 120];
+
+const patiente = (s) => new Promise((r) => setTimeout(r, s * 1000));
+
+/**
+ * Un refus passager ne doit pas coûter la journée. Le balayage ne tourne
+ * qu'une fois par jour : s'il meurt sur un 429, les commits de la veille ne
+ * sont jamais rédigés, et le lendemain lit une autre fenêtre — ils sont perdus
+ * pour de bon. On réessaie donc sur 429 et sur les erreurs de serveur.
+ * Une clé refusée (401) ou une requête invalide (400) ne s'arrangeront pas en
+ * attendant : celles-là échouent tout de suite.
+ */
 async function callMistral(contenu) {
-  const res = await fetch('https://api.mistral.ai/v1/chat/completions', {
-    method: 'POST',
-    headers: { Authorization: 'Bearer ' + MISTRAL_KEY, 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      model: 'mistral-small-latest',
-      messages: [{ role: 'user', content: contenu }],
-      temperature: 0.2,
-      max_tokens: 700,
-    }),
-    signal: AbortSignal.timeout(60000),
-  });
-  const json = await res.json();
-  if (!res.ok) throw new Error(`Mistral ${res.status}: ${JSON.stringify(json).slice(0, 200)}`);
-  return (json?.choices?.[0]?.message?.content || '').trim();
+  let dernier = null;
+
+  for (let essai = 0; essai <= ATTENTES.length; essai++) {
+    let res;
+    try {
+      res = await fetch('https://api.mistral.ai/v1/chat/completions', {
+        method: 'POST',
+        headers: { Authorization: 'Bearer ' + MISTRAL_KEY, 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          model: 'mistral-small-latest',
+          messages: [{ role: 'user', content: contenu }],
+          temperature: 0.2,
+          max_tokens: 700,
+        }),
+        signal: AbortSignal.timeout(60000),
+      });
+    } catch (e) {
+      // Réseau coupé ou délai dépassé : même traitement qu'un 5xx.
+      dernier = new Error(`Mistral injoignable : ${e.message}`);
+      if (essai === ATTENTES.length) break;
+      console.warn(`[news] ${dernier.message} — nouvel essai dans ${ATTENTES[essai]}s`);
+      await patiente(ATTENTES[essai]);
+      continue;
+    }
+
+    const json = await res.json().catch(() => ({}));
+    if (res.ok) return (json?.choices?.[0]?.message?.content || '').trim();
+
+    dernier = new Error(`Mistral ${res.status}: ${JSON.stringify(json).slice(0, 200)}`);
+    const reessayable = res.status === 429 || res.status >= 500;
+    if (!reessayable || essai === ATTENTES.length) break;
+
+    console.warn(`[news] ${dernier.message} — nouvel essai dans ${ATTENTES[essai]}s`);
+    await patiente(ATTENTES[essai]);
+  }
+
+  throw dernier;
 }
 
 /** Le modèle encadre souvent son JSON de ```json … ```. */
