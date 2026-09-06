@@ -72,7 +72,7 @@ let _fcmMsgHandlerSet = false;   // évite d'empiler le listener onMessage (toas
 const VAPID_KEY = 'BJH8L9RSirzMMmN9b1PwTVPj-2DDWAzDtJy_2000H_D0HA90aNu8-EWqVYgJA6W6Tn4eL4i2JW_yp1bvvrHpHkQ';
 
 // Version de l'app — à bumper à chaque déploiement (sync avec version.json)
-const APP_VERSION = '20260906';
+const APP_VERSION = '20260906b';
 
 const WORKER_URL = 'https://api.capitalboard.fr';
 const TURNSTILE_SITEKEY = '0x4AAAAAADn5LAr4t8vCvyjS';
@@ -4611,7 +4611,6 @@ function _cryRender() {
         if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); cryOpenModal('achat', l.sym); }
       });
 
-      const sym = _attr(l.sym);
       // La pastille est posée en deux temps : un emplacement dans le HTML, puis
       // le vrai nœud à la place. `outerHTML` aurait sérialisé l'image mais perdu
       // son écouteur `error` — celui qui retombe sur les initiales quand le
@@ -4652,24 +4651,38 @@ function _cryRender() {
       +   '<div class="btn-portfolio-actions" style="display:inline-flex;gap:6px;align-items:center">'
       +     (info.y
           ? '<button class="btn-edit" title="Voir la courbe" aria-label="Voir la courbe de ' + _attr(info.nom) + '"'
-            + ' style="display:inline-flex;align-items:center;justify-content:center"'
-            + ' onclick="event.stopPropagation();toggleWatchlistChart(&quot;' + cle + '&quot;,&quot;' + _attr(info.y) + '&quot;)">'
+            + ' style="display:inline-flex;align-items:center;justify-content:center" data-cry-geste="graphe">'
             + IC.chartLine + '</button>'
           : '')
       +     '<button class="btn-edit" title="Acheter" aria-label="Acheter ' + _attr(info.nom) + '"'
-      +       ' onclick="event.stopPropagation();cryOpenModal(&quot;achat&quot;,&quot;' + sym + '&quot;)">'
+      +       ' data-cry-geste="achat">'
       +       '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M12 5v14M5 12h14"/></svg></button>'
       +     '<button class="btn-edit" title="Vendre" aria-label="Vendre ' + _attr(info.nom) + '"'
-      +       ' onclick="event.stopPropagation();cryOpenModal(&quot;vente&quot;,&quot;' + sym + '&quot;)">'
+      +       ' data-cry-geste="vente">'
       +       '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round"><path d="M5 12h14"/></svg></button>'
       +     '<button class="btn-del" title="Supprimer" aria-label="Supprimer ' + _attr(info.nom) + '"'
-      +       ' onclick="event.stopPropagation();crySupprimerLigne(&quot;' + sym + '&quot;)">✕</button>'
+      +       ' data-cry-geste="suppr">✕</button>'
       +   '</div>'
       + '</td>';
 
       const emplacement = tr.querySelector('[data-pastille]');
       if (emplacement) emplacement.replaceWith(_cryPastille(info, 26));
       tr.id = 'wl-row-' + cle;   // marquée « expanded » quand sa courbe est ouverte
+
+      // Le clic est posé par écouteur, pas par attribut `onclick`. Un symbole
+      // passé dans l'attribut y était bien échappé, mais le navigateur décode
+      // l'attribut AVANT que le JS ne soit analysé : un symbole contenant un
+      // guillemet sortait de la chaîne et exécutait ce qu'il voulait. Ici la
+      // valeur ne traverse jamais le HTML, elle est lue depuis `l`.
+      tr.querySelectorAll('[data-cry-geste]').forEach((b) => {
+        b.addEventListener('click', (ev) => {
+          ev.stopPropagation();
+          const geste = b.dataset.cryGeste;
+          if (geste === 'graphe') toggleWatchlistChart(cle, info.y);
+          else if (geste === 'suppr') crySupprimerLigne(l.sym);
+          else cryOpenModal(geste, l.sym);
+        });
+      });
 
       liste.appendChild(tr);
 
