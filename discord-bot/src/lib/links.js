@@ -55,4 +55,4 @@ function getPortfolio(uid) {
   return getUserItems(uid, 'portfolio');
 }
 
-module.exports = { getUid, createLinkRequest, unlink, getPortfolio, getUserItems };
+module.exports = { getUid, getDiscordId, createLinkRequest, unlink, getPortfolio, getUserItems };

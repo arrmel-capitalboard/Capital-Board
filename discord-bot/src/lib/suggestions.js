@@ -71,8 +71,11 @@ function panelPayload() {
     .setDescription(
       "Une idée pour améliorer Capital Board ? Une fonctionnalité qui vous manque ?\n\n"
       + "Cliquez sur le bouton ci-dessous, décrivez votre suggestion (ajoutez vos liens) "
-      + "et joignez des captures d'écran si besoin. Une fois envoyée, notre équipe l'étudie "
-      + "et vous répond directement en message privé.",
+      + "et joignez des captures d'écran si besoin.\n\n"
+      + "Notre équipe l'étudie, puis la réponse vous parvient de deux façons : dans "
+      + "l'onglet **Notifications** de l'application si votre compte Discord y est lié, "
+      + "et en message privé le lundi matin, avec tout ce qui a été décidé pour vous "
+      + "dans la semaine.",
     )
     .setFooter({ text: 'CapitalBoard - https://capitalboard.fr' });
 
