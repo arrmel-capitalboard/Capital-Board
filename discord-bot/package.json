@@ -8,6 +8,7 @@
     "start": "node src/index.js",
     "deploy": "node src/deploy-commands.js",
     "embed": "node src/publish-embed.js",
+    "recap": "node src/run-recap.js",
     "test": "node --test"
   },
   "engines": {

@@ -139,7 +139,7 @@ async function handleButton(interaction) {
  * simplement sauté (ses suggestions restent à annoncer, reprises dès qu'il lie
  * son compte).
  */
-async function recapHebdo(client) {
+async function recapHebdo(client, { dry = false } = {}) {
   // Pas de double `where` (éviterait un index composite) : on filtre notifieLe
   // en mémoire, l'ensemble accepté restant court.
   const snap = await col().where('statut', '==', 'accepted').get();
@@ -155,10 +155,20 @@ async function recapHebdo(client) {
   for (const [uid, items] of parAuteur) {
     let discordId;
     try { discordId = await getDiscordId(uid); } catch { discordId = null; }
-    if (!discordId) continue;   // compte non lié : on réessaiera plus tard
+    if (!discordId) {
+      // Compte non lié à Discord : on réessaiera. En simulation on le dit, car
+      // c'est le cas qui explique un récap silencieux.
+      if (dry) console.log(`[dry][app] uid ${uid} — aucun compte Discord lié, sauté.`);
+      continue;
+    }
 
     try {
       const user = await client.users.fetch(discordId);
+      if (dry) {
+        console.log(`[dry][app] ${user.tag} (uid ${uid}) — ${items.length} suggestion(s) retenue(s) ; `
+          + 'rien envoyé, rien marqué.');
+        continue;
+      }
       const liste = items.map((it) => `• ${propre(it.texte).slice(0, 300)}`).join('\n').slice(0, 4000);
       const embed = new EmbedBuilder()
         .setColor(0x16a34a)
@@ -188,4 +198,6 @@ function _millis(v) {
   return 0;
 }
 
-module.exports = { start, isButton, handleButton };
+// recapHebdo est exporté pour `npm run recap` : le cron du lundi est le seul
+// chemin qui annonce une décision, il doit pouvoir être essayé et rejoué.
+module.exports = { start, isButton, handleButton, recapHebdo };

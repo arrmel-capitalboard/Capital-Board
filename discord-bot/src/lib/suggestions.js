@@ -363,7 +363,7 @@ async function prevenirEnMp(client, discordId, { approved, note, texte, piece })
  * réussi : des MP fermés ce lundi les reportent au suivant, ils ne les perdent
  * pas.
  */
-async function recapHebdo(client) {
+async function recapHebdo(client, { dry = false } = {}) {
   // Un seul `where` : filtrer aussi sur notifieLe demanderait un index
   // composite, pour un ensemble qui tient de toute façon en mémoire.
   const snap = await col().where('statut', 'in', ['accepted', 'rejected']).get();
@@ -399,6 +399,11 @@ async function recapHebdo(client) {
 
     try {
       const user = await client.users.fetch(discordId);
+      if (dry) {
+        console.log(`[dry][discord] ${user.tag} (${discordId}) — `
+          + `${retenues.length} retenue(s), ${ecartees.length} écartée(s) ; rien envoyé, rien marqué.`);
+        continue;
+      }
       await user.send({ embeds: [embed] });
     } catch (e) {
       console.error(`[suggestions] récap ${discordId} :`, e.message);
@@ -428,6 +433,8 @@ module.exports = {
   // Le panneau est publié par `npm run embed -- suggestion` (voir lib/embeds.js).
   panelPayload,
   start,
+  // Exporté pour `npm run recap` : tester avant lundi, et rattraper après.
+  recapHebdo,
   handleButton,
   handleModal,
   isSuggestionButton: (id) => id.startsWith('sugg:'),
