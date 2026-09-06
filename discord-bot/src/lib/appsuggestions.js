@@ -46,7 +46,13 @@ function payload(id, data) {
 
 async function poster(client, id, data) {
   const channel = await client.channels.fetch(CHANNEL);
-  const msg = await channel.send(payload(id, data));
+  // Mention systématique : ces suggestions viennent d'un compte de
+  // l'application, et rien ne dit ici si c'est celui de l'équipe.
+  const msg = await channel.send({
+    content: `<@&${FONDATEUR_ROLE}>`,
+    ...payload(id, data),
+    allowedMentions: { roles: [FONDATEUR_ROLE], parse: [] },
+  });
   await col().doc(id).update({ posteLe: Date.now(), messageId: msg.id, channelId: channel.id });
 }
 

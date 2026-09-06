@@ -213,7 +213,18 @@ async function submitSuggestion(interaction) {
 
   try {
     const ch = await interaction.client.channels.fetch(REVIEW_CHANNEL);
-    await ch.send({ embeds: [embed], components: [row], files: images });
+    /* Une suggestion attend une décision : sans mention, elle dort dans le
+       salon jusqu'à ce que quelqu'un pense à l'ouvrir. On ne mentionne pas
+       l'équipe pour ses propres suggestions — se notifier soi-même n'apporte
+       rien, et le message reste juste au-dessus. */
+    const deLequipe = interaction.member?.roles.cache.has(FONDATEUR_ROLE);
+    await ch.send({
+      content: deLequipe ? '' : `<@&${FONDATEUR_ROLE}>`,
+      embeds: [embed],
+      components: [row],
+      files: images,
+      allowedMentions: { roles: deLequipe ? [] : [FONDATEUR_ROLE], parse: [] },
+    });
   } catch (e) {
     console.error('[suggestions] post review:', e.message);
     await interaction.editReply("Erreur lors de l'envoi. Réessayez plus tard.");
