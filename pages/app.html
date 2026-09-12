@@ -3989,6 +3989,17 @@
     <div class="modal-title" style="display:flex;align-items:center;gap:7px"><svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 21V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v16"/></svg>Gérer les versements</div>
     <div class="modal-sub">Consultez, modifiez ou supprimez vos apports en capital.</div>
     <div id="versements-modal-body" style="max-height:340px;overflow-y:auto;margin:14px 0"></div>
+    <!-- Sauvegarder ses apports ou les remonter après coup : une date et un
+         montant se ressaisissent mal à la main. L'import ajoute sans écraser
+         et saute ce qui est déjà là, donc relire deux fois le même fichier ne
+         double jamais le capital. -->
+    <div style="display:flex;gap:8px;margin:0 0 4px">
+      <input type="file" id="versements-import-input" accept=".csv,text/csv" style="display:none" onchange="importVersementsCSV(event)">
+      <button class="btn-secondary" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:12px"
+              onclick="exportVersementsCSV()" title="Télécharger vos versements au format CSV"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Exporter CSV</button>
+      <button class="btn-secondary" style="flex:1;display:inline-flex;align-items:center;justify-content:center;gap:6px;font-size:12px"
+              onclick="document.getElementById('versements-import-input').click()" title="Ajouter des versements depuis un fichier CSV"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="flex-shrink:0"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>Importer CSV</button>
+    </div>
     <div class="modal-footer">
       <button class="btn-secondary" onclick="closeVersementsListModal()">Fermer</button>
       <button class="btn-primary" onclick="addVersementFromModal()">＋ Ajouter un versement</button>

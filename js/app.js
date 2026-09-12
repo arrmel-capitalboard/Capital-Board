@@ -13357,14 +13357,152 @@ function exportDebugData() {
   a.click(); URL.revokeObjectURL(url);
 }
 
+// ─── VERSEMENTS : EXPORT / IMPORT CSV ─────────────────
+//
+// Un versement n'est qu'une date et un montant — la donnée la plus simple de
+// l'app, et la plus pénible à ressaisir quand on repart de zéro ou qu'on passe
+// d'une enveloppe à l'autre. L'export existait en code mais n'était branché à
+// aucun bouton ; l'import lui manquait.
+//
+// La lecture s'appuie sur le parseur de relevés (js/import.js) plutôt que sur
+// une seconde implémentation : séparateur deviné, guillemets RFC 4180, dates
+// françaises ou ISO, montants à virgule et espaces insécables — tout y est
+// déjà traité, et couvert par scripts/t-import.cjs.
+
 function exportVersementsCSV() {
   const versements = getVersements(currentUser);
   if (!versements.length) { alert('Aucun versement.'); return; }
+  // Copie avant tri : `getVersements` rend le tableau vivant du cache, et la
+  // modale « Gérer les versements » adresse ses lignes par index. Trier en
+  // place ferait modifier ou supprimer la mauvaise ligne juste après un export.
   const header = 'Date,Montant\n';
-  const rows = versements.sort((a,b) => (a.date||'').localeCompare(b.date||'')).map(v => v.date + ',' + v.amount.toFixed(2)).join('\n');
+  const rows = [...versements]
+    .sort((a, b) => (a.date || '').localeCompare(b.date || ''))
+    .map(v => v.date + ',' + v.amount.toFixed(2)).join('\n');
   const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a'); a.href = url; a.download = 'versements_' + currentUser + '.csv'; a.click(); URL.revokeObjectURL(url);
+}
+
+/** Identité d'un versement : sa date et son montant au centime. */
+function _cleVersement(v) {
+  return String(v.date || '') + '|' + (Math.round((v.amount || 0) * 100) / 100).toFixed(2);
+}
+
+/**
+ * Les versements du fichier qui manquent à la liste déjà enregistrée.
+ *
+ * Différence de multi-ensembles, pas de `Set` : deux virements de 100 € le
+ * même jour sont deux versements bien réels, et les écraser l'un l'autre
+ * amputerait le capital. Chaque ligne du fichier consomme au plus une ligne
+ * existante identique — réimporter le même fichier n'ajoute donc rien, mais un
+ * doublon légitime reste un doublon.
+ */
+function _versementsAAjouter(existants, importes) {
+  const restants = new Map();
+  (existants || []).forEach(v => {
+    const k = _cleVersement(v);
+    restants.set(k, (restants.get(k) || 0) + 1);
+  });
+  const out = [];
+  (importes || []).forEach(v => {
+    const k = _cleVersement(v);
+    const n = restants.get(k) || 0;
+    if (n > 0) restants.set(k, n - 1);
+    else out.push(v);
+  });
+  return out;
+}
+
+/**
+ * Lit un CSV de versements → { versements, ignorees }.
+ *
+ * Les colonnes ne sont pas nommées mais reconnues : dans chaque ligne, la
+ * première cellule qui donne une date et la première qui donne un montant.
+ * L'en-tête tombe tout seul — « Date,Montant » ne parse ni l'un ni l'autre —
+ * et l'ordre des colonnes n'a pas d'importance.
+ *
+ * `csv` est injectable pour les tests ; par défaut c'est le parseur de relevés.
+ */
+function parseVersementsCSV(texte, csv) {
+  const C = csv || (window.CBImport && window.CBImport.csv);
+  if (!C) throw new Error('Le lecteur de fichiers n’est pas chargé. Rechargez la page et réessayez.');
+  const lignes = String(texte || '').split(/\r?\n/).filter(l => l.trim());
+  if (!lignes.length) return { versements: [], ignorees: 0 };
+  const sep = C._separateur(lignes);
+  const versements = [];
+  let ignorees = 0;
+  lignes.forEach(ligne => {
+    let date = null, montant = NaN;
+    C._decouper(ligne, sep).forEach(cellule => {
+      if (date === null) {
+        const d = C.parseDate(cellule);
+        if (d) { date = d; return; }   // une cellule ne sert qu'une fois
+      }
+      if (!isFinite(montant)) {
+        const m = C.parseMontant(cellule);
+        if (isFinite(m)) montant = m;
+      }
+    });
+    // Un apport est positif : c'est la règle de la saisie manuelle, et un
+    // montant négatif serait un retrait, que le modèle ne connaît pas.
+    if (date && isFinite(montant) && montant > 0) {
+      versements.push({ amount: Math.round(montant * 100) / 100, date });
+    } else {
+      ignorees++;
+    }
+  });
+  return { versements, ignorees };
+}
+
+async function importVersementsCSV(event) {
+  const input = event && event.target;
+  const file  = input && input.files && input.files[0];
+  if (input) input.value = '';   // réimporter le même fichier reste possible
+  if (!file) return;
+
+  let lu;
+  try {
+    lu = parseVersementsCSV(await file.text());
+  } catch (e) {
+    alert(e && e.message ? e.message : 'Fichier illisible.');
+    return;
+  }
+  if (!lu.versements.length) {
+    alert('Aucun versement trouvé dans ce fichier.\n\n' +
+          'Attendu : une colonne date et une colonne montant. ' +
+          'Le fichier produit par « Exporter CSV » convient tel quel.');
+    return;
+  }
+
+  const existants = getVersements(currentUser);
+  const aAjouter  = _versementsAAjouter(existants, lu.versements);
+  if (!aAjouter.length) {
+    alert('Ces ' + lu.versements.length + ' versements sont déjà enregistrés — rien à ajouter.');
+    return;
+  }
+
+  const total = aAjouter.reduce((s, v) => s + v.amount, 0);
+  const deja  = lu.versements.length - aAjouter.length;
+  const corps = [aAjouter.length + ' versement' + (aAjouter.length > 1 ? 's' : '') +
+                 ' seront ajoutés, pour ' + total.toFixed(2) + ' €.'];
+  if (deja)         corps.push(deja + ' déjà enregistré' + (deja > 1 ? 's' : '') + ', ignoré' + (deja > 1 ? 's' : '') + '.');
+  if (lu.ignorees)  corps.push(lu.ignorees + ' ligne' + (lu.ignorees > 1 ? 's' : '') + ' non reconnue' + (lu.ignorees > 1 ? 's' : '') + ' (en-tête ou format).');
+  corps.push('Vos versements actuels sont conservés.');
+
+  showConfirmModal({
+    icon:        '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#7c6df5" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="17 8 12 3 7 8"/><line x1="12" y1="3" x2="12" y2="15"/></svg>',
+    title:       'Importer ces versements ?',
+    body:        corps.join('\n'),
+    okLabel:     'Importer',
+    cancelLabel: 'Annuler',
+    onConfirm:   () => {
+      saveVersements(currentUser, getVersements(currentUser).concat(aAjouter));
+      try { renderVersementsModalList(); } catch (_) {}
+      try { renderVersementsList(); } catch (_) {}
+      try { renderPortfolio(); } catch (_) {}
+    },
+  });
 }
 
 function exportTransactionsCSV() {
