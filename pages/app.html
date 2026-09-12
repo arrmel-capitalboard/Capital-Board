@@ -955,6 +955,31 @@
           <div class="empty-text">Aucune action dans le portefeuille.<br>Ajoutez votre première ligne.</div>
         </div>
       </div>
+
+      <!-- Positions soldées — un titre entièrement revendu perd sa ligne dans
+           « Mes titres », mais son historique reste : c'est lui qui porte la
+           plus-value réalisée. Sans ce bloc, ces opérations n'étaient
+           atteignables qu'une par une depuis Activité, et continuaient à peser
+           sur le solde espèces et le total du compte. Garder ou supprimer :
+           c'est à l'utilisateur de choisir. -->
+      <div class="table-container" id="pf-closed-wrap" style="display:none">
+        <div class="table-header">
+          <span class="table-title">Positions soldées</span>
+          <span style="font-size:11px;color:var(--text3);text-align:right">Titres entièrement revendus — supprimez-les pour les sortir de vos totaux</span>
+        </div>
+        <table>
+          <thead>
+            <tr>
+              <th>Titre</th>
+              <th class="hide-mobile">Qté vendue</th>
+              <th class="hide-mobile">Soldée le</th>
+              <th>Résultat</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody id="pf-closed-tbody"></tbody>
+        </table>
+      </div>
     </div>
 
     <!-- ══════════════════════════════════════════════

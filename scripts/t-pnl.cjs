@@ -1,34 +1,46 @@
 // Suite de tests du socle de calcul de js/app.js : prix de revient frais
-// compris, P&L réalisé rejoué depuis le journal, solde espèces.
+// compris, P&L réalisé rejoué depuis le journal, solde espèces, et les
+// positions soldées.
 //
 // `js/app.js` est écrit pour le navigateur et touche au DOM dès le chargement :
-// on ne peut pas l'exiger tel quel. On en extrait le bloc de fonctions pures,
-// délimité par `_txFees` et `logTransaction`, et on le compile seul. Le test
-// porte donc sur le code réellement livré, pas sur une copie.
+// on ne peut pas l'exiger tel quel. On en extrait les tranches de fonctions
+// pures et on les compile seules — le test porte donc sur le code réellement
+// livré, pas sur une copie.
 const fs   = require('fs');
 const path = require('path');
 
-const src   = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
-const debut = src.indexOf('function _txFees(tx) {');
-const fin   = src.indexOf('\nfunction logTransaction(user, tx) {');
-if (debut < 0 || fin < 0 || fin < debut) {
-  console.error('Bloc de calcul introuvable dans js/app.js — bornes déplacées ?');
-  process.exit(1);
+const src = fs.readFileSync(path.join(__dirname, '..', 'js', 'app.js'), 'utf8');
+
+// Deux tranches de code pur, repérées par leurs bornes. Si quelqu'un déplace
+// ces fonctions, le test le dit au lieu de tester du vide.
+function tranche(nom, ouvre, ferme) {
+  const a = src.indexOf(ouvre), b = src.indexOf(ferme);
+  if (a < 0 || b < 0 || b < a) {
+    console.error('Bloc « ' + nom +' » introuvable dans js/app.js — bornes déplacées ?');
+    process.exit(1);
+  }
+  return src.slice(a, b);
 }
+const socle  = tranche('socle de calcul', 'function _txFees(tx) {', '\nfunction logTransaction(user, tx) {');
+const soldes = tranche('positions soldées', 'function _closedPositions() {', '\nfunction renderClosedPositions()');
 
-// `realizedPnlOf` sait retomber sur le journal courant quand on ne lui passe
-// pas de carte : ces deux globales lui tiennent lieu d'application.
-let currentUser = 'test';
+// Les fonctions extraites lisent le portefeuille et le journal de
+// l'application : ces deux globales leur en tiennent lieu.
+let _portefeuille = [];
 let _journal = [];
-const getTransactions = () => _journal;
+global.currentUser = 'test';
+global.getPortfolio = () => _portefeuille;
+global.getTransactions = () => _journal;
 
-const bloc = src.slice(debut, fin);
-const mod  = new module.constructor();
-mod._compile(bloc + '\nmodule.exports = { _coutAchat, _pruAchats, _txChrono, computeRealizedPnl, realizedPnlOf, computeCashBalance };\n', 'app-socle.js');
-// Le bloc extrait lit `getTransactions`/`currentUser` : on les lui donne.
-global.currentUser = currentUser;
-global.getTransactions = getTransactions;
+const mod = new module.constructor();
+mod._compile(socle + '\n' + soldes + '\nmodule.exports = { _coutAchat, _pruAchats, _txChrono, computeRealizedPnl, realizedPnlOf, computeCashBalance, _closedPositions };\n', 'app-socle.js');
 const A = mod.exports;
+
+// Prépare l'état de l'application puis rend les positions soldées.
+const soldees = (portefeuille, journal) => {
+  _portefeuille = portefeuille; _journal = journal;
+  return A._closedPositions();
+};
 
 const t = [];
 const chk = (l, a, b) => {
@@ -185,6 +197,56 @@ chk('solde : journal absent',
 chk('solde : rien du tout', A.computeCashBalance(), 0);
 chk('solde arrondi au centime',
   A.computeCashBalance([{ type: 'buy', qty: 3, price: 33.333333 }], [{ amount: 100 }]), 0);
+
+// ── Positions soldées : la poignée rendue aux titres entièrement revendus ──
+chk('titre revendu en entier → position soldée', soldees([], [
+  { id: 1, type: 'buy',  ticker: 'CW8.PA', name: 'Amundi MSCI World', qty: 10, price: 20, date: '2026-01-01' },
+  { id: 2, type: 'sell', ticker: 'CW8.PA', name: 'Amundi MSCI World', qty: 10, price: 25, date: '2026-02-01' },
+]).map(p => [p.ticker, p.qty, p.date, p.pnl, p.nb]), [['CW8.PA', 10, '2026-02-01', 50, 2]]);
+
+chk('titre encore détenu → absent', soldees(
+  [{ ticker: 'CW8.PA', qty: 10, buyPrice: 20, currentPrice: 25 }],
+  [{ id: 1, type: 'buy', ticker: 'CW8.PA', qty: 10, price: 20, date: '2026-01-01' }]
+).length, 0);
+
+chk('vendu en deux fois : quantités cumulées, dernière date', soldees([], [
+  { id: 1, type: 'buy',  ticker: 'CW8.PA', qty: 10, price: 20, date: '2026-01-01' },
+  { id: 2, type: 'sell', ticker: 'CW8.PA', qty: 4,  price: 30, date: '2026-02-01' },
+  { id: 3, type: 'sell', ticker: 'CW8.PA', qty: 6,  price: 10, date: '2026-03-01' },
+]).map(p => [p.qty, p.date, p.pnl]), [[10, '2026-03-01', -20]]);
+
+// Le cas « souci à l'import » : des opérations sans ligne ni vente. Elles
+// doivent rester atteignables, sinon plus rien ne permet de les effacer.
+chk('reliquat d’import sans vente → listé quand même', soldees([], [
+  { id: 1, type: 'buy', ticker: 'CW8.PA', qty: 10, price: 20, date: '2026-01-01' },
+]).map(p => [p.ticker, p.qty, p.date, p.nb]), [['CW8.PA', 0, '', 1]]);
+
+chk('dividende orphelin → listé', soldees([], [
+  { id: 1, type: 'dividend', ticker: 'CW8.PA', qty: 1, price: 12, date: '2026-01-01' },
+]).length, 1);
+
+chk('détenu et soldé cohabitent', soldees(
+  [{ ticker: 'OR.PA', qty: 5, buyPrice: 50, currentPrice: 60 }],
+  [
+    { id: 1, type: 'buy',  ticker: 'OR.PA',  qty: 5,  price: 50, date: '2026-01-01' },
+    { id: 2, type: 'buy',  ticker: 'CW8.PA', qty: 10, price: 20, date: '2026-01-01' },
+    { id: 3, type: 'sell', ticker: 'CW8.PA', qty: 10, price: 25, date: '2026-02-01' },
+  ]
+).map(p => p.ticker), ['CW8.PA']);
+
+chk('plusieurs soldées : la plus récente en tête', soldees([], [
+  { id: 1, type: 'buy',  ticker: 'AAA', qty: 1, price: 10, date: '2026-01-01' },
+  { id: 2, type: 'sell', ticker: 'AAA', qty: 1, price: 11, date: '2026-02-01' },
+  { id: 3, type: 'buy',  ticker: 'BBB', qty: 1, price: 10, date: '2026-01-01' },
+  { id: 4, type: 'sell', ticker: 'BBB', qty: 1, price: 11, date: '2026-05-01' },
+]).map(p => p.ticker), ['BBB', 'AAA']);
+
+chk('casse du ticker ignorée', soldees(
+  [{ ticker: 'cw8.pa', qty: 10, buyPrice: 20, currentPrice: 25 }],
+  [{ id: 1, type: 'buy', ticker: 'CW8.PA', qty: 10, price: 20, date: '2026-01-01' }]
+).length, 0);
+
+chk('journal vide → aucune position soldée', soldees([], []).length, 0);
 
 // ── Sortie ──────────────────────────────────────────────────────────────────
 console.log(t.join('\n'));

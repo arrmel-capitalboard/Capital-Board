@@ -8593,6 +8593,9 @@ function renderPortfolio() {
   // Render transaction history
   renderTxHistory();
 
+  // Les titres entièrement revendus n'ont plus de ligne : ils se retrouvent ici.
+  renderClosedPositions();
+
   // La carte fiscale du CTO suit les cours : elle se refait avec le reste.
   _ctoRenderFisc();
 
@@ -8641,6 +8644,97 @@ function _doDeleteRow(row) {
   }
   savePortfolio(currentUser, data);
   renderPortfolio();
+}
+
+// ─── POSITIONS SOLDÉES ────────────────────────────────
+//
+// Vendre 100 % d'une position retire sa ligne du portefeuille, mais pas ses
+// transactions : elles sont l'historique du titre, et la plus-value réalisée
+// s'en déduit. Or le seul code qui purge les opérations d'un ticker,
+// `_doDeleteRow`, part de la ligne — plus de ligne, plus de poignée. Les
+// opérations restaient dans Activité, pesaient sur le solde espèces et le
+// total du compte, et ne se supprimaient qu'une par une.
+//
+// Ce bloc rend la poignée sans rien décider à la place de l'utilisateur :
+// il garde la position soldée s'il tient à son historique, ou l'efface pour
+// repartir propre après un import raté.
+
+/**
+ * Les titres qui ont des opérations mais plus de ligne en portefeuille.
+ * Un ticker sans vente y figure aussi : c'est alors un reliquat d'import, et
+ * il a droit au même ménage.
+ */
+function _closedPositions() {
+  const tenus = new Set(getPortfolio(currentUser).map(r => String(r.ticker || '').toUpperCase()));
+  const txs   = getTransactions(currentUser);
+  const carte = computeRealizedPnl(txs);
+  const par   = new Map();
+  txs.forEach(t => {
+    const cle = String(t.ticker || '').toUpperCase();
+    if (!cle || tenus.has(cle)) return;
+    let p = par.get(cle);
+    if (!p) { p = { ticker: t.ticker, name: t.name || t.ticker, qty: 0, date: '', pnl: 0, nb: 0 }; par.set(cle, p); }
+    p.nb++;
+    if (t.name) p.name = t.name;
+    if (t.type === 'sell') {
+      p.qty += t.qty || 0;
+      p.pnl += realizedPnlOf(t, carte) || 0;
+      if ((t.date || '') > p.date) p.date = t.date || '';
+    }
+  });
+  return [...par.values()].sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+function renderClosedPositions() {
+  const wrap  = document.getElementById('pf-closed-wrap');
+  const tbody = document.getElementById('pf-closed-tbody');
+  if (!wrap || !tbody) return;
+  const lignes = _closedPositions();
+  wrap.style.display = lignes.length ? '' : 'none';
+  if (!lignes.length) { tbody.innerHTML = ''; return; }
+  tbody.innerHTML = lignes.map(p => {
+    const pos    = p.pnl >= 0;
+    const dateFr = p.date
+      ? new Date(p.date + 'T12:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit', year: 'numeric' })
+      : '—';
+    return '<tr>' +
+      '<td><div class="ticker-cell">' + logoHtml(p.ticker, 26, 'ticker-icon') +
+        '<div><div class="ticker-name" title="' + _attr(p.name) + '">' + _attr(p.name) + '</div>' +
+        '<div class="ticker-sym">' + _attr(p.ticker || '') + '</div></div></div></td>' +
+      '<td class="mono hide-mobile">' + (p.qty ? p.qty : '—') + '</td>' +
+      '<td class="mono hide-mobile">' + dateFr + '</td>' +
+      '<td><span class="' + (pos ? 'badge-pos' : 'badge-neg') + '">' +
+        (pos ? '▲' : '▼') + ' ' + fmt(Math.abs(p.pnl)) + '</span></td>' +
+      '<td style="text-align:right;padding-right:18px">' +
+        '<button class="btn-del" onclick="deleteClosedPosition(\'' + _attr(p.ticker) + '\')" ' +
+        'title="Supprimer cet historique">✕</button>' +
+      '</td></tr>';
+  }).join('');
+}
+
+function deleteClosedPosition(ticker) {
+  const cle = String(ticker || '').toUpperCase();
+  const concernees = getTransactions(currentUser)
+    .filter(t => String(t.ticker || '').toUpperCase() === cle);
+  if (!concernees.length) return;
+  const nom = (concernees.find(t => t.name) || {}).name || ticker;
+  const s   = concernees.length > 1 ? 's' : '';
+  showConfirmModal({
+    icon:        '<svg width="30" height="30" viewBox="0 0 24 24" fill="none" stroke="#ff4d6a" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><line x1="10" y1="11" x2="10" y2="17"/><line x1="14" y1="11" x2="14" y2="17"/></svg>',
+    title:       'Supprimer cet historique ?',
+    body:        nom + ' — ' + concernees.length + ' opération' + s + ' seront supprimée' + s + '.' +
+                 '\nSa plus-value réalisée sortira de vos totaux et du bilan annuel.' +
+                 '\nCette action est irréversible.',
+    okLabel:     'Supprimer',
+    cancelLabel: 'Annuler',
+    danger:      true,
+    onConfirm:   () => {
+      saveTransactions(currentUser, getTransactions(currentUser)
+        .filter(t => String(t.ticker || '').toUpperCase() !== cle));
+      try { renderPortfolio(); } catch (_) {}
+      try { renderActivite(); } catch (_) {}
+    },
+  });
 }
 
 let _txShowAll = false;
