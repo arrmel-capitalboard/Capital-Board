@@ -1081,10 +1081,20 @@ function _pruAchats(achats) {
   return qty > 0 ? Math.round((cout / qty) * 10000) / 10000 : null;
 }
 
-/** Ordre chronologique : la date, puis l'ordre d'enregistrement le même jour. */
+/**
+ * Ordre chronologique : la date, l'achat avant la vente, puis l'ordre
+ * d'enregistrement.
+ *
+ * L'achat passe devant parce qu'on ne cède pas un titre avant de l'avoir —
+ * et surtout pour que le rejeu ne dépende pas des ids, qui peuvent manquer
+ * sur d'anciennes écritures ou n'avoir été attribués qu'après coup.
+ */
 function _txChrono(a, b) {
   const d = String(a.date || '').localeCompare(String(b.date || ''));
-  return d !== 0 ? d : (a.id || 0) - (b.id || 0);
+  if (d !== 0) return d;
+  const rang = x => (x.type === 'buy' ? 0 : 1);
+  if (rang(a) !== rang(b)) return rang(a) - rang(b);
+  return (a.id || 0) - (b.id || 0);
 }
 
 /**
@@ -1162,9 +1172,51 @@ function computeCashBalance(txs, versements) {
   return Math.round((solde - _totalFees(txs)) * 100) / 100;
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// IDENTIFIANTS DES ÉCRITURES
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Transactions et versements se suppriment par id. Deux façons de rater ça,
+// et les deux étaient présentes :
+//
+//   — ne pas en donner. Les versements n'en ont jamais reçu : supprimer l'un
+//     d'eux depuis Activité filtrait sur `id !== undefined` et emportait donc
+//     toutes les lignes sans id, c'est-à-dire tous les versements d'un coup.
+//   — en donner des identiques. `Date.now()` enregistre les lignes d'un import
+//     dans la même milliseconde : la suppression de l'une faisait partir ses
+//     voisines.
+//
+// Le compteur ci-dessous ne recule jamais et ne se répète jamais, même appelé
+// mille fois dans la même milliseconde. Croissant, il garde en prime l'ordre
+// d'enregistrement lisible pour les tris à date égale.
+let _dernierId = 0;
+function _nouvelId() {
+  const t = Date.now();
+  _dernierId = t > _dernierId ? t : _dernierId + 1;
+  return _dernierId;
+}
+
+/**
+ * Numérote les écritures déjà enregistrées qui n'ont pas d'id.
+ *
+ * Les versements des utilisateurs existants n'en ont aucun, et les achats de
+ * rattrapage posés par `ensureBuyTxExists` non plus. On les numérote à
+ * l'ouverture d'Activité — le seul écran qui supprime par id — avant que le
+ * moindre bouton ne soit affiché.
+ */
+function _assurerIds() {
+  const vers = getVersements(currentUser) || [];
+  const txs  = getTransactions(currentUser) || [];
+  let nv = 0, nt = 0;
+  vers.forEach(v => { if (v.id == null) { v.id = _nouvelId(); nv++; } });
+  txs .forEach(t => { if (t.id == null) { t.id = _nouvelId(); nt++; } });
+  if (nv) saveVersements(currentUser, vers);
+  if (nt) saveTransactions(currentUser, txs);
+}
+
 function logTransaction(user, tx) {
   const txs = getTransactions(user);
-  txs.push({ ...tx, id: Date.now() });
+  txs.push({ ...tx, id: _nouvelId() });
   saveTransactions(user, txs);
 }
 
@@ -10964,7 +11016,7 @@ function confirmVersement() {
   if (!amount || amount <= 0) { alert('Montant invalide.'); return; }
   if (!date) { alert('Date requise.'); return; }
   const v = getVersements(currentUser);
-  v.push({ amount, date });
+  v.push({ amount, date, id: _nouvelId() });
   saveVersements(currentUser, v);
   closeVersementModal();
   renderPortfolio();
@@ -11897,7 +11949,7 @@ function confirmImport() {
   sorted.forEach(row => {
     if (row.type === 'versement') {
       const v = getVersements(currentUser);
-      v.push({ amount: row.price, date: row.date });
+      v.push({ amount: row.price, date: row.date, id: _nouvelId() });
       saveVersements(currentUser, v);
       return;
     }
@@ -11957,7 +12009,7 @@ function ensureBuyTxExists(user, row) {
   const hasBuy = txs.some(tx => tx.type === 'buy' && tx.ticker === row.ticker);
   if (!hasBuy) {
     const date = row.buyDate || row.addedAt?.slice(0,10) || new Date().toISOString().slice(0,10);
-    txs.push({ type: 'buy', ticker: row.ticker, name: row.name || row.ticker, qty: row.qty, price: row.buyPrice, date });
+    txs.push({ type: 'buy', ticker: row.ticker, name: row.name || row.ticker, qty: row.qty, price: row.buyPrice, date, id: _nouvelId() });
     saveTransactions(user, txs);
   }
 }
@@ -13497,7 +13549,8 @@ async function importVersementsCSV(event) {
     okLabel:     'Importer',
     cancelLabel: 'Annuler',
     onConfirm:   () => {
-      saveVersements(currentUser, getVersements(currentUser).concat(aAjouter));
+      saveVersements(currentUser, getVersements(currentUser)
+        .concat(aAjouter.map(v => ({ ...v, id: _nouvelId() }))));
       try { renderVersementsModalList(); } catch (_) {}
       try { renderVersementsList(); } catch (_) {}
       try { renderPortfolio(); } catch (_) {}
@@ -17629,6 +17682,9 @@ function renderActivite() {
   const feed  = document.getElementById('activite-feed');
   const empty = document.getElementById('activite-empty');
   if (!feed) return;
+  // Les boutons de suppression de cet écran désignent une ligne par son id :
+  // aucune ne doit en être dépourvue au moment où ils s'affichent.
+  _assurerIds();
   const txs  = getTransactions(currentUser) || [];
   const vers = getVersements(currentUser) || [];
 
@@ -17745,7 +17801,14 @@ function deleteActivite(kind, id) {
 
 function _doDeleteActivite(kind, id) {
   if (kind === 'versement') {
-    saveVersements(currentUser, getVersements(currentUser).filter(v => v.id !== id));
+    // Retrait de la ligne visée, et d'elle seule. Un `filter` sur l'id part du
+    // principe que les ids existent et sont uniques ; quand ce n'était pas le
+    // cas, il vidait toute la liste.
+    const vers = getVersements(currentUser);
+    const i = vers.findIndex(v => v.id === id);
+    if (i === -1) return;
+    vers.splice(i, 1);
+    saveVersements(currentUser, vers);
   } else {
     const txs = getTransactions(currentUser);
     const t = txs.find(x => x.id === id);
@@ -17778,7 +17841,10 @@ function _doDeleteActivite(kind, id) {
       const ign = getDivIgnored(currentUser);
       if (!ign.includes(key)) saveDivIgnored(currentUser, ign.concat(key));
     }
-    saveTransactions(currentUser, txs.filter(x => x.id !== id));
+    // Par position et non par filtre sur l'id : voir la branche versement.
+    const iTx = txs.indexOf(t);
+    if (iTx !== -1) txs.splice(iTx, 1);
+    saveTransactions(currentUser, txs);
   }
   try { renderPortfolio(); } catch (_) {}
   try { renderActivite(); } catch (_) {}

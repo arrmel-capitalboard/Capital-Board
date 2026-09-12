@@ -1,6 +1,6 @@
 // Suite de tests du socle de calcul de js/app.js : prix de revient frais
-// compris, P&L réalisé rejoué depuis le journal, solde espèces, et les
-// positions soldées.
+// compris, P&L réalisé rejoué depuis le journal, solde espèces, positions
+// soldées, et les identifiants d'écriture dont dépend toute suppression.
 //
 // `js/app.js` est écrit pour le navigateur et touche au DOM dès le chargement :
 // on ne peut pas l'exiger tel quel. On en extrait les tranches de fonctions
@@ -24,16 +24,20 @@ function tranche(nom, ouvre, ferme) {
 const socle  = tranche('socle de calcul', 'function _txFees(tx) {', '\nfunction logTransaction(user, tx) {');
 const soldes = tranche('positions soldées', 'function _closedPositions() {', '\nfunction renderClosedPositions()');
 
-// Les fonctions extraites lisent le portefeuille et le journal de
-// l'application : ces deux globales leur en tiennent lieu.
+// Les fonctions extraites lisent et écrivent l'état de l'application : ces
+// globales leur en tiennent lieu.
 let _portefeuille = [];
 let _journal = [];
+let _versements = [];
 global.currentUser = 'test';
 global.getPortfolio = () => _portefeuille;
 global.getTransactions = () => _journal;
+global.getVersements = () => _versements;
+global.saveTransactions = (u, d) => { _journal = d; };
+global.saveVersements = (u, d) => { _versements = d; };
 
 const mod = new module.constructor();
-mod._compile(socle + '\n' + soldes + '\nmodule.exports = { _coutAchat, _pruAchats, _txChrono, computeRealizedPnl, realizedPnlOf, computeCashBalance, _closedPositions };\n', 'app-socle.js');
+mod._compile(socle + '\n' + soldes + '\nmodule.exports = { _coutAchat, _pruAchats, _txChrono, computeRealizedPnl, realizedPnlOf, computeCashBalance, _closedPositions, _nouvelId, _assurerIds };\n', 'app-socle.js');
 const A = mod.exports;
 
 // Prépare l'état de l'application puis rend les positions soldées.
@@ -247,6 +251,72 @@ chk('casse du ticker ignorée', soldees(
 ).length, 0);
 
 chk('journal vide → aucune position soldée', soldees([], []).length, 0);
+
+// ── Les identifiants : ni manquants, ni en double ──────────────────────────
+//
+// Un versement sans id faisait tout partir à la suppression (`filter` sur
+// `id !== undefined`), et deux ids identiques emportaient la ligne voisine.
+
+chk('mille ids d’affilée, tous distincts', (() => {
+  const vus = new Set();
+  for (let i = 0; i < 1000; i++) vus.add(A._nouvelId());
+  return vus.size;
+})(), 1000);
+
+chk('les ids sont strictement croissants', (() => {
+  const suite = [A._nouvelId(), A._nouvelId(), A._nouvelId()];
+  return suite[0] < suite[1] && suite[1] < suite[2];
+})(), true);
+
+chk('_assurerIds numérote les versements orphelins', (() => {
+  _versements = [{ amount: 100, date: '2026-01-01' }, { amount: 200, date: '2026-02-01' }];
+  _journal = [];
+  A._assurerIds();
+  return _versements.every(v => v.id != null) && _versements[0].id !== _versements[1].id;
+})(), true);
+
+chk('_assurerIds respecte les ids déjà posés', (() => {
+  _versements = [{ amount: 100, date: '2026-01-01', id: 42 }, { amount: 200, date: '2026-02-01' }];
+  _journal = [];
+  A._assurerIds();
+  return [_versements[0].id, _versements[1].id !== 42 && _versements[1].id != null];
+})(), [42, true]);
+
+chk('_assurerIds numérote aussi les transactions', (() => {
+  _versements = [];
+  _journal = [{ type: 'buy', ticker: 'AI.PA', qty: 1, price: 10, date: '2026-01-01' }];
+  A._assurerIds();
+  return _journal[0].id != null;
+})(), true);
+
+// Le cas signalé : un versement supprimé depuis Activité les emportait tous.
+// Avec des ids distincts, retirer celui qu'on vise n'atteint plus les autres.
+chk('supprimer un versement n’emporte que lui', (() => {
+  _versements = [{ amount: 100, date: '2026-01-01' }, { amount: 200, date: '2026-02-01' }];
+  _journal = [];
+  A._assurerIds();
+  const cible = _versements[0].id;
+  const i = _versements.findIndex(v => v.id === cible);
+  _versements.splice(i, 1);
+  return _versements.map(v => v.amount);
+})(), [200]);
+
+// ── La chronologie ne dépend plus des ids ──────────────────────────────────
+chk('achat avant vente à date égale, malgré un id plus grand', totalPnl([
+  { id: 1, type: 'sell', ticker: 'AI.PA', qty: 10, price: 25, date: '2026-01-01' },
+  { id: 2, type: 'buy',  ticker: 'AI.PA', qty: 10, price: 10, date: '2026-01-01' },
+]), 150);
+
+chk('achat sans id, vente le même jour', totalPnl([
+  { id: 9, type: 'sell', ticker: 'AI.PA', qty: 10, price: 25, date: '2026-01-01' },
+  {        type: 'buy',  ticker: 'AI.PA', qty: 10, price: 10, date: '2026-01-01' },
+]), 150);
+
+chk('_txChrono : la date prime sur le type', (() => {
+  const vente  = { type: 'sell', date: '2026-01-01', id: 1 };
+  const achat  = { type: 'buy',  date: '2026-02-01', id: 2 };
+  return A._txChrono(vente, achat) < 0;
+})(), true);
 
 // ── Sortie ──────────────────────────────────────────────────────────────────
 console.log(t.join('\n'));
