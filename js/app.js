@@ -1050,6 +1050,118 @@ function _totalFees(txs) {
   return (txs || []).reduce((s, tx) => s + _txFees(tx), 0);
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// SOCLE DE CALCUL — prix de revient, P&L réalisé, solde espèces
+// ═══════════════════════════════════════════════════════════════════════════
+//
+// Ces trois chiffres se déduisent tous du même journal de transactions. Ils
+// étaient recopiés écran par écran, chacun avec sa variante : c'est ce qui
+// faisait diverger deux cartes censées afficher la même chose. Tout passe
+// désormais par ici.
+
+/**
+ * Coût d'un achat : le montant de l'ordre ET les frais.
+ *
+ * Ce qui sort du compte à l'achat, c'est l'un plus l'autre. Un prix de revient
+ * qui ignore les frais sous-évalue le coût des titres détenus et gonfle
+ * d'autant la plus-value latente affichée — c'est l'écart constaté face au
+ * relevé du courtier, à cours et quantités pourtant identiques.
+ */
+function _coutAchat(qty, price, fees) {
+  return (qty || 0) * (price || 0) + (fees || 0);
+}
+
+/** PRU d'un lot d'achats, frais compris. null si le lot est vide. */
+function _pruAchats(achats) {
+  let qty = 0, cout = 0;
+  (achats || []).forEach(t => {
+    qty  += t.qty || 0;
+    cout += _coutAchat(t.qty, t.price, _txFees(t));
+  });
+  return qty > 0 ? Math.round((cout / qty) * 10000) / 10000 : null;
+}
+
+/** Ordre chronologique : la date, puis l'ordre d'enregistrement le même jour. */
+function _txChrono(a, b) {
+  const d = String(a.date || '').localeCompare(String(b.date || ''));
+  return d !== 0 ? d : (a.id || 0) - (b.id || 0);
+}
+
+/**
+ * Rejoue le journal ticker par ticker et rend la plus-value réalisée de chaque
+ * vente, dans une Map indexée par l'objet transaction lui-même.
+ *
+ * La valeur n'est plus lue sur `tx.realizedPnl` : calculée une fois à la
+ * création de la vente puis figée, elle survivait à la suppression des achats
+ * qui lui servaient de base et continuait à compter dans le P&L total. C'est
+ * la « vente fantôme » — un gain que l'utilisateur ne pouvait faire
+ * disparaître qu'en supprimant la vente elle-même depuis Activité.
+ *
+ * Indexée par objet et non par `tx.id` : `logTransaction` tire les ids du
+ * `Date.now()`, et un import en rafale en produit plusieurs identiques.
+ *
+ * Méthode : coût moyen pondéré, la même que celle du PRU du portefeuille, pour
+ * que réalisé et latent se partagent la même base de coût. Une vente que plus
+ * aucun achat ne couvre ne rapporte rien : sans base de coût, il n'y a pas de
+ * plus-value à annoncer.
+ */
+function computeRealizedPnl(txs) {
+  const parVente  = new Map();
+  const positions = new Map();   // ticker → { qty, cout }
+  [...(txs || [])].sort(_txChrono).forEach(t => {
+    if (t.type !== 'buy' && t.type !== 'sell') return;
+    const cle = String(t.ticker || '').toUpperCase();
+    let pos = positions.get(cle);
+    if (!pos) { pos = { qty: 0, cout: 0 }; positions.set(cle, pos); }
+    if (t.type === 'buy') {
+      pos.qty  += t.qty || 0;
+      pos.cout += _coutAchat(t.qty, t.price, _txFees(t));
+      return;
+    }
+    const couvert = Math.min(t.qty || 0, pos.qty);
+    if (couvert <= 0) { parVente.set(t, 0); return; }
+    const pru = pos.cout / pos.qty;
+    // Frais de vente déduits : la plus-value s'entend nette, sinon elle
+    // annonce un gain jamais encaissé.
+    parVente.set(t, Math.round((((t.price || 0) - pru) * couvert - _txFees(t)) * 100) / 100);
+    pos.cout -= pru * couvert;
+    pos.qty  -= couvert;
+  });
+  return parVente;
+}
+
+/**
+ * P&L réalisé d'une transaction, null si ce n'est pas une vente.
+ * `carte` : le résultat de computeRealizedPnl, à passer quand on boucle sur
+ * le journal pour ne pas le rejouer à chaque ligne.
+ */
+function realizedPnlOf(tx, carte) {
+  if (!tx || tx.type !== 'sell') return null;
+  const c = carte || computeRealizedPnl(getTransactions(currentUser));
+  const v = c.get(tx);
+  return v === undefined ? null : v;
+}
+
+/**
+ * Solde espèces : ce qui est entré, moins ce qui est sorti, frais compris.
+ *
+ * Le calcul était recopié à trois endroits, dont un seul sans le
+ * `Math.max(0, …)` des deux autres — d'où un solde à 0 € sur une carte et
+ * négatif sur la suivante pour la même donnée. Le clamp est retiré partout :
+ * un solde négatif dit qu'il manque un versement au journal, et c'est une
+ * information. Le masquer laissait en prime la valorisation totale
+ * surévaluée du montant caché.
+ */
+function computeCashBalance(txs, versements) {
+  let solde = (versements || []).reduce((s, v) => s + (v.amount || 0), 0);
+  (txs || []).forEach(t => {
+    const montant = (t.qty || 0) * (t.price || 0);
+    if (t.type === 'buy') solde -= montant;
+    else if (t.type === 'sell' || t.type === 'dividend' || t.type === 'distribution') solde += montant;
+  });
+  return Math.round((solde - _totalFees(txs)) * 100) / 100;
+}
+
 function logTransaction(user, tx) {
   const txs = getTransactions(user);
   txs.push({ ...tx, id: Date.now() });
@@ -7827,15 +7939,9 @@ function _peaTotals(compte) {
   const txs = getTransactions(currentUser, compte);
   const titres     = pf.reduce((s, r) => s + r.qty * r.currentPrice, 0);
   const investi    = pf.reduce((s, r) => s + r.qty * r.buyPrice, 0);
-  const versements = getVersements(currentUser, compte).reduce((s, v) => s + v.amount, 0);
-  let achats = 0, ventes = 0, divs = 0, distrib = 0;
-  txs.forEach(t => {
-    if (t.type === 'buy')          achats  += t.qty * t.price;
-    if (t.type === 'sell')         ventes  += t.qty * t.price;
-    if (t.type === 'dividend')     divs    += t.qty * t.price;
-    if (t.type === 'distribution') distrib += t.qty * t.price;
-  });
-  const cash = Math.max(0, versements - achats + ventes + divs + distrib - _totalFees(txs));
+  const vers       = getVersements(currentUser, compte);
+  const versements = vers.reduce((s, v) => s + (v.amount || 0), 0);
+  const cash       = computeCashBalance(txs, vers);
   return { titres, cash, investi, versements, total: titres + cash, latent: titres - investi };
 }
 
@@ -8430,12 +8536,10 @@ function renderPortfolio() {
 
   // Calculate realized P&L from transaction history
   const txs = getTransactions(currentUser);
+  // Rejoué depuis le journal, jamais lu sur la transaction — voir
+  // computeRealizedPnl : une valeur figée survit aux achats qui la fondaient.
   let realizedTotal = 0;
-  txs.forEach(tx => {
-    if (tx.type === 'sell' && tx.realizedPnl != null) {
-      realizedTotal += tx.realizedPnl;
-    }
-  });
+  computeRealizedPnl(txs).forEach(v => { realizedTotal += v; });
   const realEl = document.getElementById('stat-realized');
   realEl.textContent = (realizedTotal >= 0 ? '+' : '') + fmt(realizedTotal);
   realEl.style.color = realizedTotal >= 0 ? 'var(--positive)' : 'var(--negative)';
@@ -8448,15 +8552,7 @@ function renderPortfolio() {
   const totalVersements = versements.reduce((s, v) => s + v.amount, 0);
   document.getElementById('stat-versements').textContent = fmt(totalVersements);
 
-  // Cash = versements - total achats + total ventes + dividendes (from tx log)
-  let totalAchats = 0, totalVentes = 0, totalDividendes = 0, totalDistributions = 0;
-  txs.forEach(tx => {
-    if (tx.type === 'buy') totalAchats += tx.qty * tx.price;
-    if (tx.type === 'sell') totalVentes += tx.qty * tx.price;
-    if (tx.type === 'dividend') totalDividendes += tx.qty * tx.price;
-    if (tx.type === 'distribution') totalDistributions += tx.qty * tx.price;
-  });
-  const cash = totalVersements - totalAchats + totalVentes + totalDividendes + totalDistributions - _totalFees(txs);
+  const cash = computeCashBalance(txs, versements);
   const cashEl = document.getElementById('stat-cash');
   _statSet(cashEl, cash);
   cashEl.style.color = cash >= 0 ? 'var(--positive)' : 'var(--negative)';
@@ -8587,13 +8683,15 @@ function renderTxHistory() {
     }
   }
 
+  const cartePnl = computeRealizedPnl(txs);
   tbody.innerHTML = visible.map(tx => {
     const isBuy = tx.type === 'buy';
     const montant = (tx.qty * tx.price).toFixed(2);
     const _d = tx.date ? new Date(tx.date + 'T12:00:00') : null;
     const dateStr = _d ? String(_d.getDate()).padStart(2,'0') + '/' + String(_d.getMonth()+1).padStart(2,'0') + '/' + String(_d.getFullYear()).slice(-2) : '—';
-    const pnlHtml = tx.type === 'sell' && tx.realizedPnl != null
-      ? '<span style="color:' + (tx.realizedPnl >= 0 ? 'var(--positive)' : 'var(--negative)') + ';font-weight:600">' + (tx.realizedPnl >= 0 ? '+' : '') + tx.realizedPnl.toFixed(2) + ' €</span>'
+    const pnlTx = realizedPnlOf(tx, cartePnl);
+    const pnlHtml = pnlTx != null
+      ? '<span style="color:' + (pnlTx >= 0 ? 'var(--positive)' : 'var(--negative)') + ';font-weight:600">' + (pnlTx >= 0 ? '+' : '') + pnlTx.toFixed(2) + ' €</span>'
       : '<span style="color:var(--text3)">—</span>';
     return '<tr>' +
       '<td class="mono" style="font-size:10px;white-space:nowrap">' + dateStr + '</td>' +
@@ -8751,21 +8849,24 @@ function confirmEdit() {
   if (editTab === 'buy') {
     var price = parseFloat(document.getElementById('edit-price').value);
     if (!price || price <= 0) { alert('Prix invalide.'); return; }
-    var newQty = row.qty + qty;
-    row.buyPrice = Math.round(((row.qty * row.buyPrice + qty * price) / newQty) * 10000) / 10000;
+    // PRU frais compris, comme à l'ajout d'une position.
+    var buyFees = _readFees('edit-fees', qty * price);
+    var pruLot  = _coutAchat(qty, price, buyFees) / qty;
+    var newQty  = row.qty + qty;
+    row.buyPrice = Math.round(((row.qty * row.buyPrice + qty * pruLot) / newQty) * 10000) / 10000;
     row.qty      = Math.round(newQty * 10000) / 10000;
-    logTransaction(currentUser, { type:'buy', ticker: row.ticker, name: row.name, qty, price, date: txDate, fees: _readFees('edit-fees', qty * price) });
+    logTransaction(currentUser, { type:'buy', ticker: row.ticker, name: row.name, qty, price, date: txDate, fees: buyFees });
   } else {
     if (qty > row.qty) { alert('Quantite superieure a la position.'); return; }
     var sellPrice = parseFloat(document.getElementById('edit-sell-price').value);
     if (!sellPrice || sellPrice <= 0) { alert('Prix de vente invalide.'); return; }
     ensureBuyTxExists(currentUser, row);
-    // Calculate realized P&L for this sell
-    // Les frais sont retenus sur le produit de la vente : la plus-value
-    // realisee doit s'entendre nette, sinon elle annonce un gain jamais encaisse.
+    // La plus-value réalisée n'est pas stockée sur la vente : elle se rejoue
+    // depuis le journal (computeRealizedPnl). Figée ici, elle survivait à la
+    // suppression des achats qui la fondaient. Seuls les frais sont enregistrés
+    // — eux sont un fait, pas un calcul.
     var sellFees = _readFees('edit-fees', qty * sellPrice);
-    var realizedPnl = (sellPrice - row.buyPrice) * qty - sellFees;
-    logTransaction(currentUser, { type:'sell', ticker: row.ticker, name: row.name, qty, price: sellPrice, date: txDate, buyPrice: row.buyPrice, fees: sellFees, realizedPnl: Math.round(realizedPnl * 100) / 100 });
+    logTransaction(currentUser, { type:'sell', ticker: row.ticker, name: row.name, qty, price: sellPrice, date: txDate, buyPrice: row.buyPrice, fees: sellFees });
     if (qty === row.qty) {
       data.splice(editRowIndex, 1);
       savePortfolio(currentUser, data);
@@ -9628,6 +9729,12 @@ function confirmAdd() {
 
   const data = getPortfolio(currentUser);
 
+  // Les frais entrent dans le prix de revient : ils font partie de ce que la
+  // position a coûté. Le PRU stocké est donc « frais compris », et l'investi
+  // qui en découle colle à celui du relevé du courtier.
+  const fraisAchat = _readFees('modal-fees', qty * buyPrice);
+  const pruAchat   = _coutAchat(qty, buyPrice, fraisAchat) / qty;
+
   // Une société tient sur une seule ligne. Un second achat du même titre
   // rejoint donc la position existante au prix moyen pondéré, comme le fait
   // déjà le bouton Acheter d'une ligne. Deux lignes séparées obligeaient à
@@ -9639,7 +9746,7 @@ function confirmAdd() {
   }));
   if (existing) {
     const newQty = existing.qty + qty;
-    existing.buyPrice = Math.round(((existing.qty * existing.buyPrice + qty * buyPrice) / newQty) * 10000) / 10000;
+    existing.buyPrice = Math.round(((existing.qty * existing.buyPrice + qty * pruAchat) / newQty) * 10000) / 10000;
     existing.qty      = Math.round(newQty * 10000) / 10000;
     // La date de la position reste celle du premier achat : c'est elle qui
     // date l'entrée sur la valeur.
@@ -9651,7 +9758,7 @@ function confirmAdd() {
       ticker:       foundTicker || '',
       isin:         foundISIN || TICKER_TO_ISIN[foundTicker] || null,
       qty:          qty,
-      buyPrice:     buyPrice,
+      buyPrice:     Math.round(pruAchat * 10000) / 10000,
       buyDate:      buyDate,
       currentPrice: foundPrice,
       quoteType:    foundQuoteType || 'EQUITY',
@@ -9663,7 +9770,7 @@ function confirmAdd() {
     });
   }
   // Log transaction for portfolio history
-  logTransaction(currentUser, { type:'buy', ticker: foundTicker||'', name: foundName||'', qty, price: buyPrice, date: buyDate, fees: _readFees('modal-fees', qty * buyPrice) });
+  logTransaction(currentUser, { type:'buy', ticker: foundTicker||'', name: foundName||'', qty, price: buyPrice, date: buyDate, fees: fraisAchat });
   savePortfolio(currentUser, data);
   closeModal();
   renderPortfolio();
@@ -11706,28 +11813,29 @@ function confirmImport() {
       const existing = data.find(r => r.ticker === row.ticker);
       if (existing) {
         const newQty = existing.qty + row.qty;
-        existing.buyPrice = Math.round(((existing.qty * existing.buyPrice + row.qty * row.price) / newQty) * 10000) / 10000;
+        const pruLot = _coutAchat(row.qty, row.price, _txFees(row)) / row.qty;
+        existing.buyPrice = Math.round(((existing.qty * existing.buyPrice + row.qty * pruLot) / newQty) * 10000) / 10000;
         existing.qty = Math.round(newQty * 10000) / 10000;
       } else {
         data.push({
           name: row.name || row.ticker,
           ticker: row.ticker,
           qty: row.qty,
-          buyPrice: row.price,
+          buyPrice: _pruAchats([row]) ?? row.price,
           buyDate: row.date,
           currentPrice: row.price, // will be updated on refresh
           quoteType: 'EQUITY',
           addedAt: new Date().toISOString()
         });
       }
-      logTransaction(currentUser, { type:'buy', ticker: row.ticker, name: row.name, qty: row.qty, price: row.price, date: row.date });
+      logTransaction(currentUser, { type:'buy', ticker: row.ticker, name: row.name, qty: row.qty, price: row.price, date: row.date, fees: _txFees(row) });
     }
 
     if (row.type === 'sell') {
       const existing = data.find(r => r.ticker === row.ticker);
       const buyPrice = existing ? existing.buyPrice : row.price;
-      const realizedPnl = Math.round((row.price - buyPrice) * row.qty * 100) / 100;
-      logTransaction(currentUser, { type:'sell', ticker: row.ticker, name: row.name, qty: row.qty, price: row.price, date: row.date, buyPrice, realizedPnl });
+      // Voir confirmEdit : le P&L réalisé se rejoue, il ne se stocke pas.
+      logTransaction(currentUser, { type:'sell', ticker: row.ticker, name: row.name, qty: row.qty, price: row.price, date: row.date, buyPrice, fees: _txFees(row) });
 
       if (existing) {
         if (row.qty >= existing.qty) {
@@ -11930,15 +12038,17 @@ function _pfTxDetailHtml(dsIdx, dataIndex) {
   const verb  = isBuy ? 'Achat' : 'Vente';
   const accent = isBuy ? '#00e09e' : '#ff4d6a';
 
+  const cartePnl = computeRealizedPnl(getTransactions(currentUser));
   const shown = txs.slice(0, PF_TT_TX_MAX);
   let html = shown.map(tx => {
     const montant = (tx.qty || 0) * (tx.price || 0);
     const label = tx.name || tx.ticker || '—';
     const tick  = tx.ticker && tx.name ? ' <span style="color:#495068">' + tx.ticker + '</span>' : '';
     let pnl = '';
-    if (!isBuy && tx.realizedPnl != null) {
-      pnl = ' · <span style="color:' + (tx.realizedPnl >= 0 ? '#00e09e' : '#ff4d6a') + '">' +
-        (tx.realizedPnl >= 0 ? '+' : '') + _pfEur(tx.realizedPnl) + '</span>';
+    const pnlTx = realizedPnlOf(tx, cartePnl);
+    if (!isBuy && pnlTx != null) {
+      pnl = ' · <span style="color:' + (pnlTx >= 0 ? '#00e09e' : '#ff4d6a') + '">' +
+        (pnlTx >= 0 ? '+' : '') + _pfEur(pnlTx) + '</span>';
     }
     return '<div style="margin-top:6px">' +
       '<div style="display:flex;align-items:center;gap:6px;color:#edf0f7;font-weight:600">' +
@@ -13167,9 +13277,11 @@ function exportTransactionsCSV() {
   const txs = getTransactions(currentUser);
   if (!txs.length) { alert('Aucune transaction.'); return; }
   const header = 'Date,Type,Ticker,Nom,Quantité,Prix,Montant,PnL Réalisé\n';
+  const cartePnl = computeRealizedPnl(txs);
   const rows = txs.sort((a,b) => (a.date||'').localeCompare(b.date||'')).map(t => {
     const montant = (t.qty * t.price).toFixed(2);
-    const pnl = t.realizedPnl != null ? t.realizedPnl.toFixed(2) : '';
+    const pnlT = realizedPnlOf(t, cartePnl);
+    const pnl = pnlT != null ? pnlT.toFixed(2) : '';
     return [t.date, t.type, t.ticker, (t.name||'').replace(/,/g,' '), t.qty, t.price.toFixed(2), montant, pnl].join(',');
   }).join('\n');
   const blob = new Blob([header + rows], { type: 'text/csv;charset=utf-8;' });
@@ -15178,6 +15290,7 @@ function computeBilanAnnuel() {
   }
 
   // Achats, ventes, PnL réalisé, dividendes — par année
+  const cartePnl = computeRealizedPnl(txs);
   txs.forEach(t => {
     if (!t.date) return;
     const y = new Date(t.date + 'T12:00:00').getFullYear();
@@ -15185,7 +15298,8 @@ function computeBilanAnnuel() {
     if (t.type === 'buy')  years[y].achats += t.qty * t.price;
     if (t.type === 'sell') {
       years[y].ventes += t.qty * t.price;
-      if (t.realizedPnl != null) years[y].realizedPnl += t.realizedPnl;
+      const pnlT = realizedPnlOf(t, cartePnl);
+      if (pnlT != null) years[y].realizedPnl += pnlT;
     }
     // Les rompus d'attribution gratuite sont du cash encaissé, mais pas une
     // distribution de résultat : comptés à part pour ne pas gonfler le montant
@@ -15409,17 +15523,9 @@ function initTrophees() {
   const totalInvested = pf.reduce((s, r) => s + r.qty * r.buyPrice, 0);
   const totalPnl      = totalVal - totalInvested;
 
-  // Solde espèces = versements - achats + ventes + dividendes
-  const versements  = getVersements(currentUser);
-  const totalVersements = versements.reduce((s, v) => s + v.amount, 0);
-  let totalAchats = 0, totalVentes = 0, totalDividendes = 0, totalDistributions = 0;
-  txs.forEach(tx => {
-    if (tx.type === 'buy')  totalAchats += tx.qty * tx.price;
-    if (tx.type === 'sell') totalVentes += tx.qty * tx.price;
-    if (tx.type === 'dividend') totalDividendes += tx.qty * tx.price;
-    if (tx.type === 'distribution') totalDistributions += tx.qty * tx.price;
-  });
-  const cash = Math.max(0, totalVersements - totalAchats + totalVentes + totalDividendes + totalDistributions - _totalFees(txs));
+  // Solde espèces : même fonction que les cartes du portefeuille.
+  const versements = getVersements(currentUser);
+  const cash       = computeCashBalance(txs, versements);
 
   // Patrimoine total = titres + espèces
   const patrimoine = totalVal + cash;
@@ -17422,10 +17528,13 @@ function _doDeleteActivite(kind, id) {
         if (row.qty <= 0) {
           pf.splice(pf.indexOf(row), 1);
         } else if (t.type === 'buy') {
-          const rest = txs.filter(x => x.id !== id && x.type === 'buy' && x.ticker === t.ticker);
-          const q = rest.reduce((s,x)=>s+x.qty,0);
-          const c = rest.reduce((s,x)=>s+x.qty*x.price,0);
-          if (q > 0) row.buyPrice = c / q;
+          // Frais compris, comme le PRU posé à l'achat : recalculer sans eux
+          // ferait baisser le prix de revient à chaque suppression.
+          // Comparaison par objet : les ids issus de Date.now() peuvent
+          // coïncider sur un import en rafale.
+          const rest = txs.filter(x => x !== t && x.type === 'buy' && x.ticker === t.ticker);
+          const pru  = _pruAchats(rest);
+          if (pru != null) row.buyPrice = pru;
         }
         savePortfolio(currentUser, pf);
       }
