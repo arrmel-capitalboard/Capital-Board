@@ -1172,6 +1172,36 @@ function computeCashBalance(txs, versements) {
   return Math.round((solde - _totalFees(txs)) * 100) / 100;
 }
 
+/**
+ * Performance depuis le début : ce que le compte vaut de plus que ce qui y a
+ * été versé.
+ *
+ * La carte héro affichait la plus-value latente sous le libellé « depuis le
+ * début », et l'en-tête du graphique la répétait. Elle ignore le P&L réalisé :
+ * trois cartes côte à côte qui ne s'additionnaient pas — latente +21,12 €,
+ * réalisé −3,53 €, et un total annoncé à +21,12 € au lieu de +17,59 €. Sur le
+ * relevé qui a servi de référence, le courtier affiche bien 3 600 € versés
+ * pour 3 617,58 € au compteur.
+ *
+ * Le gain se lit désormais sur la valorisation : titres + espèces moins les
+ * versements. Il comprend d'office le réalisé et les dividendes encaissés, et
+ * il se vérifie à l'œil sur les deux chiffres déjà posés sur la carte.
+ *
+ * Sans versement au journal il n'y a pas de capital de référence — le rapport
+ * porterait sur la valorisation entière et annoncerait tout le portefeuille
+ * comme un gain. On retombe dans ce cas sur la latente et l'investi, comme
+ * avant.
+ */
+function computePerfDepuisDebut(valoTotale, titres, investi, versements) {
+  const verse = (versements || []).reduce((s, v) => s + (v.amount || 0), 0);
+  if (verse > 0) {
+    const gain = Math.round((valoTotale - verse) * 100) / 100;
+    return { gain, pct: gain / verse * 100, base: verse, surVersements: true };
+  }
+  const gain = Math.round((titres - investi) * 100) / 100;
+  return { gain, pct: investi > 0 ? gain / investi * 100 : 0, base: investi, surVersements: false };
+}
+
 // ═══════════════════════════════════════════════════════════════════════════
 // IDENTIFIANTS DES ÉCRITURES
 // ═══════════════════════════════════════════════════════════════════════════
@@ -8560,7 +8590,6 @@ function renderPortfolio() {
   }
 
   const totalPnl = totalVal - totalInvested;
-  const totalPct = totalInvested > 0 ? (totalPnl / totalInvested) * 100 : 0;
 
   // Un compte sans ligne remet toutes les cases au tiret, y compris celles que
   // la suite de cette fonction ne recalculerait pas : mélanger les chiffres
@@ -8612,13 +8641,17 @@ function renderPortfolio() {
   // Héro — Valorisation totale (titres + espèces)
   const networth = totalVal + cash;
   _statSet(document.getElementById('stat-networth'), data.length ? networth : null);
+  // La performance annoncée ici porte sur le capital versé, pas sur les seuls
+  // titres détenus : le réalisé et les dividendes en font partie. La latente
+  // garde sa carte à côté — voir computePerfDepuisDebut.
+  const perf = computePerfDepuisDebut(networth, totalVal, totalInvested, versements);
   const nwPct = document.getElementById('stat-networth-pct');
   if (nwPct) {
-    nwPct.textContent = data.length ? (totalPnl >= 0 ? '↗ +' : '↘ ') + totalPct.toFixed(2) + ' %' : '—';
-    nwPct.className = 'pf-pill' + (totalPnl >= 0 ? '' : ' neg');
+    nwPct.textContent = data.length ? (perf.gain >= 0 ? '↗ +' : '↘ ') + perf.pct.toFixed(2) + ' %' : '—';
+    nwPct.className = 'pf-pill' + (perf.gain >= 0 ? '' : ' neg');
   }
   const nwSub = document.getElementById('stat-networth-sub');
-  if (nwSub) nwSub.textContent = data.length ? (totalPnl >= 0 ? '+' : '') + fmt(totalPnl) + ' depuis le début' : '';
+  if (nwSub) nwSub.textContent = data.length ? (perf.gain >= 0 ? '+' : '') + fmt(perf.gain) + ' depuis le début' : '';
 
   // Répartition Titres / Espèces (barre d'allocation du héro)
   const allocEl = document.getElementById('pf-alloc');
@@ -9311,7 +9344,7 @@ const ETF_DB = [
   { ticker:'MWRD.PA', isin:'LU1681045370', name:'Amundi MSCI World UCITS', aliases:['amundi world','mwrd','msci world amundi'] },
   { ticker:'CW8.PA',  isin:'LU1681043599', name:'Amundi MSCI World UCITS Acc', aliases:['cw8','amundi cw8','world amundi acc'] },
   { ticker:'ESE.PA',  isin:'FR0013311273', name:'BNP Paribas Easy S&P 500 UCITS', aliases:['bnp sp500','bnp s&p','ese','bnp paribas easy'] },
-  { ticker:'WPEA.PA', isin:'IE0002XZSHO1', name:'Invesco MSCI World UCITS PEA', aliases:['invesco world pea','wpea'] },
+  { ticker:'WPEA.PA', isin:'IE0002XZSHO1', name:'iShares MSCI World Swap PEA', aliases:['ishares world swap pea','world swap pea','invesco world pea','wpea'] },
   { ticker:'EWLD.PA', isin:'IE00B4L5Y983', name:'iShares Core MSCI World UCITS PEA', aliases:['ishares world pea','ewld'] },
   { ticker:'IWDA.AS', isin:'IE00B4L5Y983', name:'iShares Core MSCI World UCITS', aliases:['ishares world','iwda','msci world ishares'] },
   { ticker:'CSPX.AS', isin:'IE00B5BMR087', name:'iShares Core S&P 500 UCITS', aliases:['ishares sp500','cspx','s&p 500 ishares'] },
@@ -12515,12 +12548,17 @@ async function renderPortfolioChart() {
       return;
     }
 
-    // Plus-value latente = valeur actuelle - coût de revient
+    // « depuis le début », tenu au mot : titres + espèces moins les versements,
+    // réalisé et dividendes compris. Le bandeau n'affichait que la plus-value
+    // latente et contredisait donc la carte du P&L réalisé posée juste
+    // au-dessus — voir computePerfDepuisDebut.
     let totalVal = 0, totalInvested = 0;
     data.forEach(r => { totalVal += r.qty * r.currentPrice; totalInvested += r.qty * r.buyPrice; });
-    const totalPnl = totalVal - totalInvested;
+    const versements = getVersements(currentUser);
+    const perf  = computePerfDepuisDebut(totalVal + computeCashBalance(txs, versements), totalVal, totalInvested, versements);
+    const totalPnl = perf.gain;
     const isUp  = totalPnl >= 0;
-    const pct   = totalInvested > 0 ? (totalPnl / totalInvested * 100).toFixed(2) : '0.00';
+    const pct   = perf.pct.toFixed(2);
     const sign  = totalPnl >= 0 ? '+' : '';
     const color = isUp ? '#00e09e' : '#ff4d6a';
 
@@ -14562,7 +14600,7 @@ const B100_COLORS = ['#7c6df5','#f5b731','#00e09e','#ff4d6a','#5b8dee'];
 // ── Prix mensuels historiques (clôture fin de mois) ──────────────────────────
 // ESEE  = BNP Easy S&P 500 (ESE.PA)           FR0013311273
 // PUST  = Amundi PEA Nasdaq 100 (PANX.PA)     FR0013412285  (ex-PUST, ticker utilisateur)
-// WPEA  = Invesco MSCI World PEA (WPEA.PA)    IE0002XZSHO1
+// WPEA  = iShares MSCI World Swap PEA (WPEA.PA)  IE0002XZSHO1
 // PAEEM = Amundi PEA MSCI Emerging ESG (PAEEM.PA) FR0013412020
 // ESE50 = BNP Easy Euro Stoxx 50 Cap (ESE.PA) FR0012739431  — ticker Euronext : EESE.PA / ESG50
 const B100_PRICES = {

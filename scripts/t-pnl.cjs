@@ -37,7 +37,7 @@ global.saveTransactions = (u, d) => { _journal = d; };
 global.saveVersements = (u, d) => { _versements = d; };
 
 const mod = new module.constructor();
-mod._compile(socle + '\n' + soldes + '\nmodule.exports = { _coutAchat, _pruAchats, _txChrono, computeRealizedPnl, realizedPnlOf, computeCashBalance, _closedPositions, _nouvelId, _assurerIds };\n', 'app-socle.js');
+mod._compile(socle + '\n' + soldes + '\nmodule.exports = { _coutAchat, _pruAchats, _txChrono, computeRealizedPnl, realizedPnlOf, computeCashBalance, computePerfDepuisDebut, _closedPositions, _nouvelId, _assurerIds };\n', 'app-socle.js');
 const A = mod.exports;
 
 // Prépare l'état de l'application puis rend les positions soldées.
@@ -317,6 +317,97 @@ chk('_txChrono : la date prime sur le type', (() => {
   const achat  = { type: 'buy',  date: '2026-02-01', id: 2 };
   return A._txChrono(vente, achat) < 0;
 })(), true);
+
+// ── Performance depuis le début ─────────────────────────────────────────────
+// Le bandeau annonçait la plus-value latente sous ce libellé et laissait le
+// P&L réalisé de côté : les trois cartes du portefeuille ne s'additionnaient
+// pas entre elles.
+{
+  const p = A.computePerfDepuisDebut(3617.59, 3323.77, 3302.66, [{ amount: 3600 }]);
+  chk('gain = valorisation − versements',    p.gain, 17.59);
+  chk('pourcentage sur le capital versé',    +p.pct.toFixed(2), 0.49);
+  chk('la base est le capital versé',        p.base, 3600);
+  chk('perf sur versements',                 p.surVersements, true);
+}
+
+chk('plusieurs versements cumulés',
+  A.computePerfDepuisDebut(3617.59, 3323.77, 3302.66,
+    [{ amount: 1000 }, { amount: 2000 }, { amount: 600 }]).gain, 17.59);
+
+chk('versement sans montant ignoré',
+  A.computePerfDepuisDebut(1100, 1100, 1000, [{ amount: 1000 }, { date: '2026-01-01' }]).gain, 100);
+
+chk('perf négative',
+  A.computePerfDepuisDebut(3500, 3300, 3400, [{ amount: 3600 }]).gain, -100);
+chk('pourcentage négatif',
+  +A.computePerfDepuisDebut(3500, 3300, 3400, [{ amount: 3600 }]).pct.toFixed(2), -2.78);
+
+chk('gain arrondi au centime',
+  A.computePerfDepuisDebut(3617.5947, 3323.7747, 3302.6521, [{ amount: 3600 }]).gain, 17.59);
+
+// Sans versement au journal il n'y a pas de capital de référence : rapporter
+// la valorisation à rien annoncerait tout le portefeuille comme un gain.
+{
+  const p = A.computePerfDepuisDebut(1100, 1100, 1000, []);
+  chk('sans versement → retour à la latente', p.gain, 100);
+  chk('sans versement → base = investi',      p.base, 1000);
+  chk('sans versement → drapeau baissé',      p.surVersements, false);
+}
+chk('versements absents → latente',
+  A.computePerfDepuisDebut(1100, 1100, 1000, undefined).gain, 100);
+chk('versements à zéro → latente',
+  A.computePerfDepuisDebut(1100, 1100, 1000, [{ amount: 0 }]).base, 1000);
+chk('ni versement ni investi → 0 %',
+  A.computePerfDepuisDebut(0, 0, 0, []).pct, 0);
+
+// Le relevé de courtier qui a servi de référence, rejoué de bout en bout :
+// dix achats, une vente qui solde une ligne, un achat le même jour, 3 600 €
+// versés. Le courtier affiche 3 617,58 € au compteur — soit +17,58 € depuis le
+// début, et non les +21,12 € de plus-value latente qu'affichait le bandeau.
+{
+  const j = [
+    { id: 1,  type: 'buy',  ticker: 'WPEA.PA', qty: 100, price: 6.805,   fees: 3.40, date: '2026-06-17' },
+    { id: 2,  type: 'buy',  ticker: 'PAEEM.PA', qty: 2,  price: 37.630,  fees: 0.38, date: '2026-06-18' },
+    { id: 3,  type: 'buy',  ticker: 'ETZ.PA',  qty: 15,  price: 20.905,  fees: 1.57, date: '2026-06-30' },
+    { id: 4,  type: 'buy',  ticker: 'WPEA.PA', qty: 100, price: 6.860,   fees: 3.43, date: '2026-07-02' },
+    { id: 5,  type: 'buy',  ticker: 'ETZ.PA',  qty: 15,  price: 20.990,  fees: 1.57, date: '2026-07-02' },
+    { id: 6,  type: 'buy',  ticker: 'PAEEM.PA', qty: 4,  price: 36.510,  fees: 0.73, date: '2026-07-06' },
+    { id: 7,  type: 'buy',  ticker: 'PAEEM.PA', qty: 3,  price: 34.350,  fees: 0.52, date: '2026-07-20' },
+    { id: 8,  type: 'buy',  ticker: 'WPEA.PA', qty: 100, price: 6.790,   fees: 3.40, date: '2026-07-30' },
+    { id: 9,  type: 'buy',  ticker: 'PAEEM.PA', qty: 3,  price: 33.895,  fees: 0.51, date: '2026-07-30' },
+    { id: 10, type: 'buy',  ticker: 'ETZ.PA',  qty: 10,  price: 21.405,  fees: 1.07, date: '2026-07-30' },
+    { id: 11, type: 'sell', ticker: 'WPEA.PA', qty: 300, price: 6.874,   fees: 10,   date: '2026-08-03' },
+    { id: 12, type: 'buy',  ticker: 'ESE.PA',  qty: 61,  price: 33.0786, fees: 10,   date: '2026-08-03' },
+  ];
+  const vers = [{ amount: 3600, date: '2026-06-16' }];
+  const lots = (tk) => j.filter(t => t.ticker === tk && t.type === 'buy');
+  const pf = [
+    { ticker: 'ESE.PA',   qty: 61, buyPrice: A._pruAchats(lots('ESE.PA')),   currentPrice: 33.5127 },
+    { ticker: 'ETZ.PA',   qty: 40, buyPrice: A._pruAchats(lots('ETZ.PA')),   currentPrice: 21.075  },
+    { ticker: 'PAEEM.PA', qty: 12, buyPrice: A._pruAchats(lots('PAEEM.PA')), currentPrice: 36.3750 },
+  ];
+  const titres  = pf.reduce((s, r) => s + r.qty * r.currentPrice, 0);
+  const investi = pf.reduce((s, r) => s + r.qty * r.buyPrice, 0);
+  const cash    = A.computeCashBalance(j, vers);
+  const valo    = titres + cash;
+  const perf    = A.computePerfDepuisDebut(valo, titres, investi, vers);
+
+  chk('relevé : PRU de la ligne ESE',      pf[0].buyPrice, 33.2425);
+  chk('relevé : PRU de la ligne ETZ',      pf[1].buyPrice, 21.1671);
+  chk('relevé : PRU de la ligne PAEEM',    pf[2].buyPrice, 35.6813);
+  chk('relevé : évaluation des titres',    Math.round(titres * 100) / 100, 3323.77);
+  chk('relevé : investi en titres',        Math.round(investi * 100) / 100, 3302.65);
+  chk('relevé : solde espèces',            cash, 293.82);
+  chk('relevé : valorisation totale',      Math.round(valo * 100) / 100, 3617.59);
+  chk('relevé : plus-value latente',       Math.round((titres - investi) * 100) / 100, 21.12);
+  chk('relevé : P&L réalisé de la vente',  totalPnl(j), -3.53);
+  chk('relevé : perf depuis le début',     perf.gain, 17.59);
+  chk('relevé : perf en pourcentage',      +perf.pct.toFixed(2), 0.49);
+  // C'est tout l'objet du correctif : le total annoncé se retrouve dans la
+  // somme des deux cartes du dessous, ce qui n'était pas le cas.
+  chk('relevé : perf = latente + réalisé',
+      perf.gain, Math.round(((titres - investi) + totalPnl(j)) * 100) / 100);
+}
 
 // ── Sortie ──────────────────────────────────────────────────────────────────
 console.log(t.join('\n'));
