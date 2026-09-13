@@ -37,7 +37,7 @@ global.saveTransactions = (u, d) => { _journal = d; };
 global.saveVersements = (u, d) => { _versements = d; };
 
 const mod = new module.constructor();
-mod._compile(socle + '\n' + soldes + '\nmodule.exports = { _coutAchat, _pruAchats, _txChrono, computeRealizedPnl, realizedPnlOf, computeCashBalance, computePerfDepuisDebut, _closedPositions, _nouvelId, _assurerIds };\n', 'app-socle.js');
+mod._compile(socle + '\n' + soldes + '\nmodule.exports = { _montantTx, _coutAchat, _pruAchats, _txChrono, computeRealizedPnl, realizedPnlOf, computeCashBalance, computePerfDepuisDebut, _closedPositions, _nouvelId, _assurerIds };\n', 'app-socle.js');
 const A = mod.exports;
 
 // Prépare l'état de l'application puis rend les positions soldées.
@@ -61,6 +61,20 @@ const totalPnl = (txs) => {
   A.computeRealizedPnl(txs).forEach(v => { s += v; });
   return Math.round(s * 100) / 100;
 };
+
+// ── Les montants naissent arrondis au centime ──────────────────────────────
+// Un compte ne bouge pas d'une fraction de centime : le courtier arrondit
+// chaque ordre avant de débiter. La demi-fraction gardée par ligne finissait
+// par franchir le centime sur le solde, la valorisation et la latente.
+chk('montant arrondi au centime',     A._montantTx(61, 33.0786), 2017.79);
+chk('montant déjà rond',              A._montantTx(100, 6.805), 680.50);
+chk('montant à la demi-fraction',     A._montantTx(15, 20.905), 313.58);
+chk('montant, quantité absente',      A._montantTx(undefined, 20), 0);
+chk('montant, prix absent',           A._montantTx(10, undefined), 0);
+chk('montant d’une fraction de titre', A._montantTx(0.5, 33.333), 16.67);
+chk('coût d’achat arrondi puis frais', A._coutAchat(15, 20.905, 1.57), 315.15);
+chk('coût d’achat : les frais s’ajoutent au centime arrondi',
+                                      A._coutAchat(61, 33.0786, 10), 2027.79);
 
 // ── Bug 3 : les frais d'achat entrent dans le prix de revient ───────────────
 chk('coût = montant + frais',        A._coutAchat(10, 20, 5), 205);
@@ -392,16 +406,19 @@ chk('ni versement ni investi → 0 %',
   const valo    = titres + cash;
   const perf    = A.computePerfDepuisDebut(valo, titres, investi, vers);
 
-  chk('relevé : PRU de la ligne ESE',      pf[0].buyPrice, 33.2425);
-  chk('relevé : PRU de la ligne ETZ',      pf[1].buyPrice, 21.1671);
-  chk('relevé : PRU de la ligne PAEEM',    pf[2].buyPrice, 35.6813);
+  // Au dix-millième : la tolérance du harnais ne départage pas deux PRU
+  // voisins, et c'est exactement là que se jouait le centime.
+  const d4 = x => Math.round(x * 10000);
+  chk('relevé : PRU de la ligne ESE',      d4(pf[0].buyPrice), d4(33.2425));
+  chk('relevé : PRU de la ligne ETZ',      d4(pf[1].buyPrice), d4(21.1673));
+  chk('relevé : PRU de la ligne PAEEM',    d4(pf[2].buyPrice), d4(35.6817));
   chk('relevé : évaluation des titres',    Math.round(titres * 100) / 100, 3323.77);
-  chk('relevé : investi en titres',        Math.round(investi * 100) / 100, 3302.65);
-  chk('relevé : solde espèces',            cash, 293.82);
-  chk('relevé : valorisation totale',      Math.round(valo * 100) / 100, 3617.59);
-  chk('relevé : plus-value latente',       Math.round((titres - investi) * 100) / 100, 21.12);
+  chk('relevé : investi en titres',        Math.round(investi * 100) / 100, 3302.66);
+  chk('relevé : solde espèces',            cash, 293.81);
+  chk('relevé : valorisation totale',      Math.round(valo * 100) / 100, 3617.58);
+  chk('relevé : plus-value latente',       Math.round((titres - investi) * 100) / 100, 21.11);
   chk('relevé : P&L réalisé de la vente',  totalPnl(j), -3.53);
-  chk('relevé : perf depuis le début',     perf.gain, 17.59);
+  chk('relevé : perf depuis le début',     perf.gain, 17.58);
   chk('relevé : perf en pourcentage',      +perf.pct.toFixed(2), 0.49);
   // C'est tout l'objet du correctif : le total annoncé se retrouve dans la
   // somme des deux cartes du dessous, ce qui n'était pas le cas.

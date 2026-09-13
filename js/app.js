@@ -1060,6 +1060,27 @@ function _totalFees(txs) {
 // désormais par ici.
 
 /**
+ * Montant d'une opération, arrondi au centime.
+ *
+ * Un compte ne bouge jamais d'une fraction de centime : le courtier arrondit
+ * chaque ordre avant de débiter. 61 × 33,0786 € vaut 2 017,7946 € en flottant,
+ * mais 2 017,79 € sur le relevé, et c'est ce montant-là qui sort du compte.
+ *
+ * En gardant la précision du flottant, chaque ligne traînait sa fraction de
+ * centime et douze lignes plus loin l'écart l'avait franchi : solde espèces
+ * 293,82 € contre 293,81 €, valorisation 3 617,59 € contre 3 617,58 €, latente
+ * +21,12 € contre +21,11 €. Le coût de PAEEM tranche le débat — 428,18 € au
+ * centime donnent un PRU de 35,6817 €, exactement celui du courtier, quand le
+ * flottant en annonce 35,6813 €.
+ *
+ * L'arrondi se fait donc là où le montant naît, comme sur le relevé, et non
+ * au bout de la chaîne d'additions.
+ */
+function _montantTx(qty, price) {
+  return Math.round((qty || 0) * (price || 0) * 100) / 100;
+}
+
+/**
  * Coût d'un achat : le montant de l'ordre ET les frais.
  *
  * Ce qui sort du compte à l'achat, c'est l'un plus l'autre. Un prix de revient
@@ -1068,7 +1089,7 @@ function _totalFees(txs) {
  * relevé du courtier, à cours et quantités pourtant identiques.
  */
 function _coutAchat(qty, price, fees) {
-  return (qty || 0) * (price || 0) + (fees || 0);
+  return _montantTx(qty, price) + (fees || 0);
 }
 
 /** PRU d'un lot d'achats, frais compris. null si le lot est vide. */
@@ -1133,7 +1154,9 @@ function computeRealizedPnl(txs) {
     const pru = pos.cout / pos.qty;
     // Frais de vente déduits : la plus-value s'entend nette, sinon elle
     // annonce un gain jamais encaissé.
-    parVente.set(t, Math.round((((t.price || 0) - pru) * couvert - _txFees(t)) * 100) / 100);
+    // Le produit de la cession s'arrondit au centime comme le débit d'un
+    // achat : c'est ce que le courtier crédite.
+    parVente.set(t, Math.round((_montantTx(couvert, t.price) - pru * couvert - _txFees(t)) * 100) / 100);
     pos.cout -= pru * couvert;
     pos.qty  -= couvert;
   });
@@ -1165,7 +1188,7 @@ function realizedPnlOf(tx, carte) {
 function computeCashBalance(txs, versements) {
   let solde = (versements || []).reduce((s, v) => s + (v.amount || 0), 0);
   (txs || []).forEach(t => {
-    const montant = (t.qty || 0) * (t.price || 0);
+    const montant = _montantTx(t.qty, t.price);
     if (t.type === 'buy') solde -= montant;
     else if (t.type === 'sell' || t.type === 'dividend' || t.type === 'distribution') solde += montant;
   });
