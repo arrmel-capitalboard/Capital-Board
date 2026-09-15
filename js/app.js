@@ -11975,7 +11975,7 @@ function importCSV(event) {
       const cls = r.type === 'buy' ? 'badge-pos' : r.type === 'sell' ? 'badge-neg' : '';
       const label = r.type === 'buy' ? 'ACHAT' : r.type === 'sell' ? 'VENTE' : 'VERSEMENT';
       return '<tr>' +
-        '<td style="font-size:11px" class="mono">' + (r.date || '—') + '</td>' +
+        '<td style="font-size:11px" class="mono">' + _attr(r.date || '—') + '</td>' +
         '<td><span class="' + cls + '" style="font-size:9px;padding:2px 6px">' + label + '</span></td>' +
         '<td style="font-size:11px" class="mono">' + _attr(r.ticker) + '</td>' +
         '<td style="font-size:11px">' + _attr(r.name) + '</td>' +
