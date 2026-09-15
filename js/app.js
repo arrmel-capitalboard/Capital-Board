@@ -8814,7 +8814,8 @@ function renderClosedPositions() {
       '<td><span class="' + (pos ? 'badge-pos' : 'badge-neg') + '">' +
         (pos ? '▲' : '▼') + ' ' + fmt(Math.abs(p.pnl)) + '</span></td>' +
       '<td style="text-align:right;padding-right:18px">' +
-        '<button class="btn-del" onclick="deleteClosedPosition(\'' + _attr(p.ticker) + '\')" ' +
+        '<button class="btn-del" data-ticker="' + _attr(p.ticker) + '" ' +
+        'onclick="deleteClosedPosition(this.dataset.ticker)" ' +
         'title="Supprimer cet historique">✕</button>' +
       '</td></tr>';
   }).join('');
@@ -11976,8 +11977,8 @@ function importCSV(event) {
       return '<tr>' +
         '<td style="font-size:11px" class="mono">' + (r.date || '—') + '</td>' +
         '<td><span class="' + cls + '" style="font-size:9px;padding:2px 6px">' + label + '</span></td>' +
-        '<td style="font-size:11px" class="mono">' + r.ticker + '</td>' +
-        '<td style="font-size:11px">' + r.name + '</td>' +
+        '<td style="font-size:11px" class="mono">' + _attr(r.ticker) + '</td>' +
+        '<td style="font-size:11px">' + _attr(r.name) + '</td>' +
         '<td style="font-size:11px" class="mono">' + r.qty + '</td>' +
         '<td style="font-size:11px" class="mono">' + r.price.toFixed(2) + ' €</td>' +
         '</tr>';
