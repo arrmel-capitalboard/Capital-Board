@@ -129,6 +129,29 @@ chk('TotalEnergies, soldée, ne fausse pas le total', !/TTE\.PA/.test(sortie.spl
   const f5 = path.join(dossier, 'ancien.json');
   fs.writeFileSync(f5, JSON.stringify({ portfolio: [], transactions: [], versements: [] }));
   const s5 = execFileSync(process.execPath, [OUTIL, f5], { encoding: 'utf8' }).replace(/\s+/g, ' ');
+  // Un export administrateur doit s'annoncer : on ne relit pas les chiffres
+  // d'un tiers en croyant relire les siens.
+  const f6 = path.join(dossier, 'admin.json');
+  fs.writeFileSync(f6, JSON.stringify({
+    compte: 'pea', exporte: '2026-09-16T10:30:00.000Z', version: '20260916e',
+    source: 'admin:A6nZQ8PcxdURytSesA17xK81I9T2',
+    portfolio: [], transactions: [], versements: [],
+  }));
+  const s6 = execFileSync(process.execPath, [OUTIL, f6], { encoding: 'utf8' }).replace(/\s+/g, ' ');
+  chk('un export administrateur s’annonce', s6.includes('Export administrateur'), 'non signalé');
+  chk('il rappelle qu’il s’agit d’un tiers', s6.includes('données d’un tiers')
+      || s6.includes("données d'un tiers"), 'mention absente');
+
+  // Un export client ne déclenche pas cette mention.
+  const f7 = path.join(dossier, 'client.json');
+  fs.writeFileSync(f7, JSON.stringify({
+    compte: 'pea', exporte: '2026-09-16T10:30:00.000Z', source: 'client',
+    portfolio: [], transactions: [], versements: [],
+  }));
+  const s7 = execFileSync(process.execPath, [OUTIL, f7], { encoding: 'utf8' }).replace(/\s+/g, ' ');
+  chk('un export client ne porte pas cette mention', !s7.includes('Export administrateur'),
+      'mention affichée à tort');
+
   chk('un export anonyme est signalé comme tel',
       s5.includes('ne dit pas de quel compte il vient'), 'l’outil suppose le compte');
 }

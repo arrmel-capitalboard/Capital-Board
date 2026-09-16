@@ -13466,16 +13466,39 @@ function exportCSV() {
 // ni de quelle enveloppe ni de quel instant il parlait : deux exports étaient
 // indiscernables, et on pouvait chercher longtemps un écart dans les écritures
 // d'un autre compte que celui du relevé. Il se nomme et se date maintenant.
+/**
+ * Contenu d'un export de diagnostic — ni lecture, ni téléchargement.
+ *
+ * Isolé pour une raison précise : scripts/admin-export-debug.mjs produit le
+ * même fichier depuis Firestore, sans navigateur, et scripts/reconcile-pea.cjs
+ * n'a qu'un seul format à connaître. Les deux appellent cette fonction-ci,
+ * extraite de ce fichier — pas une copie qui divergera.
+ *
+ * `source` dit qui a produit le fichier. Un export administrateur porte les
+ * données financières d'un tiers : savoir d'où vient celui qu'on a sous les
+ * yeux fait partie de sa traçabilité.
+ */
+function buildDebugExport(o) {
+  return {
+    compte:       o.compte,
+    exporte:      o.exporte || new Date().toISOString(),
+    version:      o.version || null,
+    source:       o.source  || 'client',
+    portfolio:    o.portfolio    || [],
+    transactions: o.transactions || [],
+    versements:   o.versements   || [],
+  };
+}
+
 function exportDebugData() {
   const compte = _estCto() ? 'cto' : 'pea';
-  const data = {
+  const data = buildDebugExport({
     compte,
-    exporte: new Date().toISOString(),
-    version: APP_VERSION,
+    version:      APP_VERSION,
     portfolio:    getPortfolio(currentUser),
     transactions: getTransactions(currentUser),
     versements:   getVersements(currentUser),
-  };
+  });
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
   const url = URL.createObjectURL(blob);

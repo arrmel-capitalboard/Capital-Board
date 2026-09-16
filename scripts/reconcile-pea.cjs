@@ -64,6 +64,13 @@ if (dump.compte) {
   console.log('  ' + (ENVELOPPE[dump.compte] || dump.compte)
     + (dump.exporte ? '  ·  exporté le ' + new Date(dump.exporte).toLocaleString('fr-FR') : '')
     + (dump.version ? '  ·  version ' + dump.version : ''));
+  // Un export produit par l'administrateur porte les avoirs de quelqu'un
+  // d'autre. Le rapport le dit, plutôt que de laisser croire qu'on relit ses
+  // propres chiffres.
+  if (dump.source && dump.source !== 'client') {
+    console.log('  \x1b[33mExport administrateur\x1b[0m (' + dump.source + ')'
+      + ' — données d\'un tiers, à supprimer après diagnostic.');
+  }
 } else {
   console.log('  \x1b[33mCet export ne dit pas de quel compte il vient\x1b[0m — il date d\'avant');
   console.log('  le correctif. exportDebugData() exporte le compte AFFICHÉ à l\'écran :');

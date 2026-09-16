@@ -51,3 +51,26 @@ jobs:
 
       - name: Positions crypto
         run: node scripts/t-crypto.cjs
+
+      # Les suites ci-dessous existaient sans jamais tourner ici : une suite
+      # qu'aucune CI ne lance ne protège de rien.
+      - name: Socle de calcul — PRU, P&L réalisé, solde espèces
+        run: node scripts/t-pnl.cjs
+
+      - name: Versements
+        run: node scripts/t-versements.cjs
+
+      - name: Pastilles achat / vente
+        run: node scripts/t-marqueurs.cjs
+
+      - name: Attributions gratuites (rompus)
+        run: node scripts/t-ost.cjs
+
+      - name: Réconciliation d'un PEA
+        run: node scripts/t-reconcile.cjs
+
+      # Contrôle d'accès et trace d'audit de l'export administrateur : ce qui
+      # sépare un outil de diagnostic d'un accès non journalisé aux avoirs d'un
+      # membre.
+      - name: Export administrateur
+        run: node scripts/t-admin-export.mjs
