@@ -1,0 +1,171 @@
+<!doctype html>
+<meta charset="utf-8">
+<title>Aperçu — pastilles achat / vente sur la courbe d'une ligne</title>
+<!--
+  Banc d'essai visuel des pastilles posées sur la courbe d'une ligne du
+  portefeuille. Le code testé est extrait de js/app.js, pas recopié : la
+  configuration Chart.js est celle de loadWlChart, aux données près.
+
+  Ouvrir le fichier tel quel dans un navigateur.
+-->
+<style>
+  body { margin: 0; padding: 28px; background: #04060b; color: #edf0f7;
+         font: 14px/1.5 -apple-system, Segoe UI, sans-serif; }
+  h1 { font-size: 15px; font-weight: 600; margin: 0 0 4px; }
+  p  { color: #8892a8; margin: 0 0 24px; font-size: 12px; }
+  .cas { margin-bottom: 26px; max-width: 640px; }
+  .cas > b { font-size: 12px; font-weight: 600; color: #8892a8; }
+  .wrap { height: 200px; background: #0a0d16; border: 1px solid rgba(255,255,255,.06);
+          border-radius: 10px; padding: 10px; margin-top: 8px; }
+</style>
+<h1>Pastilles achat / vente — courbe d'une ligne</h1>
+<p>Vert : achat. Rouge : vente. Survoler un point pour le détail de l'opération.</p>
+
+<div class="cas"><b>1M — pas journalier, deux achats et une vente</b>
+  <div class="wrap"><canvas id="c1"></canvas></div></div>
+<div class="cas"><b>1J — séance du jour, un achat</b>
+  <div class="wrap"><canvas id="c2"></canvas></div></div>
+<div class="cas"><b>ALL — pas mensuel, trois achats agrégés sur une bougie</b>
+  <div class="wrap"><canvas id="c3"></canvas></div></div>
+
+<script src="../assets/vendor/chart.umd.4.4.0.js"></script>
+<script>
+// ── Le code de js/app.js, chargé tel quel ────────────────────────
+let JOURNAL = [];
+const currentUser = 'apercu';
+const getTransactions = () => JOURNAL;
+const _txChrono = (a, b) => String(a.date || '').localeCompare(String(b.date || ''));
+const toEur = v => v;
+</script>
+<script>
+(async () => {
+  const src = await (await fetch('../js/app.js')).text();
+  const a = src.indexOf('const PF_MARQ_TOL');
+  const b = src.indexOf('\nasync function loadWlChart(');
+  if (a < 0 || b < 0) { document.body.innerHTML += '<p>Bloc introuvable dans js/app.js</p>'; return; }
+  const f = new Function('getTransactions', 'currentUser', '_txChrono',
+    src.slice(a, b) + '\nreturn { _pfMarqueursTx, _pfMarqLibelles };');
+  const A = f(getTransactions, currentUser, _txChrono);
+
+  // ── La configuration de loadWlChart, aux données près ───────────
+  function trace(canvasId, ticker, stamps, pts, labels, interval, journal) {
+    JOURNAL = journal;
+    const _marq = A._pfMarqueursTx(ticker, stamps, pts, interval);
+    const isUp = pts[pts.length - 1] >= pts[0];
+    const lineColor = isUp ? '#00e09e' : '#ff4d6a';
+    let yMin = pts[0], yMax = pts[0];
+    for (const v of pts) { if (v < yMin) yMin = v; if (v > yMax) yMax = v; }
+    const yMarge = (yMax - yMin) * 0.12 || 0.01;
+
+    const _marqDs = [];
+    [['achats', 'Achats', '#00e09e'], ['ventes', 'Ventes', '#ff4d6a']].forEach(([cle, nom, col]) => {
+      const serie = _marq[cle];
+      if (!serie) return;
+      _marqDs.push({
+        label: nom, data: serie,
+        borderColor: 'transparent', backgroundColor: col,
+        pointBorderColor: '#04060b', pointBorderWidth: 2,
+        pointRadius: serie.map(v => (v != null ? 5 : 0)),
+        pointHoverRadius: 7, pointStyle: 'circle', showLine: false, fill: false,
+      });
+    });
+
+    new Chart(document.getElementById(canvasId).getContext('2d'), {
+      type: 'line',
+      data: { labels, datasets: [{
+        data: pts, borderColor: lineColor, borderWidth: 2,
+        pointRadius: 0, pointHoverRadius: 4, tension: 0.2, fill: true, spanGaps: true,
+        backgroundColor: ctx2 => {
+          const zone = ctx2.chart.chartArea;
+          if (!zone) return 'rgba(0,0,0,0)';
+          const g = ctx2.chart.ctx.createLinearGradient(0, zone.top, 0, zone.bottom);
+          g.addColorStop(0, isUp ? 'rgba(0,224,158,0.15)' : 'rgba(255,77,106,0.15)');
+          g.addColorStop(1, 'rgba(0,0,0,0)');
+          return g;
+        },
+      }].concat(_marqDs) },
+      options: {
+        responsive: true, maintainAspectRatio: false,
+        animation: { duration: 600, easing: 'easeOutQuart' },
+        interaction: { mode: 'index', intersect: false },
+        plugins: {
+          legend: { display: false },
+          tooltip: {
+            backgroundColor: '#10121c', borderColor: 'rgba(255,255,255,0.06)', borderWidth: 1,
+            titleColor: '#8892a8', bodyColor: '#edf0f7', padding: 10, cornerRadius: 8,
+            filter: it => it.parsed.y != null,
+            callbacks: {
+              label: ctx2 => ctx2.datasetIndex === 0
+                ? ' ' + toEur(ctx2.parsed.y).toFixed(2) + ' €'
+                : A._pfMarqLibelles(_marq.parIdx, ctx2.datasetIndex === 1 ? 'buy' : 'sell', ctx2.dataIndex),
+              labelColor: ctx2 => ctx2.datasetIndex === 0
+                ? { borderColor: lineColor, backgroundColor: lineColor, borderWidth: 2, borderRadius: 2 }
+                : { borderColor: '#04060b', borderWidth: 2, borderRadius: 6,
+                    backgroundColor: ctx2.datasetIndex === 1 ? '#00e09e' : '#ff4d6a' },
+            }
+          }
+        },
+        scales: {
+          x: { grid: { display: false }, border: { display: false },
+               ticks: { color: '#495068', font: { size: 10 }, maxTicksLimit: 6, maxRotation: 0 } },
+          y: { position: 'right', min: yMin - yMarge, max: yMax + yMarge,
+               grid: { color: 'rgba(255,255,255,0.03)' }, border: { display: false },
+               ticks: { color: '#495068', font: { size: 10 }, maxTicksLimit: 5,
+                        callback: v => v.toFixed(2) } },
+        }
+      }
+    });
+  }
+
+  const ts = s => Math.floor(new Date(s).getTime() / 1000);
+
+  // 1M — pas journalier
+  {
+    const jours = [];
+    for (let k = 0; k < 22; k++) {
+      const d = new Date('2026-08-24T09:00:00'); d.setDate(d.getDate() + k);
+      jours.push(d);
+    }
+    const iso = d => d.toISOString().slice(0, 10);
+    const pts = jours.map((_, k) => 96 + Math.sin(k / 2.4) * 2.4 + k * 0.28);
+    trace('c1', 'CW8.PA',
+      jours.map(d => Math.floor(d.getTime() / 1000)), pts,
+      jours.map(d => d.toLocaleDateString('fr-FR', { day: '2-digit', month: 'short' })),
+      '1d', [
+        { type: 'buy',  ticker: 'CW8.PA', date: iso(jours[3]),  qty: 3, price: 96.4 },
+        { type: 'buy',  ticker: 'CW8.PA', date: iso(jours[11]), qty: 2, price: 99.8 },
+        { type: 'sell', ticker: 'CW8.PA', date: iso(jours[17]), qty: 1, price: 101.9 },
+      ]);
+  }
+
+  // 1J — séance
+  {
+    const stamps = [], labels = [], pts = [];
+    for (let k = 0; k < 96; k++) {
+      const d = new Date('2026-09-16T09:00:00'); d.setMinutes(d.getMinutes() + k * 5);
+      stamps.push(Math.floor(d.getTime() / 1000));
+      labels.push(d.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' }));
+      pts.push(101 + Math.sin(k / 9) * 0.5 + k * 0.012);
+    }
+    trace('c2', 'CW8.PA', stamps, pts, labels, '5m',
+      [{ type: 'buy', ticker: 'CW8.PA', date: '2026-09-16', qty: 5, price: 101.6 }]);
+  }
+
+  // ALL — pas mensuel
+  {
+    const stamps = [], labels = [], pts = [];
+    for (let k = 0; k < 30; k++) {
+      const d = new Date('2024-04-01T12:00:00'); d.setMonth(d.getMonth() + k);
+      stamps.push(Math.floor(d.getTime() / 1000));
+      labels.push(d.toLocaleDateString('fr-FR', { month: 'short', year: '2-digit' }));
+      pts.push(60 + k * 1.5 + Math.sin(k / 3) * 4);
+    }
+    trace('c3', 'CW8.PA', stamps, pts, labels, '1mo', [
+      { type: 'buy',  ticker: 'CW8.PA', date: '2024-09-05', qty: 2, price: 68 },
+      { type: 'buy',  ticker: 'CW8.PA', date: '2025-06-12', qty: 3, price: 82 },
+      { type: 'buy',  ticker: 'CW8.PA', date: '2025-06-24', qty: 1, price: 83.5 },
+      { type: 'sell', ticker: 'CW8.PA', date: '2026-02-18', qty: 2, price: 95 },
+    ]);
+  }
+})();
+</script>

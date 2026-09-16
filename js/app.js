@@ -14032,6 +14032,110 @@ function _wlChartFail(i, ticker, period, msg) {
   if (cv) cv.style.display = 'none';
 }
 
+// ─── PASTILLES ACHAT / VENTE SUR LA COURBE D'UNE LIGNE ────────────
+//
+// Même langage que la courbe du portefeuille : un point vert par achat, un
+// rouge par vente, posés sur la courbe à la date de l'opération. La pastille
+// suit le cours et non le prix d'exécution : la série est cotée dans la devise
+// de la place, le journal tenu en euros, et poser un prix en euros sur un axe
+// en dollars aurait planté la pastille n'importe où sur la hauteur.
+const PF_MARQ_TOL = { '1d': 4, '1wk': 8, '1mo': 35 };  // tolérance, en jours
+const PF_MARQ_TX_MAX = 4;   // opérations détaillées par pastille
+
+function _pfJourLocal(ts) {
+  const d = new Date(ts * 1000);
+  const p = n => String(n).padStart(2, '0');
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate());
+}
+
+/**
+ * Range les achats et ventes d'un ticker sur les points d'une série.
+ *
+ * Rend deux séries parallèles à pts — le cours là où il s'est passé quelque
+ * chose, null partout ailleurs — et le détail des opérations par index, que
+ * l'infobulle relit.
+ */
+function _pfMarqueursTx(ticker, stamps, pts, interval) {
+  const vide = { achats: null, ventes: null, parIdx: { buy: {}, sell: {} } };
+  if (!stamps.length) return vide;
+
+  const cle = String(ticker || '').toUpperCase();
+  const txs = (getTransactions(currentUser) || []).filter(t =>
+    (t.type === 'buy' || t.type === 'sell') && t.date
+    && String(t.ticker || '').toUpperCase() === cle);
+  if (!txs.length) return vide;
+
+  // Le journal ne retient qu'une date, jamais une heure. Sur une séance, la
+  // pastille se pose donc au point le plus proche de midi : la caler sur le
+  // dernier cours laisserait croire à un ordre passé à la clôture.
+  const intraday = interval === '5m' || interval === '15m';
+  const parJour = {};
+  if (intraday) {
+    stamps.forEach((ts, k) => {
+      const d = new Date(ts * 1000);
+      const ecart = Math.abs(d.getHours() * 60 + d.getMinutes() - 720);
+      const j = _pfJourLocal(ts);
+      if (!parJour[j] || ecart < parJour[j].ecart) parJour[j] = { k, ecart };
+    });
+  }
+  // Au-delà de la séance, un point vaut un jour, une semaine ou un mois : la
+  // tolérance suit le pas de la série, sans quoi une opération passée un
+  // week-end ou un jour férié ne trouverait aucun point où s'accrocher.
+  const tolMs = (PF_MARQ_TOL[interval] || 4) * 86400000;
+  const jours = intraday ? null : stamps.map(_pfJourLocal);
+
+  const parIdx = { buy: {}, sell: {} };
+  txs.forEach(tx => {
+    let idx = -1;
+    if (intraday) {
+      const hit = parJour[tx.date];
+      if (hit) idx = hit.k;
+    } else {
+      // Un point couvre l'intervalle qui le suit : une opération du 20 août
+      // appartient à la bougie d'août, même si celle de septembre tombe plus
+      // près sur l'axe. On retient donc le dernier point à sa date ou avant,
+      // et non le plus proche.
+      for (let k = jours.length - 1; k >= 0; k--) {
+        if (jours[k] <= tx.date) { idx = k; break; }
+      }
+      // Rien avant elle : l'opération précède la période affichée. Trop loin
+      // derrière le dernier point : la série s'arrête avant elle.
+      if (idx >= 0 && new Date(tx.date + 'T12:00:00') - new Date(jours[idx] + 'T12:00:00') > tolMs) {
+        idx = -1;
+      }
+    }
+    if (idx < 0 || pts[idx] == null) return;
+    const seau = parIdx[tx.type];
+    (seau[idx] = seau[idx] || []).push(tx);
+  });
+
+  if (!Object.keys(parIdx.buy).length && !Object.keys(parIdx.sell).length) return vide;
+  [parIdx.buy, parIdx.sell].forEach(m => Object.values(m).forEach(l => l.sort(_txChrono)));
+
+  const serie = m => pts.map((v, k) => (m[k] ? v : null));
+  return { achats: serie(parIdx.buy), ventes: serie(parIdx.sell), parIdx };
+}
+
+// Une pastille, en clair : « Achat 5 × 86,31 € ». La date n'est rappelée que si
+// plusieurs opérations se retrouvent sur le même point — sur un pas mensuel, le
+// libellé de l'axe ne suffit plus à les distinguer.
+function _pfMarqLibelles(parIdx, type, dataIndex) {
+  const list = ((parIdx || {})[type] || {})[dataIndex] || [];
+  if (!list.length) return [];
+  const verbe = type === 'buy' ? 'Achat' : 'Vente';
+  const qte = q => (q || 0).toLocaleString('fr-FR', { maximumFractionDigits: 6 });
+  const eur = p => (p || 0).toLocaleString('fr-FR', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+  const jour = d => d ? new Date(d + 'T12:00:00').toLocaleDateString('fr-FR', { day: '2-digit', month: '2-digit' }) : '';
+  const out = list.slice(0, PF_MARQ_TX_MAX).map(tx =>
+    ' ' + verbe + ' ' + qte(tx.qty) + ' × ' + eur(tx.price) + ' €'
+    + (list.length > 1 ? '  ' + jour(tx.date) : ''));
+  if (list.length > PF_MARQ_TX_MAX) {
+    const reste = list.length - PF_MARQ_TX_MAX;
+    out.push(' +' + reste + ' autre' + (reste > 1 ? 's' : ''));
+  }
+  return out;
+}
+
 async function loadWlChart(i, ticker, period) {
   const canvas   = document.getElementById('wl-canvas-' + i);
   const loading  = document.getElementById('wl-cloading-' + i);
@@ -14186,6 +14290,32 @@ async function loadWlChart(i, ticker, period) {
     if (loadEl) loadEl.style.display = 'none';
     cvEl.style.display = 'block';
 
+    // Achats et ventes de cette ligne, posés sur la courbe. Réservé au
+    // portefeuille : une valeur seulement suivie n'a rien à montrer.
+    const _marq = String(i).startsWith('pf')
+      ? _pfMarqueursTx(ticker, stamps, pts, interval)
+      : { achats: null, ventes: null, parIdx: { buy: {}, sell: {} } };
+    const _marqDs = [];
+    [['achats', 'Achats', '#00e09e'], ['ventes', 'Ventes', '#ff4d6a']].forEach(([cle, nom, col]) => {
+      const serie = _marq[cle];
+      if (!serie) return;
+      _marqDs.push({
+        label: nom,
+        data: serie,
+        borderColor: 'transparent',
+        backgroundColor: col,
+        // Un anneau sombre détache la pastille du tracé, qui porte déjà ces
+        // deux couleurs selon le sens de la période.
+        pointBorderColor: '#04060b',
+        pointBorderWidth: 2,
+        pointRadius: serie.map(v => (v != null ? 5 : 0)),
+        pointHoverRadius: 7,
+        pointStyle: 'circle',
+        showLine: false,
+        fill: false,
+      });
+    });
+
     const ctx = cvEl.getContext('2d');
     _wlChartInstances[i] = new Chart(ctx, {
       type: 'line',
@@ -14218,7 +14348,7 @@ async function loadWlChart(i, ticker, period) {
             g.addColorStop(1, 'rgba(0,0,0,0)');
             return g;
           },
-        }]
+        }].concat(_marqDs)
       },
       options: {
         responsive: true,
@@ -14235,8 +14365,24 @@ async function loadWlChart(i, ticker, period) {
             bodyColor: '#edf0f7',
             padding: 10,
             cornerRadius: 8,
+            // Les pastilles n'existent qu'à quelques index : partout ailleurs
+            // leur valeur est nulle, et sans ce filtre l'infobulle affichait
+            // une ligne vide par dataset à chaque survol.
+            filter: it => it.parsed.y != null,
             callbacks: {
-              label: ctx2 => ' ' + toEur(ctx2.parsed.y, meta.currency).toFixed(2) + ' €',
+              label: ctx2 => {
+                if (ctx2.datasetIndex === 0) {
+                  return ' ' + toEur(ctx2.parsed.y, meta.currency).toFixed(2) + ' €';
+                }
+                return _pfMarqLibelles(_marq.parIdx,
+                  ctx2.datasetIndex === 1 ? 'buy' : 'sell', ctx2.dataIndex);
+              },
+              // Le carré de couleur suit le trait du dataset ; celui des
+              // pastilles est transparent, il faut donc le donner à la main.
+              labelColor: ctx2 => ctx2.datasetIndex === 0
+                ? { borderColor: lineColor, backgroundColor: lineColor, borderWidth: 2, borderRadius: 2 }
+                : { borderColor: '#04060b', borderWidth: 2, borderRadius: 6,
+                    backgroundColor: ctx2.datasetIndex === 1 ? '#00e09e' : '#ff4d6a' },
             }
           }
         },
