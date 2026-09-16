@@ -19,7 +19,7 @@
           border-radius: 10px; padding: 10px; margin-top: 8px; }
 </style>
 <h1>Pastilles achat / vente — courbe d'une ligne</h1>
-<p>Vert : achat. Rouge : vente. Survoler un point pour le détail de l'opération.</p>
+<p>Violet : achat. Orange : vente. Survoler un point pour le détail de l'opération.</p>
 
 <div class="cas"><b>1M — pas journalier, deux achats et une vente</b>
   <div class="wrap"><canvas id="c1"></canvas></div></div>
@@ -40,12 +40,13 @@ const toEur = v => v;
 <script>
 (async () => {
   const src = await (await fetch('../js/app.js')).text();
-  const a = src.indexOf('const PF_MARQ_TOL');
+  const a = src.indexOf('const PF_MARQ_COUL');
   const b = src.indexOf('\nasync function loadWlChart(');
   if (a < 0 || b < 0) { document.body.innerHTML += '<p>Bloc introuvable dans js/app.js</p>'; return; }
   const f = new Function('getTransactions', 'currentUser', '_txChrono',
-    src.slice(a, b) + '\nreturn { _pfMarqueursTx, _pfMarqLibelles };');
+    src.slice(a, b) + '\nreturn { _pfMarqueursTx, _pfMarqLibelles, PF_MARQ_COUL };');
   const A = f(getTransactions, currentUser, _txChrono);
+  const COUL = A.PF_MARQ_COUL;   // les teintes viennent de js/app.js, pas d'une copie
 
   // ── La configuration de loadWlChart, aux données près ───────────
   function trace(canvasId, ticker, stamps, pts, labels, interval, journal) {
@@ -58,7 +59,7 @@ const toEur = v => v;
     const yMarge = (yMax - yMin) * 0.12 || 0.01;
 
     const _marqDs = [];
-    [['achats', 'Achats', '#00e09e'], ['ventes', 'Ventes', '#ff4d6a']].forEach(([cle, nom, col]) => {
+    [['achats', 'Achats', COUL.buy], ['ventes', 'Ventes', COUL.sell]].forEach(([cle, nom, col]) => {
       const serie = _marq[cle];
       if (!serie) return;
       _marqDs.push({
@@ -101,7 +102,7 @@ const toEur = v => v;
               labelColor: ctx2 => ctx2.datasetIndex === 0
                 ? { borderColor: lineColor, backgroundColor: lineColor, borderWidth: 2, borderRadius: 2 }
                 : { borderColor: '#04060b', borderWidth: 2, borderRadius: 6,
-                    backgroundColor: ctx2.datasetIndex === 1 ? '#00e09e' : '#ff4d6a' },
+                    backgroundColor: ctx2.datasetIndex === 1 ? COUL.buy : COUL.sell },
             }
           }
         },

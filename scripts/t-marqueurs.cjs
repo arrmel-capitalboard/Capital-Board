@@ -19,7 +19,7 @@ function tranche(nom, ouvre, ferme) {
   return src.slice(a, b);
 }
 const bloc = tranche('pastilles achat / vente',
-  'const PF_MARQ_TOL =', '\nasync function loadWlChart(');
+  'const PF_MARQ_COUL =', '\nasync function loadWlChart(');
 
 // Le journal de l'application, que les fonctions extraites viennent lire.
 let _journal = [];

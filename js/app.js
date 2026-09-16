@@ -14034,11 +14034,17 @@ function _wlChartFail(i, ticker, period, msg) {
 
 // ─── PASTILLES ACHAT / VENTE SUR LA COURBE D'UNE LIGNE ────────────
 //
-// Même langage que la courbe du portefeuille : un point vert par achat, un
-// rouge par vente, posés sur la courbe à la date de l'opération. La pastille
-// suit le cours et non le prix d'exécution : la série est cotée dans la devise
-// de la place, le journal tenu en euros, et poser un prix en euros sur un axe
-// en dollars aurait planté la pastille n'importe où sur la hauteur.
+// Un point par opération, posé sur la courbe à sa date. La pastille suit le
+// cours et non le prix d'exécution : la série est cotée dans la devise de la
+// place, le journal tenu en euros, et poser un prix en euros sur un axe en
+// dollars aurait planté la pastille n'importe où sur la hauteur.
+//
+// Violet et orange, et non le vert et le rouge des variations : le tracé porte
+// déjà ces deux couleurs selon le sens de la période, et une pastille verte sur
+// une courbe verte ne se voit plus. Le violet est celui d'« ACHAT » dans
+// l'Activité, l'orange celui des alertes — deux teintes qu'aucune courbe ne
+// prend jamais.
+const PF_MARQ_COUL = { buy: '#7c6df5', sell: '#ff9f43' };
 const PF_MARQ_TOL = { '1d': 4, '1wk': 8, '1mo': 35 };  // tolérance, en jours
 const PF_MARQ_TX_MAX = 4;   // opérations détaillées par pastille
 
@@ -14296,7 +14302,7 @@ async function loadWlChart(i, ticker, period) {
       ? _pfMarqueursTx(ticker, stamps, pts, interval)
       : { achats: null, ventes: null, parIdx: { buy: {}, sell: {} } };
     const _marqDs = [];
-    [['achats', 'Achats', '#00e09e'], ['ventes', 'Ventes', '#ff4d6a']].forEach(([cle, nom, col]) => {
+    [['achats', 'Achats', PF_MARQ_COUL.buy], ['ventes', 'Ventes', PF_MARQ_COUL.sell]].forEach(([cle, nom, col]) => {
       const serie = _marq[cle];
       if (!serie) return;
       _marqDs.push({
@@ -14304,8 +14310,7 @@ async function loadWlChart(i, ticker, period) {
         data: serie,
         borderColor: 'transparent',
         backgroundColor: col,
-        // Un anneau sombre détache la pastille du tracé, qui porte déjà ces
-        // deux couleurs selon le sens de la période.
+        // Un anneau sombre détache la pastille du tracé qu'elle chevauche.
         pointBorderColor: '#04060b',
         pointBorderWidth: 2,
         pointRadius: serie.map(v => (v != null ? 5 : 0)),
@@ -14382,7 +14387,7 @@ async function loadWlChart(i, ticker, period) {
               labelColor: ctx2 => ctx2.datasetIndex === 0
                 ? { borderColor: lineColor, backgroundColor: lineColor, borderWidth: 2, borderRadius: 2 }
                 : { borderColor: '#04060b', borderWidth: 2, borderRadius: 6,
-                    backgroundColor: ctx2.datasetIndex === 1 ? '#00e09e' : '#ff4d6a' },
+                    backgroundColor: ctx2.datasetIndex === 1 ? PF_MARQ_COUL.buy : PF_MARQ_COUL.sell },
             }
           }
         },
