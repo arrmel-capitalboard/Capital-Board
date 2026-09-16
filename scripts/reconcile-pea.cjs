@@ -56,6 +56,20 @@ const portefeuille = dump.portfolio || [];
 const journal      = dump.transactions || [];
 const versements   = dump.versements || [];
 
+// De quel compte et de quel instant parle ce fichier. Les exports d'avant
+// 20260916d ne le disent pas : on le signale plutôt que de supposer.
+const ENVELOPPE = { pea: 'PEA', cto: 'Compte-titres' };
+console.log('\n\x1b[1mSource\x1b[0m');
+if (dump.compte) {
+  console.log('  ' + (ENVELOPPE[dump.compte] || dump.compte)
+    + (dump.exporte ? '  ·  exporté le ' + new Date(dump.exporte).toLocaleString('fr-FR') : '')
+    + (dump.version ? '  ·  version ' + dump.version : ''));
+} else {
+  console.log('  \x1b[33mCet export ne dit pas de quel compte il vient\x1b[0m — il date d\'avant');
+  console.log('  le correctif. exportDebugData() exporte le compte AFFICHÉ à l\'écran :');
+  console.log('  vérifiez que vous étiez bien sur l\'onglet du compte à réconcilier.');
+}
+
 const refTitres  = opt('titres');
 const refLatente = opt('latente');
 const refCash    = opt('cash');

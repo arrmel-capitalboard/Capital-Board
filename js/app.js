@@ -13458,16 +13458,29 @@ function exportCSV() {
   a.click(); URL.revokeObjectURL(url);
 }
 
+// Export du journal, pour réconcilier un compte avec le relevé du courtier
+// (voir scripts/reconcile-pea.cjs).
+//
+// Les lectures portent sur le compte affiché à l'écran, PEA ou compte-titres.
+// Le fichier s'appelait pourtant « debug_pea_ » dans les deux cas et ne disait
+// ni de quelle enveloppe ni de quel instant il parlait : deux exports étaient
+// indiscernables, et on pouvait chercher longtemps un écart dans les écritures
+// d'un autre compte que celui du relevé. Il se nomme et se date maintenant.
 function exportDebugData() {
-  const portfolio = getPortfolio(currentUser);
-  const txs = getTransactions(currentUser);
-  const versements = getVersements(currentUser);
-  const data = { portfolio, transactions: txs, versements };
+  const compte = _estCto() ? 'cto' : 'pea';
+  const data = {
+    compte,
+    exporte: new Date().toISOString(),
+    version: APP_VERSION,
+    portfolio:    getPortfolio(currentUser),
+    transactions: getTransactions(currentUser),
+    versements:   getVersements(currentUser),
+  };
   const json = JSON.stringify(data, null, 2);
   const blob = new Blob([json], { type: 'application/json;charset=utf-8;' });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
-  a.href = url; a.download = 'debug_pea_' + currentUser + '.json';
+  a.href = url; a.download = 'debug_' + compte + '_' + currentUser + '.json';
   a.click(); URL.revokeObjectURL(url);
 }
 

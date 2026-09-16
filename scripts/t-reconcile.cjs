@@ -109,6 +109,30 @@ chk('TotalEnergies, soldée, ne fausse pas le total', !/TTE\.PA/.test(sortie.spl
   chk('écriture sans date signalée', s3.includes('sans date'), 'non détectée');
 }
 
+// ── L'en-tête de source ─────────────────────────────────────────────────────
+// exportDebugData() exporte le compte AFFICHÉ à l'écran. Un export du CTO et un
+// export du PEA se ressemblent trait pour trait : sans en-tête, on peut passer
+// une heure à chercher un écart dans les écritures d'une autre enveloppe.
+{
+  const f4 = path.join(dossier, 'cto.json');
+  fs.writeFileSync(f4, JSON.stringify({
+    compte: 'cto', exporte: '2026-09-16T10:30:00.000Z', version: '20260916d',
+    portfolio: [], transactions: [], versements: [],
+  }));
+  const s4 = execFileSync(process.execPath, [OUTIL, f4], { encoding: 'utf8' }).replace(/\s+/g, ' ');
+  chk('le compte exporté est nommé', s4.includes('Compte-titres'), 'en-tête absent');
+  chk('la date d’export est rappelée', s4.includes('exporté le'), 'date absente');
+  chk('la version est rappelée', s4.includes('20260916d'), 'version absente');
+
+  // Un export d'avant le correctif ne dit rien : l'outil doit le dire, pas
+  // supposer qu'il s'agit du PEA.
+  const f5 = path.join(dossier, 'ancien.json');
+  fs.writeFileSync(f5, JSON.stringify({ portfolio: [], transactions: [], versements: [] }));
+  const s5 = execFileSync(process.execPath, [OUTIL, f5], { encoding: 'utf8' }).replace(/\s+/g, ' ');
+  chk('un export anonyme est signalé comme tel',
+      s5.includes('ne dit pas de quel compte il vient'), 'l’outil suppose le compte');
+}
+
 fs.rmSync(dossier, { recursive: true, force: true });
 
 console.log(t.join('\n'));
