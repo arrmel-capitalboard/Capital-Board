@@ -17706,6 +17706,54 @@ function _processDivPromptQueue() {
 // Yahoo expose une attribution gratuite comme un "split" (ex 11:10).
 // L'event + les actions entières sont calculables ; le cash des rompus
 // (fractions vendues par le broker) est estimé puis ajustable par l'user.
+/**
+ * Actions entières et fraction rompue d'une attribution de ratio num:den.
+ *
+ * Le produit passe avant la division : `qty * (num/den)` fait transiter le
+ * ratio par un flottant inexact, et 25 actions en 11:10 rendaient une fraction
+ * de 0,5000000000000036 au lieu de 0,5. L'erreur restait sous le centime, mais
+ * elle s'affichait dans la fraction et n'avait aucune raison d'être.
+ */
+function _ostRompu(qty, num, den) {
+  if (!(qty > 0) || !(num > 0) || !(den > 0)) return { whole: 0, fraction: 0 };
+  const totalNew = (qty * num) / den;
+  let entier   = Math.floor(totalNew);
+  let fraction = Math.round((totalNew - entier) * 1e8) / 1e8;
+  // La poussière balayée peut remonter la fraction à l'unité : c'est alors une
+  // action entière de plus, et plus aucun rompu.
+  if (fraction >= 1) { entier += 1; fraction = 0; }
+  return { whole: entier - qty, fraction };
+}
+
+/**
+ * Clôture d'un titre au jour d'une opération sur titre.
+ *
+ * Le rompu se valorise au cours du jour de l'opération, et non à celui du jour
+ * où l'utilisateur ouvre l'application : entre les deux, il peut s'être écoulé
+ * des mois. C'était l'erreur — le cours live du portefeuille servait de base,
+ * si bien que l'estimation dérivait avec le marché.
+ *
+ * Yahoo retraite l'historique antérieur à un split : la clôture du jour ex est
+ * déjà le cours d'après attribution, celui sur lequel le rompu se dénoue. Le
+ * ratio ne s'applique donc pas une seconde fois.
+ *
+ * À défaut de cotation ce jour-là — férié, suspension, trou de série — on prend
+ * la dernière clôture connue avant.
+ */
+function _ostCoursAuJour(timestamps, closes, dateIso) {
+  if (!Array.isArray(timestamps) || !Array.isArray(closes) || !dateIso) return null;
+  let prix = null;
+  for (let k = 0; k < timestamps.length; k++) {
+    const t = timestamps[k];
+    if (t == null) continue;
+    // Même découpage UTC que la date de l'événement, plus bas : les deux se
+    // comparent ainsi sur la même échelle.
+    if (new Date(t * 1000).toISOString().slice(0, 10) > dateIso) break;
+    if (closes[k] != null) prix = closes[k];
+  }
+  return prix;
+}
+
 let _ostScanned     = false;
 let _ostPromptQueue = [];
 let _ostActive      = false;
@@ -17733,9 +17781,14 @@ async function scanCorporateActions() {
         encodeURIComponent(yt) + '?interval=1d&range=2y&events=split';
       const raw    = await fetchWithFallback(url);
       const json   = JSON.parse(raw);
-      const splits = json && json.chart && json.chart.result && json.chart.result[0] &&
-                     json.chart.result[0].events && json.chart.result[0].events.splits;
+      const res    = json && json.chart && json.chart.result && json.chart.result[0];
+      const splits = res && res.events && res.events.splits;
       if (!splits) continue;
+      // Les clôtures accompagnent déjà la réponse : valoriser le rompu au jour
+      // de l'opération ne coûte aucun appel de plus.
+      const stamps = res.timestamp || [];
+      const closes = (res.indicators && res.indicators.quote
+                   && res.indicators.quote[0] && res.indicators.quote[0].close) || [];
       const since = firstBuy[row.ticker] || '0000-00-00';
       for (const key in splits) {
         const s    = splits[key];
@@ -17743,19 +17796,21 @@ async function scanCorporateActions() {
         if (date < since) continue;                       // OST avant que tu détiennes
         const num = s.numerator, den = s.denominator;
         if (!num || !den) continue;
-        const factor = num / den;
-        if (factor <= 1) continue;                        // regroupement : pas de cash rompu
-        const totalNew = row.qty * factor;
-        const whole    = Math.floor(totalNew) - row.qty;  // actions entières gratuites
-        const fraction = totalNew - Math.floor(totalNew); // rompu (fraction résiduelle)
+        if (num / den <= 1) continue;                     // regroupement : pas de cash rompu
+        const { whole, fraction } = _ostRompu(row.qty, num, den);
         if (fraction < 0.0001) continue;                  // split entier pur → pas de rompus
         if (_ostDeclined.has(row.ticker + '|' + date)) continue;
         if (txs.some(t => t.ostDate === date && t.ticker === row.ticker)) continue; // déjà logué
-        const price   = row.currentPrice || row.buyPrice || 0;
-        const estCash = +(fraction * price).toFixed(2);
+        // Cours du jour de l'opération. Le cours live ne sert que si la série
+        // ne remonte pas jusque-là : une estimation datée vaut mieux qu'aucune,
+        // et l'utilisateur ajuste au centime de toute façon.
+        const cloture = _ostCoursAuJour(stamps, closes, date);
+        const price   = cloture != null ? cloture : (row.currentPrice || row.buyPrice || 0);
+        const estCash = Math.round(fraction * price * 100) / 100;
         _ostPromptQueue.push({
           ticker: row.ticker, name: row.name || row.ticker,
           date, num, den, whole, fraction, estCash, price,
+          coursDuJour: cloture != null,
         });
       }
     } catch (e) { console.warn('scanCorporateActions', row.ticker, e); }
@@ -17795,6 +17850,11 @@ function showOstPrompt(item) {
     `</div></div>` +
     `<div class="ost-break">${wholeRow}` +
       `<div class="ost-row"><span>Fraction (rompu)</span><b>${item.fraction.toFixed(3)} action</b></div>` +
+      // Sur quoi le montant est calculé : sans cette ligne, un cours de repli
+      // passait pour le cours du jour de l'opération.
+      `<div class="ost-row"><span>${item.coursDuJour
+          ? 'Cours du ' + new Date(item.date + 'T12:00:00').toLocaleDateString('fr-FR')
+          : 'Cours actuel (séance introuvable)'}</span><b>${(item.price || 0).toFixed(2)} €</b></div>` +
       `<div class="ost-row ost-row-cash"><span>Cash estimé</span><b>${item.estCash.toFixed(2)} €</b></div>` +
     `</div>`;
   input.value = item.estCash.toFixed(2);
