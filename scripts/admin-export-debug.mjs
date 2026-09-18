@@ -37,7 +37,7 @@
 //    node scripts/admin-export-debug.mjs --uid=<uid> [--compte=pea|cto] [--out=<dossier>]
 //    node scripts/admin-export-debug.mjs --email=membre@exemple.fr --compte=cto
 // ═══════════════════════════════════════════════════════════════════════════
-import { readFileSync, writeFileSync, chmodSync, existsSync, statSync } from 'fs';
+import { readFileSync, writeFileSync, rmSync, existsSync, statSync } from 'fs';
 import { fileURLToPath } from 'url';
 import path from 'path';
 import os   from 'os';
@@ -243,10 +243,17 @@ async function principal() {
   const fichier = path.join(sortie, 'debug_' + compte + '_' + targetUid + '.json');
   // Lisible par son seul propriétaire. La destination par défaut est /tmp, que
   // tout compte de la machine peut parcourir : au mode par défaut (0644), les
-  // avoirs d'un membre y seraient en lecture libre. Le chmod couvre le cas d'un
-  // fichier déjà présent, dont writeFileSync ne change pas les droits.
-  writeFileSync(fichier, JSON.stringify(data, null, 2), { encoding: 'utf8', mode: 0o600 });
-  chmodSync(fichier, 0o600);
+  // avoirs d'un membre y seraient en lecture libre.
+  //
+  // `mode` n'est appliqué qu'à la création : sur un fichier déjà là, il est
+  // ignoré. Un chmod après coup arriverait trop tard — les données seraient
+  // déjà dans un fichier ouvert en 0644, ou dans un fichier posé par quelqu'un
+  // d'autre, que l'on n'a pas le droit de rechmoder. On écarte donc le fichier
+  // d'abord, puis on crée en exclusif : si quoi que ce soit occupe la place,
+  // l'écriture échoue au lieu de déverser les avoirs d'un membre dedans.
+  rmSync(fichier, { force: true });
+  writeFileSync(fichier, JSON.stringify(data, null, 2),
+    { encoding: 'utf8', mode: 0o600, flag: 'wx' });
 
   console.log('Export écrit : ' + fichier);
   console.log('  membre  : ' + targetUid + '   enveloppe : ' + compte);
