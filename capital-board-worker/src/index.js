@@ -126,6 +126,15 @@ const REVOKE_RL_WINDOW = 300;
 const LOG_SESSION_RL_MAX    = 20;   // écritures max par compte et par fenêtre
 const LOG_SESSION_RL_WINDOW = 300;  // le dédoublonnage par IP+appareil ne suffit pas : un appareil variable le contourne
 
+// Réservations de pseudo max par IP et par heure. La limite par compte ne
+// protège rien ici : /claim-username n'est appelable qu'une fois par compte,
+// et créer des comptes est libre (l'email n'a pas à être vérifié pour obtenir
+// un idToken). Sans borne par IP, une boucle réserve autant de pseudos qu'elle
+// crée de comptes — chacun laissant un document dans `usernames`.
+// 10 : un parcours d'inscription normal en consomme un, deux si l'on se ravise.
+const CLAIM_USERNAME_RL_MAX    = 10;
+const CLAIM_USERNAME_RL_WINDOW = 3600;
+
 const LOGIN_RL_MAX    = 8;    // tentatives de mot de passe max par compte et par fenêtre
 const LOGIN_RL_WINDOW = 300;  // le Worker vérifie désormais le mot de passe lui-même : devient un oracle à protéger
 
@@ -790,10 +799,22 @@ async function verifyIdToken(idToken, env) {
 // Marque tous les jetons d'un compte comme révoqués à partir de maintenant.
 // TTL 65 min : au-delà, tout jeton antérieur a de toute façon expiré (durée de
 // vie max d'un ID token Firebase = 1 h), le marqueur n'a plus d'utilité.
+//
+// Rend faux si l'écriture KV a échoué. L'échec ne remonte pas en exception :
+// les appelants n'ont pas tous la même marge de manœuvre — une suppression de
+// compte est déjà consommée quand on arrive ici, alors qu'une révocation
+// demandée par l'utilisateur doit échouer bruyamment. À chacun de décider ;
+// ce qu'on ne fait plus, c'est répondre « ok » sans regarder (le jeton volé
+// vivait alors encore une heure, et rien ne le disait hors des logs).
 async function markTokensRevoked(uid, env) {
   const nowSec = Math.floor(Date.now() / 1000);
-  try { await env.EARNINGS.put(`revoked:${uid}`, String(nowSec), { expirationTtl: 3900 }); }
-  catch (e) { console.error('markTokensRevoked ' + uid + ': ' + e.message); }
+  try {
+    await env.EARNINGS.put(`revoked:${uid}`, String(nowSec), { expirationTtl: 3900 });
+    return true;
+  } catch (e) {
+    console.error('markTokensRevoked ' + uid + ': ' + e.message);
+    return false;
+  }
 }
 
 // ── Limiteur de débit partagé (KV) ──────────────────────────────────────────
@@ -2646,6 +2667,10 @@ export default {
           // Invalide immédiatement les sessions en cours de l'utilisateur ciblé :
           // un reset admin fait souvent suite à une compromission, l'ID token
           // déjà en circulation ne doit pas survivre au reset.
+          //
+          // Retour ignoré à dessein : le mot de passe est déjà changé et le
+          // provisoire n'existe que dans cette réponse. Échouer ici le perdrait
+          // pour un marqueur manquant, alors que le reset, lui, a tenu.
           await markTokensRevoked(uid, env);
         } catch (e) {
           const msg = /USER_NOT_FOUND/.test(e.message)
@@ -2684,6 +2709,8 @@ export default {
         }
         // Même raison que /delete-account : l'ID token du supprimé survit ≤ 1 h
         // et ne doit pas pouvoir recréer des documents orphelins.
+        // Retour ignoré à dessein : le compte est déjà effacé, il n'y a plus
+        // d'échec à annoncer — seulement un marqueur qu'on aurait aimé poser.
         await markTokensRevoked(uid, env);
         return json({ ok: true });
       }
@@ -3563,11 +3590,24 @@ export default {
         await audit('revoke_sessions', '', user.localId, request, env);
         // Coupe aussi les ID tokens déjà émis (validSince ne révoque que le
         // refresh token ; l'ID token courant vivrait sinon jusqu'à 1 h).
-        await markTokensRevoked(user.localId, env);
+        const marque = await markTokensRevoked(user.localId, env);
         // Les appareils de confiance partent avec : sinon la 2FA ne serait pas
         // redemandée à la reconnexion, ce qui viderait la révocation de son sens.
+        // Avant le compte rendu, et non après : ce nettoyage vaut d'autant plus
+        // que le marqueur a échoué.
         await firestoreUpdate(`users/${user.localId}/data/trustedDevices`,
           { devices: { mapValue: { fields: {} } } }, ['devices'], env);
+        // Marqueur absent : la révocation est incomplète, la session qu'on
+        // cherche à couper reste utilisable jusqu'à une heure. On le dit, au
+        // lieu de répondre « ok » — quelqu'un qui révoque ses sessions le fait
+        // parce qu'il se croit compromis, et un « c'est fait » le ferait
+        // s'arrêter là.
+        if (!marque) {
+          return json({
+            ok: false,
+            error: 'Révocation incomplète : les sessions ouvertes peuvent rester actives encore une heure. Changez votre mot de passe, puis réessayez.',
+          }, 500);
+        }
         return json({ ok: true });
       }
 
@@ -3686,6 +3726,8 @@ export default {
         // L'ID token du compte supprimé resterait cryptographiquement valide
         // jusqu'à 1 h : sans ce marqueur, il pourrait encore appeler des routes
         // qui écrivent (ex. /log-session) et recréer des documents orphelins.
+        // Retour ignoré à dessein : la suppression est consommée, répondre en
+        // erreur ferait relancer un effacement qui a déjà eu lieu.
         await markTokensRevoked(uid, env);
         await audit('delete_account', `uid=${uid}`, uid, request, env);
         return json({ ok: true });
@@ -3774,6 +3816,15 @@ export default {
         const user = await verifyIdToken(idToken, env);
         const uid = user.localId;
         const uname = (username || '').trim().toLowerCase();
+
+        // Par IP, pas par compte : voir CLAIM_USERNAME_RL_MAX. Le compteur est
+        // posé avant tout contrôle de format, sinon une boucle de saisies
+        // invalides le contournerait — et c'est la route qui écrit, pas
+        // /username-available qui ne fait que lire.
+        const cuIp = request.headers.get('CF-Connecting-IP') || 'anon';
+        if (!(await rateLimit(env, `claim-username:${cuIp}`, CLAIM_USERNAME_RL_MAX, CLAIM_USERNAME_RL_WINDOW))) {
+          return json({ ok: false, error: 'Trop de pseudos réservés depuis cette adresse, réessayez plus tard.' }, 429);
+        }
 
         if (!/^[a-z0-9._-]{3,20}$/.test(uname)) {
           return json({ ok: false, error: 'Format invalide : 3–20 caractères (lettres, chiffres, . - _).' }, 400);
