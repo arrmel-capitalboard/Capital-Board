@@ -37,8 +37,8 @@ jobs:
             exit 1
           fi
 
-  # Le corpus de test tourne avant le déploiement : une régression du filtre pub
-  # bloque la mise en production au lieu d'atterrir sur la VM.
+  # Les suites tournent avant le déploiement : une régression bloque la mise en
+  # production au lieu d'atterrir sur la VM.
   test:
     runs-on: ubuntu-latest
     steps:
@@ -46,6 +46,12 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: '20'
+          cache: npm
+          cache-dependency-path: discord-bot/package-lock.json
+      # Nécessaire depuis que la suite des alertes ops charge un vrai module du
+      # bot, et donc discord.js. Les premières suites étaient purement locales.
+      - working-directory: discord-bot
+        run: npm ci --silent
       - working-directory: discord-bot
         run: npm test
 
