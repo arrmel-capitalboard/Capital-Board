@@ -9209,7 +9209,7 @@ function renderDropdown(ddId, suggestions, onSelect) {
       : pea === 'no'
         ? '<span class="pea-badge pea-no">PEA ✗</span>'
         : '';
-    return '<div class="search-dropdown-item" data-symbol="' + s.symbol + '" data-name="' + (s.name || s.symbol).replace(/"/g, '&quot;') + '" data-idx="' + i + '">' +
+    return '<div class="search-dropdown-item" data-symbol="' + s.symbol + '" data-name="' + (s.name || s.symbol).replace(/"/g, '&quot;') + '" data-type="' + (s.type || '') + '" data-idx="' + i + '">' +
       logoStr +
       '<div style="flex:1;min-width:0"><div class="sd-name">' + (s.name || s.symbol) + '</div>' +
       '<div class="sd-ticker">' + s.symbol + (s.exchange ? '  ·  ' + s.exchange : '') + '</div></div>' +
@@ -9222,7 +9222,7 @@ function renderDropdown(ddId, suggestions, onSelect) {
   // Délégation d'événement — pas d'inline onclick
   dd.querySelectorAll('.search-dropdown-item').forEach(el => {
     el.addEventListener('click', () => {
-      if (_ddCallback) _ddCallback(el.dataset.symbol, el.dataset.name);
+      if (_ddCallback) _ddCallback(el.dataset.symbol, el.dataset.name, el.dataset.type);
     });
   });
   dd.classList.add('open');
@@ -9351,11 +9351,15 @@ function onTickerKeydown(e) {
   } else if (e.key === 'Escape') closeDropdown('search-dropdown');
 }
 
-async function selectPortfolioSuggestion(symbol, name) {
+async function selectPortfolioSuggestion(symbol, name, type) {
   closeDropdown('search-dropdown');
   document.getElementById('modal-ticker').value = name || symbol;
   document.getElementById('search-status').innerHTML = '<div class="status-loading"><span class="loading-spinner"></span> Récupération du cours…</div>';
-  await fetchPrice(symbol);
+  // Le titre vient d'être choisi dans la liste : son symbole Yahoo est connu.
+  // On le passe tel quel plutôt que de laisser fetchPrice le redeviner depuis
+  // le texte du champ — cette résolution pouvait rendre un tout autre titre
+  // (ticker « O » → premier ETF de la base locale dont le nom contient « o »).
+  await fetchPrice(symbol, { symbol: symbol, longname: name || symbol, quoteType: type || 'EQUITY' });
 }
 
 // ─── YAHOO FINANCE ───────────────────────────────────
@@ -9399,9 +9403,19 @@ function searchETFLocal(query) {
   if (byIsin) return byIsin;
   const byTicker = ETF_DB.find(e => e.ticker.toLowerCase() === q || e.ticker.toLowerCase().replace(/\.[a-z]+$/, '') === q);
   if (byTicker) return byTicker;
+  const byAlias = ETF_DB.find(e => e.aliases.includes(q));
+  if (byAlias) return byAlias;
+  // Recherche approchée : uniquement en début de mot, et à partir de 3 lettres.
+  // Une simple inclusion de sous-chaîne faisait correspondre n'importe quelle
+  // saisie courte à un ETF sans rapport — « o » tombait sur le « o » d'« Euro »
+  // dans Amundi PEA Euro Stoxx 50, « or » sur le « or » de l'alias « gold ».
+  if (q.length < 3) return null;
+  const startsWord = (hay) => {
+    const idx = hay.indexOf(q);
+    return idx === 0 || (idx > 0 && !/[a-z0-9]/.test(hay[idx - 1]));
+  };
   const byName = ETF_DB.find(e =>
-    e.name.toLowerCase().includes(q) ||
-    e.aliases.some(a => a.includes(q))
+    startsWord(e.name.toLowerCase()) || e.aliases.some(startsWord)
   );
   return byName || null;
 }
@@ -9720,7 +9734,7 @@ async function smartSearch(query) {
   throw new Error('Aucun résultat. Essayez le ticker (ex: PANX.PA) ou l\'ISIN.');
 }
 
-async function fetchPrice(query) {
+async function fetchPrice(query, resolved) {
   const statusEl = document.getElementById('search-status');
   const resultEl = document.getElementById('search-result');
   resultEl.classList.remove('visible');
@@ -9730,10 +9744,12 @@ async function fetchPrice(query) {
   try {
     statusEl.innerHTML = '<div class="status-loading"><span class="loading-spinner"></span> Récupération du cours…</div>';
 
-    // Résolution du symbole Yahoo Finance
+    // Résolution du symbole Yahoo Finance — sautée quand l'appelant le fournit
     let best;
-    const localETF = searchETFLocal(query);
-    if (localETF) {
+    const localETF = resolved ? null : searchETFLocal(query);
+    if (resolved) {
+      best = resolved;
+    } else if (localETF) {
       best = { symbol: localETF.ticker, longname: localETF.name, quoteType: 'ETF' };
     } else if (/^[A-Z0-9]{1,6}\.[A-Z]{1,3}$/i.test(query.trim()) || /^[A-Z]{2,6}$/.test(query.trim())) {
       // Ticker direct (avec ou sans suffixe exchange)
