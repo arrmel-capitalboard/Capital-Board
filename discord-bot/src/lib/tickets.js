@@ -119,8 +119,16 @@ async function openTicket(interaction, reason) {
   const cleanReason = (reason || '').trim();
   if (cleanReason) embed.addFields({ name: 'Motif du contact', value: cleanReason.slice(0, 1024) });
 
+  // Le rôle est mentionné à l'ouverture, pas seulement autorisé à voir le
+  // salon : un ticket créé dans une catégorie qu'on ne consulte pas restait
+  // sans réponse jusqu'à ce que quelqu'un pense à regarder.
+  //
+  // La mention doit être dans le contenu — Discord ne la résout pas dans un
+  // embed — et `allowedMentions` la borne à l'auteur et à ce seul rôle, pour
+  // qu'un motif de ticket ne puisse jamais faire sonner @everyone.
   await channel.send({
-    content: `<@${user.id}>`,
+    content: `<@${user.id}> · <@&${MOD_ROLE}>`,
+    allowedMentions: { users: [user.id], roles: [MOD_ROLE], parse: [] },
     embeds: [embed],
     components: [row],
   });
