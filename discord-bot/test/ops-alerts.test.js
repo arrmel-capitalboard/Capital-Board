@@ -42,14 +42,28 @@ test('un compte rendu corrigeable propose de corriger', () => {
   assert.equal(bouton({ corrigible: true }), 'Corriger');
 });
 
-test('une demande en cours ou aboutie ne se relance pas', () => {
-  assert.equal(bouton({ corrigible: true, fixStatut: 'demande' }), null);
+test('un correctif déjà proposé porte ses propres boutons, pas celui-ci', () => {
   assert.equal(bouton({ corrigible: true, fixStatut: 'produit' }), null);
 });
 
 test('un échec reste rattrapable sans passer par Firestore', () => {
   assert.equal(bouton({ corrigible: true, fixStatut: 'echec' }), 'Réessayer');
   assert.equal(bouton({ corrigible: true, fixStatut: 'vide' }), 'Réessayer');
+});
+
+// Le cas qui fige l'alerte : le run meurt sans rendre compte, donc plus rien
+// n'écrit sur le document, donc plus rien ne réaffiche le message. Si le
+// bouton avait disparu à la demande, il ne reviendrait jamais.
+test('une demande en cours garde son bouton', () => {
+  assert.equal(bouton({ corrigible: true, fixStatut: 'demande', fixLe: Date.now() }), 'Corriger');
+});
+
+test('une demande dont on n’a plus de nouvelles reste relançable', () => {
+  const vieux = Date.now() - 60 * 60 * 1000;
+  assert.equal(bouton({ corrigible: true, fixStatut: 'demande', fixLe: vieux }), 'Corriger');
+  // `fixLe` absent — un document écrit avant cette version : traité comme périmé
+  // plutôt que comme éternellement en cours.
+  assert.equal(bouton({ corrigible: true, fixStatut: 'demande' }), 'Corriger');
 });
 
 test("l'avancement se lit dans l'embed, pas dans un log de run", () => {

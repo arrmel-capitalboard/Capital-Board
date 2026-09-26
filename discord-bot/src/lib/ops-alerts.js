@@ -77,21 +77,35 @@ function payload(id, data) {
   };
 }
 
-// Rien à cliquer sur une alerte non corrigeable, ni pendant que le travail
-// tourne. Un échec, lui, garde un bouton : sans quoi une demande ratée fige
-// l'alerte, et il faut rouvrir Firestore pour la relancer — la leçon du
-// 25/08 sur les correctifs vaut ici aussi.
+// Une demande dont on n'a plus de nouvelles après ce délai est considérée
+// perdue. Le workflow s'arrête de lui-même à 30 minutes et rend compte quoi
+// qu'il arrive ; au-delà, c'est qu'il n'a jamais démarré, ou que le runner est
+// mort sans un mot.
+const DEMANDE_PERIMEE_MS = 45 * 60 * 1000;
+
+const demandeEnCours = (data) => data.fixStatut === 'demande'
+  && Date.now() - (data.fixLe || 0) < DEMANDE_PERIMEE_MS;
+
+// Rien à cliquer sur une alerte non corrigeable, ni sous un correctif déjà
+// proposé — celui-ci porte ses propres boutons. Partout ailleurs il reste une
+// suite possible, y compris après un échec : sans cela une demande ratée fige
+// l'alerte et il faut rouvrir Firestore pour la relancer, la leçon du 25/08.
+//
+// Le bouton reste donc affiché pendant que le travail tourne. C'est délibéré :
+// le cacher rendait l'alerte irrattrapable quand le run mourait sans rendre
+// compte, puisque plus rien ne déclenchait un réaffichage. Un clic de trop
+// pendant ces minutes-là reçoit un refus, ce qui est le moindre mal.
 function boutons(id, data) {
   if (data.corrigible !== true) return [];
   const statut = data.fixStatut || '';
-  if (statut === 'demande' || statut === 'produit') return [];
+  if (statut === 'produit') return [];
 
   const rejoue = statut === 'echec' || statut === 'vide';
   return [new ActionRowBuilder().addComponents(
     new ButtonBuilder()
       .setCustomId(`oa:fix:${id}`)
       .setLabel(rejoue ? 'Réessayer' : 'Corriger')
-      .setStyle(rejoue ? ButtonStyle.Secondary : ButtonStyle.Primary)
+      .setStyle(rejoue || demandeEnCours(data) ? ButtonStyle.Secondary : ButtonStyle.Primary)
       .setEmoji(rejoue ? '🔁' : '🛠'),
   )];
 }
@@ -171,10 +185,20 @@ async function handleButton(interaction) {
     await interaction.followUp({ content: 'Cette alerte ne porte rien à corriger.', flags: MessageFlags.Ephemeral });
     return;
   }
+  if (data.fixStatut === 'produit') {
+    await interaction.followUp({ content: 'Un correctif a déjà été proposé pour cette alerte.', flags: MessageFlags.Ephemeral });
+    return;
+  }
   // Deux clics rapprochés lanceraient deux sessions sur le même compte rendu,
-  // et donc deux correctifs concurrents à départager.
-  if (data.fixStatut === 'demande' || data.fixStatut === 'produit') {
-    await interaction.followUp({ content: `Déjà traité (${data.fixStatut}).`, flags: MessageFlags.Ephemeral });
+  // et donc deux correctifs concurrents à départager. Passé le délai, on
+  // considère au contraire la demande perdue et on laisse relancer : c'est le
+  // seul moyen de sortir d'un run mort sans avoir rendu compte.
+  if (demandeEnCours(data)) {
+    const depuis = Math.round((Date.now() - (data.fixLe || 0)) / 60000);
+    await interaction.followUp({
+      content: `Correctif déjà demandé il y a ${depuis} min — laissez-le finir. Relançable au bout de 45 min.`,
+      flags: MessageFlags.Ephemeral,
+    });
     return;
   }
 
