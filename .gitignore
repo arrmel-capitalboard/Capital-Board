@@ -52,6 +52,10 @@ changed.txt
 commits.txt
 jour.txt
 accuse.md
+# Compte rendu qu'un correctif demandé depuis Discord doit traiter, déposé par
+# security-fix.yml. Même piège : c'est une entrée de travail, pas un fichier
+# du dépôt — et il décrit des failles encore ouvertes.
+.a-corriger.md
 
 # Threat model et rapports d'audit datés : documents internes qui cartographient
 # l'architecture, les frontières de confiance et les écarts non corrigés. Le

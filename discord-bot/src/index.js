@@ -279,6 +279,7 @@ client.on(Events.InteractionCreate, async (interaction) => {
       if (signalements.isButton(interaction.customId)) { await signalements.handleButton(interaction); return; }
       if (suggestions.isSuggestionButton(interaction.customId)) { await suggestions.handleButton(interaction); return; }
       if (scanPatches.isScanPatchButton(interaction.customId)) { await scanPatches.handleButton(interaction); return; }
+      if (opsAlerts.isOpsAlertButton(interaction.customId)) { await opsAlerts.handleButton(interaction); return; }
       if (securitypanel.isSecurityComponent(interaction.customId)) { await securitypanel.handleComponent(interaction); return; }
       if (livretspanel.isLivretsComponent(interaction.customId)) { await livretspanel.handleComponent(interaction); return; }
 
