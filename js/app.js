@@ -15603,6 +15603,18 @@ let chartProj = null;
 const LIVRET_A_RATE = 0.017;
 const PROJ_HORIZONS = [1, 3, 5, 10, 15, 20, 25, 30];
 
+// Plafond de VERSEMENTS du PEA : 150 000 € cumulés sur la vie du plan. Il ne
+// porte pas sur la valeur du plan — un PEA à 400 000 € n'a rien d'anormal si
+// les versements se sont arrêtés à 150 000 €. Le compteur ne redescend pas
+// après un retrait ; on ne modélise donc que sa montée.
+//
+// Sans lui, la projection faisait rentrer des versements indéfiniment : à
+// 500 €/mois, l'horizon 30 ans supposait 180 000 € d'apports, dont 30 000
+// impossibles. L'erreur ne se voyait qu'aux horizons longs, ceux qu'on regarde.
+//
+// Le compte-titres n'a aucun plafond : la borne ne s'applique qu'au PEA.
+const PEA_PLAFOND_VERSEMENTS = 150000;
+
 // Ce que l'app sait déjà : valeur du PEA, rythme des versements, rendement
 // constaté. Sert au préremplissage et à la ligne d'explication sous les champs.
 function projDataDefaults() {
@@ -15630,7 +15642,23 @@ function projDataDefaults() {
     const r = (Math.pow(pea.total / pea.versements, 1 / annees) - 1) * 100;
     if (isFinite(r) && r > -50 && r < 50) { cagr = Math.round(r * 10) / 10; cagrSource = 'constaté'; }
   }
-  return { base: Math.round(pea.total), monthly, cagr, cagrSource, annees, nbVersements: versements.length };
+  // `verses` est le cumul déjà consommé sur le plafond, distinct de `base` qui
+  // est la valeur du plan. Les deux divergent dès la première plus-value.
+  return {
+    base: Math.round(pea.total), monthly, cagr, cagrSource, annees,
+    nbVersements: versements.length,
+    verses: Math.round(pea.versements || 0),
+    plafonne: !_estCto(),
+  };
+}
+
+// Ce qu'il reste à verser avant le plafond, ou l'infini là où il n'y en a pas
+// (compte-titres, ou PEA dont on ne connaît aucun versement — mieux vaut ne
+// pas plafonner que plafonner sur une donnée absente).
+function projPlafondRestant(donnees) {
+  const d = donnees || projDataDefaults();
+  if (!d.plafonne || !d.nbVersements) return Infinity;
+  return Math.max(0, PEA_PLAFOND_VERSEMENTS - d.verses);
 }
 
 window.projFillFromData = function () {
@@ -15642,29 +15670,66 @@ window.projFillFromData = function () {
   renderProjections();
 };
 
-// Une trajectoire : capital de départ capitalisé, plus les versements mensuels.
-function projSerie(base, monthly, tauxPct) {
+// Valeur, au mois `n`, d'un versement mensuel constant — convention de fin de
+// mois : le versement du mois j capitalise pendant n − j mois.
+function projFv(montant, mr, mois) {
+  if (mois <= 0 || montant === 0) return 0;
+  return Math.abs(mr) > 1e-9 ? montant * (Math.pow(1 + mr, mois) - 1) / mr : montant * mois;
+}
+
+// Somme réellement versable sur `n` mois : les versements s'arrêtent net une
+// fois le plafond atteint, le dernier pouvant être partiel.
+function projApports(monthly, n, plafond) {
+  if (monthly <= 0 || n <= 0) return 0;
+  return Math.min(monthly * n, plafond);
+}
+
+// Valeur capitalisée de ces versements au mois `n`. Une fois le plafond
+// atteint, le capital déjà versé continue de travailler : c'est la différence
+// entre « on arrête de verser » et « le plan s'arrête ».
+function projContrib(monthly, mr, n, plafond) {
+  if (monthly <= 0 || n <= 0) return 0;
+  if (!isFinite(plafond)) return projFv(monthly, mr, n);
+  if (plafond <= 0) return 0;
+
+  const pleins = Math.floor(plafond / monthly);   // mois à versement entier
+  const reste  = plafond - pleins * monthly;      // dernier versement, partiel
+  if (n <= pleins) return projFv(monthly, mr, n);
+
+  let val = projFv(monthly, mr, pleins) * Math.pow(1 + mr, n - pleins);
+  if (reste > 0) val += reste * Math.pow(1 + mr, n - pleins - 1);
+  return val;
+}
+
+// Une trajectoire : capital de départ capitalisé, plus les versements mensuels
+// tant que le plafond de l'enveloppe le permet.
+function projSerie(base, monthly, tauxPct, plafond) {
   const mr = tauxPct / 100 / 12;
   return PROJ_HORIZONS.map(y => {
     const n = y * 12;
     const grown = base * Math.pow(1 + tauxPct / 100, y);
-    const contrib = Math.abs(mr) > 1e-9 ? monthly * (Math.pow(1 + mr, n) - 1) / mr : monthly * n;
-    return +(grown + contrib).toFixed(2);
+    return +(grown + projContrib(monthly, mr, n, plafond)).toFixed(2);
   });
 }
 
-function calcProjections(base, monthly, cagrPct, spreadPct) {
-  const bas  = projSerie(base, monthly, cagrPct - spreadPct);
-  const cen  = projSerie(base, monthly, cagrPct);
-  const haut = projSerie(base, monthly, cagrPct + spreadPct);
-  const livret = projSerie(base, monthly, LIVRET_A_RATE * 100);
-  return PROJ_HORIZONS.map((y, i) => ({
-    years: y,
-    bas: bas[i], central: cen[i], haut: haut[i],
-    apports: +(base + monthly * y * 12).toFixed(2),
-    plusValues: +(cen[i] - base - monthly * y * 12).toFixed(2),
-    livretA: livret[i],
-  }));
+function calcProjections(base, monthly, cagrPct, spreadPct, plafond) {
+  const cap = (plafond === undefined) ? Infinity : plafond;
+  const bas  = projSerie(base, monthly, cagrPct - spreadPct, cap);
+  const cen  = projSerie(base, monthly, cagrPct, cap);
+  const haut = projSerie(base, monthly, cagrPct + spreadPct, cap);
+  // Le Livret A sert de repère et a son propre plafond, sans rapport avec
+  // celui du PEA : on le laisse hors borne plutôt que d'en inventer une.
+  const livret = projSerie(base, monthly, LIVRET_A_RATE * 100, Infinity);
+  return PROJ_HORIZONS.map((y, i) => {
+    const apports = +(base + projApports(monthly, y * 12, cap)).toFixed(2);
+    return {
+      years: y,
+      bas: bas[i], central: cen[i], haut: haut[i],
+      apports,
+      plusValues: +(cen[i] - apports).toFixed(2),
+      livretA: livret[i],
+    };
+  });
 }
 
 function renderProjections() {
@@ -15677,10 +15742,19 @@ function renderProjections() {
   const monthly = parseFloat(document.getElementById('proj-monthly').value) || 0;
   const cagr    = parseFloat(document.getElementById('proj-cagr').value) || 0;
   const spread  = Math.max(0, parseFloat(document.getElementById('proj-spread').value) || 0);
-  const data    = calcProjections(base, monthly, cagr, spread);
+  // Les données du compte servent deux fois : la borne de versement, et la
+  // ligne d'explication sous les champs. Une seule lecture pour les deux.
+  const d       = projDataDefaults();
+  const plafond = projPlafondRestant(d);
+  const data    = calcProjections(base, monthly, cagr, spread, plafond);
+  // Mois où le dernier versement possible tombe, pour le dire à l'écran. Zéro
+  // si le plafond ne mord pas sur l'horizon le plus lointain.
+  const moisMax = PROJ_HORIZONS[PROJ_HORIZONS.length - 1] * 12;
+  const moisPlafond = (isFinite(plafond) && monthly > 0 && plafond / monthly <= moisMax)
+    ? Math.ceil(plafond / monthly)
+    : 0;
 
   // ── D'où viennent les chiffres ──
-  const d = projDataDefaults();
   const origin = document.getElementById('proj-origin');
   if (origin) {
     const bits = [];
@@ -15694,6 +15768,10 @@ function renderProjections() {
     bits.push(d.cagrSource === 'constaté'
       ? 'rendement constaté : <b>' + d.cagr.toFixed(1) + ' %/an</b>'
       : 'moins d\'un an d\'historique : rendement par défaut <b>7 %/an</b>');
+    if (isFinite(plafond)) {
+      bits.push('versé à ce jour : <b>' + fmtCompact(d.verses) + '</b> sur 150 k€, reste <b>'
+        + fmtCompact(plafond) + '</b>');
+    }
     origin.innerHTML = bits.join(' · ');
   }
 
@@ -15719,6 +15797,16 @@ function renderProjections() {
       + 'La zone grisée est l\'écart entre la plus basse et la plus haute : c\'est elle qui compte, '
       + 'pas la ligne du milieu. À titre de comparaison, le Livret A rapporte '
       + (LIVRET_A_RATE * 100).toFixed(2).replace('.', ',') + ' % depuis le 1er août 2026.';
+    // Le plafond change la forme de la courbe : les apports cessent, le
+    // capital continue. Autant le dire, sinon l'aplatissement ressemble à un
+    // bug plus qu'à une règle.
+    if (moisPlafond) {
+      const ans = Math.floor(moisPlafond / 12), mois = moisPlafond % 12;
+      const quand = ans ? ans + (ans > 1 ? ' ans' : ' an') + (mois ? ' et ' + mois + ' mois' : '') : mois + ' mois';
+      note.innerHTML += ' À <b>' + fmtCompact(monthly) + '/mois</b>, le plafond de versement du PEA '
+        + '(150 000 € sur la vie du plan) est atteint dans <b>' + quand + '</b> : '
+        + 'les versements s\'arrêtent là, le capital déjà placé continue de travailler.';
+    }
   }
 
   // ── Graphique : bande entre les deux extrêmes ──

@@ -61,6 +61,9 @@ jobs:
       - name: Positions crypto
         run: node scripts/t-crypto.cjs
 
+      - name: Projection PEA — plafond de versement
+        run: node scripts/t-projections.cjs
+
       # Les suites ci-dessous existaient sans jamais tourner ici : une suite
       # qu'aucune CI ne lance ne protège de rien.
       - name: Socle de calcul — PRU, P&L réalisé, solde espèces
